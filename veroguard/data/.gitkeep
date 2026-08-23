@@ -1,2 +1,0 @@
-# 此目录存放加密的完整性基准清单（manifest.json.enc）
-# 由 veroguard/tools/build_manifest.py 在发版打包时生成

@@ -1,2 +1,0 @@
-# Plugin migrations directory — §10.6 standard structure
-# Place versioned SQL migration files here (e.g. 001_init.sql, 002_add_columns.sql)

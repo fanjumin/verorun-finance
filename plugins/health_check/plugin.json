@@ -1,0 +1,127 @@
+{
+  "name": "Health Check",
+  "name_i18n_key": "plugin.name",
+  "identifier": "health_check",
+  "python_dependencies": {
+    "required": [
+      "redis"
+    ],
+    "optional": {}
+  },
+  "version": "1.9.2",
+  "description": "System Health Check — Automated health monitoring + alerting + trend analysis",
+  "author": "VeroRun",
+  "min_app_version": "0.40.0",
+  "category": "system",
+  "icon": "health",
+  "icon_url": "",
+  "tags": [
+    "health",
+    "monitoring",
+    "alerting"
+  ],
+  "screenshots": [],
+  "readme_url": "",
+  "dependencies": {},
+  "config": {},
+  "permissions": [
+    "api:read",
+    "api:write",
+    "network:request"
+  ],
+  "hooks": {
+    "provides": [
+      "health/run_check",
+      "health/get_status",
+      "health/get_trend"
+    ],
+    "listens": []
+  },
+  "agents": [
+    {
+      "identifier": "health_ai_fixer",
+      "name": "Health AI Fixer",
+      "description": "LLM-powered health check result analysis and repair suggestion engine",
+      "role_type": "sub",
+      "domain": "health",
+      "prompt_file": "agents/health_ai_fixer_prompt.md",
+      "model_policy": {
+        "strategy": "inherit"
+      },
+      "capabilities": [
+        "health_analysis",
+        "fix_suggestion",
+        "root_cause_analysis"
+      ],
+      "enabled_by_default": false
+    }
+  ],
+  "dashboard": {
+    "stats": [
+      {
+        "key": "health_score",
+        "title": "Health Score",
+        "type": "gauge"
+      },
+      {
+        "key": "health_passed",
+        "title": "Passed",
+        "type": "counter"
+      },
+      {
+        "key": "health_warnings",
+        "title": "Warnings",
+        "type": "counter"
+      },
+      {
+        "key": "health_errors",
+        "title": "Errors",
+        "type": "counter"
+      },
+      {
+        "key": "unread_alerts",
+        "title": "Unread Alerts",
+        "type": "counter"
+      }
+    ]
+  },
+  "menu": {
+    "group": "Monitoring & Data",
+    "key": "health",
+    "icon": "health",
+    "label": "Health Check"
+  },
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "alert_email": {
+        "type": "string",
+        "description": "Admin email for health alerts"
+      },
+      "webhook_url": {
+        "type": "string",
+        "description": "Webhook URL for external alert notifications"
+      },
+      "check_interval_minutes": {
+        "type": "integer",
+        "default": 5,
+        "description": "Automatic health check interval in minutes"
+      },
+      "cpu_threshold": {
+        "type": "integer",
+        "default": 90,
+        "description": "CPU usage alert threshold (%)"
+      },
+      "mem_threshold": {
+        "type": "integer",
+        "default": 85,
+        "description": "Memory usage alert threshold (%)"
+      },
+      "disk_threshold": {
+        "type": "integer",
+        "default": 85,
+        "description": "Disk usage alert threshold (%)"
+      }
+    }
+  }
+}

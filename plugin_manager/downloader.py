@@ -52,54 +52,69 @@ def _validate_public_url(url: str) -> None:
 
 
 def download_plugin(download_url: str, dest_dir: str,
-                    expected_hash: str = '') -> str:
+                    expected_hash: str = '',
+                    fallback_url: str = '') -> str:
     """Download a plugin archive and extract it to dest_dir.
 
     Args:
-        download_url: URL of the plugin archive
+        download_url: URL of the plugin archive (primary source)
         dest_dir: Absolute path to plugins/<identifier>/
         expected_hash: Optional SHA256 hex digest for integrity check
+        fallback_url: Optional fallback URL tried on network failure
+            (e.g. mirror source down -> original GitHub source)
 
     Returns:
         Absolute path to the extracted plugin directory
 
     Raises:
         ValueError: Hash mismatch, Zip Slip detected, or invalid archive
-        URLError: Network error
+        URLError: Network error (also raised from fallback if retried)
         HTTPError: HTTP error from remote
     """
-    # ── Download ──────────────────────────────────────────────
+    # ── Download（主源下载；网络异常时自动回退备用源）────────
     tmp_path = None
     try:
         fd, tmp_path = tempfile.mkstemp(suffix='.plugin')
         os.close(fd)
 
-        logger.info(f'Downloading {download_url} -> {tmp_path}')
+        def _fetch(src_url: str) -> None:
+            """单次下载（网络异常向上抛出，由外层决定是否回退）。"""
+            logger.info(f'Downloading {src_url} -> {tmp_path}')
 
-        # ── SSRF 防护：仅允许公网地址 ──────────────────────────
-        _validate_public_url(download_url)
+            # ── SSRF 防护：仅允许公网地址 ──────────────────────
+            _validate_public_url(src_url)
 
-        req = Request(download_url, headers={
-            'User-Agent': 'VeroRun-PluginManager/1.0',
-        })
+            req = Request(src_url, headers={
+                'User-Agent': 'VeroRun-PluginManager/1.0',
+            })
 
-        with urlopen(req, timeout=DOWNLOAD_TIMEOUT) as resp:
-            content_length = resp.headers.get('Content-Length')
-            if content_length and int(content_length) > MAX_DOWNLOAD_SIZE:
-                raise ValueError(f'Plugin too large: {content_length} bytes (max {MAX_DOWNLOAD_SIZE})')
+            with urlopen(req, timeout=DOWNLOAD_TIMEOUT) as resp:
+                content_length = resp.headers.get('Content-Length')
+                if content_length and int(content_length) > MAX_DOWNLOAD_SIZE:
+                    raise ValueError(f'Plugin too large: {content_length} bytes (max {MAX_DOWNLOAD_SIZE})')
 
-            downloaded = 0
-            with open(tmp_path, 'wb') as f:
-                while True:
-                    chunk = resp.read(8192)
-                    if not chunk:
-                        break
-                    downloaded += len(chunk)
-                    if downloaded > MAX_DOWNLOAD_SIZE:
-                        raise ValueError(f'Download exceeded max size {MAX_DOWNLOAD_SIZE}')
-                    f.write(chunk)
+                downloaded = 0
+                with open(tmp_path, 'wb') as f:
+                    while True:
+                        chunk = resp.read(8192)
+                        if not chunk:
+                            break
+                        downloaded += len(chunk)
+                        if downloaded > MAX_DOWNLOAD_SIZE:
+                            raise ValueError(f'Download exceeded max size {MAX_DOWNLOAD_SIZE}')
+                        f.write(chunk)
 
-        logger.info(f'Downloaded {downloaded} bytes')
+            logger.info(f'Downloaded {downloaded} bytes')
+
+        try:
+            _fetch(download_url)
+        except (URLError, HTTPError, socket.timeout) as e:
+            if fallback_url and fallback_url != download_url:
+                logger.warning(f'Primary download failed ({e}); '
+                               f'falling back to {fallback_url}')
+                _fetch(fallback_url)
+            else:
+                raise
 
         # ── SHA256 verification ───────────────────────────────
         if expected_hash:

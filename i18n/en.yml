@@ -24,7 +24,6 @@
 1688 Not Shipped Yet: 1688 Not Shipped Yet
 1688 Procurement: 1688 Procurement
 1688 Product Review Collection Service: 1688 Product Review Collection Service
-1688 Products: 1688 Products
 1688 Unauthorized: 1688 Unauthorized
 1️⃣ Try Clicking the Quick Questions Above: 1️⃣ Try Clicking the Quick Questions Above
 2 Years: 2 Years
@@ -47,13 +46,9 @@
 9 AM: 9 AM
 A user with the same name Agent already exists: A user with the same name Agent already exists
 AI: AI
-AI Analysis: AI Analysis
-AI Analysis in Progress...: AI Analysis in Progress...
 AI Application Tips: AI Application Tips
 AI Applications: AI Applications
 AI Cleaning: AI Cleaning
-AI Configuration: AI Configuration
-AI Content Optimization: AI Content Optimization
 AI Continuous Monitoring + Keyword Suggestions + Ranking Tracking: AI Continuous Monitoring + Keyword Suggestions + Ranking Tracking
 AI Continuous SEO: AI Continuous SEO
 AI Copywriting (Tongyi Qianwen): AI Copywriting (Tongyi Qianwen)
@@ -92,22 +87,14 @@ AI-generated Image (Tongyi Wanxiang): AI-generated Image (Tongyi Wanxiang)
 AI-powered Website Building · Let your business attract customers online 24/7: AI-powered Website Building · Let your business attract customers online 24/7
 ALIBABA_APP_KEY not configured: ALIBABA_APP_KEY not configured
 ALIBABA_APP_SECRET not configured: ALIBABA_APP_SECRET not configured
-API Call: API Call
 API Call Token: API Call Token
-API Endpoint Filter: API Endpoint Filter
-API Gateway: API Gateway
 API Key Management: API Key Management
-API Logs: API Logs
-API Response Cache: API Response Cache
-API User Count: API User Count
-API Version: API Version
 API returned no product information: API returned no product information
 Accuracy 1-5: Accuracy 1-5
 Activate Now: Activate Now
 Activated: Activated
 Activating: Activating
 Activation failed: Activation failed
-Active Products: Active Products
 Active Subscriptions in Last 30 Days: Active Subscriptions in Last 30 Days
 Activity: Activity
 Ad Position: Ad Position
@@ -134,11 +121,8 @@ Agent has been deleted: Agent has been deleted
 Agent has been updated: Agent has been updated
 Agent name cannot be empty: Agent name cannot be empty
 AliApi data table initialization completed: AliApi data table initialization completed
-Alibaba API Management: Alibaba API Management
 Alibaba API Management route test completed: Alibaba API Management route test completed
 Alibaba AppKey and AppSecret must be configured: Alibaba AppKey and AppSecret must be configured
-Alibaba Configuration: Alibaba Configuration
-Alibaba Product ID: Alibaba Product ID
 Alibaba client initialized successfully: Alibaba client initialized successfully
 Alipay API Error: Alipay API Error
 Alipay App ID: Alipay App ID
@@ -151,10 +135,7 @@ Aliyun Real-time Speech Recognition: Aliyun Real-time Speech Recognition
 Aliyun SMS AccessKey ID: Aliyun SMS AccessKey ID
 Aliyun SMS AccessKey Secret: Aliyun SMS AccessKey Secret
 Aliyun Speech Synthesis (1 million characters free per month): Aliyun Speech Synthesis (1 million characters free per month)
-All Caches: All Caches
 All Packages: All Packages
-All Products: All Products
-All Statuses: All Statuses
 All checks passed.: All checks passed.
 All support binding custom domains and automatic configuration: All support binding custom domains and automatic configuration
 Allowed Management Backend Domains: Allowed Management Backend Domains
@@ -220,11 +201,7 @@ Build financial analysis and collaboration for the agent: Build financial analys
 CMS Page: CMS Page
 CMS publishing module is not ready (models.cms is not available): CMS publishing module is not ready (models.cms is not available)
 CMS/Community Content/Comment Review: CMS/Community Content/Comment Review
-Cache Cleanup: Cache Cleanup
-Cache Configuration: Cache Configuration
 Cache Hit: Cache Hit
-Cache Management: Cache Management
-Cache Statistics: Cache Statistics
 Cache Status: Cache Status
 Call: Call
 Campaign: Campaign
@@ -262,14 +239,10 @@ Chengdu City: Chengdu City
 China: China
 Chongqing: Chongqing
 Chongqing City: Chongqing City
-Circuit Breaker Threshold: Circuit Breaker Threshold
 Clean and structure article content for knowledge base retrieval: Clean and structure article content for knowledge base retrieval
 Cleaning completed: Cleaning completed
 Cleaning completed and written to knowledge base: Cleaning completed and written to knowledge base
 Cleaning in progress, please wait: Cleaning in progress, please wait
-Cleanup Type: Cleanup Type
-Clear Cache: Clear Cache
-Client: Client
 Client Secret cannot be empty (first configuration): Client Secret cannot be empty (first configuration)
 Cloud service: Cloud service
 Code: Code
@@ -282,10 +255,8 @@ Community Section/System Configuration/Operation Log: Community Section/System C
 Company name or tax number is empty: Company name or tax number is empty
 Compress: Compress
 Compressed (quality=60): Compressed (quality=60)
-Configuration Info: Configuration Info
 Configuration saved successfully. Some changes require restarting the service to take effect.: Configuration saved successfully. Some changes require restarting the service to take effect.
 Confirm Issue: Confirm Issue
-Confirm Selection: Confirm Selection
 Confirm to delete the check item: Confirm to delete the check item
 Confirmation Failed: Confirmation Failed
 Contact Email: Contact Email
@@ -346,7 +317,6 @@ Denomination: Denomination
 Deployment code does not exist: Deployment code does not exist
 Deployment code has been revoked: Deployment code has been revoked
 Destroyed: Destroyed
-Detecting...: Detecting...
 Development mode - Alipay not configured: Development mode - Alipay not configured
 Development mode - WeChat Pay not configured: Development mode - WeChat Pay not configured
 Device: Device
@@ -365,9 +335,7 @@ Downgrade: Downgrade
 Download failed: Download failed
 Download management: Download management
 Download — VeroRun: Download — VeroRun
-Drag image here or click to upload: Drag image here or click to upload
 Draw: Draw
-Drop Shipping Orders: Drop Shipping Orders
 Dynamic: Dynamic
 Each trading day: Each trading day
 Edit Template: Edit Template
@@ -384,7 +352,6 @@ Enter AccessKey Secret: Enter AccessKey Secret
 Enter Company/Brand Name: Enter Company/Brand Name
 Enter Product: Enter Product
 Enter Token (Optional): Enter Token (Optional)
-Enter the product ID to optimize: Enter the product ID to optimize
 Enter your question...: Enter your question...
 Enterprise Certification: Enterprise Certification
 Enterprise ID and Secret cannot be empty: Enterprise ID and Secret cannot be empty
@@ -464,10 +431,8 @@ Generation Failed: Generation Failed
 Germany: Germany
 Get New Articles: Get New Articles
 Gift for Referral: Gift for Referral
-Global Concurrency Limit: Global Concurrency Limit
 Global Concurrency Limit Must Be Greater Than 0: Global Concurrency Limit Must Be Greater Than 0
 Global Key (: Global Key (
-Global QPS Limit: Global QPS Limit
 Go to AI Smart Website Builder: Go to AI Smart Website Builder
 Go to pay: Go to pay
 Guangdong Province: Guangdong Province
@@ -527,7 +492,6 @@ Import failed: Import failed
 Improvement suggestion (in one sentence): Improvement suggestion (in one sentence)
 Improvement suggestions: Improvement suggestions
 In Customs Clearance: In Customs Clearance
-Inactive product: Inactive product
 Includes AI configuration + training + continuous optimization: Includes AI configuration + training + continuous optimization
 Includes implementation fee + annual technical service: Includes implementation fee + annual technical service
 Income: Income
@@ -567,7 +531,6 @@ Inventory: Inventory
 Issue Coupon: Issue Coupon
 Issue Item: Issue Item
 Italy: Italy
-Item repair...: Item repair...
 Items: Items
 Items cannot be empty: Items cannot be empty
 Items per page: Items per page
@@ -614,12 +577,10 @@ Langfang City: Langfang City
 Lanzhou: Lanzhou
 Lanzhou City: Lanzhou City
 Last active: Last active
-Last updated: Last updated
 Latest updates: Latest updates
 Launch Agent: Launch Agent
 Law: Law
 Learn more: Learn more
-Leave empty to clear all product cache: Leave empty to clear all product cache
 Level: Level
 Lhasa: Lhasa
 Lhasa City: Lhasa City
@@ -633,7 +594,6 @@ Linyi City: Linyi City
 Liuzhou: Liuzhou
 Loading Configuration...: Loading Configuration...
 Loading Failed: Loading Failed
-Local order: Local order
 Location: Location
 Log in to the VeroRun console and create your key on the API Key page. All Skills are accessed through a unified API Key.: Log in to the VeroRun console and create your key on the API Key page. All Skills are accessed through a unified API Key.
 Login: Login
@@ -656,7 +616,6 @@ Mall general: Mall general
 Mall order: Mall order
 Manage: Manage
 Manage Agent Matrix/Automatic Scheduling: Manage Agent Matrix/Automatic Scheduling
-Manage Drop Shipping Orders: Manage Drop Shipping Orders
 Manage Other Administrators (Only super_admin): Manage Other Administrators (Only super_admin)
 Management Backend: Management Backend
 Manual review: Manual review
@@ -664,7 +623,6 @@ Manually renewed: Manually renewed
 Marked as completed: Marked as completed
 Master Agent does not exist: Master Agent does not exist
 Matrix Dialogue Engine (Master Agent): Matrix Dialogue Engine (Master Agent)
-Memory Cache Size: Memory Cache Size
 Merged and updated existing entry (version history saved): Merged and updated existing entry (version history saved)
 Message cannot be empty: Message cannot be empty
 Message is required: Message is required
@@ -920,7 +878,6 @@ PV (Page Views): PV (Page Views)
 Page: Page
 Page number: Page number
 Paid User: Paid User
-Parameters: Parameters
 Password Must Contain Lowercase Letter: Password Must Contain Lowercase Letter
 Password Must Contain Number: Password Must Contain Number
 Password Must Contain Uppercase Letter: Password Must Contain Uppercase Letter
@@ -951,7 +908,6 @@ Pending delivery: Pending delivery
 Pending payment: Pending payment
 Pending posts: Pending posts
 Pending processing: Pending processing
-Pending procurement: Pending procurement
 Pending review: Pending review
 Pending shipment: Pending shipment
 Pending tickets: Pending tickets
@@ -960,7 +916,6 @@ Philippines: Philippines
 Phone number and verification code cannot be empty: Phone number and verification code cannot be empty
 Phone number cannot be empty: Phone number cannot be empty
 Phone number has been updated: Phone number has been updated
-Picture: Picture
 Picture deleted: Picture deleted
 Picture generated: Picture generated
 Picture order updated: Picture order updated
@@ -985,22 +940,16 @@ Processed_id is required: Processed_id is required
 Processing payment...: Processing payment...
 Product ID: Product ID
 Product ID cannot be empty: Product ID cannot be empty
-Product cache: Product cache
 Product cache TTL: Product cache TTL
-Product collection: Product collection
 Product does not exist: Product does not exist
 Product has been created: Product has been created
 Product has been deleted: Product has been deleted
 Product has been taken off the shelf: Product has been taken off the shelf
 Product has been updated: Product has been updated
-Product image management: Product image management
-Product information: Product information
-Product management: Product management
 Product name: Product name
 Product preview: Product preview
 Product published successfully: Product published successfully
 Product services: Product services
-Product title: Product title
 Product updates: Product updates
 Product_id cannot be empty: Product_id cannot be empty
 Production Environment: Production Environment
@@ -1019,11 +968,8 @@ Publish History (Social Media): Publish History (Social Media)
 Publish to social media: Publish to social media
 Published Successfully: Published Successfully
 Publishing Platform: Publishing Platform
-Purchase Order ID: Purchase Order ID
 Purchase Order does not exist: Purchase Order does not exist
 Purchase Order submitted to 1688: Purchase Order submitted to 1688
-Purchase Status: Purchase Status
-Purchased: Purchased
 Push Administrator: Push Administrator
 Push Report: Push Report
 Putian: Putian
@@ -1055,9 +1001,7 @@ Recipient: Recipient
 Recommend: Recommend
 Record: Record
 Record does not exist: Record does not exist
-Redis Configuration: Redis Configuration
 Refresh: Refresh
-Refresh Statistics: Refresh Statistics
 Region does not exist: Region does not exist
 Region name and identifier cannot be empty: Region name and identifier cannot be empty
 Register and Get API Key: Register and Get API Key
@@ -1080,7 +1024,6 @@ Rescan: Rescan
 Reset Failed: Reset Failed
 Resize: Resize
 Resource does not exist: Resource does not exist
-Response code: Response code
 Restore: Restore
 Retry: Retry
 Retry Failed: Retry Failed
@@ -1093,7 +1036,6 @@ Review does not exist: Review does not exist
 Review reward: Review reward
 Review successful: Review successful
 Rise: Rise
-Risk control configuration: Risk control configuration
 Risk control manager test: Risk control manager test
 Risk control status: Risk control status
 Rizhao: Rizhao
@@ -1118,7 +1060,6 @@ Sanya: Sanya
 Sanya City: Sanya City
 Saturday: Saturday
 Saudi Arabia: Saudi Arabia
-Save configuration: Save configuration
 Save failed: Save failed
 Save successful: Save successful
 Scenario: Scenario
@@ -1127,10 +1068,8 @@ Scheduler not initialized: Scheduler not initialized
 Scheduler paused: Scheduler paused
 Scheduler recovered: Scheduler recovered
 Scrape 36Kr: Scrape 36Kr
-Scrape Single Product: Scrape Single Product
 Search: Search
 Search Keywords: Search Keywords
-Search and Collect: Search and Collect
 Search keywords cannot be empty: Search keywords cannot be empty
 Select : Select 
 Select reason: Select reason
@@ -1165,7 +1104,6 @@ Shipped: Shipped
 Sichuan Province: Sichuan Province
 Sign Up Free Now →: Sign Up Free Now →
 Sign for Receipt: Sign for Receipt
-Signature Method: Signature Method
 Signed: Signed
 SiliconFlow (Silicon Flow): SiliconFlow (Silicon Flow)
 SiliconFlow API Key not configured (system_config.siliconflow_api_key): SiliconFlow API Key not configured (system_config.siliconflow_api_key)
@@ -1206,7 +1144,6 @@ Standard Version: Standard Version
 Star Technology: Star Technology
 Start Building Your Site Free: Start Building Your Site Free
 Start Free: Start Free
-Start collecting: Start collecting
 Start from scratch to understand the VeroRun platform and quickly get started with Agent development and financial analysis.: Start from scratch to understand the VeroRun platform and quickly get started with Agent development and financial analysis.
 Start from zero and quickly get started with the platform.: Start from zero and quickly get started with the platform.
 Static page generation module is not ready (platform/staticgen not available): Static page generation module is not ready (platform/staticgen not available)
@@ -1226,7 +1163,6 @@ Suggestion 2: Suggestion 2
 Suggestion 3: Suggestion 3
 Summary (Optional): Summary (Optional)
 Summary Report: Summary Report
-Supplier: Supplier
 Suzhou: Suzhou
 Suzhou City: Suzhou City
 Sweden: Sweden
@@ -1313,7 +1249,6 @@ TikTok Login Not Configured: TikTok Login Not Configured
 TikTok Mini Program: TikTok Mini Program
 TikTok User xxx: TikTok User xxx
 TikTok User_: TikTok User_
-Time (ms): Time (ms)
 Timeout (seconds): Timeout (seconds)
 Times: Times
 Title 1: Title 1
@@ -1336,7 +1271,6 @@ Topic: Topic
 Total Limit (0 = Unlimited): Total Limit (0 = Unlimited)
 Total attachment size exceeds 50MB limit: Total attachment size exceeds 50MB limit
 Total for first year: Total for first year
-Total number of products: Total number of products
 Total price for first year: Total price for first year
 Total size of the theme package exceeds 10MB: Total size of the theme package exceeds 10MB
 Toutiao: Toutiao
@@ -1375,13 +1309,10 @@ Usage Count: Usage Count
 Usage Rank Top 10: Usage Rank Top 10
 Usage Ranking: Usage Ranking
 Usage Record: Usage Record
-Use AI to optimize product titles and descriptions to improve marketing effectiveness. AI service must be available.: Use AI to optimize product titles and descriptions to improve marketing effectiveness. AI service must be available.
 Used/Total: Used/Total
 User Agent did not specify agent_id: User Agent did not specify agent_id
 User Authorization Token: User Authorization Token
 User Backend: User Backend
-User Daily Limit: User Daily Limit
-User Hourly Limit: User Hourly Limit
 User Inquiry: User Inquiry
 User Management: User Management
 User Nickname: User Nickname
@@ -1499,7 +1430,6 @@ Yinchuan City: Yinchuan City
 VeroRun AI Intelligent Customer Service: VeroRun AI Intelligent Customer Service
 VeroRun AI Smart Website Building Platform allows your website to attract customers 24/7.: VeroRun AI Smart Website Building Platform allows your website to attract customers 24/7.
 You are an agent assistant. Output only JSON.: You are an agent assistant. Output only JSON.
-You can find the product ID in the Alibaba product detail page URL: You can find the product ID in the Alibaba product detail page URL
 You have already reviewed this product: You have already reviewed this product
 You have already used this coupon: You have already used this coupon
 Your Email: Your Email
@@ -1728,7 +1658,6 @@ stub confirm is disabled outside dev: stub confirm is disabled outside dev
 'Active Users': 'Active Users'
 'Activity Log': 'Activity Log'
 'Add Address': 'Add Address'
-'Add to Cart': 'Add to Cart'
 'Address': 'Address'
 'Adjust content, style, features on demand': 'Adjust content, style, features on demand'
 'Admin': 'Admin'
@@ -1778,7 +1707,6 @@ stub confirm is disabled outside dev: stub confirm is disabled outside dev
 'Avg. Lead Boost': 'Avg. Lead Boost'
 'Awaiting Reply': 'Awaiting Reply'
 'Back': 'Back'
-'Back to Edit': 'Back to Edit'
 'Back to Home': 'Back to Home'
 'Back to Login': 'Back to Login'
 'Basic': 'Basic'
@@ -1812,7 +1740,6 @@ stub confirm is disabled outside dev: stub confirm is disabled outside dev
 'Cannot Load': 'Cannot Load'
 'Capabilities': 'Capabilities'
 'Captcha verification ensures platform security and prevents automated registrations': 'Captcha verification ensures platform security and prevents automated registrations'
-'Cart': 'Cart'
 'Case Showcase': 'Case Showcase'
 'Case Studies': 'Case Studies'
 'Case studies: corporate sites, e-commerce, brand showcases built with AI.': 'Case studies: corporate sites, e-commerce, brand showcases built with AI.'
@@ -1827,7 +1754,6 @@ stub confirm is disabled outside dev: stub confirm is disabled outside dev
 'Check failed, please retry later': 'Check failed, please retry later'
 'Checking availability...': 'Checking availability...'
 'Checking...': 'Checking...'
-'Checkout': 'Checkout'
 'Choose Your Plan': 'Choose Your Plan'
 'Choose the Best Fit': 'Choose the Best Fit'
 'Choose the Plan That Fits You': 'Choose the Plan That Fits You'
@@ -1864,7 +1790,6 @@ stub confirm is disabled outside dev: stub confirm is disabled outside dev
 'Confirm Order': 'Confirm Order'
 'Confirm Password': 'Confirm Password'
 'Confirm Payment': 'Confirm Payment'
-'Confirm Payment (Dev Mode)': 'Confirm Payment (Dev Mode)'
 'Confirm Receipt': 'Confirm Receipt'
 'Confirm Submit': 'Confirm Submit'
 'Connection Info': 'Connection Info'
@@ -1901,7 +1826,6 @@ stub confirm is disabled outside dev: stub confirm is disabled outside dev
 'Create a strong password to protect your account': 'Create a strong password to protect your account'
 'Create and configure your agent': 'Create and configure your agent'
 'Created': 'Created'
-'Creating payment...': 'Creating payment...'
 'Current Device': 'Current Device'
 'Current Plan': 'Current Plan'
 'Custom (from ¥12,000)': 'Custom (from ¥12,000)'
@@ -2076,7 +2000,6 @@ stub confirm is disabled outside dev: stub confirm is disabled outside dev
 'Log In / Register': 'Log In / Register'
 'Login Devices': 'Login Devices'
 'Login History & Security Actions': 'Login History & Security Actions'
-'Logistics Tracking Popup': 'Logistics Tracking Popup'
 'Logout': 'Logout'
 'Main Agent': 'Main Agent'
 'Mall': 'Mall'
@@ -2161,7 +2084,6 @@ stub confirm is disabled outside dev: stub confirm is disabled outside dev
 'No other devices': 'No other devices'
 'No tech team, no big budget. Build in 3 mins, AI works.': 'No tech team, no big budget. Build in 3 mins, AI works.'
 'No tickets': 'No tickets'
-'No tracking info available': 'No tracking info available'
 'None': 'None'
 'Not Bound': 'Not Bound'
 'Notif Settings': 'Notif Settings'
@@ -2189,9 +2111,7 @@ stub confirm is disabled outside dev: stub confirm is disabled outside dev
 'Order Management': 'Order Management'
 'Order Management & Payment': 'Order Management & Payment'
 'Order No.': 'Order No.'
-'Order Payment': 'Order Payment'
 'Order System': 'Order System'
-'Order:': 'Order:'
 'Orders': 'Orders'
 'Other': 'Other'
 'Other Devices': 'Other Devices'
@@ -2216,7 +2136,6 @@ stub confirm is disabled outside dev: stub confirm is disabled outside dev
 'Pay order': 'Pay order'
 'Payment Issue': 'Payment Issue'
 'Payment Method Distribution': 'Payment Method Distribution'
-'Payment Popup': 'Payment Popup'
 'Payment creation failed': 'Payment creation failed'
 'Pending': 'Pending'
 'Pending Payment': 'Pending Payment'
@@ -2254,7 +2173,6 @@ stub confirm is disabled outside dev: stub confirm is disabled outside dev
 'Please fill in phone number': 'Please fill in phone number'
 'Please log in first': 'Please log in first'
 'Please review the recognized info before submitting': 'Please review the recognized info before submitting'
-'Please scan with WeChat to pay': 'Please scan with WeChat to pay'
 'Please select': 'Please select'
 'Please select at least 3 interests': 'Please select at least 3 interests'
 'Please select contacts first': 'Please select contacts first'
@@ -2315,7 +2233,6 @@ stub confirm is disabled outside dev: stub confirm is disabled outside dev
 'Recognition Failed': 'Recognition Failed'
 'Recognize License': 'Recognize License'
 'Recognizing...': 'Recognizing...'
-'Redirecting to Alipay...': 'Redirecting to Alipay...'
 'Refunded': 'Refunded'
 'Refunding': 'Refunding'
 'Region': 'Region'
@@ -2369,7 +2286,6 @@ stub confirm is disabled outside dev: stub confirm is disabled outside dev
 'See how they upgraded their online business with VeroRun': 'See how they upgraded their online business with VeroRun'
 'Select AI capabilities, configure knowledge base, product library, content strategy.': 'Select AI capabilities, configure knowledge base, product library, content strategy.'
 'Select All': 'Select All'
-'Select Payment Method': 'Select Payment Method'
 'Semi-Annual': 'Semi-Annual'
 'Send': 'Send'
 'Send Code': 'Send Code'
@@ -2476,7 +2392,6 @@ stub confirm is disabled outside dev: stub confirm is disabled outside dev
 'Total Users': 'Total Users'
 'Total: ': 'Total: '
 'Town/Street': 'Town/Street'
-'Track Shipping': 'Track Shipping'
 'Transparent': 'Transparent'
 'Tri-Platform Unified': 'Tri-Platform Unified'
 'Trial Request': 'Trial Request'
@@ -2567,7 +2482,6 @@ stub confirm is disabled outside dev: stub confirm is disabled outside dev
 'Yes. All plans support custom domain binding with free SSL certs. See the domain setup guide in our docs.': 'Yes. All plans support custom domain binding with free SSL certs. See the domain setup guide in our docs.'
 'Yes. Upgrade takes effect immediately, downgrade at next billing cycle.': 'Yes. Upgrade takes effect immediately, downgrade at next billing cycle.'
 'You have used': 'You have used'
-'Your cart is empty': 'Your cart is empty'
 'Your display name': 'Your display name'
 'Your identity verification has passed, display name updated to ': 'Your identity verification has passed, display name updated to '
 'and': 'and'
@@ -2612,8 +2526,6 @@ stub confirm is disabled outside dev: stub confirm is disabled outside dev
 '👤 Complete Profile': '👤 Complete Profile'
 '💬 WeChat Pay': '💬 WeChat Pay'
 '💳 Alipay': '💳 Alipay'
-'💳 Payment': '💳 Payment'
-'📋 My Orders': '📋 My Orders'
 '📦 Qiniu Cloud': '📦 Qiniu Cloud'
 '📱 Verify Phone Number': '📱 Verify Phone Number'
 '🔍 Preview — Admin Only ·': '🔍 Preview — Admin Only ·'
@@ -2621,8 +2533,6 @@ stub confirm is disabled outside dev: stub confirm is disabled outside dev
 '🔑 Set Password': '🔑 Set Password'
 '🔒 Security Verification': '🔒 Security Verification'
 '🔗 1688 · Alibaba': '🔗 1688 · Alibaba'
-'🚚 Logistics Tracking': '🚚 Logistics Tracking'
-'🛒 Cart': '🛒 Cart'
 # ── Provider Keys & LLM Quotas (stage 1-4) ──
 'API Key Value': 'API Key Value'
 'API Key value is required': 'API Key value is required'
@@ -3089,3 +2999,864 @@ Theme: Theme
 Cyber Dark: Cyber Dark
 Cloud Light: Cloud Light
 Misty Gray: Misty Gray
+Import from GitHub: Import from GitHub
+Fetch: Fetch
+Fetching metadata: Fetching metadata
+Imported: Imported
+Please enter a GitHub repo URL: Please enter a GitHub repo URL
+# P1 subscription center UI keys (2026-08-22)
+'My Subscriptions': 'My Subscriptions'
+'Browse': 'Browse'
+'Change': 'Change'
+'Change Billing Cycle': 'Change Billing Cycle'
+'New Interval': 'New Interval'
+'New Price': 'New Price'
+'Remaining Value Credit': 'Remaining Value Credit'
+'Carryover': 'Carryover'
+'Payable': 'Payable'
+'Confirm Change': 'Confirm Change'
+'Billing cycle changed': 'Billing cycle changed'
+'Change failed': 'Change failed'
+'Upgrade to Bundle': 'Upgrade to Bundle'
+'Upgrade Bundle': 'Upgrade Bundle'
+'Bundle Price': 'Bundle Price'
+'Proceed in store checkout to complete upgrade': 'Proceed in store checkout to complete upgrade'
+'Days Left': 'Days Left'
+'Today': 'Today'
+'Go to Store': 'Go to Store'
+'Change Your Password': 'Change Your Password'
+'Confirm New Password': 'Confirm New Password'
+'Coupon Code': 'Coupon Code'
+'Enter User': 'Enter User'
+'Enter coupon code': 'Enter coupon code'
+'Failed to set password': 'Failed to set password'
+'Full Reduction Coupon': 'Full Reduction Coupon'
+'Issue': 'Issue'
+'Limit per User': 'Limit per User'
+'Minimum Spend': 'Minimum Spend'
+'No Coupons Available': 'No Coupons Available'
+'One User': 'One User'
+'Password must contain a number': 'Password must contain a number'
+'Password must contain lowercase letter': 'Password must contain lowercase letter'
+'Password must contain special character': 'Password must contain special character'
+'Password must contain uppercase letter': 'Password must contain uppercase letter'
+'Password set successfully! Redirecting to login...': 'Password set successfully! Redirecting to login...'
+'Plugin page failed to load.': 'Plugin page failed to load.'
+'Plugin render function': 'Plugin render function'
+'Plugin route not registered, enable the plugin first': 'Plugin route not registered, enable the plugin first'
+'Setting...': 'Setting...'
+'Smart Coupon': 'Smart Coupon'
+'Try refreshing the page': 'Try refreshing the page'
+'You must change your password before first use. At least 10 characters with uppercase, lowercase, numbers and special characters.': 'You must change your password before first use. At least 10 characters with uppercase, lowercase, numbers and special characters.'
+'not found': 'not found'
+'✅ Created': '✅ Created'
+'✅ Issued': '✅ Issued'
+'API & Agent Usage': 'API & Agent Usage'
+'All clear': 'All clear'
+'All services up': 'All services up'
+'Analytics plugin not enabled': 'Analytics plugin not enabled'
+'Big Screen': 'Big Screen'
+'Check services': 'Check services'
+'Comments': 'Comments'
+'Content Pipeline': 'Content Pipeline'
+'Enable Analytics Plugin': 'Enable Analytics Plugin'
+'Enable Plugin': 'Enable Plugin'
+'Exit': 'Exit'
+'Failed Tasks': 'Failed Tasks'
+'Health Check plugin not enabled': 'Health Check plugin not enabled'
+'No Content Yet': 'No Content Yet'
+'Online Now': 'Online Now'
+'Open Tickets': 'Open Tickets'
+'Pending Alerts': 'Pending Alerts'
+'Pending Reviews': 'Pending Reviews'
+'Pending Shipments': 'Pending Shipments'
+'Popular Pages': 'Popular Pages'
+'Recent Orders': 'Recent Orders'
+'Revenue Trend': 'Revenue Trend'
+'Review': 'Review'
+'Service Status': 'Service Status'
+'Spend': 'Spend'
+'Subscriptions': 'Subscriptions'
+'System Health': 'System Health'
+'Unpaid': 'Unpaid'
+'Unread Messages': 'Unread Messages'
+'active subs': 'active subs'
+'msgs': 'msgs'
+'tickets': 'tickets'
+'today': 'today'
+' passed': ' passed'
+'Action Button': 'Action Button'
+'Active Tasks': 'Active Tasks'
+'Admin Management': 'Admin Management'
+'Cancel Failed': 'Cancel Failed'
+'Cancel this workflow?': 'Cancel this workflow?'
+'Comment Management': 'Comment Management'
+'Complete': 'Complete'
+'Confirm Installed': 'Confirm Installed'
+'Content Area': 'Content Area'
+'Critical': 'Critical'
+'Currently Selected': 'Currently Selected'
+'Define': 'Define'
+'Delete this comment?': 'Delete this comment?'
+'Delete this task?': 'Delete this task?'
+'Delete this workflow?': 'Delete this workflow?'
+'Edge': 'Edge'
+'Edit Task': 'Edit Task'
+'Edit Workflow': 'Edit Workflow'
+'End': 'End'
+'Execution History': 'Execution History'
+'Execution Log': 'Execution Log'
+'Expression': 'Expression'
+'Insert Form Above Table': 'Insert Form Above Table'
+'Instance': 'Instance'
+'Interval Seconds': 'Interval Seconds'
+'Last': 'Last'
+'Load Logs': 'Load Logs'
+'Load Tasks': 'Load Tasks'
+'Loading Execution History': 'Loading Execution History'
+'Loading Workflow': 'Loading Workflow'
+'Name is required': 'Name is required'
+'New': 'New'
+'New Task': 'New Task'
+'New Workflow': 'New Workflow'
+'No Comments': 'No Comments'
+'No Execution Records': 'No Execution Records'
+'No Logs Yet': 'No Logs Yet'
+'No Tasks': 'No Tasks'
+'No Workflow': 'No Workflow'
+'Node': 'Node'
+'Node Execution Details': 'Node Execution Details'
+'Node List': 'Node List'
+'Node Type': 'Node Type'
+'Nodes': 'Nodes'
+'One-Time': 'One-Time'
+'Or Natural Language': 'Or Natural Language'
+'Pending Approval': 'Pending Approval'
+'Per Trading Day': 'Per Trading Day'
+'Please Confirm Scheduler is Running': 'Please Confirm Scheduler is Running'
+'Priority': 'Priority'
+'Run': 'Run'
+'Scheduled Tasks': 'Scheduled Tasks'
+'Scheduler Status': 'Scheduler Status'
+'Script': 'Script'
+'Select Function to Start Settings': 'Select Function to Start Settings'
+'Start': 'Start'
+'Start Failed': 'Start Failed'
+'Switch': 'Switch'
+'Switched': 'Switched'
+'Task Management': 'Task Management'
+'Task not found': 'Task not found'
+'Task triggered': 'Task triggered'
+'Tasks': 'Tasks'
+'Timeout': 'Timeout'
+'Today Completed': 'Today Completed'
+'Today Failures': 'Today Failures'
+'Trigger Failed': 'Trigger Failed'
+'Workflow Definition': 'Workflow Definition'
+'Workflow Execution': 'Workflow Execution'
+'Workflow Management': 'Workflow Management'
+'Workflow Started': 'Workflow Started'
+'Workflow not found': 'Workflow not found'
+'WorkflowExecution History': 'WorkflowExecution History'
+'Command Console': 'Command Console'
+'AI Hub': 'AI Hub'
+'Admins': 'Admins'
+'AI & Content': 'AI & Content'
+'All Content': 'All Content'
+'Create Article': 'Create Article'
+'Media Library': 'Media Library'
+'RAG Knowledge': 'RAG Knowledge'
+'Cleaner': 'Cleaner'
+'Business Center': 'Business Center'
+'Users & Support': 'Users & Support'
+'All Customers': 'All Customers'
+'Customer Agents': 'Customer Agents'
+'API Tokens': 'API Tokens'
+'User Tickets': 'User Tickets'
+'Rewards': 'Rewards'
+'Security & Compliance': 'Security & Compliance'
+'Post Audit': 'Post Audit'
+'Comment Moderation': 'Comment Moderation'
+'Monitoring & Data': 'Monitoring & Data'
+'Plugins & i18n': 'Plugins & i18n'
+'Plugin Management': 'Plugin Management'
+'Translations': 'Translations'
+'Captcha Stats': 'Captcha Stats'
+'Logistics Tracking': 'Logistics Tracking'
+'Payment Config': 'Payment Config'
+'Reviews Moderation': 'Reviews Moderation'
+'Site Domains': 'Site Domains'
+'Social Push': 'Social Push'
+'Vault': 'Vault'
+'Chat': 'Chat'
+'Chat History': 'Chat History'
+'Chat Window': 'Chat Window'
+'Chat Window Management': 'Chat Window Management'
+'Chat Window KB Management': 'Chat Window KB Management'
+'New Chat': 'New Chat'
+'New Chat Created': 'New Chat Created'
+'No Chat History': 'No Chat History'
+'Load Chats': 'Load Chats'
+'Session Title': 'Session Title'
+'Delete this session history?': 'Delete this session history?'
+'Reset current session? All messages will be cleared.': 'Reset current session? All messages will be cleared.'
+'Please Select Chats to Delete': 'Please Select Chats to Delete'
+'Confirm Batch Delete': 'Confirm Batch Delete'
+'Click Row to Jump to Chat': 'Click Row to Jump to Chat'
+'Please wait...': 'Please wait...'
+'Found': 'Found'
+'Last Time': 'Last Time'
+'Matching Messages': 'Matching Messages'
+'First Msg': 'First Msg'
+'Session': 'Session'
+'Me:': 'Me:'
+'Upload File': 'Upload File'
+'[Uploaded File]': '[Uploaded File]'
+'Show Uploaded File Reference in Chat': 'Show Uploaded File Reference in Chat'
+'Use Files as Reference': 'Use Files as Reference'
+'If There Are Uploaded Files': 'If There Are Uploaded Files'
+'If It Is an Image': 'If It Is an Image'
+'Show Thumbnail': 'Show Thumbnail'
+'Attached': 'Attached'
+'<table><tr><th>Session</th><th>First Msg</th><th>Last Time</th></tr>': '<table><tr><th>Session</th><th>First Msg</th><th>Last Time</th></tr>'
+'AI Capabilities': 'AI Capabilities'
+'AI Chat — Athena': 'AI Chat — Athena'
+'Ability': 'Ability'
+'Role Definition': 'Role Definition'
+'Role Description': 'Role Description'
+'Roles & Abilities': 'Roles & Abilities'
+'Core Instructions': 'Core Instructions'
+'Code of Conduct': 'Code of Conduct'
+'Basic Settings': 'Basic Settings'
+'Model Config': 'Model Config'
+'Select Model': 'Select Model'
+'Select Provider': 'Select Provider'
+'Multiple Providers': 'Multiple Providers'
+'Endpoint': 'Endpoint'
+'Configure Actual Key Values': 'Configure Actual Key Values'
+'Managed Modules': 'Managed Modules'
+'System Prompt': 'System Prompt'
+'Custom Prompt': 'Custom Prompt'
+'Built-in Templates': 'Built-in Templates'
+'Presets': 'Presets'
+'Contains Prompt': 'Contains Prompt'
+'Includes Full Role Definition': 'Includes Full Role Definition'
+'Supports Dynamic Editing': 'Supports Dynamic Editing'
+'Prompt': 'Prompt'
+'Prompt Management Description': 'Prompt Management Description'
+'Prompt Storage': 'Prompt Storage'
+'Knowledge Base Content': 'Knowledge Base Content'
+'Back to Matrix': 'Back to Matrix'
+'Connected to Matrix': 'Connected to Matrix'
+'Matrix Chat': 'Matrix Chat'
+'Service Panel': 'Service Panel'
+'Enhanced': 'Enhanced'
+'Legacy API': 'Legacy API'
+'Old Feature Migrated': 'Old Feature Migrated'
+'Injected into Chat Window': 'Injected into Chat Window'
+'Agent': 'Agent'
+'Managed by Agent Matrix Ticket Agent': 'Managed by Agent Matrix Ticket Agent'
+'Add Sub': 'Add Sub'
+'Append to Message': 'Append to Message'
+'As': 'As'
+'At Least Keywords': 'At Least Keywords'
+'Auto-fill After Selection': 'Auto-fill After Selection'
+'Auto-fill to Text Field': 'Auto-fill to Text Field'
+'Auto-load at Runtime': 'Auto-load at Runtime'
+'Available': 'Available'
+'Batch Delete': 'Batch Delete'
+'Button': 'Button'
+'Cascading Model Select': 'Cascading Model Select'
+'Characters': 'Characters'
+'Click': 'Click'
+'Comma Separated': 'Comma Separated'
+'Confidence': 'Confidence'
+'Config': 'Config'
+'Confirm Creation': 'Confirm Creation'
+'Create': 'Create'
+'Creation Failed': 'Creation Failed'
+'Decided': 'Decided'
+'Deciding': 'Deciding'
+'Deep Thinking': 'Deep Thinking'
+'Delete failed': 'Delete failed'
+'Describe Agent Tech in One Sentence': 'Describe Agent Tech in One Sentence'
+'Directly': 'Directly'
+'Directory': 'Directory'
+'Discuss': 'Discuss'
+'Domain': 'Domain'
+'Dropdown Select': 'Dropdown Select'
+'Edit Prompts & Settings': 'Edit Prompts & Settings'
+'Edit in Popup Window': 'Edit in Popup Window'
+'Edit on Server': 'Edit on Server'
+'Enter Command': 'Enter Command'
+'Analyze Recent Stock Market Trends': 'Analyze Recent Stock Market Trends'
+'Draw a Blue Cat': 'Draw a Blue Cat'
+'Enter Name': 'Enter Name'
+'Enter Test Question': 'Enter Test Question'
+'Fast': 'Fast'
+'File': 'File'
+'Hello': 'Hello'
+'Message': 'Message'
+'No Match': 'No Match'
+'No Response': 'No Response'
+'Not Configured': 'Not Configured'
+'Provider': 'Provider'
+'Quick Test': 'Quick Test'
+'Quick Test Chat Window': 'Quick Test Chat Window'
+'Request Failed': 'Request Failed'
+'Reset': 'Reset'
+'Response': 'Response'
+'Send Command to Start': 'Send Command to Start'
+'Send Command to Start Chat': 'Send Command to Start Chat'
+'Send Test Message to Agent': 'Send Test Message to Agent'
+'Sessions': 'Sessions'
+'Test Passed': 'Test Passed'
+'Test Results': 'Test Results'
+'Text Generation': 'Text Generation'
+'Thinking': 'Thinking'
+'This Operation Cannot Be Recovered': 'This Operation Cannot Be Recovered'
+'Tool Call': 'Tool Call'
+'Unknown Error': 'Unknown Error'
+'Unknown Service': 'Unknown Service'
+'Upload': 'Upload'
+'Loading': 'Loading'
+'Loading Knowledge Base': 'Loading Knowledge Base'
+'e.g.': 'e.g.'
+'Preview Failed': 'Preview Failed'
+'Save Knowledge Base': 'Save Knowledge Base'
+'Download Audio': 'Download Audio'
+'Download Image': 'Download Image'
+'Download Video': 'Download Video'
+'Female (Jenny)': 'Female (Jenny)'
+'Female (Xiaoxiao)': 'Female (Xiaoxiao)'
+'If Built-in Templates Selected': 'If Built-in Templates Selected'
+'If Writing Manually': 'If Writing Manually'
+'Image Processing': 'Image Processing'
+'Image Understanding': 'Image Understanding'
+'Is': 'Is'
+'Line End': 'Line End'
+'List Your': 'List Your'
+'Located on Server': 'Located on Server'
+'Male (Guy)': 'Male (Guy)'
+'Male (Yunxi)': 'Male (Yunxi)'
+'Modify Below': 'Modify Below'
+'Modify Prompt': 'Modify Prompt'
+'Or Directly': 'Or Directly'
+'Or Select Template Above': 'Or Select Template Above'
+'Pass When': 'Pass When'
+'Paste or Write Prompt Content': 'Paste or Write Prompt Content'
+'Planning': 'Planning'
+'Please Configure in System Settings': 'Please Configure in System Settings'
+'Please Use Matrix Chat to Test': 'Please Use Matrix Chat to Test'
+'Post for Me': 'Post for Me'
+'Quality Standard': 'Quality Standard'
+'Reference': 'Reference'
+'Reference Config': 'Reference Config'
+'Render Sub-task Images to Chat': 'Render Sub-task Images to Chat'
+'Reviewing': 'Reviewing'
+'Revising': 'Revising'
+'Select Template': 'Select Template'
+'Selecting': 'Selecting'
+'Store Full Text Content Directly': 'Store Full Text Content Directly'
+'Store as File Path': 'Store as File Path'
+'Supported Fields': 'Supported Fields'
+'Under': 'Under'
+'Users of This Service': 'Users of This Service'
+'Write This': 'Write This'
+'Write in Text Box': 'Write in Text Box'
+'✅ Saved (': '✅ Saved ('
+'✓ Marked clean': '✓ Marked clean'
+'❌ Network error': '❌ Network error'
+'❌ Save failed': '❌ Save failed'
+'❌ Upload Failed:': '❌ Upload Failed:'
+'AI Agent': 'AI Agent'
+'Activate': 'Activate'
+'Activate License': 'Activate License'
+'Add Plugin': 'Add Plugin'
+'All Categories': 'All Categories'
+'Anonymous': 'Anonymous'
+'Apply': 'Apply'
+'Author': 'Author'
+'Auto': 'Auto'
+'Back to Store': 'Back to Store'
+'Calculate': 'Calculate'
+'Canceled': 'Canceled'
+'Cancel failed': 'Cancel failed'
+'Cancel subscription for': 'Cancel subscription for'
+'Check failed': 'Check failed'
+'Creating order': 'Creating order'
+'Deactivate license for': 'Deactivate license for'
+'Deactivation failed': 'Deactivation failed'
+'Delete plugin from store?': 'Delete plugin from store?'
+'Developer Reply': 'Developer Reply'
+'Discount applied': 'Discount applied'
+'Discount code': 'Discount code'
+'Download URL': 'Download URL'
+'Edit Plugin': 'Edit Plugin'
+'Go to Pay': 'Go to Pay'
+'Grace': 'Grace'
+'Highest Rated': 'Highest Rated'
+'Icon URL': 'Icon URL'
+'Identifier': 'Identifier'
+'Install': 'Install'
+'Install failed': 'Install failed'
+'Install plugin?': 'Install plugin?'
+'Installed': 'Installed'
+'Interval': 'Interval'
+'Invalid': 'Invalid'
+'Base month price': 'Base month price'
+'License Key': 'License Key'
+'License Management': 'License Management'
+'License activated': 'License activated'
+'License deactivated': 'License deactivated'
+'Loading README': 'Loading README'
+'Lowest Rated': 'Lowest Rated'
+'Markdown file URL, shown in detail page': 'Markdown file URL, shown in detail page'
+'Most Downloaded': 'Most Downloaded'
+'Newest': 'Newest'
+'No licenses activated yet': 'No licenses activated yet'
+'No plugins in store': 'No plugins in store'
+'No reviews yet': 'No reviews yet'
+'No subscriptions': 'No subscriptions'
+'One-time': 'One-time'
+'Open in new tab': 'Open in new tab'
+'Order No': 'Order No'
+'Paid (One-time)': 'Paid (One-time)'
+'Payment': 'Payment'
+'Payment successful! License activated.': 'Payment successful! License activated.'
+'Period End': 'Period End'
+'Please enter a valid base month price': 'Please enter a valid base month price'
+'Please enter your review': 'Please enter your review'
+'Plugin ID': 'Plugin ID'
+'Plugin ID and License Key required': 'Plugin ID and License Key required'
+'Plugin Store': 'Plugin Store'
+'Plugin already licensed': 'Plugin already licensed'
+'Price Type': 'Price Type'
+'Price: High to Low': 'Price: High to Low'
+'Price: Low to High': 'Price: Low to High'
+'Pricing Calculator': 'Pricing Calculator'
+'Processing': 'Processing'
+'Purchase': 'Purchase'
+'Purchase failed': 'Purchase failed'
+'QR Code': 'QR Code'
+'Identifier and Name are required': 'Identifier and Name are required'
+'Identifier must contain only lowercase letters, digits, underscores': 'Identifier must contain only lowercase letters, digits, underscores'
+'Quarter': 'Quarter'
+'README': 'README'
+'README load failed': 'README load failed'
+'Rating': 'Rating'
+'Readme URL': 'Readme URL'
+'Recommended: 280x120px, shown on store card': 'Recommended: 280x120px, shown on store card'
+'Redirect to payment': 'Redirect to payment'
+'Renew': 'Renew'
+'Renew failed': 'Renew failed'
+'Review submitted': 'Review submitted'
+'Reviews': 'Reviews'
+'Scan to pay': 'Scan to pay'
+'Share your experience...': 'Share your experience...'
+'Social': 'Social'
+'Status updated': 'Status updated'
+'Store Admin': 'Store Admin'
+'Submit Review': 'Submit Review'
+'Subscription canceled': 'Subscription canceled'
+'Subscription renewed': 'Subscription renewed'
+'Supply Chain': 'Supply Chain'
+'Suspended': 'Suspended'
+'Sync failed': 'Sync failed'
+'Tagline': 'Tagline'
+'Tagline Color': 'Tagline Color'
+'Tagline Font Size': 'Tagline Font Size'
+'Tiered prices': 'Tiered prices'
+'Tools': 'Tools'
+'Unpublish': 'Unpublish'
+'Up to 20 chars, line breaks supported, shown on store card': 'Up to 20 chars, line breaks supported, shown on store card'
+'Waiting for payment': 'Waiting for payment'
+'Write a Review': 'Write a Review'
+'cents': 'cents'
+'quarter = month x 2.7, year = month x 10': 'quarter = month x 2.7, year = month x 10'
+'Agent avatar removed': 'Agent avatar removed'
+'Agent avatar updated': 'Agent avatar updated'
+'Agent created': 'Agent created'
+'Agents': 'Agents'
+'All Industries': 'All Industries'
+'All Occupations': 'All Occupations'
+'Apply Button': 'Apply Button'
+'Avatar': 'Avatar'
+'Avatar removed': 'Avatar removed'
+'Basic Info': 'Basic Info'
+'Blockchain': 'Blockchain'
+'Cartoon': 'Cartoon'
+'Certification': 'Certification'
+'Click Row for Details': 'Click Row for Details'
+'Confidential': 'Confidential'
+'Default Avatar': 'Default Avatar'
+'Default avatar set': 'Default avatar set'
+'Designer': 'Designer'
+'Developer': 'Developer'
+'DiceBear avatar set': 'DiceBear avatar set'
+'Done: ': 'Done: '
+'E-Commerce': 'E-Commerce'
+'Existing Static': 'Existing Static'
+'Export': 'Export'
+'Extended Profile': 'Extended Profile'
+'Fintech': 'Fintech'
+'First Letter': 'First Letter'
+'Freelancer': 'Freelancer'
+'Generate': 'Generate'
+'Geometric': 'Geometric'
+'Get Seed': 'Get Seed'
+'Get Seed from User Details': 'Get Seed from User Details'
+'Healthcare': 'Healthcare'
+'Interest Tags': 'Interest Tags'
+'Internet': 'Internet'
+'No Shipping Address for This User': 'No Shipping Address for This User'
+'No data': 'No data'
+'Not Filled': 'Not Filled'
+'Preview Generation': 'Preview Generation'
+'Product Manager': 'Product Manager'
+'Quantitative Engineer': 'Quantitative Engineer'
+'Quantitative Trading': 'Quantitative Trading'
+'Region Filter': 'Region Filter'
+'Remove': 'Remove'
+'Remove agent avatar?': 'Remove agent avatar?'
+'Remove user avatar?': 'Remove user avatar?'
+'Render Style Previews': 'Render Style Previews'
+'Researcher': 'Researcher'
+'Select Default': 'Select Default'
+'Select Default Avatar': 'Select Default Avatar'
+'Set Failed': 'Set Failed'
+'Student': 'Student'
+'Style': 'Style'
+'Style Selector': 'Style Selector'
+'This User Has No': 'This User Has No'
+'Trader': 'Trader'
+'Traditional Finance': 'Traditional Finance'
+'Try to Get from Currently Displayed User Info': 'Try to Get from Currently Displayed User Info'
+'Upload Avatar': 'Upload Avatar'
+'Upload request failed': 'Upload request failed'
+'Uploading...': 'Uploading...'
+'User Avatar': 'User Avatar'
+'User Details': 'User Details'
+'Within': 'Within'
+'🤖 Collapse': '🤖 Collapse'
+'🤖 Expand': '🤖 Expand'
+'Add': 'Add'
+'Add Failed': 'Add Failed'
+'Add Footer Article': 'Add Footer Article'
+'Add Internal Link': 'Add Internal Link'
+'Add Link': 'Add Link'
+'Add Nav': 'Add Nav'
+'Add Partner': 'Add Partner'
+'Add Site Nav': 'Add Site Nav'
+'Add Social Media': 'Add Social Media'
+'Added': 'Added'
+'Article Title': 'Article Title'
+'Bilibili': 'Bilibili'
+'Click to Add': 'Click to Add'
+'Code or Image': 'Code or Image'
+'Column': 'Column'
+'Column Name': 'Column Name'
+'Confirm Delete': 'Confirm Delete'
+'Confirm Deletion of Nav Item': 'Confirm Deletion of Nav Item'
+'Edit Footer Article': 'Edit Footer Article'
+'Edit Partner': 'Edit Partner'
+'Edit Site Link': 'Edit Site Link'
+'Edit Site Navigation': 'Edit Site Navigation'
+'Footer Articles': 'Footer Articles'
+'Footer Columns': 'Footer Columns'
+'Footer Loading': 'Footer Loading'
+'Icon Content': 'Icon Content'
+'Icon Type': 'Icon Type'
+'Icon and Link are Required': 'Icon and Link are Required'
+'Image URL (e.g., https://...)': 'Image URL (e.g., https://...)'
+'Internal Links': 'Internal Links'
+'Link': 'Link'
+'Link Title': 'Link Title'
+'LinkedIn': 'LinkedIn'
+'Main Nav': 'Main Nav'
+'Main Nav Loading': 'Main Nav Loading'
+'Main Nav Management': 'Main Nav Management'
+'Navigation Settings': 'Navigation Settings'
+'No Config Item': 'No Config Item'
+'No Nav Items': 'No Nav Items'
+'No Records': 'No Records'
+'Partner': 'Partner'
+'Partner Loading': 'Partner Loading'
+'Partner Name': 'Partner Name'
+'Platform Name': 'Platform Name'
+'Refreshing': 'Refreshing'
+'SVG Code': 'SVG Code'
+'Show': 'Show'
+'Site Navigation': 'Site Navigation'
+'Social Media Links': 'Social Media Links'
+'Social Media Load Failed': 'Social Media Load Failed'
+'Social Media Loading': 'Social Media Loading'
+'Social Media Management': 'Social Media Management'
+'Social Media Request Failed': 'Social Media Request Failed'
+'Sort failed': 'Sort failed'
+'Sub-site Navigation': 'Sub-site Navigation'
+'Title and URL required': 'Title and URL required'
+'Tooltip': 'Tooltip'
+'Unified Management': 'Unified Management'
+'Update Failed': 'Update Failed'
+'Xiaohongshu': 'Xiaohongshu'
+'Zhihu': 'Zhihu'
+'Add Admin': 'Add Admin'
+'Admin(s)': 'Admin(s)'
+'Approx.': 'Approx.'
+'Avoid Call': 'Avoid Call'
+'Can only edit your own avatar': 'Can only edit your own avatar'
+'Cannot load image': 'Cannot load image'
+'Change Phone No.': 'Change Phone No.'
+'Changing phone will send SMS to new number. Continue?': 'Changing phone will send SMS to new number. Continue?'
+'Click Avatar to Upload New Avatar': 'Click Avatar to Upload New Avatar'
+'Click to Change Avatar': 'Click to Change Avatar'
+'Click to Upload Avatar': 'Click to Upload Avatar'
+'Confirm Addition': 'Confirm Addition'
+'Current': 'Current'
+'Customize': 'Customize'
+'Downgrade to Regular User': 'Downgrade to Regular User'
+'Enter New Phone No.': 'Enter New Phone No.'
+'Enter SMS code': 'Enter SMS code'
+'Enter a valid phone number': 'Enter a valid phone number'
+'Failed to get info': 'Failed to get info'
+'Failed to send': 'Failed to send'
+'Get Phone from Loaded Data': 'Get Phone from Loaded Data'
+'Hide Password': 'Hide Password'
+'Image Must Not Exceed': 'Image Must Not Exceed'
+'Image Size Must Not Exceed': 'Image Size Must Not Exceed'
+'Internal Contact Email': 'Internal Contact Email'
+'Internal Contact Phone': 'Internal Contact Phone'
+'Last Login': 'Last Login'
+'Modification Failed': 'Modification Failed'
+'Must Include': 'Must Include'
+'My Settings': 'My Settings'
+'Notes': 'Notes'
+'Operations': 'Operations'
+'Otherwise Backend Requires CAPTCHA': 'Otherwise Backend Requires CAPTCHA'
+'Permissions': 'Permissions'
+'Phone No.': 'Phone No.'
+'-digit Captcha': '-digit Captcha'
+'Captcha Sent To': 'Captcha Sent To'
+'Password Rules: At least 10 characters, Must include Uppercase, Lowercase, Digital, and at least one Special Character (3 types)': 'Password Rules: At least 10 characters, Must include Uppercase, Lowercase, Digital, and at least one Special Character (3 types)'
+'Phone updated, please login again': 'Phone updated, please login again'
+'Please enter': 'Please enter'
+'Recent Actions': 'Recent Actions'
+'Role': 'Role'
+'SMS CAPTCHA Method': 'SMS CAPTCHA Method'
+'SMS Code': 'SMS Code'
+'Send Captcha': 'Send Captcha'
+'Send Captcha Failed': 'Send Captcha Failed'
+'Send to When Password Data Exists': 'Send to When Password Data Exists'
+'Super Admin': 'Super Admin'
+'This Admin': 'This Admin'
+'This admin has no phone bound': 'This admin has no phone bound'
+'Two Rows': 'Two Rows'
+'Approving': 'Approving'
+'Are you sure you want to uninstall': 'Are you sure you want to uninstall'
+'Audit': 'Audit'
+'Audit passed': 'Audit passed'
+'Audit rejected': 'Audit rejected'
+'Audit rejected. Force install?': 'Audit rejected. Force install?'
+'Discover': 'Discover'
+'Downloads': 'Downloads'
+'Force install': 'Force install'
+'Installing': 'Installing'
+'Licenses': 'Licenses'
+'Manual review needed': 'Manual review needed'
+'New Plugins': 'New Plugins'
+'No new plugins found': 'No new plugins found'
+'No pending submissions': 'No pending submissions'
+'No plugins registered yet': 'No plugins registered yet'
+'No store plugins available': 'No store plugins available'
+'Plugin Center': 'Plugin Center'
+'Reasons': 'Reasons'
+'Refresh Store': 'Refresh Store'
+'Rejecting': 'Rejecting'
+'Review report': 'Review report'
+'Run review first': 'Run review first'
+'Scan Now': 'Scan Now'
+'Scan failed': 'Scan failed'
+'Scanning': 'Scanning'
+'Store': 'Store'
+'Submitted for review': 'Submitted for review'
+'Submitter': 'Submitter'
+'This will delete the plugin data and configuration.': 'This will delete the plugin data and configuration.'
+'Trial': 'Trial'
+'Uninstall': 'Uninstall'
+'Uninstall Plugin': 'Uninstall Plugin'
+'Uninstall failed': 'Uninstall failed'
+'Uninstalled': 'Uninstalled'
+'Uninstalling': 'Uninstalling'
+'Upgrading': 'Upgrading'
+'Upload Plugin': 'Upload Plugin'
+'Uploading': 'Uploading'
+'days trial': 'days trial'
+'one-time': 'one-time'
+'per month': 'per month'
+'per year': 'per year'
+'trial': 'trial'
+'Auto Generate if Empty': 'Auto Generate if Empty'
+'Click Above': 'Click Above'
+'Data': 'Data'
+'Enter category name': 'Enter category name'
+'Image Description': 'Image Description'
+'List': 'List'
+'Size': 'Size'
+'All Status': 'All Status'
+'Filter Bar': 'Filter Bar'
+
+# P1 store sync & import keys (2026-08-22)
+'Import from GitHub/Gitee': 'Import from GitHub/Gitee'
+'Please enter a GitHub/Gitee repo URL': 'Please enter a GitHub/Gitee repo URL'
+'Sync Store': 'Sync Store'
+'Synced': 'Synced'
+'Newly added': 'Newly added'
+'Syncing': 'Syncing'
+'Sync timed out': 'Sync timed out'
+'User ID': 'User ID'
+'Ability Type': 'Ability Type'
+'Add Model': 'Add Model'
+'Are you sure you want to delete': 'Are you sure you want to delete'
+'Check Network or': 'Check Network or'
+'Confirm Deletion of Model': 'Confirm Deletion of Model'
+'Edit Model': 'Edit Model'
+'Model Management': 'Model Management'
+'Model not found': 'Model not found'
+'No Models': 'No Models'
+'No Models Settings': 'No Models Settings'
+'Refresh & Retry': 'Refresh & Retry'
+'TTS': 'TTS'
+'Video': 'Video'
+'Voice': 'Voice'
+'Voice Cloning': 'Voice Cloning'
+'Auto Detect': 'Auto Detect'
+'Delete?': 'Delete?'
+'Download List': 'Download List'
+'Edit — ': 'Edit — '
+'External Links': 'External Links'
+'Installer': 'Installer'
+'Leave Empty for Auto': 'Leave Empty for Auto'
+'No Content': 'No Content'
+'No Subject': 'No Subject'
+'One-Line Description': 'One-Line Description'
+'Tags': 'Tags'
+'Upload Download': 'Upload Download'
+'Add Button': 'Add Button'
+'Add First Links': 'Add First Links'
+'Add Nav Link': 'Add Nav Link'
+'Brand Settings': 'Brand Settings'
+'Edit Nav Link': 'Edit Nav Link'
+'Entire Site': 'Entire Site'
+'Links': 'Links'
+'No Nav Links': 'No Nav Links'
+'Plaza': 'Plaza'
+'Portal': 'Portal'
+'Sort Button': 'Sort Button'
+'Switch Site': 'Switch Site'
+'Applicable Products': 'Applicable Products'
+'Coupon List': 'Coupon List'
+'Edit Coupon': 'Edit Coupon'
+'New Coupon': 'New Coupon'
+'Summer Sale': 'Summer Sale'
+'Total Limit': 'Total Limit'
+'Total Coupons': 'Total Coupons'
+'Total Used': 'Total Used'
+'Total Saved': 'Total Saved'
+'Records': 'Records'
+'Admin Login': 'Admin Login'
+'Administrator Login': 'Administrator Login'
+'Code sent': 'Code sent'
+'Login failed': 'Login failed'
+'Login successful, redirecting...': 'Login successful, redirecting...'
+'Please enter username and password': 'Please enter username and password'
+'Please enter your phone number': 'Please enter your phone number'
+'Use SMS code to login': 'Use SMS code to login'
+'Username / Phone': 'Username / Phone'
+'Username or phone': 'Username or phone'
+'Captcha failed to load, please refresh the page': 'Captcha failed to load, please refresh the page'
+'Drag the correct shape into the slot to verify': 'Drag the correct shape into the slot to verify'
+'Login / Register': 'Login / Register'
+'Password must contain special character (!@#$%^&*etc.)': 'Password must contain special character (!@#$%^&*etc.)'
+'Please complete the captcha first': 'Please complete the captcha first'
+'Connection Failed': 'Connection Failed'
+'Executor': 'Executor'
+'Full Page Chat': 'Full Page Chat'
+'Independent': 'Independent'
+'Load Matrix Data': 'Load Matrix Data'
+'No Sub': 'No Sub'
+'Please Confirm Service is Running': 'Please Confirm Service is Running'
+'Recent Tasks': 'Recent Tasks'
+'Split from Matrix Page': 'Split from Matrix Page'
+'Total Tasks': 'Total Tasks'
+'All Types': 'All Types'
+'All Verification Status': 'All Verification Status'
+'Customer Details': 'Customer Details'
+'Customer List': 'Customer List'
+'Enterprise Info': 'Enterprise Info'
+'Enterprise Verification Pending': 'Enterprise Verification Pending'
+'Please try again later': 'Please try again later'
+'Search...': 'Search...'
+'Tax ID': 'Tax ID'
+'Verification Status': 'Verification Status'
+'+ Add': '+ Add'
+'Chinese': 'Chinese'
+'Delete this translation?': 'Delete this translation?'
+'Edit Translation': 'Edit Translation'
+'Enter source text (Chinese)': 'Enter source text (Chinese)'
+'Enter translation text': 'Enter translation text'
+'Manual': 'Manual'
+'Sync from YAML': 'Sync from YAML'
+'Translation': 'Translation'
+'translations': 'translations'
+'Admin Reply': 'Admin Reply'
+'After-Sales': 'After-Sales'
+'Enter Reply': 'Enter Reply'
+'Enter Reply Content': 'Enter Reply Content'
+'Reopen': 'Reopen'
+'Replied': 'Replied'
+'Status Filter Row': 'Status Filter Row'
+'Suggestion Merged into User Ticket': 'Suggestion Merged into User Ticket'
+'Type Filter Row': 'Type Filter Row'
+'Delete this template?': 'Delete this template?'
+'Name & Template': 'Name & Template'
+'New User Registration': 'New User Registration'
+'No Templates': 'No Templates'
+'Omni-Media Creation': 'Omni-Media Creation'
+'Posts Only': 'Posts Only'
+'Required': 'Required'
+'SMS Template Management': 'SMS Template Management'
+'Usage Description': 'Usage Description'
+'Invalid Format': 'Invalid Format'
+'Log': 'Log'
+'Start Time': 'Start Time'
+'Trigger': 'Trigger'
+'Workflow': 'Workflow'
+'Admin Panel': 'Admin Panel'
+'Checking': 'Checking'
+'Latest': 'Latest'
+'Restarting': 'Restarting'
+'Update Now': 'Update Now'
+'Updating': 'Updating'
+'Verifying Identity': 'Verifying Identity'
+'Category Filter': 'Category Filter'
+'Content Will': 'Content Will'
+'Experience System Auto-Aggregates': 'Experience System Auto-Aggregates'
+'No Posts': 'No Posts'
+'Post': 'Post'
+'Pre-Sales': 'Pre-Sales'
+'Pre-Sales Included': 'Pre-Sales Included'
+'Auto Schedule': 'Auto Schedule'
+'Create your first workflow': 'Create your first workflow'
+'Failed to create from template': 'Failed to create from template'
+'From Template': 'From Template'
+'Last Run': 'Last Run'
+'No templates': 'No templates'
+'No workflows yet': 'No workflows yet'
+'Run this workflow?': 'Run this workflow?'
+'Workflow started': 'Workflow started'
+'Delete Quota': 'Delete Quota'
+'Global': 'Global'
+'Module': 'Module'
+'optional': 'optional'
+'unlimited': 'unlimited'

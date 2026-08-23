@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings — VeroRun Vault</title>
+    <link rel="stylesheet" href="/admin/static/css/themes.css">
+    <link rel="stylesheet" href="/admin/vault/static/vault.css">
+</head>
+<body>
+
+<div class="vault-dashboard">
+
+    {% include 'vault_nav.html' %}
+
+    <div class="vault-page-header">
+        <h2>{{ _('Vault Settings') }}</h2>
+    </div>
+
+    <!-- Encryption -->
+    <div class="card">
+        <div class="card-header">
+            <h3>{{ _('Encryption') }}</h3>
+        </div>
+        <form id="encryptionForm" class="vault-form">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="encEnabled">{{ _('Enable Encryption') }}</label>
+                    <select id="encEnabled" class="form-input">
+                        <option value="false">{{ _('Disabled') }}</option>
+                        <option value="true">{{ _('Enabled') }}</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="encAlgorithm">{{ _('Algorithm') }}</label>
+                    <select id="encAlgorithm" class="form-input">
+                        <option value="aes256-gcm">AES-256-GCM</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="encKeySource">{{ _('Key Source') }}</label>
+                <select id="encKeySource" class="form-input">
+                    <option value="env">{{ _('Environment Variable (VAULT_ENCRYPTION_KEY)') }}</option>
+                    <option value="file">{{ _('Local Key File') }}</option>
+                </select>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">{{ _('Save Encryption Settings') }}</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Retention -->
+    <div class="card">
+        <div class="card-header">
+            <h3>{{ _('Retention Policy') }}</h3>
+        </div>
+        <form id="retentionForm" class="vault-form">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="keepDays">{{ _('Keep Backups (Days)') }}</label>
+                    <input type="number" id="keepDays" class="form-input" min="1" value="30">
+                    <span class="form-hint">{{ _('Backups older than this will be cleaned up') }}</span>
+                </div>
+                <div class="form-group">
+                    <label for="compressionAlg">{{ _('Compression Algorithm') }}</label>
+                    <select id="compressionAlg" class="form-input">
+                        <option value="gzip">gzip</option>
+                        <option value="zstd">zstd</option>
+                        <option value="lz4">lz4</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">{{ _('Save Retention Settings') }}</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Notifications -->
+    <div class="card">
+        <div class="card-header">
+            <h3>{{ _('Notifications') }}</h3>
+        </div>
+        <form id="notifyForm" class="vault-form">
+            <div class="form-group">
+                <label>{{ _('Email Notifications') }}</label>
+                <div class="form-row">
+                    <input type="email" id="notifyEmail" class="form-input" placeholder="{{ _('admin@example.com') }}">
+                    <select id="notifyEmailEnabled" class="form-input" style="width:auto">
+                        <option value="false">{{ _('Disabled') }}</option>
+                        <option value="true">{{ _('Enabled') }}</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="notifyWebhook">{{ _('Webhook URL') }}</label>
+                <input type="url" id="notifyWebhook" class="form-input" placeholder="https://hooks.example.com/backup">
+            </div>
+            <div class="form-group">
+                <label for="notifyFeishu">{{ _('Feishu Webhook URL') }}</label>
+                <input type="url" id="notifyFeishu" class="form-input" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/...">
+            </div>
+            <div class="form-group">
+                <label for="notifyDingtalk">{{ _('DingTalk Webhook URL') }}</label>
+                <input type="url" id="notifyDingtalk" class="form-input" placeholder="https://oapi.dingtalk.com/robot/send?access_token=...">
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">{{ _('Save Notification Settings') }}</button>
+            </div>
+        </form>
+    </div>
+
+</div>
+
+<script src="/admin/vault/static/vault.js"></script>
+</body>
+</html>

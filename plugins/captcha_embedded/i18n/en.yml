@@ -1,0 +1,9 @@
+plugin.name: Captcha Service
+IP blocked: IP blocked
+Too many attempts: Too many attempts
+Puzzle generation failed: Puzzle generation failed
+Rate limited: Rate limited
+Invalid or expired token: Invalid or expired token
+Token not found or already used: Token not found or already used
+Suspicious activity detected: Suspicious activity detected
+Position mismatch: Position mismatch

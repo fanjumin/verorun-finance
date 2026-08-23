@@ -1,0 +1,70 @@
+{
+  "name": "Captcha Service",
+  "name_i18n_key": "plugin.name",
+  "identifier": "captcha_embedded",
+  "python_dependencies": {
+    "required": [
+      "numpy",
+      "redis"
+    ],
+    "optional": {}
+  },
+  "version": "1.3.2",
+  "description": "Slider Captcha — Puzzle generation + behavior analysis + rate limiting",
+  "author": "VeroRun",
+  "min_app_version": "0.10.0",
+  "category": "system",
+  "icon": "keys",
+  "tags": [
+    "captcha",
+    "security",
+    "anti-bot"
+  ],
+  "icon_url": "",
+  "screenshots": [],
+  "readme_url": "",
+  "dependencies": {},
+  "config": {},
+  "permissions": [
+    "captcha.generate",
+    "captcha.verify"
+  ],
+  "hooks": {
+    "provides": [
+      "captcha/generate",
+      "captcha/verify",
+      "captcha/consume"
+    ],
+    "listens": []
+  },
+  "dashboard": {
+    "stats": [
+      {
+        "key": "total_requests",
+        "title": "Total Requests",
+        "type": "counter"
+      },
+      {
+        "key": "pass_rate",
+        "title": "Pass Rate",
+        "type": "gauge"
+      },
+      {
+        "key": "last_hour",
+        "title": "Requests Last Hour",
+        "type": "gauge"
+      }
+    ]
+  },
+  "menu": {
+    "group": "Security & Compliance",
+    "key": "captcha_stats",
+    "icon": "keys",
+    "label": "Captcha Stats"
+  },
+  "admin_url": "",
+  "settings_schema": {
+    "type": "object",
+    "properties": {}
+  }
+}

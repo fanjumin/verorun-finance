@@ -1,0 +1,209 @@
+<!-- plugins/visitor_profile/templates/admin_dashboard.html -->
+<!DOCTYPE html>
+<html lang="{{ g.lang_code or 'zh-CN' }}">
+<head>
+<meta charset="utf-8"/>
+<title>{{ _('Visitor Profile Engine') }} - VeroRun</title>
+<link rel="stylesheet" href="/static/css/design-system.css"/>
+<link rel="stylesheet" href="/static/css/themes.css"/>
+<script>
+(function(){
+  var KEY='verorun_admin_theme';
+  function apply(){
+    try{
+      var t=localStorage.getItem(KEY);
+      if(t==='slate'||t==='light'){document.documentElement.setAttribute('data-theme',t);}
+      else if(document.documentElement.hasAttribute('data-theme')){document.documentElement.removeAttribute('data-theme');}
+    }catch(e){}
+  }
+  apply();
+  window.addEventListener('storage',function(e){if(e.key===KEY||e.key===null)apply();});
+  setInterval(apply,1000);
+})();
+</script>
+<style>
+  .dashboard { padding: 20px; max-width: 1200px; margin: 0 auto; }
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin: 20px 0; }
+  .stat-card { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; text-align: center; }
+  .stat-value { display: block; font-size: 28px; font-weight: 700; color: var(--primary); }
+  .stat-label { display: block; margin-top: 6px; font-size: 13px; color: var(--text-secondary); }
+  .search-box { display: flex; gap: 10px; margin: 20px 0; }
+  .search-box input { flex: 1; padding: 10px 14px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 14px; }
+  .search-box button { padding: 10px 24px; background: var(--primary); color: var(--text-high); border: none; border-radius: 6px; cursor: pointer; }
+  .visitor-detail { display: none; margin-top: 20px; }
+  .detail-header { margin-bottom: 16px; }
+  .detail-header h3 { margin: 0; }
+  .detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+  .detail-section { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; }
+  .detail-section h4 { margin: 0 0 12px; font-size: 14px; color: var(--text-secondary); }
+  .detail-section pre { background: var(--bg-elevated); padding: 10px; border-radius: 6px; overflow-x: auto; font-size: 12px; }
+  .event-item, .memory-item { padding: 8px 0; border-bottom: 1px solid var(--border-color); }
+  .event-type, .memory-type { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 4px; background: var(--bg-elevated); color: var(--accent); margin-right: 8px; }
+  .memory-conf { font-size: 12px; color: var(--success); }
+  .event-time { font-size: 12px; color: var(--text-secondary); }
+  .top-intents { margin-top: 16px; }
+  .intent-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border-color); }
+</style>
+<!-- i18n 字典注入（插件标准 §15.5） -->
+<script>
+window.__t = {{ translations|tojson }};
+window.__locale = '{{ g.lang_code or "zh-CN" }}';
+</script>
+</head>
+<body>
+<div class="dashboard">
+  <h2>{{ _('Visitor Profile Dashboard') }}</h2>
+
+  <!-- 统计卡片 -->
+  <div class="stats-grid">
+    <div class="stat-card">
+      <span class="stat-value" id="total-visitors">--</span>
+      <span class="stat-label">{{ _('Total Visitors') }}</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-value" id="events-24h">--</span>
+      <span class="stat-label">{{ _('24h Events') }}</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-value" id="profiles-24h">--</span>
+      <span class="stat-label">{{ _('24h Profiles') }}</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-value" id="avg-extraction">--</span>
+      <span class="stat-label">{{ _('Avg Extraction Time') }}</span>
+    </div>
+  </div>
+
+  <!-- 访客搜索 -->
+  <div class="search-box">
+    <input type="text" id="visitor-search"
+           placeholder="{{ _('Enter Visitor ID to search...') }}">
+    <button onclick="searchVisitor()">{{ _('Search') }}</button>
+  </div>
+
+  <!-- Top 意图 -->
+  <div class="detail-section top-intents" id="top-intents-section" style="display:none;">
+    <h4>{{ _('Primary Intent') }}</h4>
+    <div id="top-intents"></div>
+  </div>
+
+  <!-- 访客详情 -->
+  <div id="visitor-detail" class="visitor-detail">
+    <div class="detail-header">
+      <h3 id="detail-visitor-id"></h3>
+    </div>
+    <div class="detail-grid">
+      <div class="detail-section">
+        <h4>{{ _('Basic Info') }}</h4>
+        <div id="detail-basic"></div>
+      </div>
+      <div class="detail-section">
+        <h4>{{ _('Profile Summary') }}</h4>
+        <div id="detail-profile"></div>
+      </div>
+      <div class="detail-section">
+        <h4>{{ _('Recent Behavior') }}</h4>
+        <div id="detail-events"></div>
+      </div>
+      <div class="detail-section">
+        <h4>{{ _('Profile Memories') }}</h4>
+        <div id="detail-memories"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function t(key) {
+  var d = window.__t || {};
+  return d[key] || key;
+}
+
+function esc(s) {
+  if (s === null || s === undefined) return '';
+  return String(s).replace(/[&<>"']/g, function(c) {
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+
+function searchVisitor() {
+  var vid = document.getElementById('visitor-search').value.trim();
+  if (!vid) return;
+
+  fetch('/admin/visitor_profile/api/v1/visitors/' + encodeURIComponent(vid))
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.error) {
+        alert(data.error);
+        return;
+      }
+      var v = data.visitor;
+      document.getElementById('visitor-detail').style.display = 'block';
+      document.getElementById('detail-visitor-id').textContent = v.visitor_id;
+
+      document.getElementById('detail-basic').innerHTML =
+        '<p>' + t('First Seen') + ': ' + esc(v.first_seen_at || v.first_seen) + '</p>' +
+        '<p>' + t('Last Seen') + ': ' + esc(v.last_seen_at || v.last_seen) + '</p>' +
+        '<p>' + t('Location') + ': ' + esc(v.country || t('Unknown')) +
+          (v.city ? ', ' + esc(v.city) : '') + '</p>' +
+        '<p>' + t('Total Visits') + ': ' + esc(v.total_visits) + '</p>' +
+        '<p>' + t('Total Events') + ': ' + esc(v.total_events) + '</p>';
+
+      document.getElementById('detail-profile').innerHTML =
+        '<pre>' + esc(JSON.stringify(v.profile_summary || {}, null, 2)) + '</pre>';
+
+      var eventsHtml = '';
+      (data.events || []).forEach(function(e) {
+        eventsHtml += '<div class="event-item">' +
+          '<span class="event-type">' + esc(e.event_type) + '</span>' +
+          '<span class="event-page">' + esc(e.page_title || e.page_url || '') + '</span>' +
+          '<span class="event-time">' + esc(e.server_ts || e.client_ts || '') + '</span>' +
+          '</div>';
+      });
+      document.getElementById('detail-events').innerHTML = eventsHtml || '<p>' + t('Unknown') + '</p>';
+
+      var memHtml = '';
+      (data.memories || []).forEach(function(m) {
+        var conf = m.confidence ? (m.confidence * 100).toFixed(0) + '%' : '';
+        memHtml += '<div class="memory-item">' +
+          '<span class="memory-type">' + esc(m.memory_type) + '</span>' +
+          '<span class="memory-conf">' + conf + '</span>' +
+          '<pre>' + esc(JSON.stringify(m.content, null, 2)) + '</pre>' +
+          '</div>';
+      });
+      document.getElementById('detail-memories').innerHTML = memHtml || '<p>' + t('Unknown') + '</p>';
+    })
+    .catch(function(err) { console.error(err); });
+}
+
+function loadStats() {
+  fetch('/admin/visitor_profile/api/v1/stats')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (!data.success) return;
+      document.getElementById('total-visitors').textContent = data.total_visitors;
+      document.getElementById('events-24h').textContent = data.events_24h;
+      document.getElementById('profiles-24h').textContent = data.profiles_24h;
+      document.getElementById('avg-extraction').textContent =
+        data.avg_extraction_time_ms + ' ms';
+
+      var section = document.getElementById('top-intents-section');
+      var box = document.getElementById('top-intents');
+      if (data.top_intents && data.top_intents.length) {
+        section.style.display = 'block';
+        box.innerHTML = data.top_intents.map(function(item) {
+          return '<div class="intent-row"><span>' + esc(item.intent) +
+                 '</span><span>' + item.count + '</span></div>';
+        }).join('');
+      } else {
+        section.style.display = 'none';
+      }
+    })
+    .catch(function(err) { console.error(err); });
+}
+
+loadStats();
+setInterval(loadStats, 30000);
+</script>
+</body>
+</html>

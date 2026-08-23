@@ -1,0 +1,109 @@
+{
+  "name": "Email Service",
+  "name_i18n_key": "plugin.name",
+  "identifier": "email",
+  "python_dependencies": {
+    "required": [],
+    "optional": {}
+  },
+  "version": "1.5.2",
+  "category": "system",
+  "tags": [
+    "email",
+    "smtp",
+    "imap",
+    "notification"
+  ],
+  "icon": "email",
+  "icon_url": "",
+  "screenshots": [],
+  "readme_url": "",
+  "description": "Email Service — SMTP/IMAP email client with inbox, compose, attachments, and contact management",
+  "author": "VeroRun",
+  "min_app_version": "0.10.0",
+  "dependencies": {},
+  "admin_url": "",
+  "admin_label": "Email Settings",
+  "config": {
+    "smtp_host": "smtp.qiye.aliyun.com",
+    "smtp_port": 465,
+    "smtp_user": "",
+    "smtp_pass": "",
+    "smtp_from": "",
+    "imap_host": "imap.qiye.aliyun.com",
+    "imap_port": 993
+  },
+  "permissions": [
+    "network:request",
+    "api:read",
+    "api:write"
+  ],
+  "hooks": {
+    "provides": [
+      "email/send",
+      "email/send_contact",
+      "email/get_config"
+    ],
+    "listens": []
+  },
+  "dashboard": {
+    "stats": [
+      {
+        "key": "total_sent",
+        "title": "Emails Sent",
+        "type": "counter"
+      },
+      {
+        "key": "total_contacts",
+        "title": "Contacts",
+        "type": "counter"
+      }
+    ]
+  },
+  "menu": {
+    "group": "Users & Support",
+    "key": "email",
+    "icon": "email",
+    "label": "Email Management"
+  },
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "smtp_host": {
+        "type": "string",
+        "default": "smtp.qiye.aliyun.com",
+        "description": "SMTP server hostname"
+      },
+      "smtp_port": {
+        "type": "integer",
+        "default": 465,
+        "description": "SMTP port"
+      },
+      "smtp_user": {
+        "type": "string",
+        "default": "",
+        "description": "SMTP username"
+      },
+      "smtp_pass": {
+        "type": "string",
+        "default": "",
+        "description": "SMTP password (sensitive)"
+      },
+      "smtp_from": {
+        "type": "string",
+        "default": "",
+        "description": "From address"
+      },
+      "imap_host": {
+        "type": "string",
+        "default": "imap.qiye.aliyun.com",
+        "description": "IMAP server hostname"
+      },
+      "imap_port": {
+        "type": "integer",
+        "default": 993,
+        "description": "IMAP port"
+      }
+    }
+  }
+}

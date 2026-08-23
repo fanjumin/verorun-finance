@@ -342,10 +342,18 @@ function _renderStoreTab(plugins){
     h+='<span>&#x2B07; '+esc(p.downloads||0)+'</span>';
     h+='<span>&#x2B50; '+(p.rating||0).toFixed(1)+' ('+esc(p.review_count||0)+')</span>';
     h+='</div>';
-    /* Price + Action */
-    h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-top:auto">';
+    /* Price + Action（状态联动：已安装→状态徽标+升级；未安装→安装/购买） */
+    h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-top:auto;flex-wrap:wrap;gap:6px">';
     h+='<div>'+priceLabel+'</div>';
-    if(p.price_type==='free'){
+    if(p.installed){
+      var st=p.status||'installed';
+      var stTxt={'active':_('Active'),'enabled':_('Enabled'),'disabled':_('Disabled'),'installed':_('Installed'),'error':_('Error')}[st]||esc(st);
+      var stColor={'active':'#3fb950','enabled':'#f0c040','disabled':'#8b8b8b','error':'#f85149'}[st]||'#58a6ff';
+      h+='<div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap">';
+      h+='<span class="badge" style="background:rgba(63,185,80,.12);color:'+stColor+'">'+stTxt+'</span>';
+      if(p.has_update) h+='<button class="btn bp bs" style="color:#3fb950" onclick="pluginUpgrade(\''+escAttr(p.identifier)+'\')">&#x1F504; '+_('Upgrade')+'</button>';
+      h+='</div>';
+    }else if(p.price_type==='free'){
       h+='<button class="btn bp bs" onclick="storeInstall(\''+escAttr(p.identifier)+'\')">'+_('Install')+'</button>';
     }else{
       h+='<button class="btn bp bs" onclick="storePurchase(\''+escAttr(p.identifier)+'\')">'+_('Buy Now')+'</button>';

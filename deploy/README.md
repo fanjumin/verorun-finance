@@ -236,8 +236,8 @@ sudo env VR_UNINSTALL_YES=1 bash deploy/uninstall.sh
 1. Stop & disable all `verorun-*.service` units, remove their files, then `daemon-reload` + `reset-failed`
 2. Remove the Nginx `verorun.conf` config and reload nginx
 3. Remove code directories and logs
-4. Drop the `appdb` **and** `site_builder` databases, then the `app` role
-   (lingering connections to either DB are terminated first, so the drop never
+4. Drop the `appdb` database, then the `app` role
+   (lingering connections to the DB are terminated first, so the drop never
    blocks on the role-owner dependency)
 5. Force-clean leftover processes (`gunicorn` workers / `health_check.sh`)
 6. Final verification — if any VeroRun process or `verorun-*.service` file still

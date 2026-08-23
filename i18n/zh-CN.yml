@@ -26,7 +26,6 @@
 1688 Not Shipped Yet: 1688 尚未发货
 1688 Procurement: 1688 采购
 1688 Product Review Collection Service: 1688 商品评论采集服务
-1688 Products: 1688商品
 1688 Unauthorized: 1688 未授权
 1️⃣ Try Clicking the Quick Questions Above: 1️⃣ 尝试点击上面的快捷问题
 2 Years: 2 年
@@ -50,14 +49,10 @@
 9 AM: 早九点
 A user with the same name Agent already exists: 该用户已存在同名Agent
 AI: AI
-AI Analysis: AI分析
-AI Analysis in Progress...: AI分析中...
 AI Application Tips: AI应用技巧
 AI Applications: AI应用
 AI Cleaning: AI 清洗
-AI Configuration: AI配置
 AI Content Generation: AI内容生成
-AI Content Optimization: AI内容优化
 AI Continuous Monitoring + Keyword Suggestions + Ranking Tracking: AI持续监控+关键词建议+排名跟踪
 AI Continuous SEO: AI持续SEO
 AI Copywriting (Tongyi Qianwen): AI文案 (通义千问)
@@ -100,19 +95,12 @@ AI-generated Image (Tongyi Wanxiang): AI配图 (通义万相)
 AI-powered Website Building · Let your business attract customers online 24/7: AI赋能建站 · 让您的企业24小时在线获客
 ALIBABA_APP_KEY not configured: ALIBABA_APP_KEY 未配置
 ALIBABA_APP_SECRET not configured: ALIBABA_APP_SECRET 未配置
-API Call: API调用
 API Call Token: 接口调用Token
 API Documentation: API 文档
 API Endpoint: API端点
-API Endpoint Filter: API端点筛选
-API Gateway: API 网关
 API Key: API密钥
 API Key Management: API Key 管理
-API Logs: API日志
 API Management: API 管理
-API Response Cache: API响应缓存
-API User Count: API用户数
-API Version: API 版本
 API returned no product information: API返回无商品信息
 About: 关于
 About Us: 关于我们
@@ -122,7 +110,6 @@ Activate Now: 立即开通
 Activated: 已激活
 Activating: 开通中
 Activation failed: 开通失败
-Active Products: 活跃商品
 Active Subscriptions: 活跃订阅
 Active Subscriptions in Last 30 Days: 近30天活跃订阅数
 Active Users: 活跃用户
@@ -153,11 +140,8 @@ Agent has been deleted: Agent 已删除
 Agent has been updated: Agent 已更新
 Agent name cannot be empty: Agent名称不能为空
 AliApi data table initialization completed: AliApi 数据表初始化完成
-Alibaba API Management: 阿里巴巴API管理
 Alibaba API Management route test completed: 阿里巴巴API管理路由测试完成
 Alibaba AppKey and AppSecret must be configured: 阿里巴巴 AppKey 和 AppSecret 必须配置
-Alibaba Configuration: 阿里巴巴配置
-Alibaba Product ID: 阿里巴巴商品ID
 Alibaba client initialized successfully: 阿里巴巴客户端初始化成功
 Alipay: 支付宝
 Alipay API Error: 支付宝API错误
@@ -172,10 +156,7 @@ Aliyun SMS AccessKey ID: 阿里云短信 AccessKey ID
 Aliyun SMS AccessKey Secret: 阿里云短信 AccessKey Secret
 Aliyun Speech Synthesis (1 million characters free per month): 阿里云语音合成（每月 100 万字符免费）
 All: 所有
-All Caches: 所有缓存
 All Packages: 所有套餐
-All Products: 所有商品
-All Statuses: 所有状态
 All checks passed.: 所有检查项均通过。
 All support binding custom domains and automatic configuration: 都支持绑定自定义域名，并且自动配置
 Allowed Management Backend Domains: 允许的管理后台域名
@@ -248,11 +229,7 @@ CMS Management: CMS 管理
 CMS Page: CMS 页面
 CMS publishing module is not ready (models.cms is not available): CMS 发布模块未就绪（models.cms 不可用）
 CMS/Community Content/Comment Review: CMS/社区内容/评论审核
-Cache Cleanup: 缓存清理
-Cache Configuration: 缓存配置
 Cache Hit: 缓存命中
-Cache Management: 缓存管理
-Cache Statistics: 缓存统计
 Cache Status: 缓存状态
 Call: 调用
 Campaign: 投放
@@ -294,14 +271,10 @@ Chengdu City: 成都市
 China: 中国
 Chongqing: 重庆
 Chongqing City: 重庆市
-Circuit Breaker Threshold: 熔断阈值
 Clean and structure article content for knowledge base retrieval: 清洗并结构化文章内容，供知识库检索
 Cleaning completed: 清洗完成
 Cleaning completed and written to knowledge base: 清洗完成，已写入知识库
 Cleaning in progress, please wait: 正在清洗中，请勿重复执行
-Cleanup Type: 清理类型
-Clear Cache: 清理缓存
-Client: 客户
 Client Secret cannot be empty (first configuration): Client Secret 不能为空（首次配置）
 Close: 关闭
 Cloud service: 云服务
@@ -319,13 +292,11 @@ Company name or tax number is empty: 企业名称或税号为空
 Completed: 已完成
 Compress: 压缩
 Compressed (quality=60): 已压缩(quality=60)
-Configuration Info: 配置信息
 Configuration saved successfully. Some changes require restarting the service to take effect.: 配置保存成功。部分更改需要重启服务后才能生效。
 Confirm: 确认
 Confirm Create: 确认创建
 Confirm Issue: 确认发放
 Confirm Payment: 确认支付
-Confirm Selection: 确认选择
 Confirm to delete the check item: 确定删除检查项
 Confirmation Failed: 确认失败
 Console: 控制台
@@ -357,7 +328,6 @@ Create Coupon: 新建优惠券
 Create Order...: 创建订单...
 Create Website: 创建网站
 Create Workflow: 创建工作流
-Creating payment...: 正在创建支付...
 Creation failed: 创建失败
 Creation successful: 创建成功
 Crop: 裁剪
@@ -399,7 +369,6 @@ Description: 描述
 Deselect All: 取消全选
 Destroyed: 已销毁
 Details: 详情
-Detecting...: 检测中...
 Development mode - Alipay not configured: 开发模式 — 支付宝未配置
 Development mode - WeChat Pay not configured: 开发模式 — 微信支付未配置
 Device: 设备
@@ -423,9 +392,7 @@ Download failed: 下载失败
 Download management: 下载管理
 Download — VeroRun: 下载 — VeroRun
 Draft: 草稿
-Drag image here or click to upload: 拖拽图片到此处或点击上传
 Draw: 画图
-Drop Shipping Orders: 代发订单
 Dynamic: 动态
 Each trading day: 每个交易日
 Edit: 编辑
@@ -444,7 +411,6 @@ Enter AccessKey Secret: 输入 AccessKey Secret
 Enter Company/Brand Name: 输入企业/品牌名称
 Enter Product: 输入产品
 Enter Token (Optional): 输入 Token (可选)
-Enter the product ID to optimize: 输入要优化的商品ID
 Enter your question...: 输入您的问题...
 Enterprise Certification: 企业认证
 Enterprise ID and Secret cannot be empty: 企业ID 和 Secret 不能为空
@@ -529,10 +495,8 @@ Germany: 德国
 Get New Articles: 获取新文章
 Get Started: 快速开始
 Gift for Referral: 推荐有礼
-Global Concurrency Limit: 全局并发限制
 Global Concurrency Limit Must Be Greater Than 0: 全局并发限制必须大于0
 Global Key (: 全局 Key (
-Global QPS Limit: 全局QPS限制
 Go to AI Smart Website Builder: 前往 AI 智能建站
 Go to pay: 去支付
 Guangdong Province: 广东省
@@ -594,7 +558,6 @@ Import failed: 导入失败
 Improvement suggestion (in one sentence): 改进建议（一句话）
 Improvement suggestions: 改进建议
 In Customs Clearance: 清关中
-Inactive product: 非活跃商品
 Inbox: 收件箱
 Includes AI configuration + training + continuous optimization: 含AI配置+培训+持续优化
 Includes implementation fee + annual technical service: 含实施费 + 全年技术服务
@@ -636,7 +599,6 @@ Inventory: 库存
 Issue Coupon: 发放优惠券
 Issue Item: 问题件
 Italy: 意大利
-Item repair...: 项修复...
 Items: 条记录
 Items cannot be empty: items 不能为空
 Items per page: 每页数量
@@ -683,12 +645,10 @@ Langfang City: 廊坊市
 Lanzhou: 兰州
 Lanzhou City: 兰州市
 Last active: 最后活跃
-Last updated: 更新时间
 Latest updates: 最新动态
 Launch Agent: 启动 Agent
 Law: 法律
 Learn more: 了解更多
-Leave empty to clear all product cache: 留空则清除所有商品缓存
 Legal Representative: 法定代表人/Legal Representative
 Level: 等级
 Lhasa: 拉萨
@@ -704,7 +664,6 @@ Liuzhou: 柳州
 Loading Configuration...: 加载配置中...
 Loading Failed: 加载失败
 Loading...: 加载中...
-Local order: 本地订单
 Location: 位置
 Log in to the VeroRun console and create your key on the API Key page. All Skills are accessed through a unified API Key.: 登录 VeroRun 控制台，在 API Key 页面创建你的密钥。所有 Skills 通过统一 API Key 接入。
 Login: 登录
@@ -729,7 +688,6 @@ Mall general: 商城通用
 Mall order: 商城订单
 Manage: 管理
 Manage Agent Matrix/Automatic Scheduling: 管理Agent矩阵/自动化调度
-Manage Drop Shipping Orders: 代发订单管理
 Manage Other Administrators (Only super_admin): 管理其他管理员（仅super_admin）
 Management Backend: 管理后台
 Manual review: 人工审核
@@ -737,7 +695,6 @@ Manually renewed: 已手动续费
 Marked as completed: 已标记为已完成
 Master Agent does not exist: Master Agent 不存在
 Matrix Dialogue Engine (Master Agent): 矩阵对话引擎 (Master Agent)
-Memory Cache Size: 内存缓存大小
 Menu: 菜单
 Merged and updated existing entry (version history saved): 已合并更新已有条目（版本历史已保存）
 Message cannot be empty: 消息不能为空
@@ -1007,7 +964,6 @@ Page: 页面
 Page number: 页码
 Paid: 已支付
 Paid User: 付费用户
-Parameters: 参数
 Password Must Contain Lowercase Letter: 密码必须包含小写字母
 Password Must Contain Number: 密码必须包含数字
 Password Must Contain Uppercase Letter: 密码必须包含大写字母
@@ -1039,7 +995,6 @@ Pending delivery: 待交付
 Pending payment: 待支付
 Pending posts: 待审核帖
 Pending processing: 待处理
-Pending procurement: 待采购
 Pending review: 待审核
 Pending shipment: 待发货
 Pending tickets: 待处理工单
@@ -1050,7 +1005,6 @@ Phone: 手机
 Phone number and verification code cannot be empty: 手机号和验证码不能为空
 Phone number cannot be empty: 手机号不能为空
 Phone number has been updated: 手机号已更新
-Picture: 图片
 Picture deleted: 图片已删除
 Picture generated: 图片已生成
 Picture order updated: 图片排序已更新
@@ -1079,22 +1033,16 @@ Processing payment...: 正在处理支付...
 Product: 商品
 Product ID: 商品ID
 Product ID cannot be empty: 商品ID不能为空
-Product cache: 商品缓存
 Product cache TTL: 商品缓存TTL
-Product collection: 商品采集
 Product does not exist: 商品不存在
 Product has been created: 商品已创建
 Product has been deleted: 商品已删除
 Product has been taken off the shelf: 商品已下架
 Product has been updated: 商品已更新
-Product image management: 商品图片管理
-Product information: 商品信息
-Product management: 商品管理
 Product name: 产品名称
 Product preview: 产品预览
 Product published successfully: 商品发布成功
 Product services: 产品服务
-Product title: 商品标题
 Product updates: 产品动态
 Product_id cannot be empty: product_id 不能为空
 Production Environment: 生产环境
@@ -1114,11 +1062,8 @@ Publish to social media: 发布到社媒
 Published: 已发布
 Published Successfully: 发布成功
 Publishing Platform: 发布平台
-Purchase Order ID: 采购单ID
 Purchase Order does not exist: 采购单不存在
 Purchase Order submitted to 1688: 采购单已提交至 1688
-Purchase Status: 采购状态
-Purchased: 已订购
 Push Administrator: 推送管理员
 Push Report: 推送报告
 Putian: 莆田
@@ -1152,10 +1097,7 @@ Recipient: 收件人
 Recommend: 推荐
 Record: 记录
 Record does not exist: 记录不存在
-Redirecting to Alipay...: 正在跳转到支付宝...
-Redis Configuration: Redis配置
 Refresh: 刷新
-Refresh Statistics: 刷新统计
 Refunded: 已退款
 Refunding: 退款中
 Region does not exist: 区域不存在
@@ -1183,7 +1125,6 @@ Reset Failed: 重置失败
 Resize: 调整大小
 Resource: 资源
 Resource does not exist: 资源不存在
-Response code: 响应码
 Restore: 恢复
 Retry: 重试
 Retry Failed: 重试失败
@@ -1196,7 +1137,6 @@ Review does not exist: 评价不存在
 Review reward: 评价奖励
 Review successful: 评价成功
 Rise: 上升
-Risk control configuration: 风控配置
 Risk control manager test: 风控管理器测试
 Risk control status: 风控状态
 Rizhao: 日照
@@ -1224,7 +1164,6 @@ Sanya City: 三亚市
 Saturday: 六
 Saudi Arabia: 沙特阿拉伯
 Save: 保存
-Save configuration: 保存配置
 Save failed: 保存失败
 Save successful: 保存成功
 Scenario: 场景
@@ -1233,10 +1172,8 @@ Scheduler not initialized: 调度器未初始化
 Scheduler paused: 调度器已暂停
 Scheduler recovered: 调度器已恢复
 Scrape 36Kr: 采集36氪
-Scrape Single Product: 采集单个商品
 Search: 搜索
 Search Keywords: 搜索关键词
-Search and Collect: 搜索采集
 Search keywords cannot be empty: 搜索关键词不能为空
 Select : 选择 
 Select All: 全选
@@ -1276,7 +1213,6 @@ Shipped: 已发货
 Sichuan Province: 四川省
 Sign Up Free Now →: 立即免费注册 →
 Sign for Receipt: 签收
-Signature Method: 签名方法
 Signed: 已签收
 SiliconFlow (Silicon Flow): SiliconFlow (硅基流动)
 SiliconFlow API Key not configured (system_config.siliconflow_api_key): 硅基流动 API Key 未配置（system_config.siliconflow_api_key）
@@ -1319,7 +1255,6 @@ Star Technology: 星辰科技
 Start Building Your Site Free: 免费开始建站
 Start Free: 免费开始
 Start Now: 立即开始
-Start collecting: 开始采集
 Start from scratch to understand the VeroRun platform and quickly get started with Agent development and financial analysis.: 从零开始了解 VeroRun 平台，快速上手 Agent 开发与金融分析。
 Start from zero and quickly get started with the platform.: 从零开始，快速上手平台。
 Static page generation module is not ready (platform/staticgen not available): 静态页面生成模块未就绪（platform/staticgen 不可用）
@@ -1343,7 +1278,6 @@ Suggestion 2: 建议2
 Suggestion 3: 建议3
 Summary (Optional): '{{ _(''Summary'') }}（{{ _(''Optional'') }}）'
 Summary Report: 汇总报告
-Supplier: 供应商
 Suzhou: 苏州
 Suzhou City: 苏州市
 Sweden: 瑞典
@@ -1439,7 +1373,6 @@ TikTok Mini Program: 抖音小程序
 TikTok User xxx: 抖音用户xxx
 TikTok User_: 抖音用户_
 Time: 时间
-Time (ms): 耗时(ms)
 Timeout (seconds): '{{ _(''Timeout'') }}(秒)'
 Times: 次数
 Title: 标题
@@ -1466,7 +1399,6 @@ Total Limit (0 = Unlimited): '{{ _(''Total Limit'') }}(0=无限)'
 Total Users: 总用户
 Total attachment size exceeds 50MB limit: 附件总大小超过 50MB 限制
 Total for first year: 首年总计
-Total number of products: 商品总数
 Total price for first year: 首年总价
 Total size of the theme package exceeds 10MB: 主题包总大小超过 10MB
 Toutiao: 今日头条
@@ -1510,14 +1442,11 @@ Usage Count: 使用次数
 Usage Rank Top 10: '{{ _(''使用排行'') }} Top 10'
 Usage Ranking: 使用排行
 Usage Record: '{{ _(''使用记录'') }}'
-Use AI to optimize product titles and descriptions to improve marketing effectiveness. AI service must be available.: 使用AI优化商品标题和描述，提升营销效果。需要AI服务可用。
 Used/Total: 使用/总
 User: 用户
 User Agent did not specify agent_id: 用户 Agent 未指定 agent_id
 User Authorization Token: 用户授权Token
 User Backend: 用户后台
-User Daily Limit: 用户每日限制
-User Hourly Limit: 用户每小时限制
 User Inquiry: 用户咨询
 User Management: 用户管理
 User Nickname: 用户昵称
@@ -1641,7 +1570,6 @@ Yinchuan City: 银川市
 VeroRun AI Intelligent Customer Service: VeroRun 智能客服
 VeroRun AI Smart Website Building Platform allows your website to attract customers 24/7.: VeroRun智能建站平台，让您的网站24小时在线获客。
 You are an agent assistant. Output only JSON.: 你是坐席助手。只输出 JSON。
-You can find the product ID in the Alibaba product detail page URL: 在阿里巴巴商品详情页URL中可以找到商品ID
 You have already reviewed this product: 您已评价过该商品
 You have already used this coupon: 您已使用过此优惠券
 Your Email: 您的邮箱
@@ -1855,7 +1783,6 @@ stub confirm is disabled outside dev: stub 确认仅限开发模式
 'Active Subs (30d)': '活跃订阅（30 天）'
 'Activity Log': '操作日志'
 'Add Address': '添加地址'
-'Add to Cart': '加入购物车'
 'Address': '地址'
 'Adjust content, style, features on demand': '按需调整内容、样式和功能'
 'Admin': '管理员'
@@ -1897,7 +1824,6 @@ stub confirm is disabled outside dev: stub 确认仅限开发模式
 'Avg. Build Time': '平均建站时间'
 'Avg. Lead Boost': '平均线索提升'
 'Awaiting Reply': '等待回复'
-'Back to Edit': '返回编辑'
 'Back to Home': '返回首页'
 'Back to Login': '返回登录'
 'Basic': '基础版'
@@ -1925,7 +1851,6 @@ stub confirm is disabled outside dev: stub 确认仅限开发模式
 'Canceled This Month': '本月取消'
 'Cannot Load': '无法加载'
 'Captcha verification ensures platform security and prevents automated registrations': '验证码校验保障平台安全，防止自动注册'
-'Cart': '购物车'
 'Case Showcase': '案例展示'
 'Case Studies': '客户案例'
 'Case studies: corporate sites, e-commerce, brand showcases built with AI.': '客户案例：AI 打造的企业网站、电商与品牌展示站。'
@@ -1939,7 +1864,6 @@ stub confirm is disabled outside dev: stub 确认仅限开发模式
 'Check failed, please retry later': '校验失败，请稍后重试'
 'Checking availability...': '正在检查可用性...'
 'Checking...': '正在检查...'
-'Checkout': '结算'
 'Choose Your Plan': '选择您的套餐'
 'Choose the Best Fit': '选择最合适的方案'
 'Choose the Plan That Fits You': '选择适合您的套餐'
@@ -1968,7 +1892,6 @@ stub confirm is disabled outside dev: stub 确认仅限开发模式
 'Configure AI Matrix': '配置 AI Matrix'
 'Confirm Order': '确认订单'
 'Confirm Password': '确认密码'
-'Confirm Payment (Dev Mode)': '确认支付（开发模式）'
 'Confirm Receipt': '确认收货'
 'Confirm Submit': '确认提交'
 'Connection Info': '连接信息'
@@ -2152,7 +2075,6 @@ stub confirm is disabled outside dev: stub 确认仅限开发模式
 'Log In / Register': '登录 / 注册'
 'Login Devices': '登录设备'
 'Login History & Security Actions': '登录历史与安全操作'
-'Logistics Tracking Popup': '物流跟踪弹窗'
 'Logout': '退出登录'
 'Manage Subscription': '管理订阅'
 'Manage your API keys, view usage stats and configure rate limits': '管理您的 API 密钥、查看用量统计并配置速率限制'
@@ -2225,7 +2147,6 @@ stub confirm is disabled outside dev: stub 确认仅限开发模式
 'No other devices': '暂无其他设备'
 'No tech team, no big budget. Build in 3 mins, AI works.': '无需技术团队，无需大预算。3 分钟建站，AI 运营。'
 'No tickets': '暂无工单'
-'No tracking info available': '暂无物流信息'
 'Not Bound': '未绑定'
 'Notif Settings': '通知设置'
 'Notification Preferences': '通知偏好'
@@ -2252,9 +2173,7 @@ stub confirm is disabled outside dev: stub 确认仅限开发模式
 'Order Management': '订单管理'
 'Order Management & Payment': '订单管理与支付'
 'Order No.': '订单编号'
-'Order Payment': '订单支付'
 'Order System': '订单系统'
-'Order:': '订单：'
 'Orders': '订单'
 'Other Devices': '其他设备'
 'Other login methods': '其他登录方式'
@@ -2275,7 +2194,6 @@ stub confirm is disabled outside dev: stub 确认仅限开发模式
 'Pay order': '支付订单'
 'Payment Issue': '支付问题'
 'Payment Method Distribution': '支付方式分布'
-'Payment Popup': '支付弹窗'
 'Payment creation failed': '创建支付失败'
 'Pending': '待处理'
 'Pending Payment': '待支付'
@@ -2311,7 +2229,6 @@ stub confirm is disabled outside dev: stub 确认仅限开发模式
 'Please fill in phone number': '请填写手机号'
 'Please log in first': '请先登录'
 'Please review the recognized info before submitting': '提交前请核对识别信息'
-'Please scan with WeChat to pay': '请使用微信扫码支付'
 'Please select': '请选择'
 'Please select at least 3 interests': '请至少选择 3 个兴趣'
 'Please select contacts first': '请先选择联系人'
@@ -2410,7 +2327,6 @@ stub confirm is disabled outside dev: stub 确认仅限开发模式
 'See detailed pricing at': '查看详细价格：'
 'See how they upgraded their online business with VeroRun': '看看他们如何用 VeroRun 升级在线业务'
 'Select AI capabilities, configure knowledge base, product library, content strategy.': '选择 AI 能力，配置知识库、商品库、内容策略。'
-'Select Payment Method': '选择支付方式'
 'Semi-Annual': '按半年'
 'Send Code': '发送验证码'
 'Send Message': '发送消息'
@@ -2498,7 +2414,6 @@ stub confirm is disabled outside dev: stub 确认仅限开发模式
 'Total API Keys': 'API 密钥总数'
 'Total: ': '总计：'
 'Town/Street': '街道'
-'Track Shipping': '追踪物流'
 'Transparent': '透明'
 'Tri-Platform Unified': '三平台统一'
 'Trial Request': '试用申请'
@@ -2579,7 +2494,6 @@ stub confirm is disabled outside dev: stub 确认仅限开发模式
 'Yes. All plans support custom domain binding with free SSL certs. See the domain setup guide in our docs.': '是的。所有套餐均支持自定义域名绑定并赠送免费 SSL 证书。详见文档中的域名配置指南。'
 'Yes. Upgrade takes effect immediately, downgrade at next billing cycle.': '是的。升级立即生效，降级在下一个计费周期生效。'
 'You have used': '您已使用'
-'Your cart is empty': '您的购物车是空的'
 'Your display name': '您的显示名称'
 'Your identity verification has passed, display name updated to ': '您的身份验证已通过，显示名称已更新为 '
 'and': '和'
@@ -2622,8 +2536,6 @@ stub confirm is disabled outside dev: stub 确认仅限开发模式
 '🎵 Douyin Open Platform': '🎵 抖音开放平台'
 '👤 Complete Profile': '👤 完善资料'
 '💬 WeChat Pay': '💬 微信支付'
-'💳 Payment': '💳 支付'
-'📋 My Orders': '📋 我的订单'
 '📦 Qiniu Cloud': '📦 七牛云'
 '📱 Verify Phone Number': '📱 验证手机号'
 '🔍 Preview — Admin Only ·': '🔍 预览 —— 仅管理员 ·'
@@ -2631,8 +2543,6 @@ stub confirm is disabled outside dev: stub 确认仅限开发模式
 '🔑 Set Password': '🔑 设置密码'
 '🔒 Security Verification': '🔒 安全验证'
 '🔗 1688 · Alibaba': '🔗 1688 · 阿里巴巴'
-'🚚 Logistics Tracking': '🚚 物流跟踪'
-'🛒 Cart': '🛒 购物车'
 # ── Provider Keys & LLM Quotas (stage 1-4) ──
 'API Key Value': 'API Key 值'
 'API Key value is required': 'API Key 不能为空'
@@ -3022,3 +2932,864 @@ Theme: 主题
 Cyber Dark: 赛博暗夜
 Cloud Light: 云霁白
 Misty Gray: 晨雾灰
+Import from GitHub: 从 GitHub 导入
+Fetch: 获取
+Fetching metadata: 正在获取元数据
+Imported: 已导入
+Please enter a GitHub repo URL: 请输入 GitHub 仓库地址
+# P1 订阅中心 UI 键（2026-08-22）
+'My Subscriptions': '我的订阅'
+'Browse': '浏览'
+'Change': '变更'
+'Change Billing Cycle': '变更计费周期'
+'New Interval': '新周期'
+'New Price': '新价格'
+'Remaining Value Credit': '剩余价值抵扣'
+'Carryover': '顺延抵扣'
+'Payable': '应付'
+'Confirm Change': '确认变更'
+'Billing cycle changed': '计费周期已变更'
+'Change failed': '变更失败'
+'Upgrade to Bundle': '升级到版本包'
+'Upgrade Bundle': '升级版本包'
+'Bundle Price': '版本包价格'
+'Proceed in store checkout to complete upgrade': '请前往商店结算以完成升级'
+'Days Left': '天后到期'
+'Today': '今天'
+'Go to Store': '前往商店'
+'Change Your Password': '修改密码'
+'Confirm New Password': '确认新密码'
+'Coupon Code': '优惠券码'
+'Enter User': '输入用户名'
+'Enter coupon code': '输入优惠券码'
+'Failed to set password': '密码设置失败'
+'Full Reduction Coupon': '满减券'
+'Issue': '发放'
+'Limit per User': '每人限领'
+'Minimum Spend': '最低消费'
+'No Coupons Available': '暂无可用优惠券'
+'One User': '每人一张'
+'Password must contain a number': '密码必须包含数字'
+'Password must contain lowercase letter': '密码必须包含小写字母'
+'Password must contain special character': '密码必须包含特殊字符'
+'Password must contain uppercase letter': '密码必须包含大写字母'
+'Password set successfully! Redirecting to login...': '密码设置成功！正在跳转登录...'
+'Plugin page failed to load.': '插件页面加载失败。'
+'Plugin render function': '插件渲染函数'
+'Plugin route not registered, enable the plugin first': '插件路由未注册，请先启用该插件'
+'Setting...': '设置中...'
+'Smart Coupon': '智能优惠券'
+'Try refreshing the page': '请尝试刷新页面'
+'You must change your password before first use. At least 10 characters with uppercase, lowercase, numbers and special characters.': '首次使用前必须修改密码。密码至少 10 位，需包含大写字母、小写字母、数字和特殊字符。'
+'not found': '未找到'
+'✅ Created': '✅ 已创建'
+'✅ Issued': '✅ 已发放'
+'API & Agent Usage': 'API 与 Agent 用量'
+'All clear': '一切正常'
+'All services up': '所有服务运行正常'
+'Analytics plugin not enabled': 'Analytics 插件未启用'
+'Big Screen': '大屏'
+'Check services': '检查服务'
+'Comments': '评论'
+'Content Pipeline': '内容流水线'
+'Enable Analytics Plugin': '启用 Analytics 插件'
+'Enable Plugin': '启用插件'
+'Exit': '退出'
+'Failed Tasks': '失败任务'
+'Health Check plugin not enabled': 'Health Check 插件未启用'
+'No Content Yet': '暂无内容'
+'Online Now': '当前在线'
+'Open Tickets': '待处理工单'
+'Pending Alerts': '待处理告警'
+'Pending Reviews': '待审核评论'
+'Pending Shipments': '待发货'
+'Popular Pages': '热门页面'
+'Recent Orders': '最近订单'
+'Revenue Trend': '收入趋势'
+'Review': '审核'
+'Service Status': '服务状态'
+'Spend': '支出'
+'Subscriptions': '订阅'
+'System Health': '系统健康'
+'Unpaid': '未支付'
+'Unread Messages': '未读消息'
+'active subs': '活跃订阅'
+'msgs': '消息'
+'tickets': '工单'
+'today': '今日'
+' passed': '已通过'
+'Action Button': '操作按钮'
+'Active Tasks': '进行中任务'
+'Admin Management': '后台管理'
+'Cancel Failed': '取消失败'
+'Cancel this workflow?': '取消此工作流？'
+'Comment Management': '评论管理'
+'Complete': '完成'
+'Confirm Installed': '确认已安装'
+'Content Area': '内容区域'
+'Critical': '严重'
+'Currently Selected': '当前已选择'
+'Define': '定义'
+'Delete this comment?': '删除此评论？'
+'Delete this task?': '删除此任务？'
+'Delete this workflow?': '删除此工作流？'
+'Edge': '连线'
+'Edit Task': '编辑任务'
+'Edit Workflow': '编辑工作流'
+'End': '结束'
+'Execution History': '执行历史'
+'Execution Log': '执行日志'
+'Expression': '表达式'
+'Insert Form Above Table': '在表格上方插入表单'
+'Instance': '实例'
+'Interval Seconds': '间隔秒数'
+'Last': '上次'
+'Load Logs': '加载日志'
+'Load Tasks': '加载任务'
+'Loading Execution History': '正在加载执行历史'
+'Loading Workflow': '正在加载工作流'
+'Name is required': '名称为必填项'
+'New': '新建'
+'New Task': '新建任务'
+'New Workflow': '新建工作流'
+'No Comments': '暂无评论'
+'No Execution Records': '暂无执行记录'
+'No Logs Yet': '暂无日志'
+'No Tasks': '暂无任务'
+'No Workflow': '暂无工作流'
+'Node': '节点'
+'Node Execution Details': '节点执行详情'
+'Node List': '节点列表'
+'Node Type': '节点类型'
+'Nodes': '节点'
+'One-Time': '单次'
+'Or Natural Language': '或自然语言'
+'Pending Approval': '待审批'
+'Per Trading Day': '每个交易日'
+'Please Confirm Scheduler is Running': '请确认调度器正在运行'
+'Priority': '优先级'
+'Run': '运行'
+'Scheduled Tasks': '定时任务'
+'Scheduler Status': '调度器状态'
+'Script': '脚本'
+'Select Function to Start Settings': '选择功能以开始设置'
+'Start': '开始'
+'Start Failed': '启动失败'
+'Switch': '切换'
+'Switched': '已切换'
+'Task Management': '任务管理'
+'Task not found': '任务未找到'
+'Task triggered': '任务已触发'
+'Tasks': '任务'
+'Timeout': '超时'
+'Today Completed': '今日完成'
+'Today Failures': '今日失败'
+'Trigger Failed': '触发失败'
+'Workflow Definition': '工作流定义'
+'Workflow Execution': '工作流执行'
+'Workflow Management': '工作流管理'
+'Workflow Started': '工作流已启动'
+'Workflow not found': '工作流未找到'
+'WorkflowExecution History': '工作流执行历史'
+'Command Console': '命令控制台'
+'AI Hub': 'AI 中心'
+'Admins': '管理员'
+'AI & Content': 'AI 与内容'
+'All Content': '全部内容'
+'Create Article': '创建文章'
+'Media Library': '媒体库'
+'RAG Knowledge': 'RAG 知识库'
+'Cleaner': '数据清洗'
+'Business Center': '商业中心'
+'Users & Support': '用户与支持'
+'All Customers': '全部客户'
+'Customer Agents': '客户智能体'
+'API Tokens': 'API 令牌'
+'User Tickets': '用户工单'
+'Rewards': '奖励'
+'Security & Compliance': '安全与合规'
+'Post Audit': '帖子审核'
+'Comment Moderation': '评论审核'
+'Monitoring & Data': '监控与数据'
+'Plugins & i18n': '插件与国际化'
+'Plugin Management': '插件管理'
+'Translations': '翻译管理'
+'Captcha Stats': '验证码统计'
+'Logistics Tracking': '物流跟踪'
+'Payment Config': '收款配置'
+'Reviews Moderation': '评价审核'
+'Site Domains': '站点域名'
+'Social Push': '社媒发布'
+'Vault': '数据保险箱'
+'Chat': '聊天'
+'Chat History': '聊天历史'
+'Chat Window': '聊天窗口'
+'Chat Window Management': '聊天窗口管理'
+'Chat Window KB Management': '聊天窗口知识库管理'
+'New Chat': '新建聊天'
+'New Chat Created': '新聊天已创建'
+'No Chat History': '暂无聊天历史'
+'Load Chats': '加载聊天记录'
+'Session Title': '会话标题'
+'Delete this session history?': '删除此会话历史？'
+'Reset current session? All messages will be cleared.': '重置当前会话？所有消息将被清除。'
+'Please Select Chats to Delete': '请选择要删除的会话'
+'Confirm Batch Delete': '确认批量删除'
+'Click Row to Jump to Chat': '点击行跳转至聊天'
+'Please wait...': '请稍候...'
+'Found': '找到'
+'Last Time': '最后时间'
+'Matching Messages': '条匹配消息'
+'First Msg': '首条消息'
+'Session': '会话'
+'Me:': '我：'
+'Upload File': '上传文件'
+'[Uploaded File]': '[已上传文件]'
+'Show Uploaded File Reference in Chat': '在聊天中显示上传文件引用'
+'Use Files as Reference': '以文件为参考'
+'If There Are Uploaded Files': '若有上传文件'
+'If It Is an Image': '若为图片'
+'Show Thumbnail': '显示缩略图'
+'Attached': '已附加'
+'<table><tr><th>Session</th><th>First Msg</th><th>Last Time</th></tr>': '<table><tr><th>会话</th><th>首条消息</th><th>最后时间</th></tr>'
+'AI Capabilities': 'AI 能力'
+'AI Chat — Athena': 'AI 聊天 — Athena'
+'Ability': '能力'
+'Role Definition': '角色定义'
+'Role Description': '角色描述'
+'Roles & Abilities': '角色与能力'
+'Core Instructions': '核心指令'
+'Code of Conduct': '行为准则'
+'Basic Settings': '基本设置'
+'Model Config': '模型配置'
+'Select Model': '选择模型'
+'Select Provider': '选择供应商'
+'Multiple Providers': '多供应商'
+'Endpoint': '接口地址'
+'Configure Actual Key Values': '配置实际 Key 值'
+'Managed Modules': '管理模块'
+'System Prompt': '系统提示词'
+'Custom Prompt': '自定义提示词'
+'Built-in Templates': '内置模板'
+'Presets': '预设'
+'Contains Prompt': '包含提示词'
+'Includes Full Role Definition': '包含完整角色定义'
+'Supports Dynamic Editing': '支持动态编辑'
+'Prompt': '提示词'
+'Prompt Management Description': '提示词管理说明'
+'Prompt Storage': '提示词存储'
+'Knowledge Base Content': '知识库内容'
+'Back to Matrix': '返回矩阵'
+'Connected to Matrix': '已连接矩阵'
+'Matrix Chat': '矩阵聊天'
+'Service Panel': '服务面板'
+'Enhanced': '增强型'
+'Legacy API': '传统 API'
+'Old Feature Migrated': '旧功能已迁移'
+'Injected into Chat Window': '注入聊天窗口'
+'Agent': '智能体'
+'Managed by Agent Matrix Ticket Agent': '由 Agent 矩阵工单智能体管理'
+'Add Sub': '添加子项'
+'Append to Message': '追加到消息'
+'As': '作为'
+'At Least Keywords': '至少关键词'
+'Auto-fill After Selection': '选择后自动填充'
+'Auto-fill to Text Field': '自动填充到文本框'
+'Auto-load at Runtime': '运行时自动加载'
+'Available': '可用'
+'Batch Delete': '批量删除'
+'Button': '按钮'
+'Cascading Model Select': '级联模型选择'
+'Characters': '字符'
+'Click': '点击'
+'Comma Separated': '逗号分隔'
+'Confidence': '置信度'
+'Config': '配置'
+'Confirm Creation': '确认创建'
+'Create': '创建'
+'Creation Failed': '创建失败'
+'Decided': '已决定'
+'Deciding': '决定中'
+'Deep Thinking': '深度思考'
+'Delete failed': '删除失败'
+'Describe Agent Tech in One Sentence': '用一句话描述智能体技术'
+'Directly': '直接'
+'Directory': '目录'
+'Discuss': '讨论'
+'Domain': '领域'
+'Dropdown Select': '下拉选择'
+'Edit Prompts & Settings': '编辑提示词与设置'
+'Edit in Popup Window': '弹窗编辑'
+'Edit on Server': '在服务器编辑'
+'Enter Command': '输入命令'
+'Analyze Recent Stock Market Trends': '分析近期股市趋势'
+'Draw a Blue Cat': '画一只蓝猫'
+'Enter Name': '输入名称'
+'Enter Test Question': '输入测试问题'
+'Fast': '快速'
+'File': '文件'
+'Hello': '你好'
+'Message': '消息'
+'No Match': '无匹配'
+'No Response': '无响应'
+'Not Configured': '未配置'
+'Provider': '供应商'
+'Quick Test': '快速测试'
+'Quick Test Chat Window': '快速测试聊天窗口'
+'Request Failed': '请求失败'
+'Reset': '重置'
+'Response': '响应'
+'Send Command to Start': '发送命令开始'
+'Send Command to Start Chat': '发送命令开始聊天'
+'Send Test Message to Agent': '向智能体发送测试消息'
+'Sessions': '会话'
+'Test Passed': '测试通过'
+'Test Results': '测试结果'
+'Text Generation': '文本生成'
+'Thinking': '思考中'
+'This Operation Cannot Be Recovered': '此操作无法恢复'
+'Tool Call': '工具调用'
+'Unknown Error': '未知错误'
+'Unknown Service': '未知服务'
+'Upload': '上传'
+'Loading': '加载中'
+'Loading Knowledge Base': '正在加载知识库'
+'e.g.': '例如'
+'Preview Failed': '预览失败'
+'Save Knowledge Base': '保存知识库'
+'Download Audio': '下载音频'
+'Download Image': '下载图片'
+'Download Video': '下载视频'
+'Female (Jenny)': '女声（Jenny）'
+'Female (Xiaoxiao)': '女声（晓晓）'
+'If Built-in Templates Selected': '若选择内置模板'
+'If Writing Manually': '若手动编写'
+'Image Processing': '图像处理'
+'Image Understanding': '图像理解'
+'Is': '是'
+'Line End': '行尾'
+'List Your': '列出你的'
+'Located on Server': '位于服务器'
+'Male (Guy)': '男声（Guy）'
+'Male (Yunxi)': '男声（云希）'
+'Modify Below': '在下方修改'
+'Modify Prompt': '修改提示词'
+'Or Directly': '或直接'
+'Or Select Template Above': '或选择上方模板'
+'Pass When': '通过条件'
+'Paste or Write Prompt Content': '粘贴或编写提示词内容'
+'Planning': '规划中'
+'Please Configure in System Settings': '请在系统设置中配置'
+'Please Use Matrix Chat to Test': '请使用矩阵聊天进行测试'
+'Post for Me': '代我发布'
+'Quality Standard': '质量标准'
+'Reference': '参考'
+'Reference Config': '参考配置'
+'Render Sub-task Images to Chat': '在聊天中渲染子任务图像'
+'Reviewing': '审查中'
+'Revising': '修订中'
+'Select Template': '选择模板'
+'Selecting': '选择中'
+'Store Full Text Content Directly': '直接存储完整文本内容'
+'Store as File Path': '以文件路径存储'
+'Supported Fields': '支持的字段'
+'Under': '在…下'
+'Users of This Service': '使用此服务的用户'
+'Write This': '写入此项'
+'Write in Text Box': '在文本框中编写'
+'✅ Saved (': '✅ 已保存（'
+'✓ Marked clean': '✓ 已标记为干净'
+'❌ Network error': '❌ 网络错误'
+'❌ Save failed': '❌ 保存失败'
+'❌ Upload Failed:': '❌ 上传失败：'
+'AI Agent': 'AI 智能体'
+'Activate': '激活'
+'Activate License': '激活许可证'
+'Add Plugin': '添加插件'
+'All Categories': '全部分类'
+'Anonymous': '匿名'
+'Apply': '应用'
+'Author': '作者'
+'Auto': '自动'
+'Back to Store': '返回商店'
+'Calculate': '计算'
+'Canceled': '已取消'
+'Cancel failed': '取消失败'
+'Cancel subscription for': '取消订阅'
+'Check failed': '检查失败'
+'Creating order': '正在创建订单'
+'Deactivate license for': '停用许可证'
+'Deactivation failed': '停用失败'
+'Delete plugin from store?': '从商店删除此插件？'
+'Developer Reply': '开发者回复'
+'Discount applied': '已应用折扣'
+'Discount code': '折扣码'
+'Download URL': '下载地址'
+'Edit Plugin': '编辑插件'
+'Go to Pay': '前往支付'
+'Grace': '宽限期'
+'Highest Rated': '评分最高'
+'Icon URL': '图标地址'
+'Identifier': '标识符'
+'Install': '安装'
+'Install failed': '安装失败'
+'Install plugin?': '安装此插件？'
+'Installed': '已安装'
+'Interval': '周期'
+'Invalid': '无效'
+'Base month price': '基础月费'
+'License Key': '许可证密钥'
+'License Management': '许可证管理'
+'License activated': '许可证已激活'
+'License deactivated': '许可证已停用'
+'Loading README': '正在加载 README'
+'Lowest Rated': '评分最低'
+'Markdown file URL, shown in detail page': 'Markdown 文件地址，显示在详情页'
+'Most Downloaded': '下载最多'
+'Newest': '最新'
+'No licenses activated yet': '尚未激活许可证'
+'No plugins in store': '商店暂无插件'
+'No reviews yet': '暂无评论'
+'No subscriptions': '暂无订阅'
+'One-time': '一次性'
+'Open in new tab': '在新标签页打开'
+'Order No': '订单号'
+'Paid (One-time)': '已支付（一次性）'
+'Payment': '支付'
+'Payment successful! License activated.': '支付成功！许可证已激活。'
+'Period End': '周期结束'
+'Please enter a valid base month price': '请输入有效的基础月费'
+'Please enter your review': '请输入您的评价'
+'Plugin ID': '插件 ID'
+'Plugin ID and License Key required': '需要插件 ID 和许可证密钥'
+'Plugin Store': '插件商店'
+'Plugin already licensed': '插件已授权'
+'Price Type': '价格类型'
+'Price: High to Low': '价格：从高到低'
+'Price: Low to High': '价格：从低到高'
+'Pricing Calculator': '定价计算器'
+'Processing': '处理中'
+'Purchase': '购买'
+'Purchase failed': '购买失败'
+'QR Code': '二维码'
+'Identifier and Name are required': '需要标识符和名称'
+'Identifier must contain only lowercase letters, digits, underscores': '标识符只能包含小写字母、数字和下划线'
+'Quarter': '季度'
+'README': 'README'
+'README load failed': 'README 加载失败'
+'Rating': '评分'
+'Readme URL': 'README 地址'
+'Recommended: 280x120px, shown on store card': '推荐：280x120px，显示在商店卡片'
+'Redirect to payment': '跳转到支付'
+'Renew': '续费'
+'Renew failed': '续费失败'
+'Review submitted': '评价已提交'
+'Reviews': '评价'
+'Scan to pay': '扫码支付'
+'Share your experience...': '分享您的体验…'
+'Social': '社交'
+'Status updated': '状态已更新'
+'Store Admin': '商店管理员'
+'Submit Review': '提交评价'
+'Subscription canceled': '订阅已取消'
+'Subscription renewed': '订阅已续费'
+'Supply Chain': '供应链'
+'Suspended': '已暂停'
+'Sync failed': '同步失败'
+'Tagline': '标语'
+'Tagline Color': '标语颜色'
+'Tagline Font Size': '标语字号'
+'Tiered prices': '阶梯价格'
+'Tools': '工具'
+'Unpublish': '取消发布'
+'Up to 20 chars, line breaks supported, shown on store card': '最多 20 个字符，支持换行，显示在商店卡片'
+'Waiting for payment': '等待支付'
+'Write a Review': '撰写评价'
+'cents': '分'
+'quarter = month x 2.7, year = month x 10': '季度 = 月费 x 2.7，年度 = 月费 x 10'
+'Agent avatar removed': '智能体头像已移除'
+'Agent avatar updated': '智能体头像已更新'
+'Agent created': '智能体已创建'
+'Agents': '智能体'
+'All Industries': '所有行业'
+'All Occupations': '所有职业'
+'Apply Button': '应用按钮'
+'Avatar': '头像'
+'Avatar removed': '头像已移除'
+'Basic Info': '基本信息'
+'Blockchain': '区块链'
+'Cartoon': '卡通'
+'Certification': '认证'
+'Click Row for Details': '点击行查看详情'
+'Confidential': '机密'
+'Default Avatar': '默认头像'
+'Default avatar set': '默认头像已设置'
+'Designer': '设计师'
+'Developer': '开发者'
+'DiceBear avatar set': 'DiceBear 头像已设置'
+'Done: ': '完成：'
+'E-Commerce': '电子商务'
+'Existing Static': '现有静态'
+'Export': '导出'
+'Extended Profile': '扩展资料'
+'Fintech': '金融科技'
+'First Letter': '首字母'
+'Freelancer': '自由职业者'
+'Generate': '生成'
+'Geometric': '几何'
+'Get Seed': '获取种子'
+'Get Seed from User Details': '从用户详情获取种子'
+'Healthcare': '医疗健康'
+'Interest Tags': '兴趣标签'
+'Internet': '互联网'
+'No Shipping Address for This User': '该用户无收货地址'
+'No data': '暂无数据'
+'Not Filled': '未填写'
+'Preview Generation': '预览生成'
+'Product Manager': '产品经理'
+'Quantitative Engineer': '量化工程师'
+'Quantitative Trading': '量化交易'
+'Region Filter': '地区筛选'
+'Remove': '移除'
+'Remove agent avatar?': '移除智能体头像？'
+'Remove user avatar?': '移除用户头像？'
+'Render Style Previews': '渲染样式预览'
+'Researcher': '研究员'
+'Select Default': '选择默认'
+'Select Default Avatar': '选择默认头像'
+'Set Failed': '设置失败'
+'Student': '学生'
+'Style': '样式'
+'Style Selector': '样式选择器'
+'This User Has No': '该用户没有'
+'Trader': '交易员'
+'Traditional Finance': '传统金融'
+'Try to Get from Currently Displayed User Info': '尝试从当前显示的用户信息获取'
+'Upload Avatar': '上传头像'
+'Upload request failed': '上传请求失败'
+'Uploading...': '上传中…'
+'User Avatar': '用户头像'
+'User Details': '用户详情'
+'Within': '在…内'
+'🤖 Collapse': '🤖 收起'
+'🤖 Expand': '🤖 展开'
+'Add': '添加'
+'Add Failed': '添加失败'
+'Add Footer Article': '添加页脚文章'
+'Add Internal Link': '添加站内链接'
+'Add Link': '添加链接'
+'Add Nav': '添加导航'
+'Add Partner': '添加合作伙伴'
+'Add Site Nav': '添加站点导航'
+'Add Social Media': '添加社交媒体'
+'Added': '已添加'
+'Article Title': '文章标题'
+'Bilibili': 'Bilibili'
+'Click to Add': '点击添加'
+'Code or Image': '代码或图片'
+'Column': '栏目'
+'Column Name': '栏目名称'
+'Confirm Delete': '确认删除'
+'Confirm Deletion of Nav Item': '确认删除导航项'
+'Edit Footer Article': '编辑页脚文章'
+'Edit Partner': '编辑合作伙伴'
+'Edit Site Link': '编辑站点链接'
+'Edit Site Navigation': '编辑站点导航'
+'Footer Articles': '页脚文章'
+'Footer Columns': '页脚栏目'
+'Footer Loading': '页脚加载中'
+'Icon Content': '图标内容'
+'Icon Type': '图标类型'
+'Icon and Link are Required': '图标和链接必填'
+'Image URL (e.g., https://...)': '图片地址（例如：https://…）'
+'Internal Links': '站内链接'
+'Link': '链接'
+'Link Title': '链接标题'
+'LinkedIn': 'LinkedIn'
+'Main Nav': '主导航'
+'Main Nav Loading': '主导航加载中'
+'Main Nav Management': '主导航管理'
+'Navigation Settings': '导航设置'
+'No Config Item': '无配置项'
+'No Nav Items': '无导航项'
+'No Records': '无记录'
+'Partner': '合作伙伴'
+'Partner Loading': '合作伙伴加载中'
+'Partner Name': '合作伙伴名称'
+'Platform Name': '平台名称'
+'Refreshing': '刷新中'
+'SVG Code': 'SVG 代码'
+'Show': '显示'
+'Site Navigation': '站点导航'
+'Social Media Links': '社交媒体链接'
+'Social Media Load Failed': '社交媒体加载失败'
+'Social Media Loading': '社交媒体加载中'
+'Social Media Management': '社交媒体管理'
+'Social Media Request Failed': '社交媒体请求失败'
+'Sort failed': '排序失败'
+'Sub-site Navigation': '子站导航'
+'Title and URL required': '标题和地址必填'
+'Tooltip': '提示'
+'Unified Management': '统一管理'
+'Update Failed': '更新失败'
+'Xiaohongshu': '小红书'
+'Zhihu': '知乎'
+'Add Admin': '添加管理员'
+'Admin(s)': '管理员'
+'Approx.': '大约'
+'Avoid Call': '避免通话'
+'Can only edit your own avatar': '只能编辑自己的头像'
+'Cannot load image': '无法加载图片'
+'Change Phone No.': '更换手机号'
+'Changing phone will send SMS to new number. Continue?': '更换手机号将向新号码发送短信，继续？'
+'Click Avatar to Upload New Avatar': '点击头像上传新头像'
+'Click to Change Avatar': '点击更换头像'
+'Click to Upload Avatar': '点击上传头像'
+'Confirm Addition': '确认添加'
+'Current': '当前'
+'Customize': '自定义'
+'Downgrade to Regular User': '降级为普通用户'
+'Enter New Phone No.': '输入新手机号'
+'Enter SMS code': '输入短信验证码'
+'Enter a valid phone number': '请输入有效的手机号'
+'Failed to get info': '获取信息失败'
+'Failed to send': '发送失败'
+'Get Phone from Loaded Data': '从已加载数据获取手机号'
+'Hide Password': '隐藏密码'
+'Image Must Not Exceed': '图片不能超过'
+'Image Size Must Not Exceed': '图片大小不能超过'
+'Internal Contact Email': '内部联系邮箱'
+'Internal Contact Phone': '内部联系电话'
+'Last Login': '最近登录'
+'Modification Failed': '修改失败'
+'Must Include': '必须包含'
+'My Settings': '我的设置'
+'Notes': '备注'
+'Operations': '操作'
+'Otherwise Backend Requires CAPTCHA': '否则后台需要验证码'
+'Permissions': '权限'
+'Phone No.': '手机号'
+'-digit Captcha': '位数验证码'
+'Captcha Sent To': '验证码已发送至'
+'Password Rules: At least 10 characters, Must include Uppercase, Lowercase, Digital, and at least one Special Character (3 types)': '密码规则：至少 10 个字符，必须包含大写字母、小写字母、数字，以及至少一个特殊字符（任选 3 种）'
+'Phone updated, please login again': '手机号已更新，请重新登录'
+'Please enter': '请输入'
+'Recent Actions': '最近操作'
+'Role': '角色'
+'SMS CAPTCHA Method': '短信验证码方式'
+'SMS Code': '短信验证码'
+'Send Captcha': '发送验证码'
+'Send Captcha Failed': '发送验证码失败'
+'Send to When Password Data Exists': '存在密码数据时发送至'
+'Super Admin': '超级管理员'
+'This Admin': '该管理员'
+'This admin has no phone bound': '该管理员未绑定手机号'
+'Two Rows': '两行'
+'Approving': '审核中'
+'Are you sure you want to uninstall': '确定要卸载吗'
+'Audit': '审核'
+'Audit passed': '审核通过'
+'Audit rejected': '审核未通过'
+'Audit rejected. Force install?': '审核未通过，强制安装？'
+'Discover': '发现'
+'Downloads': '下载次数'
+'Force install': '强制安装'
+'Installing': '安装中'
+'Licenses': '许可证'
+'Manual review needed': '需要人工审核'
+'New Plugins': '新插件'
+'No new plugins found': '未发现新插件'
+'No pending submissions': '无待审核提交'
+'No plugins registered yet': '尚未注册插件'
+'No store plugins available': '没有可用的商店插件'
+'Plugin Center': '插件中心'
+'Reasons': '原因'
+'Refresh Store': '刷新商店'
+'Rejecting': '拒绝中'
+'Review report': '审核报告'
+'Run review first': '请先运行审核'
+'Scan Now': '立即扫描'
+'Scan failed': '扫描失败'
+'Scanning': '扫描中'
+'Store': '商店'
+'Submitted for review': '已提交审核'
+'Submitter': '提交者'
+'This will delete the plugin data and configuration.': '这将删除插件数据和配置。'
+'Trial': '试用'
+'Uninstall': '卸载'
+'Uninstall Plugin': '卸载插件'
+'Uninstall failed': '卸载失败'
+'Uninstalled': '已卸载'
+'Uninstalling': '卸载中'
+'Upgrading': '升级中'
+'Upload Plugin': '上传插件'
+'Uploading': '上传中'
+'days trial': '天试用'
+'one-time': '一次性'
+'per month': '每月'
+'per year': '每年'
+'trial': '试用'
+'Auto Generate if Empty': '为空时自动生成'
+'Click Above': '点击上方'
+'Data': '数据'
+'Enter category name': '输入分类名称'
+'Image Description': '图片描述'
+'List': '列表'
+'Size': '尺寸'
+'All Status': '全部状态'
+'Filter Bar': '筛选栏'
+
+# P1 商店同步与导入键（2026-08-22）
+'Import from GitHub/Gitee': '从 GitHub/Gitee 导入'
+'Please enter a GitHub/Gitee repo URL': '请输入 GitHub/Gitee 仓库地址'
+'Sync Store': '同步商店'
+'Synced': '已同步'
+'Newly added': '新增'
+'Syncing': '同步中'
+'Sync timed out': '同步超时'
+'User ID': '用户 ID'
+'Ability Type': '能力类型'
+'Add Model': '添加模型'
+'Are you sure you want to delete': '确定要删除吗'
+'Check Network or': '请检查网络或'
+'Confirm Deletion of Model': '确认删除模型'
+'Edit Model': '编辑模型'
+'Model Management': '模型管理'
+'Model not found': '未找到模型'
+'No Models': '无模型'
+'No Models Settings': '无模型配置'
+'Refresh & Retry': '刷新并重试'
+'TTS': '语音合成'
+'Video': '视频'
+'Voice': '语音'
+'Voice Cloning': '声音克隆'
+'Auto Detect': '自动检测'
+'Delete?': '删除？'
+'Download List': '下载列表'
+'Edit — ': '编辑 — '
+'External Links': '外部链接'
+'Installer': '安装包'
+'Leave Empty for Auto': '留空自动检测'
+'No Content': '无内容'
+'No Subject': '无主题'
+'One-Line Description': '一句话描述'
+'Tags': '标签'
+'Upload Download': '上传下载项'
+'Add Button': '添加按钮'
+'Add First Links': '添加首批链接'
+'Add Nav Link': '添加导航链接'
+'Brand Settings': '品牌设置'
+'Edit Nav Link': '编辑导航链接'
+'Entire Site': '全站'
+'Links': '链接'
+'No Nav Links': '无导航链接'
+'Plaza': '广场'
+'Portal': '门户'
+'Sort Button': '排序按钮'
+'Switch Site': '切换站点'
+'Applicable Products': '适用商品'
+'Coupon List': '优惠券列表'
+'Edit Coupon': '编辑优惠券'
+'New Coupon': '新建优惠券'
+'Summer Sale': '夏日促销'
+'Total Limit': '总限量'
+'Total Coupons': '优惠券总数'
+'Total Used': '已使用总数'
+'Total Saved': '累计节省'
+'Records': '记录'
+'Admin Login': '管理员登录'
+'Administrator Login': '管理员登录'
+'Code sent': '验证码已发送'
+'Login failed': '登录失败'
+'Login successful, redirecting...': '登录成功，正在跳转…'
+'Please enter username and password': '请输入用户名和密码'
+'Please enter your phone number': '请输入您的手机号'
+'Use SMS code to login': '使用短信验证码登录'
+'Username / Phone': '用户名 / 手机号'
+'Username or phone': '用户名或手机号'
+'Captcha failed to load, please refresh the page': '验证码加载失败，请刷新页面'
+'Drag the correct shape into the slot to verify': '将正确图形拖入凹槽以完成验证'
+'Login / Register': '登录 / 注册'
+'Password must contain special character (!@#$%^&*etc.)': '密码必须包含特殊字符（!@#$%^&*等）'
+'Please complete the captcha first': '请先完成验证码'
+'Connection Failed': '连接失败'
+'Executor': '执行者'
+'Full Page Chat': '全页对话'
+'Independent': '独立'
+'Load Matrix Data': '加载矩阵数据'
+'No Sub': '无子任务'
+'Please Confirm Service is Running': '请确认服务正在运行'
+'Recent Tasks': '最近任务'
+'Split from Matrix Page': '从矩阵页拆分'
+'Total Tasks': '总任务数'
+'All Types': '全部类型'
+'All Verification Status': '全部认证状态'
+'Customer Details': '客户详情'
+'Customer List': '客户列表'
+'Enterprise Info': '企业信息'
+'Enterprise Verification Pending': '企业认证待审核'
+'Please try again later': '请稍后重试'
+'Search...': '搜索…'
+'Tax ID': '税号'
+'Verification Status': '认证状态'
+'+ Add': '+ 添加'
+'Chinese': '中文'
+'Delete this translation?': '确定删除这条翻译吗？'
+'Edit Translation': '编辑翻译'
+'Enter source text (Chinese)': '输入源文本（中文）'
+'Enter translation text': '输入翻译文本'
+'Manual': '手动'
+'Sync from YAML': '从 YAML 同步'
+'Translation': '翻译'
+'translations': '条翻译'
+'Admin Reply': '管理员回复'
+'After-Sales': '售后'
+'Enter Reply': '输入回复'
+'Enter Reply Content': '请输入回复内容'
+'Reopen': '重新打开'
+'Replied': '已回复'
+'Status Filter Row': '状态筛选行'
+'Suggestion Merged into User Ticket': '建议已合并到用户工单'
+'Type Filter Row': '类型筛选行'
+'Delete this template?': '确定删除此模板吗？'
+'Name & Template': '名称与模板'
+'New User Registration': '新用户注册'
+'No Templates': '暂无模板'
+'Omni-Media Creation': '全媒体创作'
+'Posts Only': '仅帖子'
+'Required': '必填'
+'SMS Template Management': '短信模板管理'
+'Usage Description': '用途说明'
+'Invalid Format': '格式无效'
+'Log': '日志'
+'Start Time': '开始时间'
+'Trigger': '触发'
+'Workflow': '工作流'
+'Admin Panel': '管理后台'
+'Checking': '检查中'
+'Latest': '最新'
+'Restarting': '重启中'
+'Update Now': '立即更新'
+'Updating': '更新中'
+'Verifying Identity': '正在验证身份'
+'Category Filter': '分类筛选'
+'Content Will': '内容遗嘱'
+'Experience System Auto-Aggregates': '体验系统自动聚合'
+'No Posts': '暂无帖子'
+'Post': '帖子'
+'Pre-Sales': '售前'
+'Pre-Sales Included': '含售前'
+'Auto Schedule': '自动调度'
+'Create your first workflow': '创建你的第一个工作流'
+'Failed to create from template': '从模板创建失败'
+'From Template': '从模板'
+'Last Run': '上次运行'
+'No templates': '暂无模板'
+'No workflows yet': '暂无工作流'
+'Run this workflow?': '运行此工作流？'
+'Workflow started': '工作流已启动'
+'Delete Quota': '删除配额'
+'Global': '全局'
+'Module': '模块'
+'optional': '可选'
+'unlimited': '不限'

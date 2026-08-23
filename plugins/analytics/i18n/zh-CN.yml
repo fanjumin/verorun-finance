@@ -1,0 +1,177 @@
+plugin.name: 统计
+📊 Analytics Dashboard: 📊 统计仪表盘
+Site Statistics: 站点统计
+Real-time Data · Privacy-friendly · No Cookie Tracking: 实时数据 · 隐私友好 · 无 Cookie 追踪
+Online: 在线
+Today Page Views (PV): 今日浏览量 (PV)
+Unique Visitors (UV): 独立访客 (UV)
+Total Sessions: 总会话
+Avg Response: 平均响应
+Tabs: 标签页
+Trend: 趋势
+Region: 地区
+Devices: 设备
+Alerts: 告警
+Traffic Trend: 流量趋势
+Hourly Distribution (Today): 小时级分布 (今天)
+Details: 详细数据
+Top Pages (30d): 热门页面 (30天)
+Source Distribution: 来源分布
+Source Details: 来源明细
+🇨🇳 China: 🇨🇳 中国
+Province Ranking: 省份排行
+City Details: 城市明细
+🌍 Country/Region Distribution: 🌍 国家/地区分布
+Device Type: 设备类型
+Browser & OS: 浏览器 & OS
+Custom Events (30d): 自定义事件 (30天)
+Alert Rules: 告警规则
+📋 Add Alert Rule: 📋 添加告警规则
+UV (Unique Visitors): UV (独立访客)
+PV (Page Views): PV (浏览量)
+Bounce Rate (%): 跳出率 (%)
+Error Rate (%): 错误率 (%)
+Avg Response Time (ms): 平均响应时间 (ms)
+(Greater Than): (大于)
+(Less Than): (小于)
+(Greater or Equal): (大于等于)
+(Less or Equal): (小于等于)
+Threshold: 阈值
+1 Hour: 1 小时
+24 Hours: 24 小时
+7 Days: 7 天
+➕ Add: ➕ 添加
+Refresh: 刷新数据
+Date: 日期
+Bounce Rate: 跳出率
+Avg Duration: 平均时长
+No page data: 暂无页面数据
+Path: 路径
+No China city data: 暂无中国城市数据
+No province data: 暂无省份数据
+Other Regions: 其他地区
+High: 高
+Low: 低
+Map loading failed (network issue). See table below for data.: 地图加载失败（网络问题），数据见下方表格
+Province: 省份
+City: 城市
+Country: 国家
+Browser: 浏览器
+Total: 总值
+Metric: 指标
+Condition: 条件
+Window: 窗口
+Last Triggered: 最后触发
+Page: 页面
+Event: 事件
+Name: 名称
+Session: 会话
+Type: 类型
+Percentage: 占比
+No data: 暂无数据
+Unknown: 未知
+No trend data yet, will auto-generate after publishing: 暂无趋势数据，发布后将自动生成
+No geolocation data (GeoIP required): 暂无地理位置数据（需要 GeoIP）
+No device data: 暂无设备数据
+No custom events. Automatically logged when users launch agents, view stocks, create workflows etc.: 暂无自定义事件。用户启动智能体、查看股票、创建工作流等操作时会自动记录。
+No alert rules. System auto-notifies when metrics exceed thresholds after adding alerts.: 暂无告警规则。添加告警后，指标超过阈值时系统会自动通知。
+Categories: 分类
+Count: 次数
+Status: 状态
+Actions: 操作
+● Enabled: ● 已启用
+○ Disabled: ○ 已禁用
+Delete: 删除
+Delete this alert rule?: 删除此告警规则？
+Unauthorized: 未授权
+path required: 缺少 path 参数
+event_name required: 缺少 event_name 参数
+unknown type: 未知类型
+license_key required: 缺少 license_key 参数
+account_id required: 缺少 Account ID
+🌍 World: 🌍 全球
+GeoIP Database Setup: GeoIP 数据库设置
+GeoIP databases are required to show geographic distribution on the Region tab. Choose the one that matches your user base.: GeoIP 数据库用于在地图标签页显示地理分布数据。请选择适合您用户的数据库。
+ip2region: ip2region
+Chinese IPs: 中国 IP
+Free · No Registration · Open Source: 免费 · 无需注册 · 开源
+Source: 数据源
+Download ip2region Database: 下载 ip2region 数据库
+Update ip2region: 更新 ip2region
+International IPs: 国际 IP
+Free Registration Required: 需免费注册
+Register at: 注册地址
+no credit card required. After registration, generate a license key and paste it below.: 无需信用卡。注册后生成许可证密钥，粘贴到下方即可。
+Download GeoLite2 Database: 下载 GeoLite2 数据库
+Update GeoLite2: 更新 GeoLite2
+Installed: 已安装
+Not installed: 未安装
+Click the button below to download from GitHub: 点击下方按钮从 GitHub 下载
+Downloading...: 下载中...
+Settings: 设置
+No geographic data yet: 暂无地理数据
+Go to the Settings tab to set up GeoIP databases — ip2region (free, no registration) for Chinese IPs or MaxMind GeoLite2 for international coverage.: 前往设置标签页配置 GeoIP 数据库 — ip2region（免费无需注册）用于中国 IP，MaxMind GeoLite2 用于国际覆盖。
+Go to the Settings tab to set up GeoIP databases — MaxMind GeoLite2 (free registration) for international coverage or ip2region for Chinese IPs.: 前往设置标签页配置 GeoIP 数据库 — MaxMind GeoLite2（免费注册）用于国际覆盖，ip2region 用于中国 IP。
+Edition: 版本
+GeoLite2-City (Free): GeoLite2-City (免费)
+GeoIP2-City (Paid): GeoIP2-City (付费)
+Download Database: 下载数据库
+Update Database: 更新数据库
+Upload .mmdb: 上传 .mmdb
+Uploaded: 已上传
+Uploading...: 上传中...
+Only .mmdb files allowed: 仅支持 .mmdb 文件
+No file uploaded: 未选择文件
+If auto-download fails (e.g. HTTP 451), download the .mmdb file manually from your MaxMind account and use the Upload button.: 如果自动下载失败（例如 HTTP 451），请从 MaxMind 账户手动下载 .mmdb 文件后使用上传按钮安装。
+CDN Download: CDN 下载
+
+# ── 2026-08-06 AUDIT 修复新增键 ──
+'🚨 Alert triggered: {name}\nMetric: {metric}\nCurrent value: {value} (threshold: {op} {threshold})\nTime Window: {window}': '🚨 告警触发: {name}\n指标: {metric}\n当前值: {value} (阈值: {op} {threshold})\n时间窗口: {window}'
+'Statistical analysis alert: {name}': '统计分析告警: {name}'
+'[Analytics Processor] Press Ctrl+C to stop': '[分析处理器] 按 Ctrl+C 停止'
+'\n[Analytics Processor] Stopping...': '\n[分析处理器] 正在停止...'
+'[Analytics Processor] ✅ Stopped': '[分析处理器] ✅ 已停止'
+'📊 Statistics Analysis Report ({period})': '📊 统计分析报告 ({period})'
+'Total Views (PV): {pv}': '总浏览量 (PV): {pv}'
+'Unique Visitors (UV): {uv}': '独立访客 (UV): {uv}'
+'Total Sessions: {sessions}': '总会话: {sessions}'
+'Daily PV: {daily_pv}  |  Daily UV: {daily_uv}': '日均 PV: {daily_pv}  |  日均 UV: {daily_uv}'
+'📈 Traffic Change: {pct:+.1f}%': '📈 流量变化: {pct:+.1f}%'
+'  Bounce Rate: {rate:.1f}%': '  跳出率: {rate:.1f}%'
+'  Average Session Duration: {secs:.0f}s': '  平均会话时长: {secs:.0f}秒'
+'🔗 Top Sources:': '🔗 热门来源:'
+'  • {name}: {pv} PV ({pct:.1f}%)': '  • {name}: {pv} 浏览量 ({pct:.1f}%)'
+'📄 Popular Pages:': '📄 热门页面:'
+'  • {path}: {pv} PV / {uv} UV': '  • {path}: {pv} 浏览量 / {uv} 访客'
+'  Errors: {n}': '  错误: {n}'
+'\n[Analytics Daemon] Stopping...': '\n[分析守护进程] 正在停止...'
+'[Analytics Daemon] ✅ Stopped': '[分析守护进程] ✅ 已停止'
+'  📊 Analytics System Status': '  📊 分析系统状态'
+'\n=== Add Analytics Alert Rule ===': '\n=== 添加分析告警规则 ==='
+'Alert name: ': '告警名称: '
+'❌ Name Cannot Be Empty': '❌ 名称不能为空'
+'\nMetric options:': '\n指标选项:'
+'bounce_rate (Bounce rate %)': 'bounce_rate (跳出率 %)'
+'Error rate (%)': '错误率 (%)'
+'avg_response_time (Average response ms)': 'avg_response_time (平均响应毫秒)'
+'Select metric (1-5): ': '选择指标 (1-5): '
+'\nOperators:': '\n操作符:'
+'  1. > (Greater than)': '  1. > (大于)'
+'  2. < (Less than)': '  2. < (小于)'
+'  3. >= (Greater than or equal to)': '  3. >= (大于等于)'
+'  4. <= (Less than or equal to)': '  4. <= (小于等于)'
+'Select operator (1-4): ': '选择操作符 (1-4): '
+'\nTime window:': '\n时间窗口:'
+'  1. 1h (1 hour)': '  1. 1小时'
+'  2. 24h (24 hours)': '  2. 24小时'
+'  3. 7d (7 days)': '  3. 7天'
+'Select (1-3): ': '选择 (1-3): '
+'\n✅ Alert rule created (ID: {})': '\n✅ 告警规则已创建 (ID: {})'
+'❌ Orchestrator Module Required (pip install apscheduler)': '❌ 需要编排器模块 (pip install apscheduler)'
+'✅ Predefined Workflow Created:': '✅ 预设工作流已创建:'
+'  📊 Daily Analysis Report (ID: {})': '  📊 每日分析报告 (ID: {})'
+'  📊 Weekly Operations Report (ID: {})': '  📊 每周运营报告 (ID: {})'
+'Daily Analysis Report': '每日分析报告'
+'Weekly Operations Report': '每周运营报告'
+'  ⏰ Cron Job Bound (Daily 8:00 / Weekly Monday 9:00)': '  ⏰ 定时任务已绑定 (每日 8:00 / 每周一 9:00)'
+'Too many requests': '请求过于频繁'

@@ -1,8 +1,27 @@
 window.MARKET=window.MARKET||'{{ MARKET|default('cn') }}';
 window.l_plugins_store=function(){
   document.getElementById("pt").textContent="{{ _('Plugin Store') }}";
-  renderStoreList();
+  var mc=document.getElementById("mc");
+  mc.innerHTML='<div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;border-bottom:1px solid var(--bd);padding-bottom:8px">'+
+    '<button class="btn bp" id="storeTabBrowse" onclick="switchStoreTab(\'browse\')">{{ _('Browse') }}</button>'+
+    '<button class="btn bo" id="storeTabSubs" onclick="switchStoreTab(\'subs\')">{{ _('My Subscriptions') }}</button>'+
+    '<button class="btn bo" id="storeTabAdmin" onclick="switchStoreTab(\'admin\')" style="display:'+((typeof _isSuperAdmin!=='undefined'&&_isSuperAdmin)?'':'none')+'">{{ _('Store Admin') }}</button>'+
+    '</div><div id="storeTabContent"></div>';
+  switchStoreTab('browse');
 };
+function switchStoreTab(tab){
+  var b=document.getElementById("storeTabBrowse");
+  var s=document.getElementById("storeTabSubs");
+  var a=document.getElementById("storeTabAdmin");
+  if(b){b.className=tab==='browse'?'btn bp':'btn bo';}
+  if(s){s.className=tab==='subs'?'btn bp':'btn bo';}
+  if(a){a.className=tab==='admin'?'btn bp':'btn bo';}
+  var content=document.getElementById("storeTabContent");
+  if(!content)return;
+  if(tab==='admin'){renderStoreAdminList(content);}
+  else if(tab==='subs'){renderSubscriptionList(content);}
+  else{renderStoreList(content);}
+}
 function renderStoreList(container){
   var mc=container||document.getElementById("subview")||document.getElementById("mc");
   mc.innerHTML='<div class="lo"><div class="s"></div>{{ _('Loading') }}...</div>';
@@ -10,7 +29,7 @@ function renderStoreList(container){
   var cat=document.getElementById("storeCategory")?document.getElementById("storeCategory").value:'';
   var pt=document.getElementById("storePrice")?document.getElementById("storePrice").value:'';
   var sort=document.getElementById("storeSort")?document.getElementById("storeSort").value:'downloads';
-  var url="/admin/plugins/store/browse?q="+encodeURIComponent(q)+"&category="+encodeURIComponent(cat)+"&price_type="+encodeURIComponent(pt)+"&sort_by="+encodeURIComponent(sort);
+  var url="/admin/plugins/store/browse?q="+encodeURIComponent(q)+"&category="+encodeURIComponent(cat)+"&price_type="+encodeURIComponent(pt)+"&sort_by="+encodeURIComponent(sort)+"&page_size=100";
   fetch(url,{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
     if(!d.success){mc.innerHTML='<div class="em">{{ _('Load failed') }}: '+esc(d.error||'')+'</div>';return}
     var plugins=d.data.plugins||[];
@@ -21,7 +40,7 @@ function renderStoreList(container){
     h+='<select class="in" id="storePrice" onchange="renderStoreList()"><option value="">{{ _('All') }}</option><option value="free">{{ _('Free') }}</option><option value="onetime">{{ _('Paid (One-time)') }}</option><option value="sub">{{ _('Subscription') }}</option></select>';
     h+='<select class="in" id="storeSort" onchange="renderStoreList()"><option value="downloads">{{ _('Most Downloaded') }}</option><option value="rating">{{ _('Highest Rated') }}</option><option value="newest">{{ _('Newest') }}</option><option value="price_asc">{{ _('Price: Low to High') }}</option><option value="price_desc">{{ _('Price: High to Low') }}</option></select>';
     h+='</div>';
-    h+='<span style="font-size:13px;color:var(--text-muted)">{{ _('Total') }}: '+plugins.length+'</span>';
+    h+='<span style="font-size:13px;color:var(--text-muted)">{{ _('Total') }}: '+((d.data&&d.data.total)||plugins.length)+'</span>';
     h+='</div>';
     if(plugins.length===0){
       h+='<div class="empty-state"><div style="margin-bottom:12px;font-size:40px">🧩</div><div style="color:var(--dim)">{{ _('No plugins in store') }}</div></div>';
@@ -306,15 +325,29 @@ function renderSubscriptionList(container){
       };
       subs.forEach(function(s){
         var st=statusMap[s.status]||esc(s.status);
+        var intervalTxt = s.interval_type==='month'?'{{ _('Monthly') }}':s.interval_type==='quarter'?'{{ _('Quarterly') }}':'{{ _('Yearly') }}';
+        var badge='';
+        if(s.bundle_id){badge=' <span class="bdg" style="background:rgba(123,101,235,.15);color:#7b65eb">📦 '+esc(s.bundle_id)+'</span>';}
+        else if(s.tier){badge=' <span class="bdg off">'+esc(s.tier)+'</span>';}
+        var daysLeft='-';
+        if(s.current_period_end&&s.status==='active'){
+          var endT=new Date(s.current_period_end.replace(' ','T')).getTime();
+          var dl=Math.ceil((endT-Date.now())/86400000);
+          daysLeft = dl>0 ? dl+' {{ _('Days Left') }}' : (dl===0?'{{ _('Today') }}':'<span style="color:#f85149">'+dl+'d</span>');
+        }
         h+='<tr>';
-        h+='<td style="padding:10px 12px;font-weight:600">'+esc(s.plugin_id)+'</td>';
-        h+='<td style="padding:10px 12px;text-align:center">'+(s.interval_type==='month'?'{{ _('Monthly') }}':'{{ _('Yearly') }}')+'</td>';
+        h+='<td style="padding:10px 12px;font-weight:600">'+esc(s.plugin_id)+badge+'</td>';
+        h+='<td style="padding:10px 12px;text-align:center">'+intervalTxt+'</td>';
         h+='<td style="padding:10px 12px;text-align:center">'+(window.MARKET==='intl'?'$':'¥')+(s.amount_fen/100).toFixed(2)+'</td>';
         h+='<td style="padding:10px 12px;text-align:center">'+st+'</td>';
-        h+='<td style="padding:10px 12px;text-align:center;font-size:12px;color:var(--dim)">'+(s.current_period_end?esc(s.current_period_end.slice(0,10)):'-')+'</td>';
+        h+='<td style="padding:10px 12px;text-align:center;font-size:12px;color:var(--dim)">'+(s.current_period_end?esc(s.current_period_end.slice(0,10)):'-')+'<br>'+daysLeft+'</td>';
         h+='<td style="padding:10px 12px;text-align:center">'+(s.auto_renew?'✅':'❌')+'</td>';
         h+='<td style="padding:10px 12px;text-align:center">';
         if(s.status==='active'){
+          h+='<button class="btn bo bs" onclick="showChangeCycleDialog(\''+escAttr(s.plugin_id)+'\',\''+escAttr(s.interval_type)+'\')" style="margin-right:4px">🔄 {{ _('Change') }}</button>';
+          if(s.bundle_id){
+            h+='<button class="btn bo bs" onclick="showBundleUpgradeDialog(\''+escAttr(s.bundle_id)+'\')" style="margin-right:4px">📦 {{ _('Upgrade Bundle') }}</button>';
+          }
           h+='<button class="btn bo bs" onclick="cancelSubscription(\''+escAttr(s.plugin_id)+'\')" style="margin-right:4px">{{ _('Cancel') }}</button>';
           h+='<button class="btn bo bs" onclick="renewSubscription(\''+escAttr(s.plugin_id)+'\')">{{ _('Renew') }}</button>';
         }
@@ -337,6 +370,73 @@ function renewSubscription(pid){
     if(d.success){showToast("{{ _('Subscription renewed') }}","success");renderSubscriptionList()}
     else{showToast(d.error||"{{ _('Renew failed') }}","error")}
   }).catch(function(){showToast("{{ _('Network error') }}","error")});
+}
+function showChangeCycleDialog(pid, curInterval){
+  var mc=document.getElementById("storeTabContent")||document.getElementById("subview")||document.getElementById("mc");
+  var selected = function(iv){return iv===curInterval?'selected':''};
+  mc.innerHTML='<div class="cd"><div class="st">🔄 {{ _('Change Billing Cycle') }}: '+esc(pid)+'</div>'+
+    '<div style="margin:16px 0"><table style="width:100%;font-size:13px">'+
+    '<tr><td style="padding:8px 12px;color:var(--dim)">{{ _('New Interval') }}</td>'+
+    '<td style="padding:8px 12px"><select class="in" id="changeIntervalSel" onchange="fetchChangeQuote(\''+escAttr(pid)+'\')">'+
+    '<option value="month" '+selected('month')+'>{{ _('Monthly') }}</option>'+
+    '<option value="quarter" '+selected('quarter')+'>{{ _('Quarterly') }}</option>'+
+    '<option value="year" '+selected('year')+'>{{ _('Yearly') }}</option></select></td></tr>'+
+    '</table><div id="changeQuoteBox" style="margin-top:12px;font-size:12px;color:var(--dim)"></div></div>'+
+    '<div style="display:flex;gap:12px">'+
+    '<button class="btn bp" onclick="submitChangeCycle(\''+escAttr(pid)+'\')">✔ {{ _('Confirm Change') }}</button>'+
+    '<button class="btn bo" onclick="renderSubscriptionList()">{{ _('Back') }}</button>'+
+    '</div></div>';
+  fetchChangeQuote(pid);
+}
+function fetchChangeQuote(pid){
+  var iv=document.getElementById("changeIntervalSel").value;
+  var box=document.getElementById("changeQuoteBox");
+  box.innerHTML='<div class="lo"><div class="s"></div>{{ _('Loading') }}...</div>';
+  fetch("/admin/plugins/subscriptions/"+encodeURIComponent(pid)+"/change/quote",{method:"POST",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify({interval:iv})}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success){box.innerHTML='<div class="em">'+esc(d.error||'')+'</div>';return}
+    var q=d.data,ps=window.MARKET==='intl'?'$':'¥';
+    var payTxt=q.pay_fen>0?ps+(q.pay_fen/100).toFixed(2):'<span style="color:var(--on)">0</span>';
+    box.__proration=q.credit_fen||0;
+    box.innerHTML='<div style="background:var(--bg2);padding:10px;border-radius:6px;line-height:1.9">'+
+      '<div>{{ _('New Price') }}: <b>'+ps+(q.price_fen/100).toFixed(2)+'</b></div>'+
+      '<div>{{ _('Remaining Value Credit') }}: -'+ps+(q.credit_fen/100).toFixed(2)+'</div>'+
+      (q.carryover_fen>0?'<div>{{ _('Carryover') }}: '+ps+(q.carryover_fen/100).toFixed(2)+'</div>':'')+
+      '<div>{{ _('Payable') }}: <b>'+payTxt+'</b></div>'+
+      '</div>';
+  }).catch(function(){box.innerHTML='<div class="em">{{ _('Network error') }}</div>'});
+}
+function submitChangeCycle(pid){
+  var iv=document.getElementById("changeIntervalSel").value;
+  var quoteBox=document.getElementById("changeQuoteBox");
+  var proration=0;
+  if(quoteBox&&quoteBox.__proration!==undefined){proration=quoteBox.__proration}
+  fetch("/admin/plugins/subscriptions/"+encodeURIComponent(pid)+"/change",{method:"POST",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify({interval:iv,proration_fen:proration})}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){showToast("{{ _('Billing cycle changed') }}","success");renderSubscriptionList()}
+    else{showToast(d.error||"{{ _('Change failed') }}","error")}
+  }).catch(function(){showToast("{{ _('Network error') }}","error")});
+}
+function showBundleUpgradeDialog(bundleId){
+  var mc=document.getElementById("storeTabContent")||document.getElementById("subview")||document.getElementById("mc");
+  mc.innerHTML='<div class="cd"><div class="st">📦 {{ _('Upgrade to Bundle') }}: '+esc(bundleId)+'</div>'+
+    '<div id="bundleQuoteBox" style="margin:16px 0;font-size:12px;color:var(--dim)"><div class="lo"><div class="s"></div>{{ _('Loading') }}...</div></div>'+
+    '<div style="display:flex;gap:12px">'+
+    '<button class="btn bp" onclick="renderStoreList()">{{ _('Go to Store') }}</button>'+
+    '<button class="btn bo" onclick="renderSubscriptionList()">{{ _('Back') }}</button>'+
+    '</div></div>';
+  fetch("/admin/plugins/subscriptions/bundle/"+encodeURIComponent(bundleId)+"/upgrade/quote",{method:"POST",headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    var box=document.getElementById("bundleQuoteBox");
+    if(!d.success){box.innerHTML='<div class="em">'+esc(d.error||'')+'</div>';return}
+    var q=d.data,ps=window.MARKET==='intl'?'$':'¥';
+    var bundleMonth=(q.bundle&&q.bundle.month)||0;
+    var payTxt=q.needs_payment?ps+(q.upgrade_cost_fen/100).toFixed(2):'<span style="color:var(--on)">0</span>';
+    box.innerHTML='<div style="background:var(--bg2);padding:10px;border-radius:6px;line-height:1.9">'+
+      '<div>{{ _('Bundle Price') }}: <b>'+ps+(bundleMonth/100).toFixed(2)+'/mo</b></div>'+
+      '<div>{{ _('Remaining Value Credit') }}: -'+ps+(q.credit_fen/100).toFixed(2)+'</div>'+
+      (q.carryover_fen>0?'<div>{{ _('Carryover') }}: '+ps+(q.carryover_fen/100).toFixed(2)+'</div>':'')+
+      '<div>{{ _('Payable') }}: <b>'+payTxt+'</b></div>'+
+      '<div style="margin-top:8px;color:var(--dim)">{{ _('Proceed in store checkout to complete upgrade') }}</div>'+
+      '</div>';
+  }).catch(function(){var box=document.getElementById("bundleQuoteBox");if(box){box.innerHTML='<div class="em">{{ _('Network error') }}</div>'}});
 }
 
 /* ── Star Rating Helper ── */
@@ -644,7 +744,8 @@ function renderStoreAdminList(container){
     if(!d.success){mc.innerHTML='<div class="em">{{ _('Load failed') }}: '+esc(d.error||'')+'</div>';return}
     var plugins=d.data.plugins||[];
     var h='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">'+
-      '<span style="font-size:13px;color:var(--text-muted)">{{ _('Total') }}: '+plugins.length+'</span>'+
+      '<div style="display:flex;gap:8px;align-items:center"><span style="font-size:13px;color:var(--text-muted)">{{ _('Total') }}: '+plugins.length+'</span>'+
+      '<button class="btn bo bs" onclick="syncStoreCatalog()">🔄 {{ _('Sync Store') }}</button></div>'+
       '<button class="btn bp bs" onclick="showStoreAdminForm(null)">{{ _('Add Plugin') }}</button></div>';
     if(plugins.length===0){
       h+='<div class="empty-state"><div style="margin-bottom:12px;font-size:40px">📦</div><div style="color:var(--dim)">{{ _('No plugins in store') }}</div></div>';
@@ -673,6 +774,27 @@ function renderStoreAdminList(container){
     mc.innerHTML=h;
   }).catch(function(){mc.innerHTML='<div class="em">{{ _('Network error') }}</div>'});
 }
+function syncStoreCatalog(){
+  var btn=document.querySelector('.btn[onclick="syncStoreCatalog()"]');
+  var old=btn?btn.innerHTML:'';
+  if(btn){btn.disabled=true;btn.innerHTML='<span style="display:inline-block;width:12px;height:12px;border:2px solid var(--border);border-top-color:currentColor;border-radius:50%;animation:vrspin 0.8s linear infinite;vertical-align:-2px"></span> {{ _('Syncing') }}...'}
+  var ctl=new AbortController();
+  var timer=setTimeout(function(){ctl.abort()},40000);
+  fetch("/admin/plugins/store/sync",{method:"POST",headers:{"Authorization":"Bearer "+T},signal:ctl.signal}).then(function(r){return r.json()}).then(function(d){
+    clearTimeout(timer);
+    if(btn){btn.disabled=false;btn.innerHTML=old}
+    if(!d.success){showToast(d.error||"{{ _('Sync failed') }}","error");return}
+    var added=d.data.added||[];
+    var base="🔄 {{ _('Synced') }}: "+d.data.total+" plugins";
+    if(d.data.error){showToast(base+" ⚠️ "+d.data.error,"error")}
+    else{showToast(added.length?base+" · {{ _('Newly added') }}: "+added.join(", "):base,"success")}
+    renderStoreAdminList();
+  }).catch(function(e){
+    clearTimeout(timer);
+    if(btn){btn.disabled=false;btn.innerHTML=old}
+    showToast(e.name==='AbortError'?"{{ _('Sync timed out') }}":"{{ _('Network error') }}","error")
+  });
+}
 function showStoreAdminForm(identifier){
   var mc=document.getElementById("subview")||document.getElementById("mc");
   var isEdit=!!identifier;
@@ -697,6 +819,13 @@ function showStoreAdminForm(identifier){
 }
 function _renderStoreForm(container, title, p){
   container.innerHTML='<div class="cd"><div class="st">📝 '+title+'</div>'+
+    /* ★ GitHub 导入区：从仓库自动获取元数据并回填表单 */
+    '<div id="ghImportBox" style="margin:12px 0;padding:12px;background:var(--bg-secondary);border-radius:8px">'+
+    '<div style="font-size:12px;font-weight:600;margin-bottom:6px">⬇️ {{ _('Import from GitHub') }}</div>'+
+    '<div style="display:flex;gap:8px">'+
+    '<input class="in" id="ghImportUrl" placeholder="https://github.com/fanjumin/verorun-code/tree/main/plugins/veroscholar" style="flex:1">'+
+    '<button class="btn bo bs" onclick="showGitHubImportBox()">{{ _('Fetch') }}</button>'+
+    '</div></div>'+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0">'+
     '<div><label style="display:block;font-size:12px;margin-bottom:4px">{{ _('Identifier') }} *</label><input class="in" id="sai_identifier" value="'+escAttr(p.identifier||'')+'" style="width:100%"></div>'+
     '<div><label style="display:block;font-size:12px;margin-bottom:4px">{{ _('Name') }} *</label><input class="in" id="sai_name" value="'+escAttr(p.name||'')+'" style="width:100%"></div>'+
@@ -706,9 +835,20 @@ function _renderStoreForm(container, title, p){
     '<div><label style="display:block;font-size:12px;margin-bottom:4px">{{ _('Tagline Color') }}</label><input class="in" id="sai_tagline_color" type="color" value="'+(p.tagline_color||'#ffffff')+'" style="width:100%;height:34px;padding:2px"></div>'+
     '<div><label style="display:block;font-size:12px;margin-bottom:4px">{{ _('Version') }}</label><input class="in" id="sai_version" value="'+escAttr(p.version||'0.1.0')+'" style="width:100%"></div>'+
     '<div><label style="display:block;font-size:12px;margin-bottom:4px">{{ _('Category') }}</label><select class="in" id="sai_category" style="width:100%"><option value="">-</option><option value="system"'+(p.category==='system'?' selected':'')+'>{{ _('System') }}</option><option value="shop"'+(p.category==='shop'?' selected':'')+'>{{ _('Shop') }}</option><option value="content"'+(p.category==='content'?' selected':'')+'>{{ _('Content') }}</option><option value="ai_agent"'+(p.category==='ai_agent'?' selected':'')+'>{{ _('AI Agent') }}</option><option value="social"'+(p.category==='social'?' selected':'')+'>{{ _('Social') }}</option><option value="tools"'+(p.category==='tools'?' selected':'')+'>{{ _('Tools') }}</option><option value="supply_chain"'+(p.category==='supply_chain'?' selected':'')+'>{{ _('Supply Chain') }}</option></select></div>'+
-    '<div><label style="display:block;font-size:12px;margin-bottom:4px">{{ _('Price Type') }}</label><select class="in" id="sai_price_type" style="width:100%" onchange="document.getElementById(\'sai_price_interval_row\').style.display=this.value===\'sub\'?\'\':\'none\'"><option value="free"'+(p.price_type==='free'?' selected':'')+'>{{ _('Free') }}</option><option value="onetime"'+(p.price_type==='onetime'?' selected':'')+'>{{ _('One-time') }}</option><option value="sub"'+(p.price_type==='sub'?' selected':'')+'>{{ _('Subscription') }}</option></select></div>'+
-    '<div><label style="display:block;font-size:12px;margin-bottom:4px">{{ _('Price') }} ({{ _('cents') }})</label><input class="in" id="sai_price" type="number" value="'+(p.price_amount||0)+'" style="width:100%"></div>'+
+    '<div><label style="display:block;font-size:12px;margin-bottom:4px">{{ _('Price Type') }}</label><select class="in" id="sai_price_type" style="width:100%" onchange="var s=this.value===\'sub\';document.getElementById(\'sai_price_interval_row\').style.display=s?\'\':\'none\';document.getElementById(\'sai_price_calc_row\').style.display=s?\'\':\'none\'"><option value="free"'+(p.price_type==='free'?' selected':'')+'>{{ _('Free') }}</option><option value="onetime"'+(p.price_type==='onetime'?' selected':'')+'>{{ _('One-time') }}</option><option value="sub"'+(p.price_type==='sub'?' selected':'')+'>{{ _('Subscription') }}</option></select></div>'+
+    '<div><label style="display:block;font-size:12px;margin-bottom:4px">{{ _('Price') }} - {{ _('Month') }} ({{ _('cents') }})</label><input class="in" id="sai_price" type="number" value="'+(p.price_amount||0)+'" style="width:100%"></div>'+
+    '<div><label style="display:block;font-size:12px;margin-bottom:4px">{{ _('Price') }} - {{ _('Quarter') }} ({{ _('cents') }})</label><input class="in" id="sai_price_quarter" type="number" value="'+(p.price_quarter_fen||0)+'" style="width:100%"></div>'+
+    '<div><label style="display:block;font-size:12px;margin-bottom:4px">{{ _('Price') }} - {{ _('Year') }} ({{ _('cents') }})</label><input class="in" id="sai_price_year" type="number" value="'+(p.price_year_fen||0)+'" style="width:100%"></div>'+
     '<div id="sai_price_interval_row" style="display:'+(p.price_type==='sub'?'':'none')+'"><label style="display:block;font-size:12px;margin-bottom:4px">{{ _('Interval') }}</label><select class="in" id="sai_interval" style="width:100%"><option value="month"'+(p.price_interval==='month'?' selected':'')+'>{{ _('Monthly') }}</option><option value="year"'+(p.price_interval==='year'?' selected':'')+'>{{ _('Yearly') }}</option></select></div>'+
+    '<div id="sai_price_calc_row" style="display:'+(p.price_type==='sub'?'':'none')+';margin-top:8px;padding:10px;background:var(--bg-secondary);border-radius:8px">'+
+    '<div style="font-size:12px;font-weight:600;margin-bottom:6px">🧮 {{ _('Pricing Calculator') }}</div>'+
+    '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+
+    '<label style="font-size:12px">{{ _('Base month price') }} ({{ _('cents') }})</label>'+
+    '<input class="in" id="sai_calc_month" type="number" style="width:120px" value="'+(p.price_amount||0)+'">'+
+    '<button class="btn bp bs" onclick="calcStorePricing()">{{ _('Calculate') }}</button>'+
+    '</div>'+
+    '<div id="sai_calc_result" style="margin-top:8px;font-size:12px;display:none"></div>'+
+    '</div>'+
     '<div><label style="display:block;font-size:12px;margin-bottom:4px">{{ _('Icon URL') }} <span style="font-size:10px;color:var(--dim)">{{ _('Recommended: 280x120px, shown on store card') }}</span></label><input class="in" id="sai_icon" value="'+escAttr(p.icon_url||'')+'" placeholder="https://example.com/icon.png" style="width:100%"></div>'+
     '<div><label style="display:block;font-size:12px;margin-bottom:4px">{{ _('Download URL') }}</label><input class="in" id="sai_download" value="'+escAttr(p.download_url||'')+'" style="width:100%"></div>'+
     '<div><label style="display:block;font-size:12px;margin-bottom:4px">{{ _('Author') }}</label><input class="in" id="sai_author" value="'+escAttr(p.author||'')+'" style="width:100%"></div>'+
@@ -719,6 +859,54 @@ function _renderStoreForm(container, title, p){
     '<button class="btn bo" onclick="renderStoreAdminList()">{{ _('Cancel') }}</button>'+
     '</div><div id="storeAdminResult" style="margin-top:12px"></div></div>';
 }
+/* ── GitHub 导入：从仓库自动获取元数据并回填表单 ── */
+function showGitHubImportBox(){
+  var box=document.getElementById('ghImportBox');
+  var url=document.getElementById('ghImportUrl').value.trim();
+  if(!url){showToast("{{ _('Please enter a GitHub/Gitee repo URL') }}","error");return}
+  box.innerHTML='<div class="lo"><div class="s"></div>{{ _('Fetching metadata') }}...</div>';
+  fetch("/admin/plugins/store/admin/import?url="+encodeURIComponent(url),
+        {headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success){box.innerHTML='<div class="em">❌ '+esc(d.error||'')+'</div>';return}
+    var p=d.data.plugin;
+    /* 逐项回填表单控件（.value 属性赋值，直接用原文） */
+    document.getElementById('sai_identifier').value=p.identifier;
+    document.getElementById('sai_name').value=p.name;
+    document.getElementById('sai_desc').value=p.description||'';
+    document.getElementById('sai_version').value=p.version||'0.1.0';
+    document.getElementById('sai_category').value=p.category||'';
+    document.getElementById('sai_author').value=p.author||'';
+    document.getElementById('sai_icon').value=p.icon_url||'';
+    document.getElementById('sai_readme').value=p.readme_url||'';
+    if(p.tagline){document.getElementById('sai_tagline').value=p.tagline}
+    var h='<div class="on" style="padding:10px">✅ {{ _('Imported') }} — '+esc(p.identifier)+' v'+esc(p.version)+'</div>';
+    if(d.data.warnings&&d.data.warnings.length){
+      h+='<div class="em" style="margin-top:6px;padding:8px;font-size:12px">⚠️ '+
+         d.data.warnings.map(function(w){return esc(w)}).join('<br>')+'</div>';
+    }
+    box.innerHTML=h;
+  }).catch(function(){box.innerHTML='<div class="em">❌ {{ _('Network error') }}</div>'});
+}
+/* ── 定价计算器：调用 preview API 计算三档价并回填 ── */
+function calcStorePricing(){
+  var base=parseInt(document.getElementById("sai_calc_month").value)||0;
+  var res=document.getElementById("sai_calc_result");
+  if(base<=0){showToast("{{ _('Please enter a valid base month price') }}","error");return}
+  res.style.display='';
+  res.innerHTML='<div class="lo"><div class="s"></div></div>';
+  fetch("/admin/plugins/store/pricing/preview",{method:"POST",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify({base_month_fen:base})})
+    .then(function(r){return r.json()}).then(function(d){
+      if(!d.success||!d.data){res.innerHTML='<div class="em">❌ '+esc(d.error||'')+'</div>';return}
+      var t=d.data.tiered;
+      document.getElementById("sai_price_quarter").value=t.quarter;
+      document.getElementById("sai_price_year").value=t.year;
+      var ps=window.MARKET==='intl'?'$':'¥';
+      res.innerHTML='<div style="color:var(--ok, #4caf50)">✅ {{ _('Tiered prices') }}: {{ _('Month') }} '+ps+(t.month/100).toFixed(2)+
+        ' / {{ _('Quarter') }} '+ps+(t.quarter/100).toFixed(2)+
+        ' / {{ _('Year') }} '+ps+(t.year/100).toFixed(2)+
+        ' <span style="color:var(--dim)">({{ _('quarter = month x 2.7, year = month x 10') }})</span></div>';
+    }).catch(function(){res.innerHTML='<div class="em">❌ {{ _('Network error') }}</div>'});
+}
 function saveStorePlugin(){
   var d={};
   d.identifier=document.getElementById("sai_identifier").value.trim();
@@ -728,6 +916,8 @@ function saveStorePlugin(){
   d.category=document.getElementById("sai_category").value;
   d.price_type=document.getElementById("sai_price_type").value;
   d.price_amount=parseInt(document.getElementById("sai_price").value)||0;
+  d.price_quarter_fen=parseInt(document.getElementById("sai_price_quarter").value)||0;
+  d.price_year_fen=parseInt(document.getElementById("sai_price_year").value)||0;
   d.price_interval=document.getElementById("sai_interval")?document.getElementById("sai_interval").value:'onetime';
   d.icon_url=document.getElementById("sai_icon").value.trim();
   d.download_url=document.getElementById("sai_download").value.trim();
@@ -736,6 +926,11 @@ function saveStorePlugin(){
   d.tagline=document.getElementById("sai_tagline").value.trim();
   d.tagline_font_size=document.getElementById("sai_tagline_font_size").value;
   d.tagline_color=document.getElementById("sai_tagline_color").value;
+  /* 补收集：导入时可从仓库带入，人工录入时保持空/默认（与 store_plugins 列兼容） */
+  d.tags=[];
+  d.screenshots=[];
+  d.min_app_version='0.10.0';
+  d.depends_on={};
   if(!d.identifier||!d.name){showToast("{{ _('Identifier and Name are required') }}","error");return}
   /* ★ P8: 校验 identifier 格式 */
   if(!/^[a-z0-9_]+$/.test(d.identifier)){showToast("{{ _('Identifier must contain only lowercase letters, digits, underscores') }}","error");return}

@@ -1,0 +1,181 @@
+{
+  "name": "AI Advisor",
+  "name_i18n_key": "plugin.name",
+  "identifier": "chatbot",
+  "python_dependencies": {
+    "required": [],
+    "optional": {}
+  },
+  "version": "1.5.2",
+  "category": "ai_agent",
+  "icon": "message-circle",
+  "icon_url": "",
+  "screenshots": [],
+  "readme_url": "",
+  "tags": [
+    "chatbot",
+    "customer-service",
+    "ai",
+    "rag",
+    "advisor"
+  ],
+  "description": "AI Advisor — 全站 AI 顾问客服。使用独立数据库（chatbot schema）存储配置、会话与 Agent 注册，并跨读主库知识库与工单。 / Site-wide AI advisor chatbot. Uses independent database (chatbot schema) for configs, sessions, and agent registry. Cross-reads main DB for knowledge base and user tickets.",
+  "author": "VeroRun",
+  "min_app_version": "0.10.0",
+  "dependencies": {},
+  "enabled": true,
+  "admin_url": "",
+  "admin_label": "AI Advisor Settings",
+  "config": {
+    "enabled": true,
+    "auto_escalate": true,
+    "title": "AI Advisor",
+    "subtitle": "Powered by AI Engine",
+    "welcome_message": "Hello! I am your AI advisor. How can I help you today?",
+    "help_hint": "Type help to see what I can do for you",
+    "avatar_url": "",
+    "agent_id": "chat_assistant",
+    "max_history": 20,
+    "float_button_text": "AI Advisor",
+    "handoff_keywords": "[\"human\", \"agent\", \"customer service\", \"live chat\", \"real person\", \"talk to human\", \"representative\", \"support agent\", \"complaint\", \"custom\"]",
+    "handoff_max_fails": 3
+  },
+  "permissions": [
+    "api:read",
+    "network:request"
+  ],
+  "admin_permissions": [
+    "admin:access"
+  ],
+  "hooks": {
+    "provides": [
+      "chatbot/config",
+      "chatbot/chat"
+    ],
+    "listens": []
+  },
+  "declare_roles": [
+    {
+      "name": "Advisor Agent",
+      "slug": "chat_assistant",
+      "role_type": "sub",
+      "domain": "chatbot",
+      "description": "Site-wide AI advisor chatbot. Answers FAQ, creates tickets, and hands off to human agents.",
+      "managed_modules": [
+        "plugins.chatbot"
+      ],
+      "provider": "",
+      "model_name": "",
+      "system_prompt": "You are the site-wide AI advisor. Be friendly, professional and concise.",
+      "is_active": 1
+    }
+  ],
+  "agents": [
+    {
+      "name": "Advisor Agent",
+      "identifier": "chat_assistant",
+      "role_type": "sub",
+      "domain": "chatbot",
+      "prompt_file": "prompts/sub_chatbot_prompt.md",
+      "model_policy": {
+        "strategy": "tier",
+        "tier": "standard",
+        "allow_user_override": true,
+        "fallback": "inherit"
+      },
+      "capabilities": [
+        "chatbot.faq",
+        "chatbot.ticket",
+        "chatbot.human_handoff"
+      ],
+      "enabled_by_default": true
+    }
+  ],
+  "dashboard": {
+    "stats": [
+      {
+        "key": "today_sessions",
+        "title": "今日会话",
+        "type": "counter"
+      },
+      {
+        "key": "handoff_rate",
+        "title": "转人工率",
+        "type": "gauge"
+      },
+      {
+        "key": "avg_csat",
+        "title": "平均满意度",
+        "type": "gauge"
+      }
+    ]
+  },
+  "menu": {
+    "group": "AI & Content",
+    "key": "chatbot",
+    "icon": "message-circle",
+    "label": "AI Advisor"
+  },
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "enabled": {
+        "title": "Enable AI Advisor",
+        "type": "boolean",
+        "default": true
+      },
+      "auto_escalate": {
+        "title": "Auto-Create Ticket on Handoff",
+        "type": "boolean",
+        "default": true
+      },
+      "title": {
+        "title": "Chat Window Title",
+        "type": "string"
+      },
+      "subtitle": {
+        "title": "Subtitle",
+        "type": "string"
+      },
+      "welcome_message": {
+        "title": "Welcome Message",
+        "type": "string"
+      },
+      "help_hint": {
+        "title": "Help Hint",
+        "type": "string"
+      },
+      "avatar_url": {
+        "title": "Avatar URL",
+        "type": "string"
+      },
+      "agent_id": {
+        "title": "Bound Agent ID",
+        "type": "string",
+        "description": "Agent identifier in agent_matrix table"
+      },
+      "max_history": {
+        "title": "Max History Rounds",
+        "type": "integer",
+        "default": 20,
+        "minimum": 1,
+        "maximum": 50
+      },
+      "float_button_text": {
+        "title": "Float Button Text",
+        "type": "string"
+      },
+      "handoff_keywords": {
+        "title": "Handoff Keywords (JSON array)",
+        "type": "string"
+      },
+      "handoff_max_fails": {
+        "title": "Max Consecutive Failures",
+        "type": "integer",
+        "default": 3,
+        "minimum": 1,
+        "maximum": 10
+      }
+    }
+  }
+}

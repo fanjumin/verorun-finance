@@ -82,6 +82,8 @@
   /* Legacy name → system name mappings */
   --card:           var(--bg-card);
   --card2:          var(--bg-elevated);
+  --card-bg:        var(--bg-card);
+  --border-color:   var(--border);
   --dim:            var(--text-dim);
   --accent:         var(--indigo);
   --red:            var(--rose);

@@ -437,6 +437,50 @@ class LicenseManager:
             ).fetchall()
             return [LicenseRecord.from_row(dict(r)).to_dict() for r in rows]
 
+    # ── 版本包成员 License ──────────────────────────────────────────
+
+    def grant_bundle_member(self, plugin_id: str, bundle_id: str,
+                            order_no: str, expires_at: str,
+                            subscription_id: Optional[int] = None) -> dict:
+        """版本包成员 License：由包订单 key 派生 + bundle_id 标记。
+
+        - license_key = f'{bundle_id}:{order_no}'（包订单唯一）
+        - metadata 带 bundle_id / bundle_order_no，供生命周期批量同步
+        - 幂等覆盖：一个插件仅保留一条 License（_save_license 先删后插）
+        """
+        record = LicenseRecord(
+            plugin_id=plugin_id,
+            license_key=f'{bundle_id}:{order_no}',
+            license_type=LicenseType.SUBSCRIPTION,
+            license_status=LicenseStatus.ACTIVE,
+            site_id=get_site_id(),
+            activated_at=datetime.now().isoformat(),
+            expires_at=expires_at,
+            last_validated=datetime.now().isoformat(),
+            order_id=order_no,
+            subscription_id=str(subscription_id or ''),
+            auto_renew=True,
+            metadata={'bundle_id': bundle_id, 'bundle_order_no': order_no},
+        )
+        self._save_license(record)
+        return record.to_dict()
+
+    def expire_bundle_members(self, bundle_id: str) -> int:
+        """将某版本包的全部成员 License 标记过期（返回受影响行数）。
+
+        bundle_id 为空时直接返回 0（保护性校验，避免误伤普通订阅）。
+        """
+        if not bundle_id:
+            return 0
+        with get_registry_db() as conn:
+            cur = conn.execute(
+                "UPDATE plugin_licenses SET license_status='expired', updated_at=NOW() "
+                "WHERE metadata::jsonb->>'bundle_id'=%s AND license_status='active'",
+                (bundle_id,)
+            )
+            conn.commit()
+            return cur.rowcount if cur.rowcount else 0
+
     # ── 检查是否付费（供 PluginManager 集成） ─────────────────────────
 
     def is_paid_plugin(self, plugin_id: str) -> bool:

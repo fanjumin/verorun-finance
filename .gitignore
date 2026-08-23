@@ -126,6 +126,7 @@ site/
 deploy/caddy/
 docs/*
 !docs/i18n-standard.md
+!docs/plugin-manifest.schema.json
 
 # Local deploy diagnostics (not tracked — health scripts are tracked separately)
 deploy/check*.sh

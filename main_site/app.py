@@ -314,6 +314,8 @@ def index():
         if payload:
             from services.brand_service import get_brand_settings
             brand = get_brand_settings() or {}
+            if brand:
+                brand['software_name'] = _('app_name')
             resp = make_response(render_template('index.html', brand=brand, server_token=token, **_chatbot_context()))
             site_domain = brand.get('site_domain', '').strip()
             cd = ('.' + site_domain) if site_domain else ''

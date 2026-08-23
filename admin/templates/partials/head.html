@@ -4,7 +4,7 @@
 <head>
 <!-- 防闪烁：样式渲染前先应用已保存主题 -->
 <script>
-(function(){try{var t=localStorage.getItem('verorun_admin_theme');if(t==='light'||t==='blue')document.documentElement.setAttribute('data-theme',t)}catch(e){}})();
+(function(){try{var t=localStorage.getItem('verorun_admin_theme');if(t==='slate'||t==='light'||t==='blue'||t==='dark'){document.documentElement.setAttribute('data-theme',t)}else{document.documentElement.setAttribute('data-theme','slate')}}catch(e){}})();
 </script>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>{{ brand.site_name_cn if brand and brand.site_name_cn else '' }} {{ _('Admin Panel') }}</title>
@@ -171,7 +171,7 @@ a:hover{text-decoration:underline}
     <div class="logo-icon">{{ brand.software_name[0] if brand else '?' }}</div>
     {% endif %}
     <div>
-      <div class="logo-text" style="font-size:13px">{{ _('Admin') }}</div>
+      <div class="logo-text" style="font-size:13px">{{ brand.software_name if brand else _('Admin') }}</div>
       <div class="logo-sub" style="font-size:10px;text-transform:none;letter-spacing:0;margin-top:0">{{ _('Dashboard') }}</div>
       {% if edition == 'edu' %}<div class="logo-sub" style="font-size:9px;color:#ffd700;text-transform:none;letter-spacing:0;margin-top:0;font-weight:700">EDU Edition</div>{% endif %}
     </div>

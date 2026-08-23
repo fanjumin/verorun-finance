@@ -75,12 +75,12 @@ else
         _COMMON_REMOTE="${EDU_COMMON_REMOTE:-https://raw.githubusercontent.com/fanjumin/verorun-edu/master/deploy/lib/common.sh}"
         _COMMON_MIRROR="${EDU_COMMON_MIRROR:-https://ghfast.top/https://raw.githubusercontent.com/fanjumin/verorun-edu/master/deploy/lib/common.sh}"
         # Computed and backfilled at release time by deploy/scripts/sign_release.py (LF-normalized hash)
-        _COMMON_SHA256="${EDU_COMMON_SHA256:-eb64ae5f6c4b4bd2881f19a6bf833dfbc80ccbbeb121f647a6ab688efb5168cc}"
+        _COMMON_SHA256="${EDU_COMMON_SHA256:-575ef745dc9e4a84cf9f9bdee68756e2fe9e4bd54b77290d77cb21013faccf9a}"
     else
         _COMMON_REMOTE="${COMMON_REMOTE:-https://raw.githubusercontent.com/fanjumin/verorun-pro/master/deploy/lib/common.sh}"
         _COMMON_MIRROR="${COMMON_MIRROR:-https://ghfast.top/https://raw.githubusercontent.com/fanjumin/verorun-pro/master/deploy/lib/common.sh}"
         # Computed and backfilled at release time by deploy/scripts/sign_release.py (LF-normalized hash)
-        _COMMON_SHA256="${COMMON_SHA256:-eb64ae5f6c4b4bd2881f19a6bf833dfbc80ccbbeb121f647a6ab688efb5168cc}"
+        _COMMON_SHA256="${COMMON_SHA256:-575ef745dc9e4a84cf9f9bdee68756e2fe9e4bd54b77290d77cb21013faccf9a}"
     fi
     _tmp_common="$(mktemp)"
     # Audit P3-2: clean up the temp file on Ctrl+C interruption
@@ -382,12 +382,25 @@ _edu_license_check() {
     fi
 
     echo -e "${INFO} Educational license - enter your edu deployment code (ED-XXXX)"
-    echo -n "  Deployment code: " > /dev/tty
-    read -r EDU_CODE < /dev/tty
+    if [ -z "${EDU_CODE:-}" ]; then
+        echo -n "  Deployment code: " > /dev/tty
+        read -r EDU_CODE < /dev/tty
+    else
+        echo -e "${INFO}  Deployment code (from env EDU_CODE): ${EDU_CODE}"
+    fi
     EDU_CODE="${EDU_CODE// /}"
     if [ -z "${EDU_CODE}" ]; then
         echo -e "${FAIL} Educational deployment code must not be empty"; exit 1
     fi
+    # 审计 TEST-KEY：教育版测试部署码白名单 —— 仅供开发/测试环境放行本次校验，
+    # 不经过云端 is_valid 校验，也不写入正式部署用途。其他任意码照旧走云端校验。
+    case "${EDU_CODE}" in
+        TEST-DEV-0001|EDU-TEST-0001)
+            echo -e "${WARN} [TEST] Educational TEST key accepted: ${EDU_CODE} (dev/test only, NOT for production)"
+            export EDU_CODE
+            return 0
+            ;;
+    esac
     # Region-aware validation endpoint (follows license_service's region routing convention);
     # 审计 F5 修复：EDU_LICENSE_ENDPOINT 允许离网/内网部署覆盖云端端点
     local _edu_url="${EDU_LICENSE_ENDPOINT:-}"

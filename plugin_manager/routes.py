@@ -565,7 +565,74 @@ def clear_plugin_log(identifier: str):
 # 商店管理 API（仅管理员，字面路由须在通配路由前注册）
 # ====================================================================
 
-# ── 37. 商店管理：列出所有插件商品 ────────────────────────
+# ── 36b. 商店管理：手动同步目录（获取插件/一键上架，不等 6h 调度）────
+
+@bp.route('/store/sync', methods=['POST'])
+def store_sync():
+    """管理员：手动触发商店目录同步。
+
+    Returns: {total, added, source, error}
+      - total: 目录插件数；-1 拉取失败但保留本地缓存；0 拉取失败且无缓存
+      - added: 本次同步后新增上架的插件 identifier 列表（即"获取到的新插件"）
+    """
+    err = _require_admin()
+    if err:
+        return err
+    mgr = _get_manager()
+    if not mgr or not mgr.store_client:
+        return _json_result(False, error='Store not available', code=503)
+    try:
+        from .store import _catalog_urls
+        with get_registry_db() as conn:
+            before = {r['identifier'] for r in conn.execute(
+                'SELECT identifier FROM store_plugins').fetchall()}
+        cnt = mgr.store_client.sync_all()
+        with get_registry_db() as conn:
+            after = {r['identifier'] for r in conn.execute(
+                'SELECT identifier FROM store_plugins').fetchall()}
+        added = sorted(after - before)
+        error = '' if cnt >= 0 else (
+            'catalog fetch failed, kept local cache' if cnt == -1
+            else 'catalog fetch failed, no local cache')
+        return _json_result(True, data={
+            'total': cnt,
+            'added': added,
+            'source': _catalog_urls(),
+            'error': error,
+        })
+    except Exception as e:
+        print(f'[store] sync failed: {e}')
+        return _json_result(False, error=f'Sync failed: {e}', code=500)
+
+
+# ── 37. 商店管理：从 GitHub 仓库导入元数据（预填充 Add Plugin 表单）────
+
+@bp.route('/store/admin/import', methods=['GET'])
+def store_admin_import():
+    """管理员：从 GitHub 仓库自动提取插件元数据。
+
+    Query: ?url=https://github.com/owner/repo
+    Returns: 归一化 store_plugins 字段 + warnings（不落库，前端回填表单后保存）。
+    """
+    err = _require_admin()
+    if err:
+        return err
+
+    url = request.args.get('url', '').strip()
+    if not url:
+        return _json_result(False, error='url required', code=400)
+    try:
+        from .store_importer import import_from_github
+        entry, warnings = import_from_github(url)
+    except Exception as _e:
+        print(f'[store] import failed: {_e}')
+        return _json_result(False, error=f'Import failed: {_e}', code=500)
+    if entry is None:
+        return _json_result(False, error=warnings[0] if warnings else 'Import failed', code=400)
+    return _json_result(True, data={'plugin': entry, 'warnings': warnings})
+
+
+# ── 38. 商店管理：列出所有插件商品 ────────────────────────
 
 @bp.route('/store/admin', methods=['GET'])
 def store_admin_list():
@@ -664,6 +731,23 @@ def store_admin_save():
     if not identifier:
         return _json_result(False, error='identifier required', code=400)
 
+    # 补充校验：semver / category 枚举 / URL 白名单（与 store_importer 标准一致）
+    import re as _re
+    if data.get('version') and not _re.match(r'^[0-9]+\.[0-9]+\.[0-9]+$', str(data['version'])):
+        return _json_result(False, error='version must be x.y.z semver', code=400)
+    from .store_importer import CATEGORY_ENUM
+    if data.get('category') and data['category'] not in CATEGORY_ENUM:
+        return _json_result(False, error=f'category must be one of {CATEGORY_ENUM}', code=400)
+    for _f in ('download_url', 'icon_url', 'readme_url', 'author_url'):
+        _v = (data.get(_f) or '').strip()
+        if _v and not _v.startswith(('http://', 'https://')):
+            return _json_result(False, error=f'{_f} must be a valid http(s) URL', code=400)
+
+    # 适用版本：可选，必须为字符串列表（pro/standard/edge 等）
+    _editions = data.get('compatible_editions', [])
+    if not isinstance(_editions, list) or not all(isinstance(e, str) and e for e in _editions):
+        return _json_result(False, error='compatible_editions must be a list of strings', code=400)
+
     # 宣传语：开发者手填优先；仅当为空时由 AI 从 README 兜底提取（失败自动降级，不阻断上架）
     tagline = (data.get('tagline') or '').strip()
     if tagline:
@@ -681,10 +765,11 @@ def store_admin_save():
             INSERT INTO store_plugins (
                 identifier, name, name_i18n_key, description, version, author,
                 author_url, icon_url, price_type, price_amount,
-                price_interval, trial_days, download_url, package_hash,
+                price_interval, price_quarter_fen, price_year_fen, compatible_editions,
+                trial_days, download_url, package_hash,
                 file_size, category, tags, screenshots, readme_url,
                 tagline, tagline_i18n_key, min_app_version, depends_on, enabled
-            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             ON CONFLICT(identifier) DO UPDATE SET
                 name=excluded.name,
                 name_i18n_key=excluded.name_i18n_key,
@@ -696,6 +781,9 @@ def store_admin_save():
                 price_type=excluded.price_type,
                 price_amount=excluded.price_amount,
                 price_interval=excluded.price_interval,
+                price_quarter_fen=excluded.price_quarter_fen,
+                price_year_fen=excluded.price_year_fen,
+                compatible_editions=excluded.compatible_editions,
                 trial_days=excluded.trial_days,
                 download_url=excluded.download_url,
                 package_hash=excluded.package_hash,
@@ -724,6 +812,9 @@ def store_admin_save():
             data.get('price_type', 'free'),
             int(data.get('price_amount', 0)),
             data.get('price_interval', 'onetime'),
+            int(data.get('price_quarter_fen', 0)),
+            int(data.get('price_year_fen', 0)),
+            json.dumps(data.get('compatible_editions', [])),
             int(data.get('trial_days', 0)),
             data.get('download_url', ''),
             data.get('package_hash', ''),
@@ -785,17 +876,101 @@ def store_admin_toggle(identifier: str):
     return _json_result(True, data={'identifier': identifier, 'enabled': bool(new_enabled)})
 
 
+# ── 41. 定价计算器：三档价 / 版本包价预览 ──────────────────
+
+@bp.route('/store/pricing/preview', methods=['POST'])
+def store_pricing_preview():
+    """定价计算器预览：输入基础月价 → 月/季/年三档；可选版本包对比价。
+
+    请求体 (JSON):
+        base_month_fen: int            基础月价（分），必填
+        bundle: str                    版本包标识（可选，如 'pro'）
+        plugin_month_prices: dict      包内插件月价表 {identifier: 分}（可选，算包价时用）
+
+    响应:
+        data.tiered: {'month','quarter','year'}        三档价（分）
+        data.bundle: 版本包明细（含 saving_pct 对比）或 null
+
+    说明：仅计算不落库；价格规则来自 plugin_manager.pricing（远端
+    pricing_rules.json 优先，失败回退内嵌默认）。
+    """
+    err = _require_admin()
+    if err:
+        return err
+    data = request.json if request.is_json else {}
+    try:
+        base_month_fen = int(data.get('base_month_fen', 0))
+    except (TypeError, ValueError):
+        return _json_result(False, error='base_month_fen must be int (fen)', code=400)
+    if base_month_fen < 0:
+        return _json_result(False, error='base_month_fen must be >= 0', code=400)
+
+    from .pricing import compute_tiered_price, compute_bundle_price
+    tiered = compute_tiered_price(base_month_fen)
+
+    bundle = None
+    if data.get('bundle'):
+        try:
+            month_prices = {str(k): int(v) for k, v in (data.get('plugin_month_prices') or {}).items()}
+            bundle = compute_bundle_price(str(data['bundle']), month_prices)
+        except Exception as e:
+            return _json_result(False, error=f'bundle calculation failed: {e}', code=400)
+
+    return _json_result(True, data={'tiered': tiered, 'bundle': bundle})
+
+
 # ====================================================================
 # 商店 API
 # ====================================================================
 
 # ── 18. 浏览商店 ─────────────────────────────────────────
 
+def _check_paid_entitlement(identifier: str, detail: dict):
+    """阶段 3 付费闸门：sub/onetime 插件需有效订阅或 License 才能安装。
+
+    官方版（VR_EDITION=official）直接授权；free/trial 不受限。
+    返回 None 表示通过；否则返回 (jsonify, code) 供视图直接 return。
+    """
+    price_type = (detail or {}).get('price_type', 'free')
+    if price_type not in ('sub', 'onetime'):
+        return None
+    try:
+        from .license import _is_official_edition
+        if _is_official_edition():
+            return None
+    except Exception:
+        pass
+    # 1) plugin_subscriptions 有效订阅
+    try:
+        from .subscription import get_subscription_manager
+        sub = get_subscription_manager().get_subscription(identifier)
+        if sub and sub.status.value == 'active':
+            return None
+    except Exception:
+        pass
+    # 2) plugin_licenses 有效 License（含 bundle 成员授权）
+    try:
+        with get_registry_db() as conn:
+            row = conn.execute(
+                "SELECT id FROM plugin_licenses WHERE plugin_id=%s "
+                "AND license_status IN ('active','grace')",
+                (identifier,)
+            ).fetchone()
+        if row:
+            return None
+    except Exception:
+        pass
+    return _json_result(False,
+        error=f'Paid plugin "{identifier}" requires an active subscription',
+        code=402)
+
+
 def _annotate_store_plugins(mgr, plugins: list) -> None:
     """为商店插件批量注入 installed / has_update / latest_version 标记
 
     就地修改 plugins 中的 dict；内部异常已捕获，不影响原有响应。
     """
+    from .store import DEPLOY_EDITION, StoreAPIClient
     if not plugins:
         return
 
@@ -818,6 +993,10 @@ def _annotate_store_plugins(mgr, plugins: list) -> None:
         u = updates.get(p.get('identifier'))
         p['has_update'] = bool(u and u.get('has_update'))
         p['latest_version'] = (u or {}).get('latest') or p.get('version')
+        # 阶段 3：标记部署版本兼容性（前端可提示"当前版本不适用"）
+        p['current_edition'] = DEPLOY_EDITION
+        p['compatible_edition'] = StoreAPIClient._edition_compatible(
+            p.get('compatible_editions') or [])
 
 
 @bp.route('/store/browse', methods=['GET'])
@@ -837,7 +1016,7 @@ def store_browse():
     sort_by = request.args.get('sort_by', 'downloads')
     try:
         page = _parse_positive_int('page', 1)
-        page_size = _parse_positive_int('page_size', 20, 1, 100)
+        page_size = _parse_positive_int('page_size', 100, 1, 100)
     except ValueError as e:
         return _json_result(False, error=str(e), code=400)
 
@@ -908,6 +1087,17 @@ def store_install(identifier: str):
             'version': existing.version,
         })
 
+    # 阶段 3：部署版本兼容校验
+    from .store import DEPLOY_EDITION, StoreAPIClient
+    if not StoreAPIClient._edition_compatible(detail.get('compatible_editions') or []):
+        return _json_result(False,
+            error=f'Plugin "{identifier}" is not compatible with current edition ({DEPLOY_EDITION})',
+            code=403)
+    # 阶段 3：付费闸门（仅付费插件需要有效订阅/授权）
+    gate = _check_paid_entitlement(identifier, detail)
+    if gate:
+        return gate
+
     # 获取下载地址（含版本兼容校验）
     app_version = getattr(mgr.app, 'version', '')
     download_url = mgr.store_client.get_download_url(identifier, app_version)
@@ -927,7 +1117,9 @@ def store_install(identifier: str):
     try:
         from .downloader import download_plugin
         package_hash = detail.get('package_hash', '')
-        download_plugin(download_url, plugin_dest, expected_hash=package_hash)
+        download_plugin(download_url, plugin_dest,
+                        expected_hash=package_hash,
+                        fallback_url=fallback_url or '')
     except Exception as e:
         traceback.print_exc()
         return _json_result(False, error=f'Download failed: {e}', code=500)
@@ -1654,6 +1846,34 @@ from .coupons import get_coupon_manager
 
 # ── 25. 发起购买 ─────────────────────────────────────────
 
+# 订阅周期 → 商店价格字段映射（quarter/year 字段由管理员在定价器配置，
+# 未配置时为 0，走 L1 规则按基础月价自动推导）
+_INTERVAL_PRICE_FIELD = {
+    'month': 'price_amount',
+    'quarter': 'price_quarter_fen',
+    'year': 'price_year_fen',
+}
+
+
+def _resolve_price_fen(detail: dict, price_type: str, interval: str) -> int:
+    """按订阅周期解析应付金额（分）。
+
+    - onetime：一律取 price_amount（interval 不参与计价）
+    - sub：优先取管理员为该周期配置的价格（price_quarter_fen / price_year_fen）；
+      未配置（0）时按 L1 规则 compute_tiered_price(基础月价) 自动推导该档。
+    """
+    base = int(detail.get('price_amount') or 0)
+    if price_type != 'sub' or interval == 'month':
+        return base
+    if interval not in _INTERVAL_PRICE_FIELD:
+        return base
+    configured = int(detail.get(_INTERVAL_PRICE_FIELD[interval]) or 0)
+    if configured > 0:
+        return configured
+    from .pricing import compute_tiered_price
+    return compute_tiered_price(base).get(interval, base)
+
+
 @bp.route('/store/<identifier>/purchase', methods=['POST'])
 def store_purchase(identifier: str):
     """发起购买，返回支付二维码"""
@@ -1670,6 +1890,31 @@ def store_purchase(identifier: str):
         return _json_result(False, error='Store not available', code=503)
 
     detail = store.get_detail(identifier)
+    bundle_id = ''
+    if not detail:
+        # 版本包购买：identifier 命中定价规则 bundles → 按成员月价合成包详情
+        from .pricing import get_pricing_rules, compute_bundle_price
+        rules = get_pricing_rules()
+        bundles = rules.get('bundles') or {}
+        if identifier in bundles:
+            member_prices = {}
+            for pid in bundles[identifier].get('plugins', []):
+                d = store.get_detail(pid)
+                if d:
+                    member_prices[pid] = d.get('price_amount', 0)
+            try:
+                bp = compute_bundle_price(identifier, member_prices, rules)
+            except Exception as e:
+                return _json_result(False, error=f'Bundle pricing unavailable: {e}', code=400)
+            detail = {
+                'name': bundles[identifier].get('display_name', identifier),
+                'description': 'VeroRun bundle subscription',
+                'price_type': 'sub',
+                'price_amount': bp['month'],
+                'price_quarter_fen': bp['quarter'],
+                'price_year_fen': bp['year'],
+            }
+            bundle_id = identifier
     if not detail:
         return _json_result(False, error=f'Plugin "{identifier}" not found', code=404)
 
@@ -1684,8 +1929,14 @@ def store_purchase(identifier: str):
     channel = body.get('channel', '')
     customer_email = body.get('customer_email', '')
     coupon_code = (body.get('coupon_code') or '').strip()
-    amount_fen = detail.get('price_amount', 0)
     price_type = detail.get('price_type', 'onetime')
+    # 订阅周期：仅 sub 生效；默认取插件配置周期，缺省 month
+    interval = (body.get('interval') or detail.get('price_interval') or 'month').strip()
+    if price_type == 'sub' and interval not in ('month', 'quarter', 'year'):
+        return _json_result(False, error='interval must be month/quarter/year', code=400)
+    tier = (body.get('tier') or '').strip()[:64]
+    # 按所选周期计价（quarter/year 优先取配置价，未配置走 L1 规则推导）
+    amount_fen = _resolve_price_fen(detail, price_type, interval)
 
     if amount_fen <= 0:
         return _json_result(False, error='Invalid price', code=400)
@@ -1700,8 +1951,8 @@ def store_purchase(identifier: str):
         discount_fen = coupon_result.get('discount_fen', 0)
         amount_fen = coupon_result.get('final_fen', amount_fen)
 
-    # 检查是否已有 License
-    if mgr.license_manager:
+    # 检查是否已有 License（版本包走订阅级判定，不在此拦截）
+    if not bundle_id and mgr.license_manager:
         existing = mgr.license_manager.get_license(identifier)
         if existing and existing.get('license_status') in ('active', 'grace'):
             return _json_result(False, data={'license': existing},
@@ -1717,10 +1968,17 @@ def store_purchase(identifier: str):
         customer_email=customer_email,
     )
 
-    # 保存优惠券信息到订单 extra
+    # 保存订单参数（周期/档位/优惠券）到 order.extra；
+    # 支付回调 _activate_license_after_payment 据此创建/续费/恢复订阅
+    extra = order.extra.copy()
+    if price_type == 'sub':
+        extra['interval'] = interval
+        extra['tier'] = tier
+    if bundle_id:
+        extra['bundle_id'] = bundle_id
     if coupon_code:
-        extra = order.extra.copy()
         extra['coupon_code'] = coupon_code
+    if extra:
         update_payment_order(order.order_no, extra=json.dumps(extra))
 
     # 调用支付网关
@@ -1745,6 +2003,8 @@ def store_purchase(identifier: str):
             'original_fen': detail.get('price_amount', amount_fen),
             'discount_fen': discount_fen,
             'price_type': price_type,
+            'interval': interval,
+            'tier': tier,
             'channel': channel,
             'coupon_code': coupon_code or '',
         })
@@ -1873,6 +2133,22 @@ def _activate_license_after_payment(order, order_no: str):
         except Exception:
             pass
 
+    # 版本包支付：走包订阅 + 成员 License 链路（不激活单插件 License）
+    order_extra = order.extra or {}
+    bundle_id = order_extra.get('bundle_id') or ''
+    if not bundle_id:
+        try:
+            from .pricing import get_pricing_rules
+            if order.plugin_id in (get_pricing_rules().get('bundles') or {}):
+                bundle_id = order.plugin_id
+        except Exception:
+            bundle_id = ''
+
+    if bundle_id:
+        _activate_bundle_after_payment(mgr, order, order_no, bundle_id)
+        _fire_payment_hook(order.plugin_id, 'purchase', order_no)
+        return
+
     if mgr and mgr.license_manager:
         lic_result = mgr.license_manager.activate(
             plugin_id=order.plugin_id,
@@ -1891,6 +2167,14 @@ def _activate_license_after_payment(order, order_no: str):
             if detail and detail.get('price_type') == 'sub':
                 sm = get_subscription_manager()
                 existing = sm.get_subscription(order.plugin_id)
+                # 优先取订单携带的周期/档位（用户在购买页选择）；缺失回退插件配置默认
+                order_extra = order.extra or {}
+                interval = (order_extra.get('interval') or detail.get('price_interval') or 'month').strip()
+                if interval not in ('month', 'quarter', 'year'):
+                    interval = 'month'
+                tier = (order_extra.get('tier') or '').strip()[:64]
+                # 按所选周期取名义价（优惠券扣减不影响续费基准价）
+                amount_fen = _resolve_price_fen(detail, 'sub', interval) or order.amount_fen or 0
                 if existing and existing.status == SubscriptionStatus.ACTIVE:
                     # 续费/重复支付回调：延长一个周期并同步续期 License
                     if not sm.renew(order.plugin_id):
@@ -1900,19 +2184,52 @@ def _activate_license_after_payment(order, order_no: str):
                     # 恢复订阅与 License（reactivate），避免静默新建重复订阅记录
                     if not sm.reactivate(
                             order.plugin_id,
-                            interval_type=detail.get('price_interval', existing.interval_type),
-                            amount_fen=detail.get('price_amount', existing.amount_fen)):
+                            interval_type=interval,
+                            amount_fen=amount_fen):
                         print(f'[PluginSub] reactivate failed for {order.plugin_id}')
                 else:
                     sm.create(
                         plugin_id=order.plugin_id,
                         license_key=order_no,
                         order_no=order_no,
-                        interval_type=detail.get('price_interval', 'month'),
-                        amount_fen=detail.get('price_amount', 0),
+                        interval_type=interval,
+                        amount_fen=amount_fen,
+                        tier=tier,
                     )
 
     _fire_payment_hook(order.plugin_id, 'purchase', order_no)
+
+
+def _activate_bundle_after_payment(mgr, order, order_no: str, bundle_id: str):
+    """版本包支付确认：创建/续费/恢复包订阅 + 成员 License + 自动安装启用。
+
+    - 已有活跃包订阅 → renew（延长周期 + 刷新成员 License）
+    - 已有非活跃包订阅 → reactivate（恢复包与成员 License）
+    - 无包订阅 → create_bundle（建包订阅 + 生成 13 成员 License + 取消同名旧独立订阅）
+    """
+    sm = get_subscription_manager()
+    order_extra = order.extra or {}
+    interval = (order_extra.get('interval') or 'month').strip()
+    if interval not in ('month', 'quarter', 'year'):
+        interval = 'month'
+    amount_fen = order.amount_fen or 0
+
+    existing = sm.get_subscription(bundle_id)
+    if existing and existing.status == SubscriptionStatus.ACTIVE:
+        # 包续费/重复支付回调：延长一个周期并同步成员 License
+        if not sm.renew(bundle_id):
+            print(f'[PluginSub] bundle renewal failed for {bundle_id}')
+    elif existing:
+        # 包补缴/重新购买：恢复包订阅与成员 License
+        if not sm.reactivate(bundle_id, interval_type=interval, amount_fen=amount_fen):
+            print(f'[PluginSub] bundle reactivate failed for {bundle_id}')
+    else:
+        sub = sm.create_bundle(bundle_id, license_key=order_no, order_no=order_no,
+                               interval_type=interval, amount_fen=amount_fen)
+        # 包权限生效：自动安装+启用包内插件（License 已由 create_bundle 生成）
+        if sub and mgr:
+            for pid in sm.get_bundle_member_ids(bundle_id):
+                _auto_install_enable_plugin(mgr, pid)
 
 
 # ── 28. 退款 ─────────────────────────────────────────────
@@ -2003,6 +2320,143 @@ def renew_subscription(plugin_id: str):
         sub = sm.get_subscription(plugin_id)
         return _json_result(True, data=sub.to_dict() if sub else {})
     return _json_result(False, error='Renewal failed', code=400)
+
+
+# ── 31b. 周期变更报价（升级/降级，带剩余价值折算） ─────────
+
+@bp.route('/subscriptions/<plugin_id>/change/quote', methods=['POST'])
+def subscription_change_quote(plugin_id: str):
+    """周期变更报价：剩余价值折算抵扣新周期价（L5 平滑折算）。
+
+    请求体: {interval: 'month'|'quarter'|'year'}
+    响应: data = {from_interval, to_interval, price_fen, credit_fen,
+                  pay_fen, carryover_fen, needs_payment}
+    """
+    err = _require_admin()
+    if err:
+        return err
+
+    try:
+        body = request.json if request.is_json else {}
+    except Exception:
+        body = {}
+    new_interval = (body.get('interval') or '').strip()
+    if new_interval not in ('month', 'quarter', 'year'):
+        return _json_result(False, error='interval must be month/quarter/year', code=400)
+
+    sm = get_subscription_manager()
+    sub = sm.get_subscription(plugin_id)
+    if not sub:
+        return _json_result(False, error='Subscription not found', code=404)
+    if sub.status != SubscriptionStatus.ACTIVE:
+        return _json_result(False, error='Only active subscription can be changed', code=400)
+
+    mgr = _get_manager()
+    store = mgr.store_client if mgr else None
+    detail = store.get_detail(plugin_id) if store else None
+    if not detail:
+        return _json_result(False, error='Plugin detail not found', code=404)
+    # 目标周期名义价：配置价优先，未配置走 L1 规则
+    price_fen = _resolve_price_fen(detail, 'sub', new_interval)
+
+    quote = sm.quote_change(sub, new_interval, price_fen)
+    return _json_result(True, data=quote)
+
+
+# ── 31c. 执行周期变更（升级/降级） ───────────────────────
+
+@bp.route('/subscriptions/<plugin_id>/change', methods=['POST'])
+def subscription_change(plugin_id: str):
+    """执行周期变更（升级/降级，带按比例折算抵扣）。
+
+    请求体: {interval, amount_fen?, proration_fen?}
+      - amount_fen: 目标周期名义价（缺省按配置/L1 规则解析）
+      - proration_fen: 剩余价值折算抵扣（由 /change/quote 的 credit_fen 产出）
+    说明：升级应付差额（pay_fen）通过既有支付下单链路收取后回调确认；
+          本端点负责最终落库变更（幂等，重复调用以新周期为准）。
+    """
+    err = _require_admin()
+    if err:
+        return err
+
+    try:
+        body = request.json if request.is_json else {}
+    except Exception:
+        body = {}
+    new_interval = (body.get('interval') or '').strip()
+    if new_interval not in ('month', 'quarter', 'year'):
+        return _json_result(False, error='interval must be month/quarter/year', code=400)
+
+    try:
+        proration_fen = int(body.get('proration_fen', 0) or 0)
+    except (TypeError, ValueError):
+        return _json_result(False, error='proration_fen must be int (fen)', code=400)
+
+    sm = get_subscription_manager()
+    sub = sm.get_subscription(plugin_id)
+    if not sub:
+        return _json_result(False, error='Subscription not found', code=404)
+
+    amount_fen = body.get('amount_fen')
+    if amount_fen is None:
+        mgr = _get_manager()
+        store = mgr.store_client if mgr else None
+        detail = store.get_detail(plugin_id) if store else None
+        if not detail:
+            return _json_result(False, error='Plugin detail not found', code=404)
+        amount_fen = _resolve_price_fen(detail, 'sub', new_interval)
+    try:
+        amount_fen = int(amount_fen)
+    except (TypeError, ValueError):
+        return _json_result(False, error='amount_fen must be int (fen)', code=400)
+    if amount_fen <= 0:
+        return _json_result(False, error='Invalid amount_fen', code=400)
+
+    updated = sm.change(plugin_id, new_interval, amount_fen,
+                        proration_fen=proration_fen)
+    if not updated:
+        return _json_result(False, error='Change failed: subscription not active or not found', code=400)
+    return _json_result(True, data=updated.to_dict())
+
+
+# ── 31d. 版本包平滑升级报价 ──────────────────────────────
+
+@bp.route('/subscriptions/bundle/<bundle_id>/upgrade/quote', methods=['POST'])
+def bundle_upgrade_quote(bundle_id: str):
+    """版本包平滑升级报价（L5）：包价 − 已订插件剩余价值折算 = 应付差额。
+
+    响应: data = quote_bundle_upgrade 结果（bundle / credit_fen /
+          upgrade_cost_fen / carryover_fen / needs_payment / items）
+    """
+    err = _require_admin()
+    if err:
+        return err
+
+    from .pricing import get_pricing_rules, quote_bundle_upgrade
+    sm = get_subscription_manager()
+    rules = get_pricing_rules()
+    if bundle_id not in (rules.get('bundles') or {}):
+        return _json_result(False, error=f'Unknown bundle: {bundle_id}', code=404)
+
+    mgr = _get_manager()
+    store = mgr.store_client if mgr else None
+    member_prices = {}
+    for pid in sm.get_bundle_member_ids(bundle_id):
+        detail = store.get_detail(pid) if store else None
+        if detail:
+            member_prices[pid] = detail.get('price_amount', 0)
+
+    # 当前活跃独立订阅（排除包自身）作为折算来源
+    active_subs = [
+        s.to_dict() for s in sm.list_subscriptions()
+        if s.status == SubscriptionStatus.ACTIVE and s.plugin_id != bundle_id
+    ]
+
+    try:
+        quote = quote_bundle_upgrade(bundle_id, member_prices, active_subs, rules=rules)
+    except Exception as e:
+        return _json_result(False, error=f'bundle upgrade quote failed: {e}', code=400)
+    return _json_result(True, data=quote)
 
 
 # ── 32. 插件菜单列表 ─────────────────────────────────────
@@ -2251,14 +2705,16 @@ def _auto_install_enable_plugin(mgr, identifier: str):
                 print(f'[Payment] Plugin "{identifier}" not found in store, skip')
                 return
             app_version = getattr(mgr.app, 'version', '')
-            download_url = store.get_download_url(identifier, app_version)
+            download_url, fallback_url = store.get_download_urls(
+                identifier, app_version)
             if not download_url:
                 print(f'[Payment] No download URL for "{identifier}", skip')
                 return
             from .downloader import download_plugin
             plugin_dest = os.path.join(mgr.plugins_dir, identifier)
             download_plugin(download_url, plugin_dest,
-                            expected_hash=detail.get('package_hash', ''))
+                            expected_hash=detail.get('package_hash', ''),
+                            fallback_url=fallback_url or '')
             mgr.install(identifier)
 
         # 启用（License 已在支付回调中激活）

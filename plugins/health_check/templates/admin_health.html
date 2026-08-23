@@ -1,0 +1,9 @@
+window.l_health=function(){
+  document.getElementById("pt").textContent="{{ _('Health Check') }}";
+  var mc = document.getElementById("mc");
+  // iframe 内嵌完整 Health Check UI（health.html），同源加载自动携带 sso_token Cookie
+  mc.innerHTML = '<iframe src="/admin/health/" style="width:100%;height:calc(100vh - 70px);border:none;background:var(--bg)"></iframe>';
+};
+
+// 🌐 i18n {{ _('Translations') }}
+// ============================

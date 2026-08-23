@@ -638,8 +638,8 @@ class PluginManager:
                 try:
                     from agent_matrix.models import register_plugin_agents
                     register_plugin_agents(identifier, info.path, _meta)
-                except ImportError as e:
-                    print(f'[PluginManager] ⚠️ {identifier}: agent_matrix.models 不可用, 跳过 Agent 注册 ({e})')
+                except Exception as e:
+                    print(f'[PluginManager] ⚠️ {identifier}: Agent 注册失败, 跳过 ({type(e).__name__}: {e})')
 
             # ── 敏感权限软检查（软执行：仅警告，不阻断）────────────
             sensitive = [p for p in (_meta.get('permissions') or [])
@@ -694,6 +694,23 @@ class PluginManager:
             if identifier in self._instances:
                 self._check_deps_active(info)
 
+            instance = self._instances.get(identifier)
+            if instance is None:
+                # 修复：enable() 瞬时 setup 失败降级后实例未缓存，此处补载重试，
+                # 避免"已启用但点激活必 400"；重试仍失败则记录后正常抛错。
+                try:
+                    instance = self._load_instance(info)
+                    if hasattr(instance, 'setup') and callable(instance.setup):
+                        instance.setup()
+                    self._instances[identifier] = instance
+                except SystemExit as e:
+                    self._guard_failure(info, 'activate-selfheal')
+                    print(f'[PluginManager] ⚠️ {identifier} activate self-heal SystemExit: {e}')
+                except Exception as e:
+                    self._guard_failure(info, 'activate-selfheal')
+                    info.last_error = f'activate self-heal failed: {e}'
+                    self._save_to_db(info)
+                    print(f'[PluginManager] ⚠️ {identifier} activate self-heal failed: {e}')
             instance = self._instances.get(identifier)
             if instance is None:
                 raise PluginNotEnabledError(identifier)
@@ -1414,17 +1431,27 @@ class PluginManager:
                 ).fetchall()
                 for row in rows:
                     sp = dict(row)
-                    if sp['identifier'] not in local_ids:
-                        sp['_source'] = 'store'
+                    sp['_source'] = 'store'
+                    # 状态联动（对齐行业：商店=目录全集，本地=子集状态）
+                    # 不剔除已安装插件；每个目录条目标注本地安装/激活状态
+                    installed = sp['identifier'] in local_ids
+                    sp['installed'] = installed
+                    if installed:
+                        sp['status'] = db_plugins.get(sp['identifier'], {}).get('status') or 'installed'
+                    else:
                         sp['status'] = 'available'
-                        # 解析 JSON 字段
-                        for field in ('tags', 'screenshots', 'depends_on'):
-                            if isinstance(sp.get(field), str):
-                                try:
-                                    sp[field] = json.loads(sp[field])
-                                except (json.JSONDecodeError, TypeError):
-                                    pass
-                        store_plugins.append(sp)
+                    # 版本发现：可升级状态（未安装项无升级概念）
+                    u = updates.get(sp['identifier'])
+                    sp['has_update'] = bool(u and u.get('has_update'))
+                    sp['latest_version'] = (u or {}).get('latest') or sp.get('version')
+                    # 解析 JSON 字段
+                    for field in ('tags', 'screenshots', 'depends_on'):
+                        if isinstance(sp.get(field), str):
+                            try:
+                                sp[field] = json.loads(sp[field])
+                            except (json.JSONDecodeError, TypeError):
+                                pass
+                    store_plugins.append(sp)
         except Exception as e:
             print(f'[PluginManager] get_unified_list store query failed: {e}')
 
@@ -1633,6 +1660,7 @@ class PluginManager:
         直接查 DB 保证各 worker 返回一致结果）。
         """
         from .base import localize_plugin_dict
+        from i18n import _
         import os
         import json as _json
         deploy_type = os.environ.get('DEPLOY_TYPE', 'production')
@@ -1693,12 +1721,15 @@ class PluginManager:
                             'path': row.get('path') or '',
                             'metadata': {'menu': child},
                         })
+                        # i18n 兜底：缺失 label_i18n_key 时用系统 _() 翻译 label 原文
+                        if not child.get('label_i18n_key'):
+                            child['label'] = _(child.get('label') or child.get('key') or pid)
                         children.append(child)
                     menus.append({
                         'group': group,
                         '_plugin_id': pid,
                         'key': pid,
-                        'label': menu_cfg.get('label') or meta.get('name') or pid,
+                        'label': _(menu_cfg.get('label') or meta.get('name') or pid),
                         'icon': menu_cfg.get('icon') or meta.get('icon') or (items[0].get('icon') or 'plugins'),
                         'plugin_menu': True,
                         'children': children,
@@ -1715,10 +1746,16 @@ class PluginManager:
                         'path': row.get('path') or '',
                         'metadata': {'menu': item},
                     })
+                    # i18n 兜底：缺失 label_i18n_key 时用系统 _() 翻译 label 原文
+                    if not item.get('label_i18n_key'):
+                        item['label'] = _(item.get('label') or item.get('key') or pid)
                     menus.append(item)
             else:
                 menu_cfg['_plugin_id'] = pid
                 menu_cfg.setdefault('key', pid)
+                # i18n 兜底：缺失 label_i18n_key 时用系统 _() 翻译 label 原文
+                if not menu_cfg.get('label_i18n_key'):
+                    menu_cfg['label'] = _(menu_cfg.get('label') or menu_cfg.get('key') or pid)
                 menus.append(menu_cfg)
         return menus
 

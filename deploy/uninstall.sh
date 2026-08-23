@@ -95,17 +95,7 @@ else
     echo -e "${INFO}   sudo -u postgres psql -c \"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='appdb'\""
     echo -e "${INFO}   sudo -u postgres psql -c \"DROP DATABASE appdb\""
 fi
-# 审计 F2 修复：site_builder 内置插件库在卸载时一并 DROP（先解除连接占用再删库），
-# 否则其 owner 依赖 app 角色会导致 DROP ROLE app 失败，卸载后环境不纯净。
-if sudo -u postgres psql -lqt 2>/dev/null | cut -d'|' -f1 | grep -qw site_builder; then
-    sudo -u postgres psql -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='site_builder' AND pid <> pg_backend_pid()" >/dev/null 2>&1 || true
-    if sudo -u postgres psql -c "DROP DATABASE IF EXISTS site_builder" 2>&1; then
-        done_step "Database site_builder dropped"
-    else
-        echo -e "${FAIL} DROP DATABASE site_builder failed — manual command:"
-        echo -e "${INFO}   sudo -u postgres psql -c \"DROP DATABASE site_builder\""
-    fi
-fi
+# (2026-08-21) site_builder 独立数据库豁免已取消，无独立库需 DROP。
 if sudo -u postgres psql -c "DROP ROLE IF EXISTS app" 2>&1; then
     done_step "Role app dropped"
 else

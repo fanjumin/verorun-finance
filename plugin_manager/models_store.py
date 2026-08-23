@@ -97,6 +97,9 @@ CREATE TABLE IF NOT EXISTS store_plugins (
     price_amount    BIGINT DEFAULT 0,               -- 价格（分）
     price_interval  TEXT DEFAULT 'onetime'
                     CHECK(price_interval IN ('onetime','month','year')),
+    price_quarter_fen BIGINT DEFAULT 0,             -- 季价（分，订阅插件三档价之一）
+    price_year_fen    BIGINT DEFAULT 0,             -- 年价（分，订阅插件三档价之一）
+    compatible_editions TEXT DEFAULT '[]',          -- JSON array：适用版本（pro/standard/edge...）
     trial_days      BIGINT DEFAULT 0,               -- 试用天数
     download_url    TEXT DEFAULT '',                 -- 下载地址
     package_hash    TEXT DEFAULT '',                 -- 包签名哈希
@@ -195,6 +198,10 @@ _STORE_COLUMN_MIGRATIONS = [
     "ALTER TABLE store_plugins ADD COLUMN IF NOT EXISTS tagline_i18n_key TEXT DEFAULT ''",
     # P0-2：目录同步时间戳持久化（TEXT 存 ISO 时间串，与 store_plugins 其余时间列一致）
     "ALTER TABLE store_plugins ADD COLUMN IF NOT EXISTS last_sync_ts TEXT DEFAULT ''",
+    # 订阅三档价 + 适用版本（阶段1：定价机制完整化）
+    "ALTER TABLE store_plugins ADD COLUMN IF NOT EXISTS price_quarter_fen BIGINT DEFAULT 0",
+    "ALTER TABLE store_plugins ADD COLUMN IF NOT EXISTS price_year_fen BIGINT DEFAULT 0",
+    "ALTER TABLE store_plugins ADD COLUMN IF NOT EXISTS compatible_editions TEXT DEFAULT '[]'",
 ]
 
 
@@ -302,6 +309,9 @@ class StorePlugin:
     price_type: str = 'free'
     price_amount: int = 0
     price_interval: str = 'onetime'
+    price_quarter_fen: int = 0
+    price_year_fen: int = 0
+    compatible_editions: List[str] = field(default_factory=list)
     trial_days: int = 0
     download_url: str = ''
     package_hash: str = ''
@@ -343,6 +353,9 @@ class StorePlugin:
             price_type=row.get('price_type', 'free'),
             price_amount=row.get('price_amount', 0),
             price_interval=row.get('price_interval', 'onetime'),
+            price_quarter_fen=row.get('price_quarter_fen', 0),
+            price_year_fen=row.get('price_year_fen', 0),
+            compatible_editions=json.loads(row.get('compatible_editions', '[]')),
             trial_days=row.get('trial_days', 0),
             download_url=row.get('download_url', ''),
             package_hash=row.get('package_hash', ''),

@@ -1,0 +1,72 @@
+{
+  "name": "OAuth Login Config",
+  "name_i18n_key": "plugin.name",
+  "identifier": "oauth_config",
+  "python_dependencies": {
+    "required": [
+      "authlib"
+    ],
+    "optional": {}
+  },
+  "version": "1.4.2",
+  "category": "system",
+  "tags": [
+    "oauth",
+    "login",
+    "sso",
+    "douyin",
+    "wechat",
+    "alipay",
+    "google",
+    "github",
+    "facebook",
+    "telegram"
+  ],
+  "icon": "social_media",
+  "description": "OAuth 第三方登录完整插件 — 登录/回调/配置管理。禁用后第三方登录功能完全消失。",
+  "author": "VeroRun",
+  "min_app_version": "0.10.0",
+  "dependencies": {},
+  "enabled": true,
+  "config": {},
+  "permissions": [
+    "api:read",
+    "api:write",
+    "network:request",
+    "admin:access",
+    "user:profile"
+  ],
+  "hooks": {
+    "provides": [
+      "oauth/provider_list",
+      "oauth/login",
+      "oauth/callback"
+    ],
+    "listens": []
+  },
+  "dashboard": {
+    "stats": []
+  },
+  "admin_url": "",
+  "menu": {
+    "group": "Security & Compliance",
+    "key": "oauth",
+    "icon": "social_media",
+    "label": "OAuth Login"
+  },
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "max_providers_per_site": {
+        "type": "integer",
+        "default": 2,
+        "description": "Maximum number of active OAuth providers per site domain"
+      },
+      "session_ttl_hours": {
+        "type": "integer",
+        "default": 168,
+        "description": "SSO session TTL in hours (default 168 = 7 days)"
+      }
+    }
+  }
+}

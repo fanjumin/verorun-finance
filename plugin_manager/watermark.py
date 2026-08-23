@@ -33,7 +33,7 @@ import hashlib
 import hmac
 from typing import Any, Dict
 
-# ── 官方插件白名单（30 个已上线官方插件 identifier）────────────────
+# ── 官方插件白名单（31 个已上线官方插件 identifier）────────────────
 OFFICIAL_PLUGIN_IDS = {
     'ads', 'ali_api', 'analytics', 'captcha_embedded', 'chatbot',
     'content_factory', 'coupons', 'currency_converter', 'email',
@@ -41,7 +41,7 @@ OFFICIAL_PLUGIN_IDS = {
     'memory_engine', 'mini_app_builder', 'oauth_config', 'order_notify',
     'payment', 'project_workspace', 'reviews', 'shop', 'site_builder',
     'site_domains', 'sms', 'social_push', 'subscription', 'vault',
-    'verification', 'visitor_profile', 'wishlist',
+    'verification', 'veroscholar', 'visitor_profile', 'wishlist',
 }
 
 # 官方作者标识（plugin.json author 字段兜底匹配）

@@ -126,6 +126,45 @@ FREE_DOMAINS = {
     'monitor', 'alerter', 'cron', 'deployment',
 }
 
+# ═══════════════════════════════════════════════════════════════
+# 能力意图索引（通用能力检测）
+# 用户指令命中关键词 → 判定需要对应付费插件的能力。
+# 仅收录商店付费订阅插件（price_type=sub）；新增付费插件时在此追加一行即可，
+# 无需改任何逻辑（数据驱动）。
+# ═══════════════════════════════════════════════════════════════
+CAPABILITY_INDEX = {
+    'mini_app_builder': ['小程序', '微信小程序', '抖音小程序', 'mini program', 'taro', 'mini_app_builder'],
+    'payment': ['收款', '支付渠道配置', '商户配置', 'payment_gateway'],
+    'subscription': ['订阅系统', '会员订阅', 'subscription_system'],
+    'shop': ['商城', '在线商店', '购物车', '商品管理', '订单管理'],
+    'coupons': ['优惠券', 'coupons'],
+    'content_factory': ['内容工厂', '批量生成文章', 'rss 采集', 'content_factory'],
+    'social_push': ['社媒推送', '社交分发', 'linkedin', 'social_push'],
+    'ads': ['广告位', '广告投放', '广告管理', 'ads_plugin'],
+    'reviews': ['评价系统', '商品评价', 'reviews_plugin'],
+    'wishlist': ['心愿单', '收藏功能', 'wishlist_plugin'],
+    'currency_converter': ['货币换算', '汇率转换', 'currency_converter'],
+    'order_notify': ['订单通知', 'order_notify'],
+    'logistics': ['物流查询', '快递查询', '物流跟踪', 'logistics_plugin'],
+    'enterprise_verify': ['企业认证', '企业资质验证', 'enterprise_verify'],
+    'verification': ['实名认证', '身份核验', 'verification_plugin'],
+    'ali_api': ['阿里云', '1688', '供应链采集', 'ali_api'],
+}
+
+
+def detect_capability_plugins(instruction: str) -> list:
+    """扫描用户指令，返回命中的付费插件标识符列表（数据驱动）。"""
+    if not instruction:
+        return []
+    text = instruction.lower()
+    matched = []
+    for plugin_id, keywords in CAPABILITY_INDEX.items():
+        for kw in keywords:
+            if kw.lower() in text:
+                matched.append(plugin_id)
+                break
+    return matched
+
 # 可访问状态：这些状态下模块可用
 ACCESSIBLE_STATUSES = {'trial', 'paying', 'active'}
 
@@ -220,6 +259,34 @@ class ModulePolicyEngine:
         except Exception as e:
             logger.warning(f"[ModulePolicy] _load_db_policies failed: {e}")
             return {}
+
+    # ═══════════════════════════════════════════════════════════
+    # 能力闸门辅助（通用能力检测）
+    # ═══════════════════════════════════════════════════════════
+
+    def is_plugin_installed(self, plugin_id: str) -> bool:
+        """判断插件是否已安装（plugin_registry 状态为 installed/enabled/active）。
+
+        查询失败时保守放行（返回 True，避免误伤正常请求）。
+        """
+        if not self._get_main_db:
+            return True
+        try:
+            with self._get_main_db() as conn:
+                row = conn.execute(
+                    "SELECT status FROM plugin_registry WHERE identifier = %s",
+                    (plugin_id,)
+                ).fetchone()
+                if not row:
+                    return False
+                return row['status'] in ('installed', 'enabled', 'active')
+        except Exception as e:
+            logger.warning(f"[ModulePolicy] is_plugin_installed({plugin_id}) failed: {e}")
+            return True
+
+    def subscribe_prompt(self, plugin_id: str) -> str:
+        """生成付费插件订阅引导文案。"""
+        return f'This capability requires subscribing to the {plugin_id} plugin, please subscribe in the plugin store.'
 
     # ═══════════════════════════════════════════════════════════
     # 访问控制（Phase 2：接入真实 DB）

@@ -65,6 +65,11 @@ fail_step() { echo -e "${FAIL} $1"; }
 # Fully backward compatible: no switching is triggered in overseas environments (default sources reachable).
 # ══════════════════════════════════════════════════════════════════════
 
+# Git operation timeout for clone/fetch. A hard 60s window is too tight on slow CN links and kills
+# large private-repo transfers mid-flight. Configurable via GIT_TIMEOUT, default 120s.
+# 无人值守加固 ①：the timeout is read at each call site so operators can raise it without editing the script.
+: "${GIT_TIMEOUT:=120}"
+
 # 1. apt mirror: if the default source is unreachable within 3s → auto-switch to Aliyun (idempotent, marker-file controlled)
 _ensure_apt_mirror() {
     local _marker="/etc/apt/.verorun_mirror_applied"
@@ -126,10 +131,10 @@ _clone_with_timeout() {
     local _url _cloned=""
     for _url in "${_candidates[@]}"; do
         _attempt=1
-        echo -e "${INFO} Cloning ${_url} (timeout 60s, shallow, up to ${_max} attempts)..."
+        echo -e "${INFO} Cloning ${_url} (timeout ${GIT_TIMEOUT}s, shallow, up to ${_max} attempts)..."
         while [ "${_attempt}" -le "${_max}" ]; do
             # 审计 M-2：--no-single-branch makes the shallow clone (--depth 1) also carry tags, so git describe --tags works for version detection
-            if timeout 60 git clone --depth 1 --no-single-branch -b "${_branch}" "${_url}" "${_dest}" 2>&1; then
+            if timeout "${GIT_TIMEOUT}" git clone --depth 1 --no-single-branch -b "${_branch}" "${_url}" "${_dest}" 2>&1; then
                 _cloned="${_url}"
                 break 2
             fi
@@ -144,7 +149,7 @@ _clone_with_timeout() {
         GIT_REPO="${_cloned}"  # record the actually reachable URL for subsequent operations such as update
         return 0
     fi
-    echo -e "${FAIL} git clone failed after ${#_candidates[@]} sources x ${_max} attempts (timeout 60s each)"
+    echo -e "${FAIL} git clone failed after ${#_candidates[@]} sources x ${_max} attempts (timeout ${GIT_TIMEOUT}s each)"
     echo -e "${INFO} Possible causes:"
     echo -e "${INFO}   1. GitHub unreachable (DNS pollution / GFW)"
     echo -e "${INFO}   2. SSH key not configured (private repo)"
@@ -549,6 +554,31 @@ resolve_directory_conflict() {
     echo -e "${WARN}"
     echo -e "${WARN}  This directory exists but is NOT a VeroRun installation."
 
+    # 无人值守加固 ②：AUTO_DIR_CONFLICT (set by -auto / oneshot) resolves the conflict non-interactively.
+    # This is the ONLY path that auto-acts on an existing directory; it must be explicitly enabled via a flag.
+    # 1 = backup + reinstall (safe default), 2 = delete + reinstall. Always refuse dangerous paths.
+    if [ -n "${AUTO_DIR_CONFLICT:-}" ]; then
+        case "${AUTO_DIR_CONFLICT}" in
+            2)
+                if [ -z "${target_dir}" ] || [ "${target_dir}" = "/" ] || [ "${target_dir}" = "${HOME}" ]; then
+                    echo -e "${FAIL} Refusing to remove dangerous path: ${target_dir}"
+                    exit 1
+                fi
+                echo -e "${INFO} [auto] Removing ${target_dir} ..."
+                rm -rf "${target_dir}"
+                echo -e "${OK} [auto] Removed. Proceeding with installation."
+                return 0
+                ;;
+            *)
+                local _bak="${target_dir}.bak.$(date +%Y%m%d%H%M%S)"
+                echo -e "${INFO} [auto] Backing up to ${_bak} ..."
+                mv "${target_dir}" "${_bak}"
+                echo -e "${OK} [auto] Backup complete. Proceeding with installation."
+                return 0
+                ;;
+        esac
+    fi
+
     # 审计 M20：no longer auto-deletes without a TTY (curl|sudo bash pipe) — a misjudged directory means irreversible data loss.
     # Instead, abort the installation and require the user to resolve it interactively.
     if ! { exec 3<>/dev/tty; } 2>/dev/null; then
@@ -557,6 +587,7 @@ resolve_directory_conflict() {
         echo -e "${FAIL}  Non-interactive mode detected. To avoid accidental data loss,"
         echo -e "${FAIL}  installation aborted. Please resolve ${target_dir} manually"
         echo -e "${FAIL}  (move or back it up), then re-run in an interactive terminal."
+        echo -e "${FAIL}  Or re-run with -auto to permit non-interactive conflict resolution."
         echo -e "${FAIL} ═══════════════════════════════════════════════════════"
         exit 1
     fi
@@ -710,6 +741,15 @@ EOF
 # ══════════════════════════════════════════════════════════════════════
 # systemd services (four services + the guardian daemon)
 # ══════════════════════════════════════════════════════════════════════
+# 精简版（edu / minipro）：无声用户控制台服务（verorun-auth / 8083），只有 Admin 身份。
+# 其他版本（production / lan / code / dev）完整保留 8083 平台用户控制台。
+_skip_user_console() {
+    case "${DEPLOY_TYPE:-production}" in
+        edu|minipro) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 write_systemd_services() {
     local env_file="${APP_HOME}/.env"
     # 审计 H-4 fix：the gunicorn worker count is no longer hardcoded as -w 2.
@@ -763,8 +803,12 @@ SVCEOF
     }
     # 8081 — Main site (homepage public_home.html)
     write_one_service "verorun-main" 8081 "auth_server" "--timeout 120 --log-level warning"
-    # 8083 — Platform / User Console
-    write_one_service "verorun-auth" 8083 "main_site" "--timeout 120 --log-level warning"
+    # 8083 — Platform / User Console (skipped in 精简版 edu/minipro, only Admin identity)
+    if _skip_user_console; then
+        echo -e "${INFO} 精简版 ${DEPLOY_TYPE:-production}: skipping verorun-auth (8083, user console)"
+    else
+        write_one_service "verorun-auth" 8083 "main_site" "--timeout 120 --log-level warning"
+    fi
     # 8084 — Admin (uses run_gunicorn.py to avoid platform/ shadowing stdlib)
     # RuntimeDirectory=verorun → systemd creates /run/verorun/ owned by APP_USER on service start.
     write_one_service "verorun-admin" 8084 "admin.app" "--timeout 300 --max-requests=1000 --graceful-timeout=30 --log-level warning --config admin/gunicorn_config.py" "admin/run_gunicorn.py" "verorun"
@@ -777,11 +821,16 @@ SVCEOF
 
 write_guardian_service() {
     local file="${SERVICE_DIR}/verorun-guardian.service"
+    # 精简版（edu/minipro）无 verorun-auth(8083)，Wants 不含该服务
+    local _gwants="verorun-auth.service"
+    if _skip_user_console; then
+        _gwants="#verorun-auth.service"
+    fi
     cat > "${file}" << 'GDEVEOF'
 [Unit]
 Description=VeroGuard — Unified Guardian Daemon (Health + Integrity + Heartbeat)
 After=network.target postgresql.service
-Wants=verorun-health.service verorun-main.service verorun-admin.service verorun-auth.service
+Wants=verorun-health.service verorun-main.service verorun-admin.service GDPLATFORM
 
 [Service]
 Type=simple
@@ -801,6 +850,7 @@ TimeoutStopSec=30
 [Install]
 WantedBy=multi-user.target
 GDEVEOF
+    sed -i "s|GDPLATFORM|${_gwants}|g" "${file}"
     sed -i "s|GDEVDIR|${APP_HOME}|g" "${file}"
     systemctl daemon-reload
     systemctl enable verorun-guardian
@@ -845,13 +895,18 @@ GENVEOF
 # ══════════════════════════════════════════════════════════════════════
 write_sudoers() {
     local sudoers_file="/etc/sudoers.d/verorun"
+    # 精简版（edu/minipro）无 verorun-auth(8083)，不授予其 restart 权限
+    local _auth_sudoers=""
+    if ! _skip_user_console; then
+        _auth_sudoers="${APP_USER} ALL=(root) NOPASSWD: /usr/bin/systemctl restart verorun-auth"
+    fi
     cat > "${sudoers_file}" << SUEOF
 # Managed by VeroRun ${INSTALL_SCRIPT} — regenerated on every install/update
 # Grants ${APP_USER} passwordless one-click update for VeroRun services
 ${APP_USER} ALL=(root) NOPASSWD: /bin/bash ${APP_HOME}/deploy/${INSTALL_SCRIPT} update
 ${APP_USER} ALL=(root) NOPASSWD: /bin/bash ${APP_HOME}/deploy/${INSTALL_SCRIPT} restart
 ${APP_USER} ALL=(root) NOPASSWD: /usr/bin/systemctl restart verorun-main
-${APP_USER} ALL=(root) NOPASSWD: /usr/bin/systemctl restart verorun-auth
+${_auth_sudoers}
 ${APP_USER} ALL=(root) NOPASSWD: /usr/bin/systemctl restart verorun-admin
 ${APP_USER} ALL=(root) NOPASSWD: /usr/bin/systemctl restart verorun-health
 ${APP_USER} ALL=(root) NOPASSWD: /usr/bin/systemctl restart verorun-guardian
@@ -870,7 +925,10 @@ SUEOF
 # Service restart (with startup-wait polling + nginx)
 # ══════════════════════════════════════════════════════════════════════
 restart_services() {
-    local services=("verorun-admin" "verorun-auth" "verorun-main" "verorun-health" "verorun-guardian")
+    local services=("verorun-admin" "verorun-main" "verorun-health" "verorun-guardian")
+    if ! _skip_user_console; then
+        services+=("verorun-auth")
+    fi
     for svc in "${services[@]}"; do
         if systemctl is-enabled --quiet "${svc}" 2>/dev/null; then
             # 审计 2026-08-15：首次启动可能因空库并发建表竞态失败（如 admin 双 worker），
@@ -1045,7 +1103,9 @@ health_check() {
     }
 
     check_port 8081 "verorun-main"
-    check_port 8083 "verorun-auth"
+    if ! _skip_user_console; then
+        check_port 8083 "verorun-auth"
+    fi
     check_port 8084 "verorun-admin"
     check_port 8085 "verorun-health"
 
@@ -1058,7 +1118,11 @@ health_check() {
 
     echo ""
     echo -e "${INFO} Migration log check:"
-    for svc in verorun-admin verorun-auth verorun-main; do
+    local _mig_services=("verorun-admin" "verorun-main")
+    if ! _skip_user_console; then
+        _mig_services+=("verorun-auth")
+    fi
+    for svc in "${_mig_services[@]}"; do
         journalctl -u "${svc}" --since "1 min ago" 2>/dev/null | grep -i "\[Migration\]" | tail -2 || true
     done
 
@@ -1150,8 +1214,11 @@ EOF
     fi
 
     # 审计 C1：admin credentials are passed to seed_data.py via environment variables, avoiding exposure in the process command line
+    # 回归修复：seed_data.py auto-detects `.env` from the *current working directory*; when install runs as root,
+    # that resolves to /root/.env (or an unrelated home .env) instead of ${APP_HOME}/.env, causing
+    # "Tables not found" even though migration succeeded. Pin the env path explicitly via its supported --env flag.
     sudo -u "${APP_USER}" env VR_ADMIN_USERNAME="${VR_ADMIN_USERNAME}" VR_ADMIN_PASSWORD="${VR_ADMIN_PASSWORD}" \
-        "${VENV_DIR}/bin/python" "${APP_HOME}/deploy/seed_data.py"
+        "${VENV_DIR}/bin/python" "${APP_HOME}/deploy/seed_data.py" --env "${APP_HOME}/.env"
     echo -e "${OK} Seed data injected"
 }
 
@@ -1178,7 +1245,11 @@ do_rollback() {
         echo -e "${WARN} Failed to create safety branch — proceeding anyway"
     fi
     if git reset --hard "${target_commit}"; then
-        systemctl restart verorun-admin verorun-auth verorun-main verorun-health verorun-guardian
+        if _skip_user_console; then
+            systemctl restart verorun-admin verorun-main verorun-health verorun-guardian
+        else
+            systemctl restart verorun-admin verorun-auth verorun-main verorun-health verorun-guardian
+        fi
         echo -e "${OK} Rolled back to $(git log --oneline -1)"
     else
         echo -e "${FAIL} Rollback failed"
@@ -1713,6 +1784,13 @@ NGXEOF
 
 # ── Fresh install: DEPLOY_TYPE drives domain prompt / pull messaging / cleanup / service startup ──
 do_install() {
+    # 审计 DIR-1 fix：resolve_directory_conflict 必须最先执行，早于任何可能隐式创建
+    # APP_HOME 的步骤。此前置于 "Create directories"（旧 WEB-2）仍不够早——
+    # "Node.js/miniprogram-ci"（npm install --prefix ${APP_HOME}/plugins/... 会自动
+    # mkdir -p 整条路径链，含 APP_HOME 根）先于它运行，导致全新安装时 APP_HOME 被
+    # 提前创建，冲突检测误判 "exists but not git repo" 而中止（.104 复现）。
+    resolve_directory_conflict "${APP_HOME}"
+
     step "Dependency check"
     if [ "${SKIP_DEPS:-0}" = "1" ]; then
         echo -e "${WARN} --skip-deps: skipping dependency installation"
@@ -1839,21 +1917,28 @@ do_install() {
         exit 1
     fi
     # Iron rule: the install script only creates the system database; plugin databases are never created.
-    # EXCEPTION (2026-08-15): site_builder — a built-in plugin whose independent DB is a hard system dependency
-    # (plugins/site_builder/db.py hard-codes dbname='site_builder'). Create it idempotently; never drop it.
-    local _sb_db="site_builder"
-    if ! sudo -u postgres psql -tc "SELECT 1 FROM pg_database WHERE datname='${_sb_db}'" 2>/dev/null | grep -qE '^\s*1\s*$'; then
-        sudo -u postgres createdb -O "${_role}" "${_sb_db}" 2>&1 \
-            || echo -e "${WARN} createdb ${_sb_db} failed (site_builder plugin DB missing)"
+    # (2026-08-21) site_builder / mini_app_builder 独立数据库豁免已取消，回归独立 schema，不再创建任何插件库。
+    # pgvector 平台能力（2026-08-21 重设计）：扩展创建已下沉到插件迁移 SQL
+    # （CREATE EXTENSION IF NOT EXISTS vector SCHEMA public，幂等），本脚本不再以超级用户
+    # 无条件预建扩展——避免为未订阅插件的用户强制写入 vector 扩展（部署物垃圾）。
+    # 本脚本仅保证平台能力存在（对插件透明，第三方插件同样受益）：
+    #   (1) pgvector 二进制已安装（缺 vector.control 时给出安装指引，不中断安装）
+    #   (2) 控制文件直接新增 trusted = true（幂等，追加前先检查），
+    #       使 DB owner（app）无需 superuser 即可在插件激活时按需自建扩展
+    _vector_ctl="$(ls /usr/share/postgresql/*/extension/vector.control 2>/dev/null | head -1)"
+    if [ -z "${_vector_ctl}" ]; then
+        echo -e "${WARN} pgvector 二进制未安装（未找到 vector.control）— 依赖插件将在激活时缺少扩展（请安装 PGDG 的 postgresql-XX-pgvector）"
+    elif ! grep -q '^trusted' "${_vector_ctl}" 2>/dev/null; then
+        printf '\ntrusted = true\n' >> "${_vector_ctl}"
+        echo -e "${OK} pgvector platform capability: trusted = true added (${_vector_ctl})"
+    else
+        echo -e "${INFO} pgvector already trusted"
     fi
     done_step "PostgreSQL is running"
 
     step "Create directories"
-    # 审计 WEB-2 fix：resolve_directory_conflict 必须在 mkdir 之前执行。
-    # 此前顺序为 mkdir 在前、冲突检测在后 —— 全新安装时目录由脚本自己刚创建，
-    # 会被误判为"存在但非 VeroRun 安装"，非交互模式直接中止，导致三种形态全新建装全部失败。
-    # 移到 mkdir 之前后：目录不存在（全新安装）→ 函数直接 return 0；已存在非 git → 交互处理。
-    resolve_directory_conflict "${APP_HOME}"
+    # 审计 DIR-1 fix：resolve_directory_conflict 已提升至 do_install() 最开头执行，
+    # 早于 npm 隐式创建 APP_HOME。此处不再重复调用，直接创建目录结构。
     mkdir -p "${APP_HOME}" "${APP_HOME}/data" "${LOG_DIR}"
     mkdir -p "${APP_HOME}/.cache/llm" \
              "${APP_HOME}/.cache/sessions" \
@@ -1889,8 +1974,11 @@ do_install() {
         # 审计 F-2：suppress git interactive credential prompts + timeout protection, avoiding infinite stalls when origin points to a mirror
         git remote set-url origin "${GIT_REPO}"
         export GIT_TERMINAL_PROMPT=0
-        if ! timeout 60 git fetch origin "${GIT_BRANCH}" 2>&1; then
-            echo -e "${FAIL} Git fetch failed or timed out (60s) — aborting"
+        # 无人值守加固 ①：pre-warm known_hosts so git-over-SSH never stalls on host-key verification under `sudo`.
+        # Without this, a fresh root environment with an empty /root/.ssh/known_hosts blocks git fetch until the timeout.
+        ensure_git_auth
+        if ! timeout "${GIT_TIMEOUT}" git fetch origin "${GIT_BRANCH}" 2>&1; then
+            echo -e "${FAIL} Git fetch failed or timed out (${GIT_TIMEOUT}s) — aborting"
             echo -e "${INFO} Check origin remote: git -C ${APP_HOME} remote -v"
             echo -e "${INFO} If it points to a mirror (ghfast.top/ghproxy), reset it:"
             echo -e "${INFO}   git -C ${APP_HOME} remote set-url origin ${GIT_REPO}"
@@ -1993,10 +2081,12 @@ do_install() {
         _wait=0
         _max_wait=30
         while [ $_wait -lt $_max_wait ]; do
-            if curl -s --max-time 2 http://127.0.0.1:8081/ > /dev/null 2>&1 \
-               && curl -s --max-time 2 http://127.0.0.1:8083/ > /dev/null 2>&1; then
-                echo -e "${OK} Backend services ready"
-                break
+            if curl -s --max-time 2 http://127.0.0.1:8081/ > /dev/null 2>&1; then
+                if _skip_user_console \
+                   || curl -s --max-time 2 http://127.0.0.1:8083/ > /dev/null 2>&1; then
+                    echo -e "${OK} Backend services ready"
+                    break
+                fi
             fi
             sleep 1
             _wait=$((_wait + 1))
@@ -2115,8 +2205,10 @@ do_update() {
         cd "${APP_HOME}"
         git remote set-url origin "${GIT_REPO}"
         export GIT_TERMINAL_PROMPT=0
-        if ! timeout 60 git fetch origin "${GIT_BRANCH}" 2>&1; then
-            echo -e "${FAIL} Git fetch failed or timed out (60s) — aborting"
+        # 无人值守加固 ①：pre-warm known_hosts (see do_install) — a fresh root env stalls git fetch on host-key verification.
+        ensure_git_auth
+        if ! timeout "${GIT_TIMEOUT}" git fetch origin "${GIT_BRANCH}" 2>&1; then
+            echo -e "${FAIL} Git fetch failed or timed out (${GIT_TIMEOUT}s) — aborting"
             echo -e "${INFO} Check origin remote: git -C ${APP_HOME} remote -v"
             echo -e "${INFO} If it points to a mirror (ghfast.top/ghproxy), reset it:"
             echo -e "${INFO}   git -C ${APP_HOME} remote set-url origin ${GIT_REPO}"
@@ -2159,7 +2251,7 @@ do_update() {
     script_md5=$(md5sum "${APP_HOME}/deploy/${INSTALL_SCRIPT}" | awk '{print $1}')
     if [ "${UPDATE_MD5}" != "${script_md5}" ]; then
         echo -e "${INFO} ${INSTALL_SCRIPT} updated, re-running with new version..."
-        exec sudo APP_USER="${APP_USER}" APP_HOME="${APP_HOME}" VENV_DIR="${VENV_DIR}" REGION="${REGION}" FORCE_UPDATE="${FORCE_UPDATE:-0}" bash "${APP_HOME}/deploy/${INSTALL_SCRIPT}" update
+        exec sudo APP_USER="${APP_USER}" APP_HOME="${APP_HOME}" VENV_DIR="${VENV_DIR}" REGION="${REGION}" FORCE_UPDATE="${FORCE_UPDATE:-0}" AUTO_DIR_CONFLICT="${AUTO_DIR_CONFLICT:-}" bash "${APP_HOME}/deploy/${INSTALL_SCRIPT}" update
         exit
     fi
 

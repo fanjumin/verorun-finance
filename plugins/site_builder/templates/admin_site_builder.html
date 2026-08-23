@@ -1,0 +1,293 @@
+{# AI Site Builder — Admin inline partial, extracted from ai_chat.html #}
+{# V20260809 Phase 1: standalone l_site_builder() to fix sidebar dead link #}
+{# 整合版: Site Settings 作为同一模块内的站点配置区，与 AI 建站区同页展示（System 仅保留 AI Site Builder 入口） #}
+window.l_site_builder = function () {
+  document.getElementById('pt').textContent = {{ _('AI Site Builder') | tojson }};
+  var mc = document.getElementById('mc');
+  var h = '';
+  // ── Section 1: AI Site Builder generation flow ──
+  h += '<div class="sbar" style="margin-bottom:14px"><span style="font-size:14px;font-weight:600;color:#f0a020">🏗️ {{ _('AI Site Builder') }}</span></div>';
+  h += '<div id="sbView"></div>';
+  // ── Section 2: Site Settings editor (same module, same page) ──
+  h += '<div style="margin-top:20px;border-top:1px solid var(--border,#334155);padding-top:16px">';
+  h += '<div style="font-size:14px;font-weight:600;color:#f0a020;margin-bottom:12px">⚙️ {{ _('Site Settings') }}</div>';
+  h += '<div id="sbSettingsHost"></div>';
+  h += '</div>';
+  mc.innerHTML = h;
+  sbLoadTemplates();
+  if (typeof window.l_site_settings === 'function') { window.l_site_settings(document.getElementById('sbSettingsHost')); }
+};
+
+// ═══════════════════════════════════════════
+// AI Site Builder (site_builder) front-end logic
+// Originally from ai_chat.html — extracted 2026-08-09
+// ═══════════════════════════════════════════
+var sbPrompts = [];
+var sbCurrentPlan = null;
+var sbModifyEnabled = false;
+
+// Render the main site-builder panel into #mc, then populate the template select
+function sbLoadTemplates() {
+  var view = document.getElementById('sbView');
+  if (!view) return;
+  // Render panel UI first so DOM elements exist
+  var h = '';
+
+  // ── Template selector + prompt editor ──
+  h += '<div class="cd" style="margin-bottom:12px">';
+  h += '<div style="font-size:11px;color:var(--dim);margin-bottom:6px">{{ _('Select Industry Template') }}</div>';
+  h += '<div style="display:flex;gap:6px">';
+  h += '<select class="sl" id="sbTemplate" style="flex:1;font-size:12px"><option value="">{{ _('Loading') }}...</option></select>';
+  h += '<button class="btn bo bs" style="font-size:11px;padding:3px 10px" onclick="sbViewPrompt()">📖 {{ _('View/Edit Prompt') }}</button>';
+  h += '</div>';
+  h += '</div>';
+
+  // ── Requirements input ──
+  h += '<div class="cd" style="margin-bottom:12px">';
+  h += '<div style="font-size:11px;color:var(--dim);margin-bottom:6px">{{ _('Describe Your Website Needs') }}</div>';
+  h += '<textarea class="in" id="sbInput" placeholder="{{ _("Describe your website needs, e.g. Create a law firm website focused on corporate legal advisory, showcasing our team, practice areas and success cases. Prefer formal and professional style, navy blue and gold colors.") }}" style="width:100%;font-size:12px;resize:none;min-height:80px;line-height:1.4;margin-bottom:8px"></textarea>';
+  h += '<div style="display:flex;gap:6px">';
+  h += '<button class="btn bp" style="font-size:12px" onclick="sbPreview()">🎨 {{ _('Generate Plan') }}</button>';
+  h += '<button class="btn bo bs" style="font-size:11px" onclick="sbModifyMode()">✏️ {{ _('Minimal Edit') }}</button>';
+  h += '</div>';
+  h += '</div>';
+
+  // ── Action buttons: preview draft + publish (hidden until draft exists) ──
+  h += '<div id="sbActions" style="display:none;gap:6px;margin-bottom:12px">';
+  h += '<button class="btn bo bs" style="font-size:11px" onclick="sbPreviewSite()">🔍 {{ _('Preview Draft') }}</button>';
+  h += '<button class="btn bp" style="font-size:11px" onclick="sbPublishDraft()">🚀 {{ _('Publish to Production') }}</button>';
+  h += '</div>';
+
+  // ── Result area ──
+  h += '<div id="sbResult"></div>';
+
+  view.innerHTML = h;
+
+  // Now fetch template list from server
+  fetch('/admin/site-builder/prompts?active_only=1', { headers: { 'Authorization': 'Bearer ' + T } })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      var sel = document.getElementById('sbTemplate');
+      if (!sel) return;
+      if (!d.success || !d.data || !d.data.length) {
+        sel.innerHTML = '<option value="">{{ _('No Templates - Please Create First') }}</option>';
+        return;
+      }
+      sbPrompts = d.data;
+      sel.innerHTML = '';
+      d.data.forEach(function (p) {
+        var o = document.createElement('option');
+        o.value = p.id;
+        o.textContent = (p.icon || '📄') + ' ' + p.name;
+        sel.appendChild(o);
+      });
+    }).catch(function () {
+      var sel = document.getElementById('sbTemplate');
+      if (sel) sel.innerHTML = '<option value="">{{ _('Load failed') }}</option>';
+    });
+}
+
+// View / edit the prompt for the currently selected template
+function sbViewPrompt() {
+  var sel = document.getElementById('sbTemplate');
+  var res = document.getElementById('sbResult');
+  if (!sel || !sel.value) { alert('{{ _('Please Select a Template First') }}'); return }
+  fetch('/admin/site-builder/prompts/' + encodeURIComponent(sel.value), { headers: { 'Authorization': 'Bearer ' + T } })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (!d.success || !d.data) { res.innerHTML = '<div class="em">{{ _('Load failed') }}</div>'; return }
+      var p = d.data;
+      var prompts = p.prompts || {};
+      var h = '<div style="border:1px solid var(--border);border-radius:6px;padding:10px;background:rgba(0,0,0,.2)">';
+      h += '<div style="font-size:12px;font-weight:600;margin-bottom:6px">' + (p.icon || '📄') + ' ' + esc(p.name) + ' — {{ _('Prompt Editor') }}</div>';
+      h += '<div style="font-size:10px;color:var(--dim);margin-bottom:8px">{{ _('All keywords like {brand name} map to plain language, editable directly.') }}</div>';
+      Object.keys(prompts).forEach(function (stage) {
+        h += '<div style="margin-bottom:8px">';
+        h += '<div style="font-size:11px;color:#f0a020;margin-bottom:2px">' + esc(stage) + '</div>';
+        h += '<textarea class="in" id="sbPrompt_' + esc(stage) + '" style="width:100%;font-size:11px;font-family:monospace;min-height:70px;resize:vertical">' + esc(prompts[stage]) + '</textarea>';
+        h += '</div>';
+      });
+      h += '<div style="display:flex;gap:6px;margin-top:6px">';
+      h += '<button class="btn bp bs" style="font-size:11px" onclick="sbSavePrompt(' + p.id + ')">💾 {{ _('Save Prompt') }}</button>';
+      h += '<button class="btn bo bs" style="font-size:11px" onclick="document.getElementById(\'sbResult\').innerHTML=\'\'">{{ _('Cancel') }}</button>';
+      h += '</div></div>';
+      res.innerHTML = h;
+      res._stages = Object.keys(prompts);
+    }).catch(function () { res.innerHTML = '<div class="em">{{ _('Network error') }}</div>' });
+}
+
+// Save the edited prompt
+function sbSavePrompt(pid) {
+  var res = document.getElementById('sbResult');
+  var stages = res._stages || [];
+  var prompts = {};
+  stages.forEach(function (s) {
+    var ta = document.getElementById('sbPrompt_' + s);
+    if (ta) prompts[s] = ta.value;
+  });
+  fetch('/admin/site-builder/prompts/' + pid, {
+    method: 'PUT',
+    headers: { 'Authorization': 'Bearer ' + T, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompts: prompts })
+  }).then(function (r) { return r.json(); }).then(function (d) {
+    if (d.success) { res.innerHTML = '<div style="color:var(--accent);font-size:12px;padding:8px">✅ {{ _('Prompt Saved') }}</div>'; }
+    else { alert('{{ _('Save failed') }}: ' + (d.error || '')) }
+  }).catch(function () { alert('{{ _('Network error') }}') });
+}
+
+// Generate site plan preview
+function sbPreview() {
+  var sel = document.getElementById('sbTemplate');
+  var inp = document.getElementById('sbInput');
+  var res = document.getElementById('sbResult');
+  if (!sel || !sel.value) { res.innerHTML = '<div class="warn" style="border:1px solid rgba(240,160,32,.4);border-radius:6px;padding:10px;background:rgba(240,160,32,.05);font-size:12px;color:#f0a020">⚠️ {{ _('Please Select a Template First') }}</div>'; return }
+  var msg = (inp.value || '').trim();
+  if (!msg) { res.innerHTML = '<div class="warn" style="border:1px solid rgba(240,160,32,.4);border-radius:6px;padding:10px;background:rgba(240,160,32,.05);font-size:12px;color:#f0a020">⚠️ {{ _('Please Describe Your Needs') }}</div>'; return }
+  res.innerHTML = '<div class="lo"><div class="s"></div>{{ _('Generating Plan') }}...</div>';
+  fetch('/admin/site-builder/preview', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + T, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt_id: sel.value, message: msg })
+  }).then(function (r) { return r.json(); }).then(function (d) {
+    if (!d.success) { res.innerHTML = '<div class="em">' + esc(d.error || '{{ _('Generation Failed') }}') + '</div>'; return }
+    sbCurrentPlan = { plan: d.data.plan, prompt_id: sel.value, message: msg };
+    sbRenderPlan(d.data);
+  }).catch(function () { res.innerHTML = '<div class="em">{{ _('Network error') }}</div>' });
+}
+
+// Render plan preview + confirm button
+function sbRenderPlan(data) {
+  var res = document.getElementById('sbResult');
+  var plan = data.plan || {};
+  var h = '<div style="border:1px solid rgba(0,212,170,.3);border-radius:6px;padding:10px;background:rgba(0,212,170,.03)">';
+  h += '<div style="font-size:12px;font-weight:600;color:var(--accent);margin-bottom:6px">📋 {{ _('Site Plan Preview') }}</div>';
+  h += '<div style="font-size:12px;white-space:pre-wrap;line-height:1.6;color:var(--muted);max-height:320px;overflow-y:auto">' + esc(data.summary || plan.summary || '') + '</div>';
+  h += '<div style="display:flex;gap:6px;margin-top:10px">';
+  h += '<button class="btn bp" style="font-size:12px" onclick="sbExecute()">✅ {{ _('Confirm and Build') }}</button>';
+  h += '<button class="btn bo bs" style="font-size:11px" onclick="sbPreview()">🔄 {{ _('Regenerate') }}</button>';
+  h += '</div>';
+  h += '<div style="font-size:10px;color:var(--dim);margin-top:6px">⚠️ {{ _('AI-generated legal documents are for reference only. Please have them reviewed by a professional.') }}</div>';
+  h += '</div>';
+  res.innerHTML = h;
+}
+
+// Execute build (write draft)
+function sbExecute() {
+  var res = document.getElementById('sbResult');
+  if (!sbCurrentPlan) { res.innerHTML = '<div class="warn" style="border:1px solid rgba(240,160,32,.4);border-radius:6px;padding:10px;background:rgba(240,160,32,.05);font-size:12px;color:#f0a020">⚠️ {{ _('Please Generate a Plan First') }}</div>'; return }
+  var actions = document.getElementById('sbActions');
+  res.innerHTML = '<div class="lo"><div class="s"></div>{{ _('Building your site, please wait...') }}</div>';
+  fetch('/admin/site-builder/execute', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + T, 'Content-Type': 'application/json' },
+    body: JSON.stringify(sbCurrentPlan)
+  }).then(function (r) { return r.json(); }).then(function (d) {
+    if (!d.success) {
+      res.innerHTML = '<div style="border:1px solid rgba(240,160,32,.4);border-radius:6px;padding:12px;background:rgba(240,160,32,.05)">' +
+        '<div style="font-size:12px;color:#f0a020;margin-bottom:6px">🔒 ' + esc(d.error || '{{ _('Build Failed') }}') + '</div></div>';
+      if (actions) actions.style.display = 'none';
+      return;
+    }
+    var sm = d.data.summary || {};
+    var h = '<div style="border:1px solid rgba(0,212,170,.3);border-radius:6px;padding:12px;background:rgba(0,212,170,.05)">';
+    h += '<div style="font-size:13px;font-weight:600;color:var(--accent);margin-bottom:6px">📝 {{ _('Draft Generated') }}</div>';
+    h += '<div style="font-size:11px;color:var(--muted);line-height:1.7">';
+    h += '<div style="margin-bottom:6px">✅ {{ _('Content written to draft (not yet published)') }}</div>';
+    if (sm.pages !== undefined) h += '📄 {{ _('Pages') }}: ' + sm.pages + '<br>';
+    if (sm.documents !== undefined) h += '📋 {{ _('Documents') }}: ' + sm.documents + '<br>';
+    if (sm.mode) h += '💡 {{ _('Mode') }}: ' + sm.mode + '<br>';
+    h += '</div>';
+    h += '<div style="font-size:11px;color:var(--dim);margin-top:8px">{{ _('Use the buttons above to Preview Draft or Publish to Production.') }}</div>';
+    h += '</div>';
+    res.innerHTML = h;
+    if (actions) actions.style.display = 'flex';
+  }).catch(function () {
+    res.innerHTML = '<div class="em">{{ _('Network error') }}</div>';
+    if (actions) actions.style.display = 'none';
+  });
+}
+
+// Preview draft site in new window
+function sbPreviewSite() {
+  window.open('/admin/site-builder/preview-site', '_blank', 'width=1200,height=800,scrollbars=yes');
+}
+
+// Publish draft to production (themed confirmation modal)
+function sbPublishDraft() {
+  var h = '<div class="modal-overlay" onclick="if(event.target===this)this.remove()">';
+  h += '<div class="modal-box" style="width:420px;text-align:center">';
+  h += '<div style="font-size:40px;margin-bottom:12px">🚀</div>';
+  h += '<h3>{{ _('Publish to Production') }}</h3>';
+  h += '<div class="modal-meta" style="font-size:13px;margin-bottom:16px">{{ _('Publish this draft to production? This will overwrite the current live site.') }}</div>';
+  h += '<div style="display:flex;gap:10px;justify-content:center">';
+  h += '<button class="btn bo" style="font-size:13px;padding:6px 20px" onclick="this.closest(\'.modal-overlay\').remove()">{{ _('Cancel') }}</button>';
+  h += '<button class="btn bp" style="font-size:13px;padding:6px 20px" onclick="sbConfirmPublish()">{{ _('Confirm Publish') }}</button>';
+  h += '</div></div></div>';
+  var m = document.createElement('div');
+  m.innerHTML = h;
+  document.body.appendChild(m);
+}
+
+function sbConfirmPublish() {
+  var m = document.querySelector('.modal-overlay');
+  if (m) m.remove();
+  var res = document.getElementById('sbResult');
+  var actions = document.getElementById('sbActions');
+  res.innerHTML = '<div class="lo"><div class="s"></div>{{ _('Publishing...') }}</div>';
+  fetch('/admin/site-builder/publish', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + T, 'Content-Type': 'application/json' }
+  }).then(function (r) { return r.json(); }).then(function (d) {
+    if (!d.success) {
+      res.innerHTML = '<div class="em">' + esc(d.error || '{{ _('Publish Failed') }}') + '</div>';
+      return;
+    }
+    var h = '<div style="border:1px solid rgba(0,212,170,.3);border-radius:6px;padding:12px;background:rgba(0,212,170,.05)">';
+    h += '<div style="font-size:13px;font-weight:600;color:var(--accent);margin-bottom:4px">🎉 {{ _('Published Successfully') }}</div>';
+    h += '<div style="font-size:11px;color:var(--muted)">{{ _('Your AI-generated site is now live.') }}</div>';
+    h += '</div>';
+    res.innerHTML = h;
+    if (actions) actions.style.display = 'none';
+  }).catch(function () {
+    res.innerHTML = '<div class="em">{{ _('Network error') }}</div>';
+  });
+}
+
+// Toggle minimal edit mode
+function sbModifyMode() {
+  sbModifyEnabled = !sbModifyEnabled;
+  var res = document.getElementById('sbResult');
+  if (!sbModifyEnabled) { res.innerHTML = ''; return }
+  var h = '<div style="border:1px solid var(--border);border-radius:6px;padding:10px;background:rgba(0,0,0,.2)">';
+  h += '<div style="font-size:12px;font-weight:600;margin-bottom:6px">✏️ {{ _('Minimal Edit') }}</div>';
+  h += '<div style="font-size:10px;color:var(--dim);margin-bottom:6px">{{ _('Describe the single change, e.g. Change homepage hero title to XXX. Only that block will be updated.') }}</div>';
+  h += '<div style="display:flex;gap:6px">';
+  h += '<input class="in" id="sbModifyInput" placeholder="{{ _("e.g. Change homepage hero title to ...") }}" style="flex:1;font-size:12px">';
+  h += '<button class="btn bp bs" style="font-size:11px" onclick="sbDoModify()">{{ _('Apply') }}</button>';
+  h += '</div>';
+  h += '<div id="sbModifyResult" style="margin-top:8px"></div>';
+  h += '</div>';
+  res.innerHTML = h;
+}
+
+// Execute minimal edit
+function sbDoModify() {
+  var inp = document.getElementById('sbModifyInput');
+  var out = document.getElementById('sbModifyResult');
+  var msg = (inp.value || '').trim();
+  if (!msg) { return }
+  out.innerHTML = '<div style="font-size:11px;color:var(--muted)">{{ _('Locating block...') }}</div>';
+  fetch('/admin/site-builder/modify', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + T, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: msg })
+  }).then(function (r) { return r.json(); }).then(function (d) {
+    if (d.success && d.data && d.data.success) {
+      out.innerHTML = '<div style="font-size:11px;color:var(--accent)">✅ ' + esc(d.message || '{{ _('Updated') }}') + '</div>';
+      inp.value = '';
+    } else {
+      out.innerHTML = '<div style="font-size:11px;color:#f85149">❌ ' + esc((d.data && d.data.error) || d.error || '{{ _('Could not locate the block to edit') }}') + '</div>';
+    }
+  }).catch(function () { out.innerHTML = '<div style="font-size:11px;color:#f85149">{{ _('Network error') }}</div>' });
+}
+{# end of site_builder partial #}

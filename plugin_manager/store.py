@@ -37,6 +37,9 @@ def _catalog_urls() -> List[str]:
 # 下载镜像前缀（P0-2）：设置后对 GitHub Raw 下载地址做 host 替换，走 CDN/镜像
 DOWNLOAD_MIRROR_PREFIX = os.environ.get('DOWNLOAD_MIRROR_PREFIX', '').strip()
 
+# 部署版本（阶段 3）：商店按 compatible_editions 过滤插件（空数组=全版本兼容）
+DEPLOY_EDITION = os.environ.get('DEPLOY_EDITION', 'standard').strip().lower()
+
 # 同步调度参数（P0-2）：成功固定间隔 6h；失败指数退避 15min 起、上限 6h
 SYNC_SUCCESS_INTERVAL = 6 * 3600
 SYNC_RETRY_BASE = 15 * 60
@@ -67,7 +70,7 @@ class StoreAPIClient:
                 req = Request(url, headers={
                     'User-Agent': 'VeroRun-PluginManager/1.0',
                 })
-                with urlopen(req, timeout=30) as resp:
+                with urlopen(req, timeout=8) as resp:
                     data = json.loads(resp.read().decode())
                 if isinstance(data, dict):
                     return data
@@ -118,12 +121,17 @@ class StoreAPIClient:
             with get_registry_db() as conn:
                 if category:
                     rows = conn.execute(
-                        'SELECT * FROM store_plugins WHERE enabled=1 AND category=%s ORDER BY downloads DESC',
-                        (category,)
+                        'SELECT * FROM store_plugins WHERE enabled=1 AND category=%s '
+                        "AND (compatible_editions = '[]' OR compatible_editions LIKE %s) "
+                        'ORDER BY downloads DESC',
+                        (category, f'%"{DEPLOY_EDITION}"%')
                     ).fetchall()
                 else:
                     rows = conn.execute(
-                        'SELECT * FROM store_plugins WHERE enabled=1 ORDER BY downloads DESC'
+                        'SELECT * FROM store_plugins WHERE enabled=1 '
+                        "AND (compatible_editions = '[]' OR compatible_editions LIKE %s) "
+                        'ORDER BY downloads DESC',
+                        (f'%"{DEPLOY_EDITION}"%',)
                     ).fetchall()
                 return [StorePlugin.from_row(dict(r)).to_dict() for r in rows]
 
@@ -169,7 +177,8 @@ class StoreAPIClient:
         """
         with get_registry_db() as conn:
             row = conn.execute(
-                'SELECT download_url, min_app_version FROM store_plugins WHERE identifier=%s',
+                'SELECT download_url, min_app_version, compatible_editions '
+                'FROM store_plugins WHERE identifier=%s',
                 (identifier,)
             ).fetchone()
             if not row or not row['download_url']:
@@ -177,7 +186,36 @@ class StoreAPIClient:
             if app_version and row['min_app_version']:
                 if not self._version_compatible(app_version, row['min_app_version']):
                     return None
+            # 阶段 3：部署版本过滤
+            if not self._edition_compatible(json.loads(row.get('compatible_editions') or '[]')):
+                return None
             return self._apply_mirror(row['download_url'])
+
+    def get_download_urls(self, identifier: str,
+                          app_version: str = '') -> tuple:
+        """获取下载地址对 (primary, fallback)。
+
+        primary  = 当前环境首选源（配置 DOWNLOAD_MIRROR_PREFIX 时为镜像，
+                   否则为 catalog 原始 GitHub 地址）
+        fallback = 主源网络失败时的降级源（未启用镜像时为 None）
+        """
+        primary = self.get_download_url(identifier, app_version)
+        if not primary:
+            return (None, None)
+        parsed = urlparse(primary)
+        if parsed.netloc in ('raw.githubusercontent.com', 'github.com'):
+            # primary 即原始源（未启用镜像或 URL 非 GitHub），无需回退
+            return (primary, None)
+        # primary 为镜像地址 → 回退到 catalog 原始 URL
+        with get_registry_db() as conn:
+            row = conn.execute(
+                'SELECT download_url FROM store_plugins WHERE identifier=%s',
+                (identifier,)
+            ).fetchone()
+        original = row['download_url'] if row else None
+        if original and original != primary:
+            return (primary, original)
+        return (primary, None)
 
     def download_package(self, identifier: str, dest_dir: str) -> str:
         """下载插件包并解压到 dest_dir（自动读取 download_url + package_hash 强校验）。
@@ -202,9 +240,14 @@ class StoreAPIClient:
         if not row or not row.get('download_url'):
             raise ValueError(f'商店中不存在 {identifier} 的下载地址')
         from .downloader import download_plugin
+        primary = self._apply_mirror(row['download_url'])
+        fallback = None
+        if primary and primary != row['download_url']:
+            fallback = row['download_url']
         return download_plugin(
-            self._apply_mirror(row['download_url']), dest_dir,
-            expected_hash=row.get('package_hash') or '')
+            primary, dest_dir,
+            expected_hash=row.get('package_hash') or '',
+            fallback_url=fallback or '')
 
     @staticmethod
     def _apply_mirror(url: str) -> str:
@@ -218,6 +261,17 @@ class StoreAPIClient:
         if parsed.netloc not in ('raw.githubusercontent.com', 'github.com'):
             return url
         return DOWNLOAD_MIRROR_PREFIX.rstrip('/') + parsed.path
+
+    @staticmethod
+    def _edition_compatible(compatible_editions: list) -> bool:
+        """阶段 3：按部署版本（DEPLOY_EDITION）过滤插件。
+
+        空数组 = 全版本兼容（旧插件未标注不拦截）；
+        非空时必须包含当前版本（大小写不敏感）。
+        """
+        if not compatible_editions:
+            return True
+        return DEPLOY_EDITION in [str(e).strip().lower() for e in compatible_editions]
 
     @staticmethod
     def _version_compatible(current: str, required: str) -> bool:
@@ -254,6 +308,10 @@ class StoreAPIClient:
                 if price_type:
                     sql += ' AND s.price_type=%s'
                     params.append(price_type)
+
+                # 阶段 3：按部署版本过滤（compatible_editions 空数组=全兼容）
+                sql += " AND (s.compatible_editions = '[]' OR s.compatible_editions LIKE %s)"
+                params.append(f'%"{DEPLOY_EDITION}"%')
 
                 # 排序
                 sort_map = {
@@ -299,11 +357,13 @@ class StoreAPIClient:
                     INSERT INTO store_plugins (
                         identifier, name, name_i18n_key, description, version, author,
                         author_url, icon_url, price_type, price_amount,
-                        price_interval, trial_days, download_url, package_hash,
+                        price_interval, price_quarter_fen, price_year_fen, compatible_editions,
+                        trial_days, download_url, package_hash,
                         file_size, category, tags, min_app_version, depends_on,
                         screenshots, readme_url, tagline, tagline_i18n_key,
+                        tagline_font_size, tagline_color,
                         downloads, rating, review_count, enabled
-                    ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,1)
+                    ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,1)
                     -- ★ ON CONFLICT: 更新商店侧管理的字段 + 展示资源 URL（icon_url/readme_url/
                     --    screenshots）。展示资源由发布工具自动生成真实 CDN URL，需随同步覆盖。
                     --    tagline 用 COALESCE 保护：目录有值才覆盖，AI 生成/手写的 tagline 得以保留。
@@ -317,6 +377,9 @@ class StoreAPIClient:
                         price_type=excluded.price_type,
                         price_amount=excluded.price_amount,
                         price_interval=excluded.price_interval,
+                        price_quarter_fen=excluded.price_quarter_fen,
+                        price_year_fen=excluded.price_year_fen,
+                        compatible_editions=excluded.compatible_editions,
                         download_url=excluded.download_url,
                         package_hash=excluded.package_hash,
                         file_size=excluded.file_size,
@@ -345,6 +408,9 @@ class StoreAPIClient:
                     pdata.get('price_type', 'free'),
                     pdata.get('price_amount', 0),
                     pdata.get('price_interval', 'onetime'),
+                    pdata.get('price_quarter_fen', 0),
+                    pdata.get('price_year_fen', 0),
+                    json.dumps(pdata.get('compatible_editions', [])),
                     pdata.get('trial_days', 0),
                     pdata.get('download_url', ''),
                     pdata.get('package_hash', ''),

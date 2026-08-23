@@ -1,0 +1,106 @@
+# ── Site Builder English Translations ──
+
+# Plugin metadata (plugin.json i18n keys)
+"plugin.name": "AI Site Builder"
+"menu.site_builder": "AI Site Builder"
+"menu.site_settings": "Site Settings"
+
+# Module name
+"AI 智能建站": "AI Site Builder"
+
+# Prompt template names
+"律师事务所": "Law Firm"
+"餐饮美食": "Restaurant"
+"科技公司": "Tech Company"
+"教育培训": "Education"
+
+# Prompt template descriptions
+"适用于律师事务所、法律顾问、法务咨询公司": "For law firms, legal consultants, and legal advisory companies"
+"适用于餐厅、咖啡馆、美食品牌": "For restaurants, cafes, and food brands"
+"适用于科技创业公司、SaaS、互联网企业": "For tech startups, SaaS, and internet companies"
+"适用于培训机构、学校、在线教育平台": "For training institutions, schools, and online education platforms"
+
+# Page names
+"首页": "Home"
+"关于我们": "About Us"
+"服务领域": "Services"
+"律师团队": "Our Team"
+"成功案例": "Case Studies"
+"联系我们": "Contact Us"
+"菜单": "Menu"
+"门店位置": "Locations"
+"在线订餐": "Order Online"
+"产品": "Products"
+"解决方案": "Solutions"
+"客户案例": "Clients"
+"课程": "Courses"
+"师资力量": "Faculty"
+"招生简章": "Admissions"
+
+# Document names
+"隐私政策": "Privacy Policy"
+"服务协议": "Terms of Service"
+"免责声明": "Disclaimer"
+"Cookie 政策": "Cookie Policy"
+
+# Task status
+"需求分析中": "Analyzing Requirements"
+"方案生成中": "Generating Plan"
+"等待确认": "Awaiting Confirmation"
+"执行中": "Executing"
+"已完成": "Completed"
+"失败": "Failed"
+
+# Build steps
+"品牌设置": "Brand Settings"
+"主题配置": "Theme Configuration"
+"导航结构": "Navigation"
+"页面内容": "Page Content"
+"法律文档": "Legal Documents"
+"静态化输出": "Static Generation"
+
+# Action prompts
+"回复「确认执行」开始建站": "Reply \"confirm\" to start building"
+"输入建站需求": "Enter your requirements"
+"选择行业模板": "Select industry template"
+"查看/修改提示词": "View/Edit Prompts"
+"新建模板": "New Template"
+"编辑模板": "Edit Template"
+"删除模板": "Delete Template"
+"确认执行": "Confirm & Execute"
+"重新生成": "Regenerate"
+"手动调整": "Manual Adjust"
+
+# Error messages
+"建站功能需要订阅专业版": "Site Builder requires a Professional subscription"
+"没有可用的提示词模板": "No prompt templates available"
+"消息不能为空": "Message cannot be empty"
+"建站方案生成失败": "Failed to generate site plan"
+"当前步骤执行失败": "Current step execution failed"
+"无法定位需要修改的区块": "Cannot locate the block to modify"
+
+# Success messages
+"建站完成": "Site Build Complete"
+"已修改": "Modified"
+"已更新": "Updated"
+"已删除": "Deleted"
+"已创建": "Created"
+
+# Prompt editing
+"提示词模板": "Prompt Template"
+"行业": "Industry"
+"标签": "Tags"
+"预设参数": "Default Parameters"
+"页面结构": "Page Structure"
+"文档列表": "Document List"
+"各阶段提示词": "Stage Prompts"
+"需求解析提示词": "Requirement Parsing Prompt"
+"品牌生成提示词": "Brand Generation Prompt"
+"导航生成提示词": "Navigation Generation Prompt"
+"页脚生成提示词": "Footer Generation Prompt"
+"页面生成提示词": "Page Generation Prompt"
+"文档生成提示词": "Document Generation Prompt"
+
+# Keyword help
+"关键字使用 {关键字} 格式，执行时自动替换为实际值": "Keywords use {keyword} format, automatically replaced during execution"
+"可用关键字：{品牌名称}、{行业}、{目标受众}、{风格偏好}、{用户输入}、{页面列表}、{文档列表}": "Available keywords: {brand_name}, {industry}, {target_audience}, {style}, {user_input}, {page_list}, {doc_list}"

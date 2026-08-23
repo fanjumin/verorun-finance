@@ -92,6 +92,38 @@ class AgentOrchestrator:
         self._add_task_log(master_task_id, master_agent_id, 'info', 'execution',
                            f'Start processing instruction: {instruction[:80]}...')
 
+        # 2.5 能力闸门：指令指向未安装的付费插件能力 → 返回订阅引导
+        # 通用能力检测（数据驱动）：CAPABILITY_INDEX 关键词命中 + 本机未安装 → 引导订阅。
+        # 已安装插件不触发；未命中关键词不触发（AI 按现有已加载端点正常回复）。
+        if user_id:
+            try:
+                sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'auth-center'))
+                from services.module_policy import get_policy_engine, detect_capability_plugins
+                _policy_engine = get_policy_engine()
+                missing = [pid for pid in detect_capability_plugins(instruction)
+                           if not _policy_engine.is_plugin_installed(pid)]
+                if missing:
+                    prompt = '；'.join(_policy_engine.subscribe_prompt(pid) for pid in missing)
+                    logger.info(f'[CapabilityGate] blocked, missing plugins: {", ".join(missing)}')
+                    self.models.update_task_status(
+                        master_task_id, 'completed', confidence=1.0,
+                        self_review=f'Capability blocked, please subscribe: {", ".join(missing)}'
+                    )
+                    self._add_task_log(master_task_id, master_agent_id, 'info', 'capability',
+                                       f'Capability blocked, please subscribe: {", ".join(missing)}')
+                    return {
+                        'master_task_id': master_task_id,
+                        'decomposition': [],
+                        'sub_task_results': [],
+                        'status': 'completed',
+                        'summary': prompt,
+                        'all_completed': True,
+                        'duration_s': round(time.time() - startup, 2),
+                        'capability_blocked': True,
+                    }
+            except Exception as e:
+                logger.warning(f'[CapabilityGate] check failed: {e}')
+
         # 3. 任务分解
         try:
             decomposed = self.decompose_task(instruction, master_config)

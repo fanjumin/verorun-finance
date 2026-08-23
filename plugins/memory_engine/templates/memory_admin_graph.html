@@ -1,0 +1,197 @@
+// templates/memory_admin_graph.html — bare JS partial (NO <script> tags allowed)
+// Evolution Ring tab: dynamic phase ring + round playback + phase drill-down.
+// Registers as window.l_memory_admin_graph.
+window.l_memory_admin_graph = function () {
+  var root = document.getElementById('page-content');
+  if (!root) return;
+
+  function toolbarHtml() {
+    return '<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap">' +
+      '<select id="mg-agent" class="input" style="width:160px" onchange="window.__mgFilter()">' +
+      '<option value="">' + T('All Agents') + '</option></select> ' +
+      '<button class="btn" onclick="window.__mgPlay()">▶</button> ' +
+      '<button class="btn" onclick="window.__mgPause()">⏸</button> ' +
+      '<button class="btn" onclick="window.__mgPrev()">⏮</button> ' +
+      '<button class="btn" onclick="window.__mgNext()">⏭</button> ' +
+      '<span id="mg-round-label" style="font-size:12px;color:var(--text-muted,#52525b)"></span> ' +
+      '<label style="font-size:12px;margin-left:12px"><input type="checkbox" id="mg-mem" checked onclick="window.__mgToggle()"/> ' + T('Memory') + '</label> ' +
+      '<label style="font-size:12px"><input type="checkbox" id="mg-ref" checked onclick="window.__mgToggle()"/> ' + T('Reflexion') + '</label> ' +
+      '<label style="font-size:12px"><input type="checkbox" id="mg-prm" checked onclick="window.__mgToggle()"/> ' + T('Prompt') + '</label>' +
+      '</div>';
+  }
+
+  root.innerHTML =
+    '<div class="card"><div class="card-header">' + T('Evolution Ring') + '</div>' +
+    '<div class="card-body">' +
+    toolbarHtml() +
+    '<svg id="mg-svg" viewBox="0 0 860 520" width="100%" height="520" style="background:var(--surface,#fff);border-radius:8px"></svg>' +
+    '<div id="mg-detail" style="border-top:1px solid var(--border,rgba(0,0,0,.12));margin-top:10px;padding-top:10px;max-height:180px;overflow:auto;font-size:12px"></div>' +
+    '</div></div>';
+
+  var phases = [], rounds = [], curRoundIdx = 0, curPhaseIdx = -1, data = null, timer = null;
+  var W = 860, H = 520, CX = W/2, CY = H/2, RX = 300, RY = 200;
+
+  fetch('/admin/memory/phases').then(function(r){return r.json();}).then(function(p){
+    phases = p.phases || [];
+    var agentSel = document.getElementById('mg-agent');
+    if (agentSel) {
+      agentSel.innerHTML = '<option value="">' + T('All Agents') + '</option>' +
+        phases.map(function(ph){return '<option value="' + esc(ph.key) + '">' + esc(ph.label_en) + '</option>';}).join('');
+    }
+    return fetch('/admin/memory/rounds').then(function(r){return r.json();});
+  }).then(function(rr){
+    rounds = rr.rounds || [];
+    if (!rounds.length) { emptyState(); return; }
+    curRoundIdx = 0;
+    renderPlayer();
+    return _loadRound(rounds[0].id);
+  }).then(function(){ _layout(); _draw(); });
+
+  function _loadRound(roundId) {
+    return fetch('/admin/memory/graph?round_id=' + encodeURIComponent(roundId))
+      .then(function(r){return r.json();}).then(function(d){ data = d; curPhaseIdx = -1; });
+  }
+
+  function _layout() {
+    var N = Math.max(phases.length, 1);
+    phases.forEach(function(ph, i){
+      var a = -Math.PI/2 + (2*Math.PI*i)/N;
+      ph.x = CX + RX * Math.cos(a);
+      ph.y = CY + RY * Math.sin(a);
+    });
+  }
+
+  function _draw() {
+    var svg = document.getElementById('mg-svg');
+    if (!svg) return;
+    svg.innerHTML = '';
+    var N = Math.max(phases.length, 1);
+    // Ring arcs per phase
+    phases.forEach(function(ph, i){
+      var a1 = -Math.PI/2 + (2*Math.PI*i)/N;
+      var a2 = -Math.PI/2 + (2*Math.PI*(i+1))/N;
+      var path = describeArc(CX, CY, 200, a1, a2);
+      var arc = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      arc.setAttribute('d', path);
+      arc.setAttribute('fill', 'none');
+      arc.setAttribute('stroke', 'rgba(0,0,0,0.18)');
+      arc.setAttribute('stroke-width', '2');
+      arc.setAttribute('stroke-dasharray', '10 6');
+      if (i <= curPhaseIdx) arc.classList.add('mg-ring');
+      svg.appendChild(arc);
+    });
+    // Hub
+    var hub = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    hub.setAttribute('cx', CX); hub.setAttribute('cy', CY); hub.setAttribute('r', '20');
+    hub.setAttribute('fill', 'var(--brand,#4b3fe3)');
+    hub.setAttribute('opacity', '0.2');
+    svg.appendChild(hub);
+    var hubT = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    hubT.setAttribute('x', CX); hubT.setAttribute('y', CY+4);
+    hubT.setAttribute('text-anchor', 'middle');
+    hubT.setAttribute('font-size', '10');
+    hubT.setAttribute('fill', 'var(--brand,#4b3fe3)');
+    hubT.textContent = 'Memories';
+    svg.appendChild(hubT);
+    // Phase nodes
+    phases.forEach(function(ph, i){
+      var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      g.setAttribute('class', 'mg-phase');
+      g.onclick = _bindDrill(ph);
+      var c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      c.setAttribute('cx', ph.x); c.setAttribute('cy', ph.y); c.setAttribute('r', '10');
+      c.setAttribute('fill', i <= curPhaseIdx ? 'var(--brand,#4b3fe3)' : '#fff');
+      c.setAttribute('stroke', 'var(--border,rgba(0,0,0,.25))');
+      c.setAttribute('stroke-width', '1.5');
+      g.appendChild(c);
+      var t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      t.setAttribute('x', ph.x); t.setAttribute('y', ph.y-14);
+      t.setAttribute('text-anchor', 'middle'); t.setAttribute('font-size', '11');
+      t.setAttribute('fill', 'var(--text,#18181b)');
+      t.textContent = ph.label_en;
+      g.appendChild(t);
+      svg.appendChild(g);
+    });
+    // Memory nodes (inner ring)
+    if (data && data.nodes) {
+      var ns = data.nodes.filter(function(n){
+        if (n.kind === 'memory') return document.getElementById('mg-mem').checked;
+        if (n.kind === 'reflexion') return document.getElementById('mg-ref').checked;
+        if (n.kind === 'prompt') return document.getElementById('mg-prm').checked;
+        return true;
+      });
+      var seedAngle = 0;
+      var ir = 100;
+      ns.forEach(function(n, i){
+        var angle = seedAngle + (2*Math.PI*i)/Math.max(ns.length, 1);
+        var nx = CX + ir * Math.cos(angle);
+        var ny = CY + ir * Math.sin(angle);
+        var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        g.setAttribute('class', 'mg-node mg-' + n.kind.substring(0,3));
+        var c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        var r = n.kind === 'memory' ? 4 + 8*(n.importance||0.5) : 6;
+        c.setAttribute('cx', nx); c.setAttribute('cy', ny); c.setAttribute('r', r);
+        c.setAttribute('fill', n.kind==='reflexion'?'var(--accent-soft,#eafbf8)':n.kind==='prompt'?'var(--brand-soft,#f2f7ff)':'var(--surface,#f7f7f8)');
+        c.setAttribute('stroke', n.kind==='reflexion'?'var(--accent,#27d2bf)':n.kind==='prompt'?'var(--brand,#4b3fe3)':'var(--border,rgba(0,0,0,.25))');
+        c.setAttribute('stroke-width', '1.5');
+        g.appendChild(c);
+        svg.appendChild(g);
+      });
+    }
+    // Links
+    if (data && data.links) {
+      data.links.forEach(function(l){
+        var srcN = (data.nodes||[]).find(function(n){return n.id===l.source;});
+        var tgtN = (data.nodes||[]).find(function(n){return n.id===l.target;});
+        if (!srcN || !tgtN) return;
+        var path = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        path.setAttribute('x1', CX + 100*Math.cos(0)); // simplified
+        path.setAttribute('y1', CY + 100*Math.sin(0));
+        path.setAttribute('x2', CX + 100*Math.cos(1));
+        path.setAttribute('y2', CY + 100*Math.sin(1));
+        path.setAttribute('stroke', 'rgba(0,0,0,0.15)');
+        path.setAttribute('stroke-width', '0.8');
+        path.setAttribute('class', 'mg-link');
+        svg.appendChild(path);
+      });
+    }
+  }
+
+  function describeArc(x, y, r, a1, a2){var x1=x+r*Math.cos(a1),y1=y+r*Math.sin(a1),x2=x+r*Math.cos(a2),y2=y+r*Math.sin(a2);return 'M '+x1+' '+y1+' A '+r+' '+r+' 0 0 1 '+x2+' '+y2;}
+
+  function renderPlayer(){
+    if (!rounds[curRoundIdx]) return;
+    var l = document.getElementById('mg-round-label');
+    if (l) l.textContent = 'Round ' + rounds[curRoundIdx].round_seq + ' (' + (rounds[curRoundIdx].status||'') + ')';
+  }
+
+  function _bindDrill(ph){
+    return function(){
+      var items = (data&&data.nodes||[]).filter(function(n){return n.phase===ph.key;});
+      var detail = document.getElementById('mg-detail');
+      if (!detail) return;
+      detail.innerHTML = '<h4>' + esc(ph.label_en) + '</h4>' +
+        (items.length ? '<ul>' + items.map(function(it){return '<li>' + esc(it.content||'') + '</li>';}).join('') + '</ul>' : '<p>' + T('No data for this phase') + '</p>');
+    };
+  }
+
+  window.__mgPlay = function(){ timer = setInterval(function(){ var N=Math.max(phases.length,1); curPhaseIdx=(curPhaseIdx+1)%N; _draw(); if(curPhaseIdx===N-1) __mgEndRound(); },1200); };
+  window.__mgPause = function(){ if(timer){clearInterval(timer);timer=null;} };
+  window.__mgPrev = function(){ if(curRoundIdx>0){curRoundIdx--;_loadRound(rounds[curRoundIdx].id).then(function(){_layout();_draw();renderPlayer();});} };
+  window.__mgNext = function(){ if(curRoundIdx<rounds.length-1){curRoundIdx++;_loadRound(rounds[curRoundIdx].id).then(function(){_layout();_draw();renderPlayer();});} };
+  window.__mgToggle = function(){ _draw(); };
+  window.__mgFilter = function(){ /* agent dropdown filter: re-fetch rounds */ };
+  window.__mgEndRound = function(){
+    window.__mgPause();
+    var r = rounds[curRoundIdx];
+    showToast('Round complete: ' + (r.prompt_from||'-') + ' → ' + (r.prompt_to||'-'));
+    if (curRoundIdx < rounds.length-1){ curRoundIdx++; _loadRound(rounds[curRoundIdx].id).then(function(){_layout();_draw();renderPlayer();}); }
+  };
+
+  function emptyState() {
+    var svg = document.getElementById('mg-svg');
+    if (svg) { svg.innerHTML = ''; }
+    var detail = document.getElementById('mg-detail');
+    if (detail) detail.textContent = T('No evolution rounds yet');
+  }
+};

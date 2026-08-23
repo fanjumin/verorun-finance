@@ -7,10 +7,10 @@
   var KEY = 'verorun_admin_theme';
   var THEMES = ['dark', 'slate', 'light'];
 
-  // 读取当前主题，非法值回退到 dark
+  // 读取当前主题，非法值回退到 slate（默认灰色）
   function current() {
     var t = localStorage.getItem(KEY);
-    return THEMES.indexOf(t) >= 0 ? t : 'dark';
+    return THEMES.indexOf(t) >= 0 ? t : 'slate';
   }
 
   // 应用主题：设置 data-theme + 记忆 + 高亮当前按钮

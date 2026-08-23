@@ -1,0 +1,163 @@
+# ── 教育培训 行业提示词模板 ──
+
+identifier: "education"
+name: "教育培训"
+description: "适用于培训机构、学校、在线教育平台"
+icon: "📚"
+industry: "教育"
+tags:
+  - "教育"
+  - "培训"
+  - "在线教育"
+  - "学校"
+
+defaults:
+  site_name: "{品牌名称}"
+  industry: "教育培训"
+  target_audience: "学生和家长"
+  style: "清新专业"
+  primary_color: "#0d6efd"
+  accent_color: "#ff6b35"
+  font_preference: "sans-serif"
+  tone: "专业、亲切、有启发性"
+
+pages:
+  - id: "home"
+    name: "首页"
+    required: true
+  - id: "courses"
+    name: "课程"
+    required: true
+  - id: "faculty"
+    name: "师资力量"
+    required: false
+  - id: "about"
+    name: "关于我们"
+    required: true
+  - id: "admissions"
+    name: "招生简章"
+    required: false
+  - id: "contact"
+    name: "联系我们"
+    required: true
+
+documents:
+  - id: "privacy_policy"
+    name: "隐私政策"
+    required: true
+  - id: "terms_of_service"
+    name: "服务协议"
+    required: true
+
+prompts:
+  parse: |
+    你是一个网站策划师。用户想创建一个{行业}网站。
+
+    用户描述：{用户输入}
+
+    请提取以下信息并以 JSON 格式返回：
+    {{
+      "brand_name": "品牌名称",
+      "tagline": "品牌口号（10字以内）",
+      "education_type": "教育类型（K12/职业培训/语言/兴趣等）",
+      "target_audience": "目标学生群体",
+      "style_preference": "现代/经典/极简/活泼",
+      "special_requirements": "特殊需求"
+    }}
+    只返回 JSON，不要其他内容。
+
+  brand: |
+    你是一个品牌设计师。为【{品牌名称}】设计品牌配置，行业为【{行业}】。
+
+    要求：
+    - 品牌口号：教育理念的凝练表达
+    - 品牌故事：200字左右，教育初心和使命
+    - 主色调：专业清爽的配色（蓝绿系）
+    - 风格：{风格偏好}
+
+    返回 JSON 格式：
+    {{
+      "site_name": "品牌名称",
+      "tagline": "品牌口号",
+      "brand_story": "品牌故事",
+      "primary_color": "#HEX",
+      "secondary_color": "#HEX",
+      "accent_color": "#HEX",
+      "copyright_text": "版权信息",
+      "footer_text": "页脚标语"
+    }}
+
+  navigation: |
+    你是一个信息架构师。为【{品牌名称}】（{行业}）设计网站主导航。
+
+    需要包含的页面：{页面列表}
+
+    返回 JSON 格式。
+
+  footer: |
+    你是一个网站架构师。为【{品牌名称}】生成页脚结构。
+
+    需要生成的文档：{文档列表}
+
+    返回 JSON 格式。
+
+  page_home: |
+    你是一个网站设计师。为【{品牌名称}】生成首页内容。
+
+    行业：{行业}，风格：{风格偏好}
+
+    首页区块设计：
+    1. Hero 区：教育理念 + CTA（试听/报名）
+    2. 课程亮点：3-4 个特色课程
+    3. 教学优势：师资、方法、环境
+    4. 学员成果/评价
+    5. 统计数据：学员数、通过率等
+
+    返回 JSON 格式。
+
+  page_courses: |
+    你是一个课程设计师。为【{品牌名称}】生成课程页面。
+
+    要求：
+    - 按分类/年龄段分组
+    - 每个课程：名称、简介、适合年龄/水平、课时、特色
+    - 课程体系图（可选）
+
+    返回 JSON 格式。
+
+  page_faculty: |
+    你是一个内容创作者。为【{品牌名称}】生成"师资力量"页面。
+
+    要求：教学团队介绍、教师资质、教学理念、师生比例。
+
+    返回 JSON 格式。
+
+  page_about: |
+    你是一个内容创作者。为【{品牌名称}】生成"关于我们"页面。
+
+    要求：教育理念、学校/机构介绍、教学环境、资质荣誉。
+
+    返回 JSON 格式。
+
+  page_contact: |
+    你是一个网站设计师。为【{品牌名称}】生成"联系我们"页面。
+
+    要求：咨询表单、校区地址、联系电话、工作时间、常见问题。
+
+    返回 JSON 格式。
+
+  doc_privacy_policy: |
+    你是一个法律文档撰写专家。为【{品牌名称}】（{行业}）生成隐私政策。
+
+    要求：中文，800-1500字。必须包含学生信息收集、使用方式、数据保护、家长权利、联系方式。
+    开头标注：本文档由 AI 生成，仅供参考，请由专业律师审核后使用。
+
+    返回 HTML 格式。
+
+  doc_terms_of_service: |
+    你是一个法律文档撰写专家。为【{品牌名称}】（{行业}）生成服务协议。
+
+    要求：中文，800-1500字。包含报名流程、退费政策、课程规则、知识产权、免责声明。
+    开头标注：本文档由 AI 生成，仅供参考，请由专业律师审核后使用。
+
+    返回 HTML 格式。

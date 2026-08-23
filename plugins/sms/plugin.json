@@ -1,0 +1,90 @@
+{
+  "name": "SMS Service",
+  "name_i18n_key": "plugin.name",
+  "identifier": "sms",
+  "python_dependencies": {
+    "required": [],
+    "optional": {}
+  },
+  "version": "1.4.3",
+  "category": "system",
+  "tags": [
+    "sms",
+    "notification",
+    "verification"
+  ],
+  "icon": "message",
+  "icon_url": "",
+  "screenshots": [],
+  "readme_url": "",
+  "description": "SMS Service — phone verification code sending with Aliyun/Twilio providers",
+  "author": "VeroRun",
+  "min_app_version": "0.10.0",
+  "dependencies": {},
+  "admin_url": "",
+  "admin_label": "SMS Settings",
+  "config": {
+    "aliyun_sms_sign_name": "",
+    "aliyun_sms_access_key": "",
+    "aliyun_sms_secret": ""
+  },
+  "permissions": [
+    "api:read",
+    "api:write",
+    "network:request",
+    "admin:access"
+  ],
+  "hooks": {
+    "provides": [
+      "sms/send",
+      "sms/generate_code",
+      "sms/validate_phone",
+      "sms/check_rate_limit"
+    ],
+    "listens": []
+  },
+  "menu": {
+    "group": "Security & Compliance",
+    "key": "sms",
+    "icon": "plugins",
+    "label": "SMS Management"
+  },
+  "dashboard": {
+    "stats": [
+      {
+        "key": "today_sent",
+        "title": "今日发送",
+        "type": "counter"
+      },
+      {
+        "key": "total_templates",
+        "title": "模板数量",
+        "type": "counter"
+      }
+    ]
+  },
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "aliyun_sms_sign_name": {
+        "type": "string",
+        "title": "短信签名",
+        "default": "",
+        "description": "阿里云短信签名"
+      },
+      "aliyun_sms_access_key": {
+        "type": "string",
+        "title": "AccessKey ID",
+        "default": "",
+        "description": "阿里云 AccessKey ID"
+      },
+      "aliyun_sms_secret": {
+        "type": "string",
+        "title": "AccessKey Secret",
+        "default": "",
+        "description": "阿里云 AccessKey Secret (sensitive)",
+        "writeOnly": true
+      }
+    }
+  }
+}

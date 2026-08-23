@@ -125,7 +125,7 @@ def agent_matrix_test(aid):
     data = request.get_json(force=True) or {}
     query = data.get('query', chr(39)+chr(39))
     if not query:
-        return jsonify({'success': False, 'error': _('请先输入测试消息（不能为空）')}), 400
+        return jsonify({'success': False, 'error': _('Please enter a test message (cannot be empty)')}), 400
     with get_db() as conn:
         row = conn.execute('SELECT * FROM agents WHERE id=%s', (aid,)).fetchone()
     if not row:
@@ -254,7 +254,12 @@ def _reload_nginx():
 
 
 def _check_domain_quota(user_id):
-    """检查用户是否还能添加子域名"""
+    """检查用户是否还能添加子域名
+
+    免费：3 域名（www/agent/platform 开箱即用）。
+    开通 site_domains 插件订阅，或持有包含 site_domains 20 域名权益的
+    Pro 版本包订阅（plugin_subscriptions.status='active'）→ 20 域名。
+    """
     with get_db() as conn:
         sub = conn.execute(
             "SELECT plan_key FROM user_subscriptions WHERE user_id=%s AND status='active'",
@@ -264,6 +269,20 @@ def _check_domain_quota(user_id):
             limit = 3  # 无订阅（免费）限额 3 个域名
         else:
             limit = _PLAN_DOMAIN_LIMITS.get(sub['plan_key'], 20)
+        # 插件订阅权益：site_domains 订阅或版本包订阅 → 20 域名
+        try:
+            site_row = conn.execute(
+                "SELECT 1 FROM plugin_subscriptions "
+                "WHERE plugin_id='site_domains' AND status='active' LIMIT 1"
+            ).fetchone()
+            bundle_row = conn.execute(
+                "SELECT 1 FROM plugin_subscriptions "
+                "WHERE bundle_id<>'' AND bundle_id<>'site_domains' AND status='active' LIMIT 1"
+            ).fetchone()
+            if site_row or bundle_row:
+                limit = max(limit, 20)
+        except Exception as e:
+            print(f'[DomainQuota] plugin subscription check failed: {e}', flush=True)
         used = conn.execute(
             "SELECT COUNT(*) as c FROM site_domains"
         ).fetchone()['c']

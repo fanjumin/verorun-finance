@@ -14,7 +14,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from dotenv import load_dotenv
 load_dotenv()
 
-from flask import Flask, request, jsonify, render_template, send_from_directory, redirect, Response
+from flask import Flask, request, jsonify, render_template, send_from_directory, redirect, Response, g
 from werkzeug.middleware.proxy_fix import ProxyFix
 from models import init_db, get_db
 from services.deployment_config import DeployConfig, deploy
@@ -65,14 +65,72 @@ def inject_deploy():
 
 
 # ══ i18n 国际化注入 ══
-from i18n import _, get_lang, get_all_translations
+from i18n import _, get_lang, get_all_translations, resolve_locale
 import os as _os
+
+@app.before_request
+def _i18n_resolve_locale():
+    """请求级语言协商（规范 §5）：?lang= → Cookie lang → Accept-Language → 部署默认。"""
+    g.lang_code = resolve_locale(
+        lang_param=request.args.get('lang'),
+        cookie=request.cookies.get('lang'),
+        accept_header=request.headers.get('Accept-Language') or '',
+    )
 
 @app.context_processor
 def inject_i18n():
-    return {'_': _, 'lang': get_lang(), 'translations': get_all_translations(), 'MARKET': _os.environ.get('DEPLOY_MARKET', 'cn')}
+    return {'_': _, 'lang': get_lang(), 'translations': get_all_translations(get_lang()), 'MARKET': _os.environ.get('DEPLOY_MARKET', 'cn')}
 
 app.jinja_env.globals['_'] = _
+
+
+# ══ i18n 语言切换组件注入（i18n-standard §5）══
+import functools
+from flask import render_template_string
+
+
+@functools.lru_cache(maxsize=2)
+def _lang_switch_widget(lang):
+    # 复用 main_site 共享组件（通过项目根 loader 解析，不复制文件）
+    return render_template_string('{% include "main_site/templates/_lang_switch.html" %}', lang=lang)
+
+
+@app.after_request
+def inject_lang_switch(response):
+    """对 text/html 响应自动注入语言切换按钮（_lang_switch.html）。
+
+    跳过条件：非 text/html、无 </body>、页面含 data-lang-switch-off、
+    URL 带 no_lang_switch=1（插件 iframe 等特殊页面使用）。
+    注入失败静默跳过，绝不影响页面本身。
+    """
+    try:
+        if response.mimetype != 'text/html':
+            return response
+        data = response.get_data(as_text=True)
+        if '</body>' not in data or 'data-lang-switch-off' in data:
+            return response
+        if request.args.get('no_lang_switch'):
+            return response
+        widget = _lang_switch_widget(get_lang())
+        response.set_data(data.replace('</body>', widget + '</body>'))
+    except Exception:
+        pass
+    return response
+
+
+@app.route('/api/v1/i18n/lang', methods=['GET', 'POST'])
+def i18n_set_lang():
+    """GET 返回当前语言；POST {lang} 写入 Cookie 并切换。仅支持 en / zh-CN。"""
+    from i18n import _normalize_locale, SUPPORTED_LOCALES
+    if request.method == 'POST':
+        data = request.get_json(silent=True) or {}
+        lang = _normalize_locale(data.get('lang') or request.args.get('lang'))
+        if not lang or lang not in SUPPORTED_LOCALES:
+            return jsonify({'ok': False, 'error': _('Unsupported language')}), 400
+        resp = jsonify({'ok': True, 'lang': lang})
+        resp.set_cookie('lang', lang, max_age=365 * 24 * 3600, samesite='Lax')
+        return resp
+    return jsonify({'ok': True, 'lang': get_lang()})
 
 
 # ══ Content Security Policy (CSP) ══

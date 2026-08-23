@@ -1,0 +1,179 @@
+plugin.name: Analytics
+Unauthorized: Unauthorized
+path required: path required
+event_name required: event_name required
+unknown type: Unknown type
+license_key required: License key required
+account_id required: Account ID required
+🇨🇳 China: 🇨🇳 China
+🌍 World: 🌍 World
+GeoIP Database Setup: GeoIP Database Setup
+GeoIP databases are required to show geographic distribution on the Region tab. Choose the one that matches your user base.: GeoIP databases are required to show geographic distribution on the Region tab. Choose the one that matches your user base.
+ip2region: ip2region
+Chinese IPs: Chinese IPs
+Free · No Registration · Open Source: Free · No Registration · Open Source
+Source: Source
+Download ip2region Database: Download ip2region Database
+Update ip2region: Update ip2region
+International IPs: International IPs
+Free Registration Required: Free Registration Required
+Register at: Register at
+no credit card required. After registration, generate a license key and paste it below.: no credit card required. After registration, generate a license key and paste it below.
+Download GeoLite2 Database: Download GeoLite2 Database
+Update GeoLite2: Update GeoLite2
+Installed: Installed
+Not installed: Not installed
+Click the button below to download from GitHub: Click the button below to download from GitHub
+Downloading...: Downloading...
+Settings: Settings
+No geographic data yet: No geographic data yet
+Go to the Settings tab to set up GeoIP databases — ip2region (free, no registration) for Chinese IPs or MaxMind GeoLite2 for international coverage.: Go to the Settings tab to set up GeoIP databases — ip2region (free, no registration) for Chinese IPs or MaxMind GeoLite2 for international coverage.
+Go to the Settings tab to set up GeoIP databases — MaxMind GeoLite2 (free registration) for international coverage or ip2region for Chinese IPs.: Go to the Settings tab to set up GeoIP databases — MaxMind GeoLite2 (free registration) for international coverage or ip2region for Chinese IPs.
+Edition: Edition
+GeoLite2-City (Free): Geolite2-City (Free)
+GeoIP2-City (Paid): GeoIP2-City (Paid)
+Download Database: Download Database
+Update Database: Update Database
+Upload .mmdb: Upload .mmdb
+Uploaded: Uploaded
+Uploading...: Uploading...
+Only .mmdb files allowed: Only .mmdb files allowed
+No file uploaded: No file uploaded
+If auto-download fails (e.g. HTTP 451), download the .mmdb file manually from your MaxMind account and use the Upload button.: If auto-download fails (e.g. HTTP 451), download the .mmdb file manually from your MaxMind account and use the Upload button.
+CDN Download: CDN Download
+
+# ── 2026-08-06 AUDIT 修复新增键（en 为源文本身） ──
+'🚨 Alert triggered: {name}\nMetric: {metric}\nCurrent value: {value} (threshold: {op} {threshold})\nTime Window: {window}': '🚨 Alert triggered: {name}\nMetric: {metric}\nCurrent value: {value} (threshold: {op} {threshold})\nTime Window: {window}'
+'Statistical analysis alert: {name}': 'Statistical analysis alert: {name}'
+'[Analytics Processor] Press Ctrl+C to stop': '[Analytics Processor] Press Ctrl+C to stop'
+'\n[Analytics Processor] Stopping...': '\n[Analytics Processor] Stopping...'
+'[Analytics Processor] ✅ Stopped': '[Analytics Processor] ✅ Stopped'
+'📊 Statistics Analysis Report ({period})': '📊 Statistics Analysis Report ({period})'
+'Total Views (PV): {pv}': 'Total Views (PV): {pv}'
+'Unique Visitors (UV): {uv}': 'Unique Visitors (UV): {uv}'
+'Total Sessions: {sessions}': 'Total Sessions: {sessions}'
+'Daily PV: {daily_pv}  |  Daily UV: {daily_uv}': 'Daily PV: {daily_pv}  |  Daily UV: {daily_uv}'
+'📈 Traffic Change: {pct:+.1f}%': '📈 Traffic Change: {pct:+.1f}%'
+'  Bounce Rate: {rate:.1f}%': '  Bounce Rate: {rate:.1f}%'
+'  Average Session Duration: {secs:.0f}s': '  Average Session Duration: {secs:.0f}s'
+'🔗 Top Sources:': '🔗 Top Sources:'
+'  • {name}: {pv} PV ({pct:.1f}%)': '  • {name}: {pv} PV ({pct:.1f}%)'
+'📄 Popular Pages:': '📄 Popular Pages:'
+'  • {path}: {pv} PV / {uv} UV': '  • {path}: {pv} PV / {uv} UV'
+'  Errors: {n}': '  Errors: {n}'
+'\n[Analytics Daemon] Stopping...': '\n[Analytics Daemon] Stopping...'
+'[Analytics Daemon] ✅ Stopped': '[Analytics Daemon] ✅ Stopped'
+'  📊 Analytics System Status': '  📊 Analytics System Status'
+'\n=== Add Analytics Alert Rule ===': '\n=== Add Analytics Alert Rule ==='
+'Alert name: ': 'Alert name: '
+'❌ Name Cannot Be Empty': '❌ Name Cannot Be Empty'
+'\nMetric options:': '\nMetric options:'
+'bounce_rate (Bounce rate %)': 'bounce_rate (Bounce rate %)'
+'Error rate (%)': 'Error rate (%)'
+'avg_response_time (Average response ms)': 'avg_response_time (Average response ms)'
+'Select metric (1-5): ': 'Select metric (1-5): '
+'\nOperators:': '\nOperators:'
+'  1. > (Greater than)': '  1. > (Greater than)'
+'  2. < (Less than)': '  2. < (Less than)'
+'  3. >= (Greater than or equal to)': '  3. >= (Greater than or equal to)'
+'  4. <= (Less than or equal to)': '  4. <= (Less than or equal to)'
+'Select operator (1-4): ': 'Select operator (1-4): '
+'\nTime window:': '\nTime window:'
+'  1. 1h (1 hour)': '  1. 1h (1 hour)'
+'  2. 24h (24 hours)': '  2. 24h (24 hours)'
+'  3. 7d (7 days)': '  3. 7d (7 days)'
+'Select (1-3): ': 'Select (1-3): '
+'\n✅ Alert rule created (ID: {})': '\n✅ Alert rule created (ID: {})'
+'❌ Orchestrator Module Required (pip install apscheduler)': '❌ Orchestrator Module Required (pip install apscheduler)'
+'✅ Predefined Workflow Created:': '✅ Predefined Workflow Created:'
+'  📊 Daily Analysis Report (ID: {})': '  📊 Daily Analysis Report (ID: {})'
+'  📊 Weekly Operations Report (ID: {})': '  📊 Weekly Operations Report (ID: {})'
+'Daily Analysis Report': 'Daily Analysis Report'
+'Weekly Operations Report': 'Weekly Operations Report'
+'  ⏰ Cron Job Bound (Daily 8:00 / Weekly Monday 9:00)': '  ⏰ Cron Job Bound (Daily 8:00 / Weekly Monday 9:00)'
+'Too many requests': 'Too many requests'
+
+# ── 2026-08-18 D 类核查修复：补齐 zh-CN 已有而 en 缺失的 83 个 Key（identity）──
+(Greater Than): (Greater Than)
+(Greater or Equal): (Greater or Equal)
+(Less Than): (Less Than)
+(Less or Equal): (Less or Equal)
+1 Hour: 1 Hour
+24 Hours: 24 Hours
+7 Days: 7 Days
+Actions: Actions
+Alert Rules: Alert Rules
+Alerts: Alerts
+Avg Duration: Avg Duration
+Avg Response: Avg Response
+Avg Response Time (ms): Avg Response Time (ms)
+Bounce Rate: Bounce Rate
+Bounce Rate (%): Bounce Rate (%)
+Browser: Browser
+Browser & OS: Browser & OS
+Categories: Categories
+City: City
+City Details: City Details
+Condition: Condition
+Count: Count
+Country: Country
+Custom Events (30d): Custom Events (30d)
+Date: Date
+Delete: Delete
+Delete this alert rule?: Delete this alert rule?
+Details: Details
+Device Type: Device Type
+Devices: Devices
+Error Rate (%): Error Rate (%)
+Event: Event
+High: High
+Hourly Distribution (Today): Hourly Distribution (Today)
+Last Triggered: Last Triggered
+Low: Low
+Map loading failed (network issue). See table below for data.: Map loading failed (network issue). See table below for data.
+Metric: Metric
+Name: Name
+No China city data: No China city data
+No alert rules. System auto-notifies when metrics exceed thresholds after adding alerts.: No alert rules. System auto-notifies when metrics exceed thresholds after adding alerts.
+No custom events. Automatically logged when users launch agents, view stocks, create workflows etc.: No custom events. Automatically logged when users launch agents, view stocks, create workflows etc.
+No data: No data
+No device data: No device data
+No geolocation data (GeoIP required): No geolocation data (GeoIP required)
+No page data: No page data
+No province data: No province data
+No trend data yet, will auto-generate after publishing: No trend data yet, will auto-generate after publishing
+Online: Online
+Other Regions: Other Regions
+PV (Page Views): PV (Page Views)
+Page: Page
+Path: Path
+Percentage: Percentage
+Province: Province
+Province Ranking: Province Ranking
+Real-time Data · Privacy-friendly · No Cookie Tracking: Real-time Data · Privacy-friendly · No Cookie Tracking
+Refresh: Refresh
+Region: Region
+Session: Session
+Site Statistics: Site Statistics
+Source Details: Source Details
+Source Distribution: Source Distribution
+Status: Status
+Tabs: Tabs
+Threshold: Threshold
+Today Page Views (PV): Today Page Views (PV)
+Top Pages (30d): Top Pages (30d)
+Total: Total
+Total Sessions: Total Sessions
+Traffic Trend: Traffic Trend
+Trend: Trend
+Type: Type
+UV (Unique Visitors): UV (Unique Visitors)
+Unique Visitors (UV): Unique Visitors (UV)
+Unknown: Unknown
+Window: Window
+○ Disabled: ○ Disabled
+● Enabled: ● Enabled
+➕ Add: ➕ Add
+🌍 Country/Region Distribution: 🌍 Country/Region Distribution
+📊 Analytics Dashboard: 📊 Analytics Dashboard
+📋 Add Alert Rule: 📋 Add Alert Rule

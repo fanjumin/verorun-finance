@@ -8,6 +8,7 @@
 <link href="{{ brand.favicon_url if brand and brand.favicon_url else '/static/favicon-32x32.png' }}" rel="icon" sizes="32x32" type="image/png"/>
 <link href="{{ brand.favicon_url if brand and brand.favicon_url else '/static/favicon-16x16.png' }}" rel="icon" sizes="16x16" type="image/png"/>
 <link href="/static/css/user-console.css" rel="stylesheet"/>
+<script>(function(){try{var t=localStorage.getItem('verorun_console_theme');if(t==='slate'||t==='light'||t==='dark'){document.documentElement.setAttribute('data-theme',t)}else{document.documentElement.setAttribute('data-theme','slate')}}catch(e){}})();</script>
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
 html{height:100%}
@@ -108,11 +109,21 @@ tr:hover td{background:rgba(99,102,241,.03)}
 .svc-card .svc-badge.green{background:#22c55e;color:#fff}
 @media(max-width:768px){.sidebar{width:70px}.sidebar .logo{font-size:12px}.nav-section{font-size:7px;text-align:center;padding:2px 4px 0;margin-top:4px}.topbar{padding:14px 16px}.content{padding:16px}.notif-dropdown{width:calc(100vw-32px);right:-80px}.svc-grid{grid-template-columns:1fr}}
 </style>
+<style>
+/* ── 三主题：dark(默认)/slate(灰色)/light(亮色)，localStorage('verorun_console_theme') 持久化 ── */
+:root[data-theme="slate"]{--bg:#454c5c;--card:#545c6e;--border:rgba(255,255,255,.12);--text:#ffffff;--muted:#c9cdd6;--dim:#9ba1ad;--accent:#00f5ff;--accent2:#22d3ee}
+:root[data-theme="light"]{--bg:#f5f7fa;--card:#ffffff;--border:rgba(15,23,42,.1);--text:#1f2329;--muted:#5f6b7a;--dim:#8a94a6;--accent:#6366f1;--accent2:#0ea5e9}
+:root[data-theme="light"] .field input,:root[data-theme="light"] #ticketContent{background:var(--card)}
+.ts-btn{width:32px;height:32px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--muted);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:.12s;flex-shrink:0}
+.ts-btn:hover{color:var(--text);border-color:var(--accent)}
+.ts-btn.active{color:var(--accent2);border-color:var(--accent);background:rgba(99,102,241,.12)}
+.ts-btn svg{width:16px;height:16px}
+</style>
 <link href="/static/css/cookie-consent.css" rel="stylesheet"/>
 </head>
 <body>
 <div class="sidebar">
-<div class="logo">TM</div>
+<div class="logo">{{ brand.software_name if brand and brand.software_name else _('VeroRun AI') }}</div>
 <nav>
 <div class="nav-section">{{ _('Overview') }}</div>
 <button class="nav-item active" id="nav-overview" onclick="loadSection('overview')"><svg fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><rect height="7" rx="1" width="7" x="3" y="3"></rect><rect height="7" rx="1" width="7" x="14" y="3"></rect><rect height="7" rx="1" width="7" x="3" y="14"></rect><rect height="7" rx="1" width="7" x="14" y="14"></rect></svg><span>{{ _('Dashboard') }}</span></button>
@@ -145,6 +156,12 @@ tr:hover td{background:rgba(99,102,241,.03)}
 <div class="page-title" id="pageTitle">{{ _('Dashboard') }}</div>
 <div class="page-sub" id="pageSub">{{ _('Console Overview') }}</div>
 </div>
+<div style="display:flex;align-items:center;gap:10px">
+<div class="theme-wrap" style="display:inline-flex;gap:4px;align-items:center">
+<button class="ts-btn" data-theme="dark" title="{{ _('Cyber Dark') }}" aria-label="{{ _('Cyber Dark') }}"><svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
+<button class="ts-btn" data-theme="slate" title="{{ _('Misty Gray') }}" aria-label="{{ _('Misty Gray') }}"><svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.3A7.5 7.5 0 0 0 5 10H4a4 4 0 0 0 0 8h14a4 4 0 0 0 0-8z"/></svg></button>
+<button class="ts-btn" data-theme="light" title="{{ _('Cloud Light') }}" aria-label="{{ _('Cloud Light') }}"><svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg></button>
+</div>
 <div style="position:relative">
 <button class="notif-bell" id="notifBell" onclick="notifToggle()" title="{{ _('Notifications') }}">
 <svg fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24">
@@ -158,6 +175,7 @@ tr:hover td{background:rgba(99,102,241,.03)}
 <span class="mark-all" onclick="notifReadAll()">{{ _('Mark All as Read') }}</span>
 </div>
 <div class="notif-dropdown-list" id="notifList"><div class="spinner" style="margin:40px auto"></div></div>
+</div>
 </div>
 </div>
 </div>
@@ -1762,6 +1780,16 @@ function payShopOrder(oid){
       else alert(d.error||{{ _('Payment creation failed') | tojson }});
     });
 }
+</script>
+<script>
+(function(){
+  var KEY='verorun_console_theme',THEMES=['dark','slate','light'];
+  function current(){var t=localStorage.getItem(KEY);return THEMES.indexOf(t)>=0?t:'slate'}
+  function apply(t){document.documentElement.setAttribute('data-theme',t);try{localStorage.setItem(KEY,t)}catch(e){}var bs=document.querySelectorAll('.ts-btn');for(var i=0;i<bs.length;i++)bs[i].classList.toggle('active',bs[i].getAttribute('data-theme')===t)}
+  apply(current());
+  var bs=document.querySelectorAll('.ts-btn');
+  for(var i=0;i<bs.length;i++)bs[i].addEventListener('click',function(){apply(this.getAttribute('data-theme'))});
+})();
 </script>
 <script src="/static/js/cookie-consent.js"></script>
 </body>

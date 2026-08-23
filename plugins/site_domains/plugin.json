@@ -6,7 +6,7 @@
     "required": [],
     "optional": {}
   },
-  "version": "1.4.2",
+  "version": "1.4.3",
   "description": "Site Domains — Subdomain & Nginx configuration manager. Manage subdomain sites, bind service ports, and generate Nginx configs.",
   "author": "VeroRun",
   "min_app_version": "0.10.0",

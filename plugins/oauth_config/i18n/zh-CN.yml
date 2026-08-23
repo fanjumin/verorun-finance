@@ -1,0 +1,45 @@
+# OAuth Login Config Plugin — 中文翻译
+plugin.name: OAuth 登录配置
+OAuth Login: OAuth 登录
+OAuth Login Config: OAuth 登录配置
+Loading...: 加载中
+Load failed: 加载失败
+Request Failed: 请求失败
+Add: 添加
+Edit Site: 编辑站点
+Config: 配置
+Site Domain: 站点域名
+Login Platform: 登录平台
+Douyin: 抖音
+WeChat: 微信
+Alipay: 支付宝
+Max: 最多
+providers: 个
+Google: Google
+Telegram: Telegram
+Open Platform: 开放平台
+Required on First Entry: 首次录入必填
+Edit (Optional): 编辑可选
+Callback URL Auto-Generated: 回调地址自动生成
+Your Domain: 你的域名
+Save: 保存
+Configured Sites: 已配置站点
+Domain: 域名
+Platform: 平台
+Status: 状态
+Callback URL: 回调地址
+Actions: 操作
+Not Configured: 未配置
+Enabled: 已启用
+Disable: 已禁用
+Edit: 编辑
+Delete: 删除
+Configured: 已配置
+Leave Empty to Keep Original: 留空保持原值
+Please enter: 请输入
+Please fill in domain and Client Key: 请填写域名和 Client Key
+Saved: 已保存
+Save failed: 保存失败
+Delete this config?: 确认删除此配置？
+Deleted: 已删除
+Delete failed: 删除失败

@@ -1,0 +1,1397 @@
+<!DOCTYPE html>
+<html lang="{{ deploy.LANG }}">
+<head>
+<link rel="stylesheet" href="/admin/static/css/design-system.css">
+<link rel="stylesheet" href="/admin/static/css/themes.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ _t('Health Check') }} — {{ _t('System Health Check') }}</title>
+<!-- 防闪烁：样式渲染前先应用已保存主题 -->
+<script>
+(function(){try{var t=localStorage.getItem('verorun_admin_theme');if(t==='slate'||t==='light')document.documentElement.setAttribute('data-theme',t)}catch(e){}})();
+</script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;
+  font-size:13px;
+  line-height:1.5;
+  padding:0;
+  min-height:100vh;
+}
+.container{padding:0}
+
+/* ── Header ── */
+.header{
+  display:flex;justify-content:space-between;align-items:center;
+  margin-bottom:20px;padding-bottom:16px;
+  border-bottom:1px solid var(--border);
+}
+.header h1{font-size:18px;font-weight:700;display:flex;align-items:center;gap:8px}
+.header h1 span{background:linear-gradient(135deg,var(--accent),var(--blue));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.badge{
+  display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;
+  background:rgba(108,108,240,0.15);color:var(--accent);border:1px solid rgba(108,108,240,0.3)
+}
+.actions{display:flex;gap:8px}
+
+/* ── Buttons ── */
+.btn{
+  display:inline-flex;align-items:center;gap:4px;padding:7px 14px;border-radius:8px;font-size:12px;
+  font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--card2);color:var(--text);
+  transition:all .2s
+}
+.btn:hover{background:var(--border);border-color:var(--accent)}
+.btn-primary{background:var(--gradient-primary);color:#fff;border-color:var(--gradient-primary)}
+.btn-primary:hover{filter:brightness(1.15)}
+.btn-danger{background:rgba(248,81,73,0.15);color:var(--red);border-color:rgba(248,81,73,0.3)}
+.btn-danger:hover{background:rgba(248,81,73,0.25)}
+.btn-sm{padding:4px 10px;font-size:11px}
+.btn-icon{width:30px;height:30px;padding:0;justify-content:center}
+
+/* ── Stats Cards ── */
+.stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:20px}
+.stat-card{
+  background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);position:relative;overflow:hidden
+}
+.stat-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px}
+.stat-card.passed::before{background:var(--green)}
+.stat-card.warning::before{background:var(--yellow)}
+.stat-card.error::before{background:var(--red)}
+.stat-card .label{font-size:11px;color:var(--dim);margin-bottom:4px}
+.stat-card .value{font-size:28px;font-weight:700}
+.stat-card .value.green{color:var(--green)}
+.stat-card .value.yellow{color:var(--yellow)}
+.stat-card .value.red{color:var(--red)}
+.stat-card .sub{font-size:11px;color:var(--dim);margin-top:4px}
+
+/* ── Glass Card ── */
+.glass-card{
+  background:var(--glass);border:1px solid var(--border);border-radius:12px;padding:16px;
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);margin-bottom:16px
+}
+.glass-card .ct{font-size:12px;font-weight:600;color:var(--dim);margin-bottom:12px;display:flex;justify-content:space-between;align-items:center}
+.glass-card .ct .more{color:var(--accent);cursor:pointer;font-weight:400;font-size:11px}
+.glass-card .ct .more:hover{text-decoration:underline}
+
+/* ── Tables ── */
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:10px;font-weight:600;color:var(--dim);text-transform:uppercase;padding:8px 10px;border-bottom:1px solid var(--border)}
+td{padding:8px 10px;border-bottom:1px solid var(--border);font-size:12px}
+tr:hover td{background:rgba(108,108,240,0.04)}
+.status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.status-dot.green{background:var(--green);box-shadow:0 0 6px rgba(52,211,153,0.4)}
+.status-dot.yellow{background:var(--yellow);box-shadow:0 0 6px rgba(251,191,36,0.4)}
+.status-dot.red{background:var(--red);box-shadow:0 0 6px rgba(248,81,73,0.4)}
+
+/* ── Category Section ── */
+.cat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.cat-card{
+  background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;
+  transition:border-color .2s
+}
+.cat-card:hover{border-color:var(--accent)}
+.cat-card .cat-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.cat-card .cat-h .cat-name{font-size:12px;font-weight:600}
+.cat-card .cat-h .cat-count{font-size:10px;color:var(--dim)}
+.cat-item{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);font-size:11px}
+.cat-item:last-child{border-bottom:none}
+.cat-item .ci-left{display:flex;align-items:center;gap:6px}
+.cat-item .ci-right{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--dim)}
+
+/* ── Trend Chart ── */
+.trend-chart{display:flex;align-items:flex-end;gap:4px;height:80px;padding:8px 0}
+.trend-bar{
+  flex:1;border-radius:3px 3px 0 0;min-height:4px;position:relative;transition:height .5s ease;
+  cursor:pointer
+}
+.trend-bar:hover{opacity:.8}
+.trend-bar .tooltip{display:none;position:absolute;bottom:100%;left:50%;transform:translateX(-50%);
+  background:var(--card2);border:1px solid var(--border);border-radius:6px;padding:4px 8px;
+  font-size:10px;white-space:nowrap;z-index:10;margin-bottom:4px}
+.trend-bar:hover .tooltip{display:block}
+.trend-labels{display:flex;justify-content:space-between;font-size:9px;color:var(--dim);margin-top:4px}
+
+/* ── History Table ── */
+.filter-bar{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.filter-bar .filter-btn{padding:4px 12px;border-radius:6px;font-size:11px;cursor:pointer;
+  border:1px solid var(--border);background:var(--card2);color:var(--dim);transition:all .2s}
+.filter-bar .filter-btn.active{background:rgba(108,108,240,0.15);color:var(--accent);border-color:var(--accent)}
+.filter-bar .filter-btn:hover{color:var(--text)}
+
+/* ── Detail Modal ── */
+.modal-overlay{
+  display:none;position:fixed;top:0;left:0;right:0;bottom:0;
+  background:rgba(0,0,0,.6);z-index:100;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);
+  justify-content:center;align-items:center
+}
+.modal-overlay.show{display:flex}
+.modal-box{
+  background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px;
+  max-width:700px;width:90%;max-height:80vh;overflow-y:auto
+}
+.modal-box h3{font-size:15px;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.modal-box pre{background:var(--card2);padding:12px;border-radius:8px;font-size:11px;overflow-x:auto;color:var(--dim);margin-top:8px}
+
+/* ── Loading ── */
+.lo{display:flex;justify-content:center;align-items:center;padding:40px}
+.s{width:24px;height:24px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:sp .8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+/* ── Refresh timer ── */
+.refresh-info{font-size:10px;color:var(--dim);display:flex;align-items:center;gap:4px}
+
+/* ── Tabs ── */
+.tabs{display:flex;gap:0;margin-bottom:16px;border-bottom:1px solid var(--border)}
+.tab{padding:8px 16px;font-size:12px;cursor:pointer;border-bottom:2px solid transparent;color:var(--dim);transition:all .2s}
+.tab:hover{color:var(--text)}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+
+/* ── Config Panel ── */
+.config-toggle{font-size:11px;color:var(--accent);cursor:pointer;display:flex;align-items:center;gap:4px;margin-top:8px}
+.config-toggle:hover{text-decoration:underline}
+.config-panel{display:none;margin-top:8px;padding:10px;background:var(--card2);border-radius:8px}
+.config-panel.show{display:block}
+.config-panel label{font-size:11px;color:var(--dim);display:block;margin-bottom:4px}
+.config-panel input[type="checkbox"]{margin-right:4px}
+</style>
+</head>
+<body>
+<div class="container">
+  <!-- Header -->
+  <div class="header">
+    <h1>🔍 <span>{{ _t('Health Check') }}</span> <span class="badge">Health Check</span></h1>
+    <div class="actions">
+      <button class="btn btn-primary" onclick="runCheck()">⚡ {{ _t('Run Check Now') }}</button>
+      <button class="btn" onclick="exportReport()">📥 {{ _t('Export Report') }}</button>
+      <button class="btn btn-danger" id="alertBtn" onclick="showAlerts()" style="display:none">
+        🔔 Alerts <span id="alertCount">0</span>
+      </button>
+      <button class="btn btn-sm" onclick="showFixAudit()">🔧 {{ _t('Fix Records') }}</button>
+      <button class="btn btn-sm" id="autoRefreshBtn" onclick="toggleAutoRefresh()" style="border-color:var(--accent);color:var(--accent)">⏸ {{ _t('Stop Refresh') }}</button>
+      <span class="refresh-info" id="refreshInfo">🔄 -</span>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div id="loading"><div class="lo"><div class="s"></div>{{ _t('Loading check data...') }}</div></div>
+
+  <!-- Tabs -->
+  <div class="tabs" id="mainTabs" style="display:none">
+    <div class="tab active" data-tab="overview" onclick="switchTab('overview')">📊 {{ _t('Overview') }}</div>
+    <div class="tab" data-tab="details" onclick="switchTab('details')">📋 {{ _t('Detailed Report') }}</div>
+    <div class="tab" data-tab="history" onclick="switchTab('history')">📜 {{ _t('Check History') }}</div>
+    <div class="tab" data-tab="trend" onclick="switchTab('trend')">📈 {{ _t('Trend') }}</div>
+    <div class="tab" data-tab="checks" onclick="switchTab('checks')">⚙️ {{ _t('Check Config') }}</div>
+    <div class="tab" data-tab="inventory" onclick="switchTab('inventory')">📦 {{ _t('Inventory') }}</div>
+    <div class="tab" data-tab="guardian" onclick="switchTab('guardian')">🛡️ Guardian</div>
+  </div>
+
+  <!-- Tab: Overview -->
+  <div id="tab-overview" class="tab-content" style="display:none"></div>
+
+  <!-- Tab: Details -->
+  <div id="tab-details" class="tab-content" style="display:none">
+    <div class="filter-bar" id="detailFilter"></div>
+    <div id="detailList"><div class="lo"><div class="s"></div></div></div>
+  </div>
+
+  <!-- Tab: History -->
+  <div id="tab-history" class="tab-content" style="display:none">
+    <div class="filter-bar" id="histFilter"></div>
+    <div id="histList"><div class="lo"><div class="s"></div></div></div>
+  </div>
+
+  <!-- Tab: Trend -->
+  <div id="tab-trend" class="tab-content" style="display:none">
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <button class="btn btn-sm trend-days-btn active" onclick="loadTrend(7)">{{ _t('7 days') }}</button>
+      <button class="btn btn-sm trend-days-btn" onclick="loadTrend(14)">{{ _t('14 Days') }}</button>
+      <button class="btn btn-sm trend-days-btn" onclick="loadTrend(30)">{{ _t('30 Days') }}</button>
+    </div>
+    <div class="glass-card">
+      <div class="ct">{{ _t('Health Trend') }}</div>
+      <div id="trendChart"></div>
+    </div>
+    <div class="glass-card">
+      <div class="ct">{{ _t('Daily Score') }}</div>
+      <div id="scoreChart"></div>
+    </div>
+  </div>
+
+  <!-- Tab: Checks Config -->
+  <div id="tab-checks" class="tab-content" style="display:none">
+    <div id="checksList"><div class="lo"><div class="s"></div></div></div>
+  </div>
+
+  <!-- Tab: Inventory -->
+  <div id="tab-inventory" class="tab-content" style="display:none">
+    <div id="invSummary" style="margin-bottom:12px"></div>
+    <div id="invContent"><div class="lo"><div class="s"></div></div></div>
+  </div>
+
+  <!-- Tab: Guardian Log -->
+  <div id="tab-guardian" class="tab-content" style="display:none">
+    <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
+      <button class="btn btn-sm" onclick="loadGuardianLog(50)">🔄 {{ _t('Refresh') }}</button>
+      <select id="guardianLineSelect" class="btn btn-sm" onchange="loadGuardianLog(parseInt(this.value))" style="background:var(--card2);color:var(--text);border:1px solid var(--border);padding:4px 8px;border-radius:6px;font-size:11px">
+        <option value="50">50 {{ _t('lines') }}</option>
+        <option value="100">100 {{ _t('lines') }}</option>
+        <option value="200">200 {{ _t('lines') }}</option>
+      </select>
+      <span id="guardianLogInfo" class="refresh-info"></span>
+    </div>
+    <div id="guardianLogContent"><div class="lo"><div class="s"></div></div></div>
+  </div>
+
+  <!-- Detail Modal -->
+  <div class="modal-overlay" id="detailModal" onclick="closeModal(event)">
+    <div class="modal-box" onclick="event.stopPropagation()">
+      <h3>{{ _t('Check Details') }}<button class="btn btn-sm" style="margin-left:auto" onclick="closeModal()">✕</button></h3>
+      <div id="modalBody"></div>
+    </div>
+  </div>
+
+  <!-- Alert Modal -->
+  <div class="modal-overlay" id="alertModal" onclick="closeModal(event)">
+    <div class="modal-box" onclick="event.stopPropagation()" style="max-width:600px">
+      <h3>🔔 {{ _t('Alert List') }}<button class="btn btn-sm" style="margin-left:auto" onclick="closeModal()">✕</button></h3>
+      <div id="alertBody"></div>
+    </div>
+  </div>
+
+  <!-- Fix Audit Modal -->
+  <div class="modal-overlay" id="fixAuditModal" onclick="closeModal(event)">
+    <div class="modal-box" onclick="event.stopPropagation()" style="max-width:600px">
+      <h3>🔧 {{ _t('Fix Records') }}<button class="btn btn-sm" style="margin-left:auto" onclick="closeModal()">✕</button></h3>
+      <div id="fixAuditBody"></div>
+    </div>
+  </div>
+
+  <!-- Confirm Modal -->
+  <div class="modal-overlay" id="confirmModal" onclick="closeModal(event)">
+    <div class="modal-box" onclick="event.stopPropagation()" style="max-width:420px">
+      <h3>{{ _t('Confirm') }}<button class="btn btn-sm" style="margin-left:auto" onclick="closeModal()">✕</button></h3>
+      <div id="confirmBody" style="padding:16px 0;font-size:14px;color:var(--text);line-height:1.6"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;border-top:1px solid var(--border);padding-top:12px">
+        <button class="btn btn-sm" onclick="_confirmCancel()">{{ _t('Cancel') }}</button>
+        <button class="btn btn-sm" onclick="_confirmOk()">{{ _t('OK') }}</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+var T = {{ sso_token | tojson }} || localStorage.getItem("sso_token") || localStorage.getItem("tm_token") || localStorage.getItem("token");
+var API = '/admin/health/api';
+var _token = T;
+var _dataCache = {};
+
+// When loaded in already-rendered document (iframe/admin injection), DOMContentLoaded won't fire again
+if (document.readyState==='loading') {
+  document.addEventListener('DOMContentLoaded', function(){ loadStatus(); });
+} else {
+  loadStatus();
+}
+
+// ── Tab Switching ──
+function switchTab(tab) {
+  document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active')});
+  document.querySelector('.tab[data-tab="'+tab+'"]').classList.add('active');
+  document.querySelectorAll('.tab-content').forEach(function(t){t.style.display='none'});
+  document.getElementById('tab-'+tab).style.display='block';
+
+  if (tab === 'details') loadDetails();
+  else if (tab === 'history') loadHistory();
+  else if (tab === 'trend') loadTrend(7);
+  else if (tab === 'checks') loadChecks();
+  else if (tab === 'inventory') loadInventory();
+  else if (tab === 'guardian') loadGuardianLog(50);
+}
+
+// ── Load Status ──
+function loadStatus() {
+  document.getElementById('loading').style.display = 'block';
+  document.getElementById('mainTabs').style.display = 'none';
+  document.querySelectorAll('.tab-content').forEach(function(t){t.style.display='none'});
+
+  fetch(API+'/status', {headers:{'Authorization':'Bearer '+_token}})
+    .then(function(r){return r.json()})
+    .then(function(d){
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('mainTabs').style.display = 'flex';
+      document.getElementById('tab-overview').style.display = 'block';
+      if (d.success && d.data) {
+        renderOverview(d.data);
+        _dataCache.status = d.data;
+      }
+      document.getElementById('refreshInfo').textContent = '{{ _t('Last Updated') }}: ' + new Date().toLocaleTimeString();
+    })
+    .catch(function(){
+      document.getElementById('loading').innerHTML = '<div class="lo" style="color:var(--red)">❌ {{ _t('Load failed, check network') }}</div>';
+    });
+}
+
+// ── Render Overview ──
+function renderOverview(data) {
+  var latest = data.latest_run;
+  var h = '';
+
+  // Stats cards
+  h += '<div class="stats-row">';
+  if (latest) {
+    var total = latest.total_checks || 0;
+    var passed = latest.passed || 0;
+    var warnings = latest.warnings || 0;
+    var errors = latest.errors || 0;
+    var pct = total > 0 ? Math.round(passed * 100 / total) : 100;
+    h += '<div class="stat-card '+(errors>0?'error':warnings>0?'warning':'passed')+'">';
+    h += '<div class="label">{{ _t('Health') }}</div>';
+    h += '<div class="value '+(pct>=90?'green':pct>=70?'yellow':'red')+'">'+pct+'%</div>';
+    h += '<div class="sub">'+(errors>0?errors+' {{ _t('Abnormal') }}':warnings>0?warnings+' {{ _t('Warnings') }}':'{{ _t('All Normal') }}')+'</div></div>';
+
+    h += '<div class="stat-card passed"><div class="label">{{ _t('Active') }}</div><div class="value green">'+passed+'</div><div class="sub">/'+total+' items</div></div>';
+    h += '<div class="stat-card warning"><div class="label">{{ _t('Warnings') }}</div><div class="value yellow">'+warnings+'</div><div class="sub">{{ _t('Needs Attention') }}</div></div>';
+    h += '<div class="stat-card error"><div class="label">{{ _t('Abnormal') }}</div><div class="value red">'+errors+'</div><div class="sub">{{ _t('Requires Immediate Action') }}</div></div>';
+
+    var ms = latest.duration_ms || 0;
+    h += '<div class="stat-card passed"><div class="label">{{ _t('Check Duration') }}</div><div class="value" style="font-size:22px">'+ms+'ms</div>';
+    h += '<div class="sub">'+esc(latest.trigger_type=='manual'?'{{ _t('Manual') }}':'{{ _t('Auto') }}')+' · '+esc(latest.created_at||'')+'</div></div>';
+  }
+  h += '</div>';
+
+  // Category Breakdown
+  if (data.categories) {
+    h += '<div class="glass-card"><div class="ct">{{ _t('Category Status') }}<div class="filter-bar" style="margin-bottom:0">' +
+      '<button class="filter-btn active" onclick="filterOverviewCat(this,\'\')">{{ _t('All') }}</button>';
+    var catsSorted = Object.keys(data.categories).sort();
+    var catNames = {
+      'system':'🔧 {{ _t('System') }}', 'external':'🌐 {{ _t('External') }}', 'workflow':'⚡ {{ _t('Workflow') }}',
+      'agent':'🤖 Agent', 'cms':'📄 {{ _t('Content') }}',
+      'ssl':'🔒 SSL', 'error':'📝 {{ _t('Log') }}'
+    };
+    catsSorted.forEach(function(cat){
+      h += '<button class="filter-btn" onclick="filterOverviewCat(this,\''+cat+'\')">'+(catNames[cat]||cat)+'</button>';
+    });
+    h += '</div></div><div class="cat-grid" id="overviewCatGrid">';
+    for (var cat in data.categories) {
+      var c = data.categories[cat];
+      var pct = c.total>0 ? Math.round(c.passed*100/c.total) : 0;
+      var cls = c.error>0?'red':c.warning>0?'yellow':'green';
+      h += '<div class="cat-card" data-cat="'+cat+'"><div class="cat-h">';
+      h += '<span class="cat-name">'+(catNames[cat]||cat)+'</span>';
+      h += '<span class="cat-count" style="color:var(--'+cls+')">'+pct+'% · '+c.passed+'/'+c.total+'</span>';
+      h += '</div>';
+
+      // Items from latest run
+      if (latest && latest.items) {
+        var items = latest.items.filter(function(i){return i.category==cat});
+        items.forEach(function(i){
+          var st = i.status == 'passed' ? 'green' : (i.status == 'warning' ? 'yellow' : 'red');
+          h += '<div class="cat-item" onclick="showDetail('+i.id+')" style="cursor:pointer">';
+          h += '<div class="ci-left"><span class="status-dot '+st+'"></span>'+esc(i.check_name)+'</div>';
+          h += '<div class="ci-right">'+i.response_time_ms+'ms · '+esc(i.message||'').substring(0,40)+'</div>';
+          h += '</div>';
+        });
+      }
+      h += '</div>';
+    }
+    h += '</div></div>';
+  }
+
+  // Alerts section
+  if (data.unread_alerts > 0) {
+    document.getElementById('alertBtn').style.display = 'inline-flex';
+    document.getElementById('alertCount').textContent = data.unread_alerts;
+  }
+
+  document.getElementById('tab-overview').innerHTML = h;
+}
+
+function filterOverviewCat(btn, cat) {
+  document.querySelectorAll('#overviewCatGrid .cat-card').forEach(function(card){
+    if (!cat || card.dataset.cat === cat) {
+      card.style.display = '';
+    } else {
+      card.style.display = 'none';
+    }
+  });
+  document.querySelectorAll('.glass-card .ct .filter-btn').forEach(function(b){b.classList.remove('active')});
+  btn.classList.add('active');
+}
+
+// ── Run Check ──
+function runCheck() {
+  var btn = document.querySelector('.btn-primary');
+  btn.disabled = true;
+  btn.innerHTML = '<div class="s" style="width:14px;height:14px;border-width:2px"></div> {{ _t('Checking...') }}';
+
+  fetch(API+'/run', {
+    method:'POST',
+    headers:{'Authorization':'Bearer '+_token, 'Content-Type':'application/json'},
+    body:'{}'
+  }).then(function(r){return r.json()})
+  .then(function(d){
+    if (d.success) {
+      showToast('✅ {{ _t('Check started, auto-refresh in 5s') }}');
+      setTimeout(loadStatus, 5000);
+    }
+  }).catch(function(){})
+  .finally(function(){
+    btn.disabled = false;
+    btn.innerHTML = '⚡ {{ _t('Run Check Now') }}';
+  });
+}
+
+// ── Detail View ──
+function loadDetails(filter) {
+  var container = document.getElementById('detailList');
+  container.innerHTML = '<div class="lo"><div class="s"></div></div>';
+
+  fetch(API+'/status', {headers:{'Authorization':'Bearer '+_token}})
+    .then(function(r){return r.json()})
+    .then(function(d){
+      if (!d.success || !d.data || !d.data.latest_run) {
+        container.innerHTML = '<div class="lo" style="color:var(--dim)">{{ _t('No data') }}</div>';
+        return;
+      }
+      var items = d.data.latest_run.items || [];
+      renderDetailFilter(items);
+      renderDetailTable(items, filter);
+    }).catch(function(){
+      container.innerHTML = '<div class="lo" style="color:var(--red)">{{ _t('Load failed') }}</div>';
+    });
+}
+
+function renderDetailFilter(items) {
+  var cats = {};
+  items.forEach(function(i){cats[i.category]=true});
+  var h = '<button class="filter-btn active" onclick="filterDetail(this,\'\')">{{ _t('All (') }}'+items.length+')</button>';
+  var catNames = {'system':'{{ _t('System') }}','external':'{{ _t('External') }}','workflow':'{{ _t('Workflow') }}','agent':'Agent','cms':'{{ _t('Content') }}','ssl':'SSL','error':'{{ _t('Log') }}'};
+  for (var cat in cats) {
+    var cnt = items.filter(function(i){return i.category==cat}).length;
+    h += '<button class="filter-btn" onclick="filterDetail(this,\''+cat+'\')">'+(catNames[cat]||cat)+' ('+cnt+')</button>';
+  }
+  document.getElementById('detailFilter').innerHTML = h;
+}
+
+function filterDetail(el, cat) {
+  document.querySelectorAll('#detailFilter .filter-btn').forEach(function(b){b.classList.remove('active')});
+  el.classList.add('active');
+  renderDetailTable((_dataCache.status && _dataCache.status.latest_run ? _dataCache.status.latest_run.items : []), cat);
+}
+
+function renderDetailTable(items, filter) {
+  var filtered = filter ? items.filter(function(i){return i.category==filter}) : items;
+  var h = '<div class="glass-card"><table><tr><th>{{ _t('Status') }}</th><th>{{ _t('Name') }}</th><th>{{ _t('Categories') }}</th><th>{{ _t('Response') }}</th><th>{{ _t('Message') }}</th></tr>';
+  filtered.forEach(function(i){
+    var st = i.status == 'passed' ? 'green' : (i.status == 'warning' ? 'yellow' : 'red');
+    h += '<tr onclick="showDetail('+i.id+')" style="cursor:pointer">';
+    h += '<td><span class="status-dot '+st+'"></span></td>';
+    h += '<td>'+esc(i.check_name||'')+'</td>';
+    h += '<td style="color:var(--dim)">'+esc(i.category||'')+'</td>';
+    h += '<td>'+(i.response_time_ms||0)+'ms</td>';
+    h += '<td style="color:var(--dim);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(i.message||'')+'</td>';
+    h += '</tr>';
+  });
+  h += '</table></div>';
+  document.getElementById('detailList').innerHTML = h;
+}
+
+// ── Show Detail Modal ──
+function showDetail(itemId) {
+  var items = _dataCache.status && _dataCache.status.latest_run ? _dataCache.status.latest_run.items : [];
+  var item = items.find(function(i){return i.id==itemId});
+  if (!item) return;
+
+  var st = item.status == 'passed' ? '✅ {{ _t('Active') }}' : (item.status == 'warning' ? '⚠️ {{ _t('Warnings') }}' : '❌ {{ _t('Error') }}');
+  var stClass = item.status == 'passed' ? 'green' : (item.status == 'warning' ? 'yellow' : 'red');
+  var h = '<table><tr><td style="width:100px;color:var(--dim)">{{ _t('Name') }}</td><td>'+esc(item.check_name)+'</td></tr>';
+  h += '<tr><td style="color:var(--dim)">{{ _t('Status') }}</td><td style="color:var(--'+stClass+')">'+st+'</td></tr>';
+  h += '<tr><td style="color:var(--dim)">{{ _t('Categories') }}</td><td>'+esc(item.category)+'</td></tr>';
+  h += '<tr><td style="color:var(--dim)">{{ _t('Response Time') }}</td><td>'+(item.response_time_ms||0)+'ms</td></tr>';
+  h += '<tr><td style="color:var(--dim)">{{ _t('Message') }}</td><td>'+esc(item.message||'')+'</td></tr>';
+  h += '<tr><td style="color:var(--dim)">{{ _t('Check Time') }}</td><td>'+esc(item.checked_at||'')+'</td></tr>';
+
+  // Detail JSON
+  try {
+    var detail = JSON.parse(item.detail || '{}');
+    if (Object.keys(detail).length > 0) {
+      h += '<tr><td style="color:var(--dim)">{{ _t('Details') }}</td><td><pre>'+esc(JSON.stringify(detail, null, 2))+'</pre></td></tr>';
+    }
+  } catch(e) {}
+
+  h += '</table>';
+
+  // AI Analyze & Fix buttons (only for non-passed checks)
+  if (item.status !== 'passed') {
+    var ck = esc(item.check_key).replace(/'/g,"\\'");
+    var ri = esc(String(item.run_id||'')).replace(/'/g,"\\'");
+    h += '<div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">';
+    h += '<button class="btn btn-sm" onclick="aiAnalyze('+item.id+')">🤖 {{ _t('AI Analysis') }}</button>';
+    h += '<button class="btn btn-sm" onclick="aiFix('+item.id+',\''+ck+'\',\''+ri+'\')">🔧 {{ _t('One-click Repair') }}</button>';
+    h += '</div>';
+    h += '<div id="aiResult_'+item.id+'" style="margin-top:8px;font-size:13px;color:var(--dim)"></div>';
+  }
+
+  document.getElementById('modalBody').innerHTML = h;
+  document.getElementById('detailModal').classList.add('show');
+}
+
+// ── AI Analyze ──
+function aiAnalyze(itemId) {
+  var items = _dataCache.status && _dataCache.status.latest_run ? _dataCache.status.latest_run.items : [];
+  var item = items.find(function(i){return i.id==itemId});
+  if (!item) return;
+  var el = document.getElementById('aiResult_'+itemId);
+  if (!el) return;
+  el.innerHTML = '<div class="s" style="width:12px;height:12px"></div>{{ _t('AI Analysis in Progress...') | tojson }}';
+
+  fetch('/admin/health/api/ai-analyze', {
+    method:'POST',
+    headers:{'Authorization':'Bearer '+_token, 'Content-Type':'application/json'},
+    body:JSON.stringify({check_key:item.check_key, run_id: item.run_id || null})
+  }).then(function(r){return r.json()})
+  .then(function(d){
+    if (d.success && d.data) {
+      var plan = d.data.raw_plan || d.data;
+      // LLM 分析失败：显示具体原因，而不是裸显 []
+      if (d.data.ok === false || plan._error) {
+        el.innerHTML = '<span style="color:var(--red)">⚠️ ' + esc(d.data.error || plan._error || plan.summary || 'Analysis failed') + '</span>';
+        return;
+      }
+      // 分析成功但无修复项：显示 summary 说明
+      if (!plan.items || plan.items.length === 0) {
+        el.innerHTML = '<span style="color:var(--dim)">' + esc(plan.summary || 'No actionable items found') + '</span>';
+        return;
+      }
+      var itemsJson = JSON.stringify(plan.items, null, 2);
+      el.innerHTML = '<pre style="background:var(--bg);padding:8px;border-radius:4px;font-size:12px;max-height:200px;overflow:auto">'+esc(itemsJson)+'</pre>';
+      // If there are fix items, show execute button
+      if (plan.items && plan.items.length > 0) {
+        el.innerHTML += '<div style="margin-top:8px"><button class="btn btn-sm" onclick="aiFix(\''+item.id+'\',\''+item.check_key+'\',\''+(item.run_id||'')+'\')">🔧 {{ _t('Apply Fixes') }}</button></div>';
+      }
+    } else {
+      el.innerHTML = {{ _t('<span style="color:var(--red)">Analysis Failed: ') | tojson }} + esc(d.error||'') + '</span>';
+    }
+  }).catch(function(e){
+    el.innerHTML = '<span style="color:var(--red)">{{ _t('请求失败') }}</span>';
+  });
+}
+
+// ── AI Fix (called after aiAnalyze) ──
+function aiFix(itemId, checkKey, runId) {
+  showConfirmModal({{ _t('Confirm AI repair? Can be rolled back in the repair log.') | tojson }}, function(){
+  var items = _dataCache.status && _dataCache.status.latest_run ? _dataCache.status.latest_run.items : [];
+  var item = items.find(function(i){return i.id==itemId});
+  if (!item) return;
+  checkKey = checkKey || item.check_key;
+  runId = runId || item.run_id || null;
+  var el = document.getElementById('aiResult_'+itemId);
+  if (!el) return;
+  el.innerHTML = '<div class="s" style="width:12px;height:12px"></div>{{ _t('Fetching AI repair plan...') | tojson }}';
+
+  // Step 1: analyze
+  fetch('/admin/health/api/ai-analyze', {
+    method:'POST',
+    headers:{'Authorization':'Bearer '+_token, 'Content-Type':'application/json'},
+    body:JSON.stringify({check_key:checkKey, run_id: runId})
+  }).then(function(r){return r.json()})
+  .then(function(ad){
+    if (!ad.success || !ad.data) {
+      el.innerHTML = {{ _t('<span style="color:var(--red)">Analysis Failed: ') | tojson }} + (ad.error||'') + '</span>';
+      return;
+    }
+    var plan = ad.data.raw_plan || ad.data;
+    var fixItems = plan.items || [];
+    if (fixItems.length === 0) {
+      el.innerHTML = '<span style="color:var(--green)">{{ _t('No Repair Needed') }}</span>';
+      return;
+    }
+    el.innerHTML = '<div class="s" style="width:12px;height:12px"></div>{{ _t('Executing') | tojson }} ' + fixItems.length + ' {{ _t('Item repair...') | tojson }}';
+
+    // Step 2: execute fix
+    return fetch('/admin/health/api/ai-fix', {
+      method:'POST',
+      headers:{'Authorization':'Bearer '+_token, 'Content-Type':'application/json'},
+      body:JSON.stringify({check_key:checkKey, run_id: runId, items: fixItems, confirm: true})
+    });
+  }).then(function(r){return r ? r.json() : null})
+  .then(function(d){
+    if (!d) return;
+    if (d.success) {
+      el.innerHTML = '<span style="color:var(--green)">{{ _t('Repair Completed') }}: ' + (d.message||'') + '</span>';
+      setTimeout(loadStatus, 2000);
+    } else {
+      el.innerHTML = '<span style="color:var(--red)">{{ _t('Repair Failed') }}: ' + esc(d.error||'') + '</span>';
+    }
+  }).catch(function(e){
+    el.innerHTML = '<span style="color:var(--red)">{{ _t('请求失败') }}</span>';
+  });
+  });
+}
+
+// ── History ──
+var _histSince = '';
+function loadHistory(since) {
+  _histSince = since || '';
+  var container = document.getElementById('histList');
+  container.innerHTML = '<div class="lo"><div class="s"></div></div>';
+
+  var url = API+'/history';
+  if (since) url += '?since=' + encodeURIComponent(since);
+  fetch(url, {headers:{'Authorization':'Bearer '+_token}})
+    .then(function(r){return r.json()})
+    .then(function(d){
+      if (!d.success || !d.data) { container.innerHTML = '<div class="lo" style="color:var(--dim)">{{ _t('No data') }}</div>'; return; }
+      renderHistFilter();
+      renderHistTable(d.data.runs || []);
+    }).catch(function(){
+      container.innerHTML = '<div class="lo" style="color:var(--red)">{{ _t('Load failed') }}</div>';
+    });
+}
+
+function renderHistFilter() {
+  var h = '<button onclick="loadHistory(\'\')" class="filter-btn' + (!_histSince?' active':'') + '">{{ _t('All') }}</button>';
+  h += '<button onclick="loadHistory(\'-1 hour\')" class="filter-btn' + (_histSince=='-1 hour'?' active':'') + '">{{ _t('1h') }}</button>';
+  h += '<button onclick="loadHistory(\'-6 hours\')" class="filter-btn' + (_histSince=='-6 hours'?' active':'') + '">{{ _t('6h') }}</button>';
+  h += '<button onclick="loadHistory(\'-24 hours\')" class="filter-btn' + (_histSince=='-24 hours'?' active':'') + '">{{ _t('24h') }}</button>';
+  h += '<button onclick="loadHistory(\'-7 days\')" class="filter-btn' + (_histSince=='-7 days'?' active':'') + '">{{ _t('7d') }}</button>';
+  h += '<button onclick="loadHistory(\'\')" class="btn btn-sm">🔄 {{ _t('Refresh') }}</button>';
+  document.getElementById('histFilter').innerHTML = h;
+}
+
+function renderHistTable(runs) {
+  var h = '<div class="glass-card"><table><tr><th>ID</th><th>{{ _t('Trigger') }}</th><th>{{ _t('Active') }}</th><th>{{ _t('Warnings') }}</th><th>{{ _t('Abnormal') }}</th><th>{{ _t('Duration') }}</th><th>{{ _t('Time') }}</th><th>{{ _t('Actions') }}</th></tr>';
+  runs.forEach(function(r){
+    var st = r.errors>0?'red':r.warnings>0?'yellow':'green';
+    h += '<tr>';
+    h += '<td>#'+r.id+'</td>';
+    h += '<td style="color:var(--dim)">'+(r.trigger_type=='manual'?'👤 {{ _t('Manual') }}':'⏰ '+r.trigger_type)+'</td>';
+    h += '<td style="color:var(--green)">'+r.passed+'</td>';
+    h += '<td style="color:var(--yellow)">'+r.warnings+'</td>';
+    h += '<td style="color:var(--red)">'+r.errors+'</td>';
+    h += '<td>'+(r.duration_ms||0)+'ms</td>';
+    h += '<td style="color:var(--dim);font-size:10px">'+esc(r.created_at||'')+'</td>';
+    h += '<td><button class="btn btn-sm" onclick="viewHistory('+r.id+')">{{ _t('View') }}</button></td>';
+    h += '</tr>';
+  });
+  h += '</table></div>';
+  document.getElementById('histList').innerHTML = h;
+}
+
+function viewHistory(runId) {
+  fetch(API+'/history/'+runId, {headers:{'Authorization':'Bearer '+_token}})
+    .then(function(r){return r.json()})
+    .then(function(d){
+      if (!d.success || !d.data) return;
+      var run = d.data.run;
+      var items = d.data.items;
+      var st = run.errors>0?'red':run.warnings>0?'yellow':'green';
+      var stText = run.errors>0?'❌ {{ _t('Abnormal') }}':run.warnings>0?'⚠️ {{ _t('Warnings') }}':'✅ {{ _t('Active') }}';
+      var h = '<div style="margin-bottom:12px;padding:8px 12px;background:var(--card2);border-radius:8px">';
+      h += '<div>{{ _t('Batch ') }}#'+run.id+' · '+stText+' · '+(run.duration_ms||0)+'ms · '+esc(run.created_at||'')+'</div>';
+      h += '<div style="font-size:11px;color:var(--dim);margin-top:4px">{{ _t('Passed ') }}'+run.passed+' · {{ _t('Warnings ') }}'+run.warnings+' · {{ _t('Errors ') }}'+run.errors+'</div>';
+      h += '</div>';
+
+      h += '<table><tr><th>{{ _t('Status') }}</th><th>{{ _t('Name') }}</th><th>{{ _t('Categories') }}</th><th>{{ _t('Response') }}</th><th>{{ _t('Message') }}</th></tr>';
+      items.forEach(function(i){
+        var s = i.status=='passed'?'green':(i.status=='warning'?'yellow':'red');
+        h += '<tr><td><span class="status-dot '+s+'"></span></td>';
+        h += '<td>'+esc(i.check_name)+'</td>';
+        h += '<td style="color:var(--dim)">'+esc(i.category)+'</td>';
+        h += '<td>'+(i.response_time_ms||0)+'ms</td>';
+        h += '<td style="color:var(--dim);max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(i.message||'')+'</td></tr>';
+      });
+      h += '</table>';
+
+      document.getElementById('modalBody').innerHTML = h;
+      document.getElementById('detailModal').classList.add('show');
+    }).catch(function(){});
+}
+
+// ── Trend ──
+function loadTrend(days) {
+  document.querySelectorAll('.trend-days-btn').forEach(function(b){b.classList.remove('active')});
+  event && event.target ? event.target.classList.add('active') : document.querySelector('.trend-days-btn').classList.add('active');
+
+  fetch(API+'/trend?days='+days, {headers:{'Authorization':'Bearer '+_token}})
+    .then(function(r){return r.json()})
+    .then(function(d){
+      if (!d.success || !d.data) return;
+      renderTrendChart(d.data.trend);
+      renderScoreChart(d.data.trend);
+    });
+}
+
+function renderTrendChart(trend) {
+  if (!trend || trend.length === 0) {
+    document.getElementById('trendChart').innerHTML = '<div style="text-align:center;color:var(--dim);padding:20px">{{ _t('No trend data yet, run a check first') }}</div>';
+    return;
+  }
+  var maxCount = 0;
+  trend.forEach(function(t){maxCount = Math.max(maxCount, t.total_checks)});
+  maxCount = Math.max(maxCount, 1);
+
+  // Stacked bars
+  var h = '<div class="trend-chart">';
+  trend.forEach(function(t){
+    var total = t.total_checks || 1;
+    var passedPct = (t.passed || 0) / total * 100;
+    var warnPct = (t.warnings || 0) / total * 100;
+    var errPct = (t.errors || 0) / total * 100;
+    var height = Math.max(4, (total / maxCount) * 80);
+    h += '<div class="trend-bar" style="height:'+height+'px;display:flex;flex-direction:column;width:100%">';
+    if (t.errors > 0) h += '<div style="flex:'+errPct+';background:var(--red);border-radius:3px 3px 0 0;min-height:2px" title="{{ _t('Abnormal') }}:'+t.errors+'"></div>';
+    if (t.warnings > 0) h += '<div style="flex:'+warnPct+';background:var(--yellow);min-height:2px" title="{{ _t('Warnings') }}:'+t.warnings+'"></div>';
+    h += '<div style="flex:'+passedPct+';background:var(--green);min-height:2px" title="{{ _t('Active') }}:'+t.passed+'"></div>';
+    h += '<div class="tooltip">'+esc(t.date)+': ✅'+t.passed+' ⚠️'+t.warnings+' ❌'+t.errors+'</div>';
+    h += '</div>';
+  });
+  h += '</div><div class="trend-labels">';
+  var step = Math.max(1, Math.floor(trend.length / 7));
+  trend.forEach(function(t, i){
+    if (i % step === 0 || i === trend.length-1) {
+      h += '<span>'+t.date.slice(5)+'</span>';
+    }
+  });
+  h += '</div>';
+  document.getElementById('trendChart').innerHTML = h;
+}
+
+function renderScoreChart(trend) {
+  if (!trend || trend.length === 0) {
+    document.getElementById('scoreChart').innerHTML = '<div style="text-align:center;color:var(--dim);padding:20px">{{ _t('No data') }}</div>';
+    return;
+  }
+  var h = '<div class="trend-chart">';
+  trend.forEach(function(t){
+    var score = t.health_score || 100;
+    var clr = score >= 90 ? 'var(--green)' : (score >= 70 ? 'var(--yellow)' : 'var(--red)');
+    var height = Math.max(4, (score / 100) * 80);
+    h += '<div class="trend-bar" style="height:'+height+'px;background:'+clr+'">';
+    h += '<div class="tooltip">'+esc(t.date)+': '+score+'{{ _t('pts') }}</div></div>';
+  });
+  h += '</div><div class="trend-labels">';
+  var step = Math.max(1, Math.floor(trend.length / 7));
+  trend.forEach(function(t, i){
+    if (i % step === 0 || i === trend.length-1) {
+      h += '<span>'+t.date.slice(5)+'</span>';
+    }
+  });
+  h += '</div>';
+  document.getElementById('scoreChart').innerHTML = h;
+}
+
+// ── Safe Fetch Helper: independent error handling per API call ──
+function safeFetch(url) {
+  return fetch(url, {headers:{'Authorization':'Bearer '+_token}})
+    .then(function(r){
+      if(!r.ok) throw new Error('HTTP '+r.status+' '+r.statusText);
+      return r.json();
+    })
+    .catch(function(e){
+      console.error('[Health] Fetch failed:', url, e.message);
+      return {success: false, error: e.message, _source: url};
+    });
+}
+
+// ── Manage Checks (Enhanced: Registry + Sorting + Config Editor + One-click Add) ──
+function loadChecks() {
+  var container = document.getElementById('checksList');
+  container.innerHTML = '<div class="lo"><div class="s"></div>{{ _t('Loading checks...') }}</div>';
+
+  // Load DB list first, then registry (independent error handling per call)
+  var dbData, regData;
+
+  safeFetch(API+'/checks').then(function(d){
+    dbData = d;
+    return safeFetch(API+'/checkers/registry');
+  }).then(function(r){
+    regData = r;
+
+    // ── Determine data state ──
+    var checksLoaded = dbData.success;
+    var registryLoaded = regData.success;
+    var checks = (checksLoaded && dbData.data) ? dbData.data.checks : [];
+    var registered = (registryLoaded && regData.data) ? regData.data.registered : [];
+
+    // If both failed, show error with diagnostic info
+    if (!checksLoaded && !registryLoaded) {
+      container.innerHTML = '<div class="lo" style="color:var(--red)">{{ _t('Loading Failed') }}<br><span style="font-size:11px;color:var(--dim)">' +
+        esc('Checks: ' + (dbData.error||'unknown') + ' | Registry: ' + (regData.error||'unknown')) + '</span></div>';
+      return;
+    }
+
+    var h = '';
+
+    // ── Warning banner if registry failed ──
+    if (!registryLoaded) {
+      h += '<div class="glass-card" style="border-color:var(--yellow)">';
+      h += '<div style="color:var(--yellow);font-size:12px;display:flex;align-items:center;gap:6px">⚠️ {{ _t('Checker registry unavailable') }}: ' + esc(regData.error||'unknown') + '</div>';
+      h += '</div>';
+    }
+
+    // ── Available Checkers Registry (One-click Add) ──
+    if (registryLoaded) {
+      var unregistered = registered.filter(function(r){ return !r.in_db; });
+      if (unregistered.length > 0) {
+        h += '<div class="glass-card">';
+        h += '<div class="ct">📦 {{ _t('Available Checkers') }} <span style="color:var(--accent);font-weight:400">('+unregistered.length+' {{ _t('available)') }}</span></div>';
+        h += '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">';
+        unregistered.forEach(function(r){
+          var severityColors = {warning:'rgba(251,191,36,0.15);color:var(--yellow)', critical:'rgba(248,81,73,0.15);color:var(--red)', info:'rgba(96,165,250,0.15);color:var(--blue)'};
+          h += '<div style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;display:flex;align-items:center;gap:8px">';
+          h += '<div><div style="font-size:12px;font-weight:600">'+esc(r.name)+'</div>';
+          h += '<div style="font-size:10px;color:var(--dim)">'+esc(r.check_key)+' · <span style="background:'+(severityColors[r.severity]||severityColors.warning)+';padding:1px 5px;border-radius:4px;font-size:9px">'+r.severity+'</span></div></div>';
+          h += '<button class="btn btn-sm" onclick="addFromRegistry(\''+r.check_key+'\')" style="margin-left:auto">＋{{ _t('Add') }}</button>';
+          h += '</div>';
+        });
+        h += '</div></div>';
+      }
+    }
+
+    // ── Currently Configured Checks ──
+    h += '<div class="glass-card">';
+    h += '<div class="ct">⚙️ {{ _t('Configured Checks') }} <span style="color:var(--dim);font-weight:400">('+checks.length+' {{ _t(' items)') }}</span></div>';
+    if (checks.length > 0) {
+      h += '<table><tr><th style="width:40px">{{ _t('Enabled') }}</th><th>{{ _t('Name / Key') }}</th><th>{{ _t('Categories') }}</th><th>{{ _t('Level') }}</th><th style="width:60px">{{ _t('Sort') }}</th><th>{{ _t('Config') }}</th><th style="width:60px">{{ _t('Actions') }}</th></tr>';
+
+      checks.forEach(function(c){
+        var isChecked = c.is_active ? 'checked' : '';
+        var sevBg = c.severity=='critical' ? 'rgba(248,81,73,0.15);color:var(--red)' : (c.severity=='warning' ? 'rgba(251,191,36,0.15);color:var(--yellow)' : 'rgba(96,165,250,0.15);color:var(--blue)');
+        var hasChecker = registered.some(function(r){ return r.check_key == c.check_key && r.in_db; });
+
+        h += '<tr>';
+        h += '<td><input type="checkbox" '+isChecked+' onchange="toggleCheck('+c.id+',this.checked)"></td>';
+        h += '<td><div style="font-size:12px">'+esc(c.name)+'</div><div style="font-size:10px;color:var(--dim)">'+esc(c.check_key)+'</div></td>';
+        h += '<td><span style="font-size:10px;color:var(--dim)">'+esc(c.category)+'</span></td>';
+        h += '<td><span class="badge" style="background:'+sevBg+'">'+esc(c.severity)+'</span></td>';
+        h += '<td><input type="number" value="'+c.sort_order+'" style="width:50px;background:var(--card2);border:1px solid var(--border);border-radius:4px;padding:2px 4px;color:var(--text);font-size:11px" onchange="updateSort('+c.id+',this.value)"></td>';
+        h += '<td><span class="config-toggle" onclick="toggleConfigEditor('+c.id+')">⚙️ {{ _t('Config') }}</span></td>';
+        h += '<td><button class="btn btn-sm" onclick="deleteCheck('+c.id+',\''+esc(c.name)+'\')" style="color:var(--red)">🗑</button></td>';
+        h += '</tr>';
+
+        // Hidden config editor row
+        h += '<tr id="config-row-'+c.id+'" style="display:none"><td colspan="7" style="padding:0">';
+        h += '<div style="background:var(--card2);padding:8px 12px;margin:4px 0;border-radius:6px">';
+        var configObj;try{configObj=typeof c.config==='string'?JSON.parse(c.config):(c.config||{})}catch(e){configObj={}};var configStr=esc(JSON.stringify(configObj,null,2));
+        h += '<textarea id="config-editor-'+c.id+'" rows="4" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px;padding:6px;font-family:monospace">'+configStr+'</textarea>';
+        h += '<div style="margin-top:4px;display:flex;gap:4px"><button class="btn btn-sm" onclick="saveConfig('+c.id+')">💾 {{ _t('Save') }}</button><button class="btn btn-sm" onclick="toggleConfigEditor('+c.id+')">✕ {{ _t('Close') }}</button></div>';
+        h += '</div></td></tr>';
+      });
+      h += '</table>';
+    } else {
+      h += '<div style="color:var(--dim);font-size:12px;padding:12px">{{ _t('No checks configured. Use "Available Checkers" or "Manual Add" below.') }}</div>';
+    }
+    h += '</div>';
+
+    // ── Manually Add New Check ──
+    h += '<div class="glass-card">';
+    h += '<div class="ct">➕ {{ _t('Manual Add Check') }}</div>';
+    h += '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:end">';
+    h += '<div><label style="font-size:10px;color:var(--dim);display:block">Key</label><input id="newKey" placeholder="my_custom_check" style="background:var(--card2);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-size:12px"></div>';
+    h += '<div><label style="font-size:10px;color:var(--dim);display:block">{{ _t('Name') }}</label><input id="newName" placeholder="{{ _t('Custom Check" style') }}="background:var(--card2);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-size:12px"></div>';
+    h += '<div><label style="font-size:10px;color:var(--dim);display:block">{{ _t('Categories') }}</label><select id="newCat" style="background:var(--card2);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-size:12px"><option>system</option><option>external</option><option>workflow</option><option>agent</option><option>cms</option><option>ssl</option><option>error</option></select></div>';
+    h += '<div><label style="font-size:10px;color:var(--dim);display:block">{{ _t('Level') }}</label><select id="newSev" style="background:var(--card2);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-size:12px"><option>warning</option><option>critical</option><option>info</option></select></div>';
+    h += '<div style="padding-top:14px"><button class="btn btn-primary btn-sm" onclick="addCustomCheck()">{{ _t('Add') }}</button></div>';
+    h += '</div></div>';
+
+    // ── Development Help ──
+    h += '<div class="glass-card" style="opacity:0.7">';
+    h += '<div class="ct">📖 {{ _t('Adding New Check Guide') }}</div>';
+    h += '<div style="font-size:11px;color:var(--dim);line-height:1.8">';
+    h += '<b>{{ _t('Method 1 ') }}— {{ _t('Code Registration') }}</b>（{{ _t('Recommended)') }}<br>';
+    h += '{{ _t('Inherit BaseHealthCheck in checkers.py, use ') }}@register(check_key) {{ _t('to register.') }}<br>';
+    h += '{{ _t('Then click the') }}「＋{{ _t('Add') }}」{{ _t('button above to write to DB and it will take effect.') }}<br><br>';
+    h += '<b>{{ _t('Method 2 ') }}— {{ _t('DB Record Only') }}</b><br>';
+    h += '{{ _t('Add manually above, then implement logic in the check() method.') }}<br>';
+    h += '{{ _t('If check_key has a corresponding ') }}@register {{ _t('class in Python, it will auto-match.') }}<br><br>';
+    h += '<b>{{ _t('Full Template:') }}</b><br>';
+    h += '<pre style="background:var(--bg);padding:8px;border-radius:6px;font-size:10px;overflow-x:auto">';
+    h += '@register(\'your_key\')                                                               \n';
+    h += 'class MyCheck(BaseHealthCheck):                                                       \n';
+    h += '    name = \'{{ _t('My Check') }}\'                                                                 \n';
+    h += '    category = \'system\'                                                               \n';
+    h += '    severity = \'warning\'                                                              \n';
+    h += '    def check(self):                                                                  \n';
+    h += '        start = time.time()                                                           \n';
+    h += '        try:                                                                          \n';
+    h += '            # ... {{ _t('your check logic ...') }}                                                      \n';
+    h += '            return CheckResult(\'passed\', 0, \'{{ _t('Active') }}\')                                   \n';
+    h += '        except Exception as e:                                                        \n';
+    h += '            return CheckResult(\'error\', 0, str(e))                                   \n';
+    h += '</pre></div></div>';
+
+    container.innerHTML = h;
+  }).catch(function(e){
+    console.error('[Health] loadChecks unrecoverable:', e);
+    container.innerHTML = '<div class="lo" style="color:var(--red)">{{ _t('Load failed') }}<br><span style="font-size:11px;color:var(--dim)">'+esc(e.message)+'</span></div>';
+  });
+}
+
+// ── Add from Registry ──
+function addFromRegistry(checkKey) {
+  fetch(API+'/checkers/register', {
+    method:'POST',
+    headers:{'Authorization':'Bearer '+_token, 'Content-Type':'application/json'},
+    body:JSON.stringify({check_key: checkKey})
+  }).then(function(r){return r.json()}).then(function(d){
+    if (d.success) {
+      showToast('✅ {{ _t('Check added') }}: '+checkKey);
+      loadChecks();
+    } else {
+      showToast('❌ '+d.error);
+    }
+  }).catch(function(){showToast('❌ {{ _t('Request Failed') }}')});
+}
+
+// ── Toggle Enable/Disable ──
+function toggleCheck(id, active) {
+  fetch(API+'/checks/'+id, {
+    method:'PUT',
+    headers:{'Authorization':'Bearer '+_token, 'Content-Type':'application/json'},
+    body:JSON.stringify({is_active:active?1:0})
+  }).then(function(r){return r.json()}).then(function(d){
+    if (d.success) showToast(active?'✅ {{ _t('Enabled') }}':'⏸️ {{ _t('Disabled') }}');
+  });
+}
+
+// ── Update Sort ──
+function updateSort(id, val) {
+  fetch(API+'/checks/'+id, {
+    method:'PUT',
+    headers:{'Authorization':'Bearer '+_token, 'Content-Type':'application/json'},
+    body:JSON.stringify({sort_order: parseInt(val)||50})
+  }).then(function(r){return r.json()}).then(function(d){
+    if (d.success) showToast('✅ {{ _t('Sort updated') }}');
+  });
+}
+
+// ── Toggle Config Editor ──
+function toggleConfigEditor(id) {
+  var row = document.getElementById('config-row-'+id);
+  if (row) row.style.display = row.style.display === 'none' ? 'table-row' : 'none';
+}
+
+// ── Save Config ──
+function saveConfig(id) {
+  var editor = document.getElementById('config-editor-'+id);
+  if (!editor) return;
+  try {
+    var config = JSON.parse(editor.value);
+    fetch(API+'/checks/'+id, {
+      method:'PUT',
+      headers:{'Authorization':'Bearer '+_token, 'Content-Type':'application/json'},
+      body:JSON.stringify({config: config})
+    }).then(function(r){return r.json()}).then(function(d){
+      if (d.success) showToast('✅ {{ _t('Config saved') }}');
+      else showToast('❌ {{ _t('Save failed') }}: '+d.error);
+    });
+  } catch(e) {
+    showToast('❌ JSON {{ _t('Invalid Format') }}: '+e.message);
+  }
+}
+
+// ── Delete Check ──
+function deleteCheck(id, name) {
+  showConfirmModal({{ _t('Confirm to delete the check item') | tojson }} + '「'+name+'」？', function(){
+  fetch(API+'/checks/'+id, {
+    method:'DELETE',
+    headers:{'Authorization':'Bearer '+_token}
+  }).then(function(r){return r.json()}).then(function(d){
+    if (d.success) { showToast('✅ {{ _t('Deleted') }}'); loadChecks(); }
+    else showToast('❌ '+d.error);
+  });
+  });
+}
+
+// ── Manual Add Custom Check ──
+function addCustomCheck() {
+  var key = document.getElementById('newKey').value.trim();
+  var name = document.getElementById('newName').value.trim();
+  if (!key) { showToast('❌ {{ _t('Please enter check_key') }}'); return; }
+
+  fetch(API+'/checkers/register', {
+    method:'POST',
+    headers:{'Authorization':'Bearer '+_token, 'Content-Type':'application/json'},
+    body:JSON.stringify({
+      check_key: key,
+      name: name || key,
+      category: document.getElementById('newCat').value,
+      severity: document.getElementById('newSev').value,
+      description: '{{ _t('Custom Check') }}'
+    })
+  }).then(function(r){return r.json()}).then(function(d){
+    if (d.success) {
+      showToast('✅ {{ _t('Added') }}');
+      document.getElementById('newKey').value = '';
+      document.getElementById('newName').value = '';
+      loadChecks();
+    } else showToast('❌ '+d.error);
+  });
+}
+
+// ── Alerts ──
+function showAlerts() {
+  fetch(API+'/alerts', {headers:{'Authorization':'Bearer '+_token}})
+    .then(function(r){return r.json()})
+    .then(function(d){
+      if (!d.success || !d.data) return;
+      var alerts = d.data.alerts || [];
+      var h = '';
+      if (alerts.length === 0) {
+        h = '<div style="text-align:center;padding:20px;color:var(--dim)">{{ _t('No alerts') }}</div>';
+      } else {
+        h = '<table><tr><th>{{ _t('Time') }}</th><th>{{ _t('Check') }}</th><th>{{ _t('Status') }}</th><th>{{ _t('Message') }}</th></tr>';
+        alerts.forEach(function(a){
+          var st = a.status=='passed'?'green':(a.status=='warning'?'yellow':'red');
+          h += '<tr><td style="font-size:10px;color:var(--dim)">'+esc(a.created_at||'')+'</td>';
+          h += '<td>'+esc(a.check_name)+'</td>';
+          h += '<td><span class="status-dot '+st+'"></span>'+esc(a.status)+'</td>';
+          h += '<td style="color:var(--dim);max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(a.message||'')+'</td></tr>';
+        });
+        h += '</table>';
+      }
+      h += '<div style="margin-top:10px;text-align:right"><button class="btn btn-sm" onclick="markAlertsRead()">{{ _t('Mark All Read') }}</button></div>';
+      document.getElementById('alertBody').innerHTML = h;
+      document.getElementById('alertModal').classList.add('show');
+    });
+}
+
+function markAlertsRead() {
+  fetch(API+'/alerts/read', {
+    method:'POST',
+    headers:{'Authorization':'Bearer '+_token, 'Content-Type':'application/json'},
+    body:'{}'
+  }).then(function(r){return r.json()}).then(function(d){
+    if (d.success) {
+      document.getElementById('alertBtn').style.display = 'none';
+      showToast('✅ {{ _t('All marked as read') }}');
+      closeModal();
+    }
+  });
+}
+
+// ── Fix Audit ──
+function showFixAudit() {
+  fetch(API+'/fix/audit?limit=100', {headers:{'Authorization':'Bearer '+_token}})
+    .then(function(r){return r.json()})
+    .then(function(d){
+      if (!d.success) { showToast('❌ '+d.error); return; }
+      var logs = d.data.audit_logs || [];
+      var h = '';
+      if (logs.length === 0) {
+        h = '<div style="text-align:center;padding:20px;color:var(--dim)">{{ _t('No fix records') }}</div>';
+      } else {
+        h = '<table><tr><th>{{ _t('Time') }}</th><th>{{ _t('Check') }}</th><th>{{ _t('Action') }}</th><th>{{ _t('Status') }}</th><th>{{ _t('Operation') }}</th></tr>';
+        var actionLabels = {
+          'clean_temp': '{{ _t('Clean temp/cache') }}',
+          'restart_worker': '{{ _t('Restart worker') }}',
+          'set_log_level': '{{ _t('Adjust log level') }}',
+          'flush_cdn': '{{ _t('Flush CDN') }}',
+          'update_url': '{{ _t('Update URL') }}',
+          'mark_disabled': '{{ _t('Disable item') }}',
+          'mark_deleted': '{{ _t('Mark deleted') }}',
+          'clear_field': '{{ _t('Clear field') }}'
+        };
+        logs.forEach(function(r){
+          var label = actionLabels[r.action] || r.action;
+          var isApplied = r.status === 'applied';
+          var statusHtml = isApplied
+            ? '<span style="color:var(--green)">● {{ _t('Applied') }}</span>'
+            : '<span style="color:var(--dim)">● {{ _t('Rolled back') }}</span>';
+          var opHtml = isApplied
+            ? '<button class="btn btn-sm" onclick="rollbackFix('+r.id+')" style="background:var(--orange,#f59e0b);color:#fff;border:none;padding:4px 12px;border-radius:4px;cursor:pointer">↩ {{ _t('Rollback') }}</button>'
+            : '<span style="color:var(--dim);font-size:11px">-</span>';
+          h += '<tr>';
+          h += '<td style="font-size:10px;color:var(--dim);white-space:nowrap">'+esc(r.created_at||'')+'</td>';
+          h += '<td>'+esc(r.check_key)+'</td>';
+          h += '<td>'+esc(label)+'</td>';
+          h += '<td>'+statusHtml+'</td>';
+          h += '<td>'+opHtml+'</td>';
+          h += '</tr>';
+        });
+        h += '</table>';
+      }
+      document.getElementById('fixAuditBody').innerHTML = h;
+      document.getElementById('fixAuditModal').classList.add('show');
+    }).catch(function(){
+      showToast('❌ {{ _t('Load failed') }}');
+    });
+}
+
+function rollbackFix(auditId) {
+  showConfirmModal({{ _t('Confirm rolling back this repair?') | tojson }}, function(){
+  fetch(API+'/fix/rollback/'+auditId, {
+    method:'POST',
+    headers:{'Authorization':'Bearer '+_token, 'Content-Type':'application/json'}
+  }).then(function(r){return r.json()}).then(function(d){
+    if (d.success) {
+      showToast('✅ '+d.message);
+      showFixAudit(); // Refresh the list
+    } else {
+      showToast('❌ '+d.error);
+    }
+  }).catch(function(){
+    showToast('❌ {{ _t('Request failed') }}');
+  });
+  });
+}
+
+// ── Inventory (Resource Discovery) ──
+function loadInventory() {
+  var container = document.getElementById('invContent');
+  container.innerHTML = '<div class="lo"><div class="s"></div></div>';
+
+  fetch(API+'/discovery/status', {headers:{'Authorization':'Bearer '+_token}})
+    .then(function(r){return r.json()})
+    .then(function(d){
+      if (!d.success) {
+        container.innerHTML = '<div class="lo" style="color:var(--red)">❌ {{ _t('Load failed') }}</div>';
+        return;
+      }
+      document.getElementById('invSummary').innerHTML = '<div class="glass-card" style="padding:12px 16px;font-size:12px">🔍 ' + esc(d.summary || '') + '</div>';
+      renderInventory(d.data);
+    }).catch(function(){
+      container.innerHTML = '<div class="lo" style="color:var(--red)">❌ {{ _t('Load failed') }}</div>';
+    });
+}
+
+function renderInventory(data) {
+  if (!data) {
+    document.getElementById('invContent').innerHTML = '<div class="lo" style="color:var(--dim)">{{ _t('No data') }}</div>';
+    return;
+  }
+  var h = '';
+
+  // ── Modules ──
+  if (data.modules && data.modules.length > 0) {
+    h += '<div class="glass-card">';
+    h += '<div class="ct">📁 {{ _t('Modules') }} <span style="color:var(--accent);font-weight:400">(' + data.modules.length + ')</span></div>';
+    h += '<table><tr><th>{{ _t('Name') }}</th><th>{{ _t('Path') }}</th><th>{{ _t('Indicators') }}</th></tr>';
+    data.modules.forEach(function(m){
+      h += '<tr><td style="font-weight:600">' + esc(m.name) + '</td>';
+      h += '<td style="color:var(--dim);font-size:11px">' + esc(m.path) + '</td>';
+      h += '<td>' + (m.indicators || []).map(function(i){return '<span class="badge">' + i + '</span>'}).join(' ') + '</td></tr>';
+    });
+    h += '</table></div>';
+  }
+
+  // ── Endpoints (by blueprint) ──
+  if (data.endpoints && data.endpoints.length > 0) {
+    h += '<div class="glass-card">';
+    h += '<div class="ct">🔗 {{ _t('Endpoints') }} <span style="color:var(--accent);font-weight:400">(' + data.endpoints.length + ')</span></div>';
+
+    // Group by blueprint
+    var bpMap = {};
+    data.endpoints.forEach(function(ep){
+      var bp = ep.blueprint || '(root)';
+      if (!bpMap[bp]) bpMap[bp] = [];
+      bpMap[bp].push(ep);
+    });
+
+    for (var bp in bpMap) {
+      h += '<div style="margin-bottom:8px">';
+      h += '<div style="font-size:11px;font-weight:600;color:var(--blue);margin-bottom:4px">' + esc(bp) + ' (' + bpMap[bp].length + ')</div>';
+      h += '<div style="display:flex;flex-wrap:wrap;gap:4px">';
+      bpMap[bp].forEach(function(ep){
+        var methods = (ep.methods || []).join(',');
+        h += '<span style="background:var(--card2);border:1px solid var(--border);border-radius:4px;padding:2px 6px;font-size:10px;color:var(--dim)">';
+        h += '<span style="color:var(--green)">' + esc(methods) + '</span> ' + esc(ep.url);
+        h += '</span>';
+      });
+      h += '</div></div>';
+    }
+    h += '</div>';
+  }
+
+  // ── Database Tables ──
+  if (data.tables && data.tables.length > 0) {
+    var totalRows = 0;
+    data.tables.forEach(function(t){ if (t.row_count > 0) totalRows += t.row_count; });
+    h += '<div class="glass-card">';
+    h += '<div class="ct">🗄️ {{ _t('Database Tables') }} <span style="color:var(--accent);font-weight:400">(' + data.tables.length + ' {{ _t('tables') }}, ' + totalRows + ' {{ _t('rows') }})</span></div>';
+    h += '<table><tr><th>{{ _t('Table') }}</th><th>{{ _t('Columns') }}</th><th>{{ _t('Rows') }}</th><th>{{ _t('Auto-inc ID') }}</th></tr>';
+    data.tables.forEach(function(t){
+      h += '<tr><td style="font-weight:600">' + esc(t.name) + '</td>';
+      h += '<td style="color:var(--dim)">' + (t.column_count || '-') + '</td>';
+      h += '<td>' + (t.row_count >= 0 ? t.row_count : '-') + '</td>';
+      h += '<td style="color:var(--dim);font-size:11px">' + (t.auto_increment_id != null ? t.auto_increment_id : '-') + '</td></tr>';
+    });
+    h += '</table></div>';
+  }
+
+  // ── Plugins ──
+  if (data.plugins && data.plugins.length > 0) {
+    var enabledCount = data.plugins.filter(function(p){return p.status === 'enabled'}).length;
+    h += '<div class="glass-card">';
+    h += '<div class="ct">🧩 {{ _t('Plugins') }} <span style="color:var(--accent);font-weight:400">(' + data.plugins.length + ' {{ _t('total') }}, ' + enabledCount + ' {{ _t('enabled') }})</span></div>';
+    h += '<table><tr><th>{{ _t('Name') }}</th><th>{{ _t('Version') }}</th><th>{{ _t('Status') }}</th><th>{{ _t('Health Checks') }}</th></tr>';
+    data.plugins.forEach(function(p){
+      var stCls = p.status === 'enabled' ? 'green' : (p.status === 'load_error' ? 'red' : 'yellow');
+      h += '<tr><td style="font-weight:600">' + esc(p.name) + '</td>';
+      h += '<td style="color:var(--dim)">v' + esc(p.version || '-') + '</td>';
+      h += '<td><span class="status-dot ' + stCls + '"></span>' + esc(p.status) + '</td>';
+      h += '<td>' + (p.has_health_checks ? '✅ ' + (p.health_check_count || 0) : '—') + '</td></tr>';
+    });
+    h += '</table></div>';
+  }
+
+  document.getElementById('invContent').innerHTML = h || '<div class="lo" style="color:var(--dim)">{{ _t('No resources discovered') }}</div>';
+}
+
+// ── Export Report ──
+function exportReport() {
+  fetch(API+'/export', {headers:{'Authorization':'Bearer '+_token}})
+    .then(function(r){return r.json()})
+    .then(function(d){
+      if (!d.success || !d.data) { showToast('❌ {{ _t('No report available') }}'); return; }
+      var blob = new Blob([JSON.stringify(d.data, null, 2)], {type:'application/json'});
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'health-report-'+new Date().toISOString().slice(0,10)+'.json';
+      a.click();
+      showToast('✅ {{ _t('Report exported') }}');
+    }).catch(function(){showToast('❌ {{ _t('Export failed') }}')});
+}
+
+// ── Utilities ──
+function esc(s){if(!s)return'';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;')}
+
+function showToast(msg, type){
+  var t = document.createElement('div');
+  t.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:8px 16px;font-size:12px;z-index:200;color:var(--text);box-shadow:0 4px 12px rgba(0,0,0,.3);transition:opacity .3s';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(function(){t.style.opacity='0';setTimeout(function(){t.remove()},300)}, 2000);
+}
+
+function closeModal(e){
+  if(!e || e.target.classList.contains('modal-overlay')){
+    document.querySelectorAll('.modal-overlay').forEach(function(m){m.classList.remove('show')});
+  }
+}
+
+// ── Confirm Modal (replaces native confirm()) ──
+var _confirmCallback = null;
+
+function showConfirmModal(msg, onConfirm) {
+  document.getElementById('confirmBody').textContent = msg;
+  document.getElementById('confirmModal').classList.add('show');
+  _confirmCallback = onConfirm;
+}
+
+function _confirmOk() {
+  closeModal();
+  if (_confirmCallback) _confirmCallback();
+  _confirmCallback = null;
+}
+
+function _confirmCancel() {
+  closeModal();
+  _confirmCallback = null;
+}
+
+// Auto-refresh toggle
+var _autoRefresh = {interval: 60, timer: null, countdown: 60, active: true};
+
+function toggleAutoRefresh() {
+  _autoRefresh.active = !_autoRefresh.active;
+  var btn = document.getElementById('autoRefreshBtn');
+  var info = document.getElementById('refreshInfo');
+  if (_autoRefresh.active) {
+    btn.textContent = '⏸ {{ _t('Stop Refresh') }}';
+    btn.style.borderColor = 'var(--accent)';
+    btn.style.color = 'var(--accent)';
+    startAutoRefresh();
+  } else {
+    btn.textContent = '▶ {{ _t('Start Refresh') }}';
+    btn.style.borderColor = 'var(--border)';
+    btn.style.color = 'var(--dim)';
+    if (_autoRefresh.timer) clearInterval(_autoRefresh.timer);
+    _autoRefresh.timer = null;
+    info.textContent = '⏸ {{ _t('Paused') }}';
+  }
+}
+
+function startAutoRefresh() {
+  if (_autoRefresh.timer) clearInterval(_autoRefresh.timer);
+  _autoRefresh.countdown = _autoRefresh.interval;
+  updateCountdown();
+  _autoRefresh.timer = setInterval(function() {
+    _autoRefresh.countdown--;
+    updateCountdown();
+    if (_autoRefresh.countdown <= 0) {
+      _autoRefresh.countdown = _autoRefresh.interval;
+      if (_autoRefresh.active && document.querySelector('.tab.active') &&
+          document.querySelector('.tab.active').dataset.tab === 'overview') {
+        fetch(API+'/status', {headers:{'Authorization':'Bearer '+_token}})
+          .then(function(r){return r.json()})
+          .then(function(d){
+            if (d.success && d.data) {
+              renderOverview(d.data);
+              _dataCache.status = d.data;
+            }
+          }).catch(function(){});
+      }
+    }
+  }, 1000);
+}
+
+function updateCountdown() {
+  document.getElementById('refreshInfo').textContent =
+    (_autoRefresh.active ? '🔄 ' : '⏸ ') + (_autoRefresh.active ? _autoRefresh.countdown + 's' : '{{ _t('Paused') }}');
+}
+
+// ── Guardian Log ──────────────────────────────────────────────────
+
+function loadGuardianLog(lines) {
+  var container = document.getElementById('guardianLogContent');
+  container.innerHTML = '<div class="lo"><div class="s"></div></div>';
+  fetch(API+'/guardian-log?lines='+(lines||50), {headers:{'Authorization':'Bearer '+_token}})
+    .then(function(r){return r.json()})
+    .then(function(d){
+      if (!d.success) {
+        container.innerHTML = '<div style="padding:20px;color:var(--red)">Error: '+esc(d.error||'unknown')+'</div>';
+        return;
+      }
+      document.getElementById('guardianLogInfo').textContent = d.data.length+' / '+d.total+' lines';
+      renderGuardianLog(d.data);
+    })
+    .catch(function(e){
+      container.innerHTML = '<div style="padding:20px;color:var(--red)">Failed to load: '+esc(e.message)+'</div>';
+    });
+}
+
+function renderGuardianLog(lines) {
+  var container = document.getElementById('guardianLogContent');
+  if (!lines || lines.length === 0) {
+    container.innerHTML = '<div style="padding:20px;color:var(--dim)">{{ _t('No log entries') }}</div>';
+    return;
+  }
+  var h = '<div class="glass-card" style="max-height:600px;overflow-y:auto;font-family:monospace;font-size:11px;line-height:1.6">';
+  h += '<div class="ct">🛡️ {{ _t('Guardian Log') }}</div>';
+  for (var i = lines.length - 1; i >= 0; i--) {
+    var line = esc(lines[i]);
+    var cls = '';
+    if (line.indexOf('ERROR') > -1 || line.indexOf('CRITICAL') > -1) cls = 'color:var(--red)';
+    else if (line.indexOf('WARNING') > -1 || line.indexOf('WARN') > -1) cls = 'color:var(--yellow)';
+    else if (line.indexOf('INFO') > -1) cls = 'color:var(--green)';
+    else if (line.indexOf('Rollback') > -1 || line.indexOf('rollback') > -1) cls = 'color:var(--red);font-weight:bold';
+    else if (line.indexOf('Restart') > -1 || line.indexOf('restart') > -1) cls = 'color:var(--yellow)';
+    h += '<div style="padding:2px 8px;'+cls+'">'+line+'</div>';
+  }
+  h += '</div>';
+  container.innerHTML = h;
+}
+</script>
+<script>
+// 跟随 admin 顶栏主题切换（同源 storage 事件实时同步）
+window.addEventListener('storage',function(e){if(e.key==='verorun_admin_theme'){var t=e.newValue||'dark';document.documentElement.setAttribute('data-theme',t);}});
+</script>
+</body>
+</html>

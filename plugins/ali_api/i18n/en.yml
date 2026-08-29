@@ -1,0 +1,358 @@
+# 1688 Supply Chain Plugin — English translations (source keys are English, §12.1)
+plugin.name: 1688 Supply Chain
+plugin.menu_label: 1688 Supply Chain
+Product Sourcing: Product Sourcing
+AI Optimization: AI Optimization
+Local Publishing: Local Publishing
+1688 Supply Chain Plugin: 1688 Supply Chain Plugin
+AliApiPlugin v2.1.0: AliApiPlugin v2.1.0
+1688 product sourcing, AI optimization, and local marketplace publishing: 1688 product sourcing, AI optimization, and local marketplace publishing
+
+# ── Frontend UI strings (source: static/ali_console.js __() calls) ──
+Unpriced: Unpriced
+Active: Active
+Inactive: Inactive
+Draft: Draft
+Published: Published
+Unpublished: Unpublished
+Failed: Failed
+Success: Success
+Please enter Product ID: Please enter Product ID
+Please enter a numeric ID: Please enter a numeric ID
+Clear cache?: Clear cache?
+Clear failed: Clear failed
+Available: Available
+Unavailable: Unavailable
+Not configured: Not configured
+Configured: Configured
+Failed to load products: Failed to load products
+No product data: No product data
+Image: Image
+No image: No image
+No title: No title
+Uncategorized: Uncategorized
+View: View
+AI Title: AI Title
+AI Title Options: AI Title Options
+Publish: Publish
+Previous: Previous
+Next: Next
+Fetch failed: Fetch failed
+Load failed: Load failed
+View failed: View failed
+Product ID: Product ID
+Title: Title
+Selected title: Selected title
+Price: Price
+Original price: Original price
+Category: Category
+Status: Status
+Local Product ID: Local Product ID
+Specs: Specs
+Image list: Image list
+No images yet, click the area above to upload: No images yet, click the area above to upload
+Delete: Delete
+Delete failed: Delete failed
+Collect failed: Collect failed
+From cache: From cache
+Please enter search keyword: Please enter search keyword
+Search failed: Search failed
+AI title generation failed: AI title generation failed
+No valid AI title options: No valid AI title options
+Option: Option
+Recommended: Recommended
+Please select a title: Please select a title
+Professional: Professional
+Attractive: Attractive
+Concise: Concise
+Generic: Generic
+Title selected: Title selected!
+Selection failed: Selection failed
+Please enter stock quantity (default 999): Please enter stock quantity (default 999)
+Publish failed: Publish failed
+No logs: No logs
+System: System
+User rate limit: User rate limit
+Disconnected: Disconnected
+seconds: seconds
+Memory cache: Memory cache
+Using Redis: Using Redis
+Provider: Provider
+Model: Model
+User daily limit: User daily limit
+User hourly limit: User hourly limit
+Global concurrency: Global concurrency
+Global QPS: Global QPS
+Circuit breaker threshold: Circuit breaker threshold
+Product cache TTL: Product cache TTL
+API Gateway URL: API Gateway URL
+Save Config: Save Config
+Saving...: Saving...
+Saved: Saved
+Save failed: Save failed
+Please fill in at least AppKey or AppSecret: Please fill in at least AppKey or AppSecret
+Enter 1688 AppSecret: Enter 1688 AppSecret
+No drop-shipping orders: No drop-shipping orders
+One-click Purchase: One-click Purchase
+Sync Tracking: Sync Tracking
+Order failed: Order failed
+Unknown error: Unknown error
+
+# ── Template strings (source: index.html _() calls) ──
+User Statistics: User Statistics
+Risk Control Status: Risk Control Status
+Cache Status: Cache Status
+Page Number: Page Number
+Items per Page: Items per Page
+Settings: Settings
+No products: No products
+Failed to fetch: Failed to fetch
+Local product ID: Local product ID
+Specifications: Specifications
+AI title options: AI title options
+Failed to load: Failed to load
+" images":  images
+No images, click above to upload: No images, click above to upload
+"Delete image #": Delete image #
+'?': '?'
+"File ": File 
+" exceeds 5MB limit":  exceeds 5MB limit
+" format not supported":  format not supported
+"Upload ": Upload 
+" failed":  failed
+"(from cache)": (from cache)
+Collected: Collected
+Collection failed: Collection failed
+Enter search keywords: Enter search keywords
+"Search success: found ": "Search success: found "
+" products":  products
+Preview: Preview
+Generate AI title options?: Generate AI title options?
+Normal: Normal
+Title selected!: Title selected!
+Enter stock quantity (default 999): Enter stock quantity (default 999)
+"Publish to local store? Stock: ": "Publish to local store? Stock: "
+"Published! Local ID: ": "Published! Local ID: "
+Configured, enter new value to overwrite: Configured, enter new value to overwrite
+Breaker threshold: Breaker threshold
+s: s
+Fill in AppKey or AppSecret: Fill in AppKey or AppSecret
+AppKey is masked; enter full key to update: AppKey is masked; enter full key to update
+User rate limiting: User rate limiting
+Daily remaining: Daily remaining
+Hourly remaining: Hourly remaining
+Concurrency control: Concurrency control
+Active requests: Active requests
+Current QPS: Current QPS
+Connected: Connected
+Not connected: Not connected
+Memory: Memory
+Connections: Connections
+Using memory cache: Using memory cache
+Entries: Entries
+Expired: Expired
+Use Redis: Use Redis
+'Yes': 'Yes'
+'No': 'No'
+"Create 1688 purchase order? Verify price and stock.": Create 1688 purchase order? Verify price and stock.
+"Purchase order submitted to 1688, order# ": "Purchase order submitted to 1688, order# "
+Please enter the product ID: Please enter the product ID
+Confirm cache clear?: Confirm cache clear?
+Cleanup failed: Cleanup failed
+
+# ── Admin 采集/缓存/配置界面（ali_console 等，从全局迁入的插件专属词条） ──
+'1688 Products': '1688 Products'
+'AI Configuration': 'AI Configuration'
+'AI Content Optimization': 'AI Content Optimization'
+'API Call': 'API Call'
+'API Endpoint Filter': 'API Endpoint Filter'
+'API Gateway': 'API Gateway'
+'API Logs': 'API Logs'
+'API Response Cache': 'API Response Cache'
+'API User Count': 'API User Count'
+'API Version': 'API Version'
+'Active Products': 'Active Products'
+'Alibaba API Management': 'Alibaba API Management'
+'Alibaba Configuration': 'Alibaba Configuration'
+'Alibaba Product ID': 'Alibaba Product ID'
+'All Caches': 'All Caches'
+'All Products': 'All Products'
+'All Statuses': 'All Statuses'
+'Cache Cleanup': 'Cache Cleanup'
+'Cache Configuration': 'Cache Configuration'
+'Cache Management': 'Cache Management'
+'Cache Statistics': 'Cache Statistics'
+'Circuit Breaker Threshold': 'Circuit Breaker Threshold'
+'Cleanup Type': 'Cleanup Type'
+'Clear Cache': 'Clear Cache'
+'Client': 'Client'
+'Configuration Info': 'Configuration Info'
+'Confirm Selection': 'Confirm Selection'
+'Detecting...': 'Detecting...'
+'Drag image here or click to upload': 'Drag image here or click to upload'
+'Drop Shipping Orders': 'Drop Shipping Orders'
+'Enter the product ID to optimize': 'Enter the product ID to optimize'
+'Global Concurrency Limit': 'Global Concurrency Limit'
+'Global QPS Limit': 'Global QPS Limit'
+'Inactive product': 'Inactive product'
+'Last updated': 'Last updated'
+'Leave empty to clear all product cache': 'Leave empty to clear all product cache'
+'Local order': 'Local order'
+'Manage Drop Shipping Orders': 'Manage Drop Shipping Orders'
+'Memory Cache Size': 'Memory Cache Size'
+'Parameters': 'Parameters'
+'Pending procurement': 'Pending procurement'
+'Picture': 'Picture'
+'Product cache': 'Product cache'
+'Product collection': 'Product collection'
+'Product image management': 'Product image management'
+'Product information': 'Product information'
+'Product management': 'Product management'
+'Product title': 'Product title'
+'Purchase Order ID': 'Purchase Order ID'
+'Purchase Status': 'Purchase Status'
+'Purchased': 'Purchased'
+'Redis Configuration': 'Redis Configuration'
+'Refresh Statistics': 'Refresh Statistics'
+'Response code': 'Response code'
+'Risk control configuration': 'Risk control configuration'
+'Save configuration': 'Save configuration'
+'Scrape Single Product': 'Scrape Single Product'
+'Search and Collect': 'Search and Collect'
+'Signature Method': 'Signature Method'
+'Start collecting': 'Start collecting'
+'Supplier': 'Supplier'
+'Time (ms)': 'Time (ms)'
+'Total number of products': 'Total number of products'
+'Use AI to optimize product titles and descriptions to improve marketing effectiveness. AI service must be available.': 'Use AI to optimize product titles and descriptions to improve marketing effectiveness. AI service must be available.'
+'User Daily Limit': 'User Daily Limit'
+'User Hourly Limit': 'User Hourly Limit'
+'You can find the product ID in the Alibaba product detail page URL': 'You can find the product ID in the Alibaba product detail page URL'
+
+# ── Backend API response messages (from routes/admin.py _error/_success) ──
+'Please log in or you lack permission': 'Please log in or you lack permission'
+'CSRF verification failed, please refresh and retry': 'CSRF verification failed, please refresh and retry'
+'Please log in': 'Please log in'
+'Product not found': 'Product not found'
+'Request data cannot be empty': 'Request data cannot be empty'
+'Product ID is required': 'Product ID is required'
+'Failed to parse product data': 'Failed to parse product data'
+'Search keyword is required': 'Search keyword is required'
+'AI service unavailable': 'AI service unavailable'
+'AI optimization failed': 'AI optimization failed'
+'Please provide a title to select': 'Please provide a title to select'
+'Product already published': 'Product already published'
+'Cannot connect to main database, please check auth-center path': 'Cannot connect to main database, please check auth-center path'
+'Product not published, cannot unpublish': 'Product not published, cannot unpublish'
+'No file uploaded': 'No file uploaded'
+'File is empty': 'File is empty'
+'Invalid image index': 'Invalid image index'
+'Please provide image order': 'Please provide image order'
+'Order index count mismatch': 'Order index count mismatch'
+'API Gateway URL must start with http:// or https://': 'API Gateway URL must start with http:// or https://'
+'Invalid redirect URI': 'Invalid redirect URI'
+'AppKey not configured': 'AppKey not configured'
+'Missing authorization code': 'Missing authorization code'
+'Missing state parameter': 'Missing state parameter'
+'State invalid or expired, please re-authorize': 'State invalid or expired, please re-authorize'
+'refresh_token not found, please re-authorize': 'refresh_token not found, please re-authorize'
+'1688 not authorized or token expired, please re-authorize via /admin/ali-api/oauth/url': '1688 not authorized or token expired, please re-authorize via /admin/ali-api/oauth/url'
+'Purchase order ID is required': 'Purchase order ID is required'
+'Purchase order not found': 'Purchase order not found'
+'Order lacks shipping address, please add it in order management': 'Order lacks shipping address, please add it in order management'
+'1688 not authorized, please re-authorize in Configuration': '1688 not authorized, please re-authorize in Configuration'
+'This purchase order has not been placed on 1688 yet': 'This purchase order has not been placed on 1688 yet'
+'1688 not authorized': '1688 not authorized'
+'Resource not found': 'Resource not found'
+'Internal server error': 'Internal server error'
+'Product unpublished': 'Product unpublished'
+'Image deleted': 'Image deleted'
+'Image order updated': 'Image order updated'
+'Configuration saved successfully.': 'Configuration saved successfully.'
+'1688 authorization revoked': '1688 authorization revoked'
+'API returned no product info': 'API returned no product info'
+'1688 has not shipped yet': '1688 has not shipped yet'
+
+# ── Frontend/concatenation keys (batch 2 plan B) ──
+'Ordered': 'Ordered'
+'Shipped': 'Shipped'
+'Completed': 'Completed'
+'Cancelled': 'Cancelled'
+'Paid': 'Paid'
+'Pending': 'Pending'
+'Refunded': 'Refunded'
+'Sync failed': 'Sync failed'
+'Tracking synced: ': 'Tracking synced: '
+'Fill in AppKey, AppSecret or API Gateway URL': 'Fill in AppKey, AppSecret or API Gateway URL'
+'Enter 1688 AppKey': 'Enter 1688 AppKey'
+'1688 product link': '1688 product link'
+'items': 'items'
+'Total ': 'Total '
+'SKU': 'SKU'
+'pics': 'pics'
+'and ': 'and '
+'AI optimization completed': 'AI optimization completed'
+'AI generated 3 different style titles, please select the most suitable one.': 'AI generated 3 different style titles, please select the most suitable one.'
+'Today: ': 'Today: '
+'Supports JPG/PNG/WebP/GIF, up to 5MB per file': 'Supports JPG/PNG/WebP/GIF, up to 5MB per file'
+'Clearing cache will delete cached data, which may increase API calls.': 'Clearing cache will delete cached data, which may increase API calls.'
+'An procurement order is automatically created after payment. The admin confirms and places the order on 1688, and logistics information is automatically filled back.': 'An procurement order is automatically created after payment. The admin confirms and places the order on 1688, and logistics information is automatically filled back.'
+
+# ── Backend message keys (batch 3) ──
+'Login required or insufficient permissions': 'Login required or insufficient permissions'
+'Operation succeeded': 'Operation succeeded'
+'Operation failed': 'Operation failed'
+'Please log in first': 'Please log in first'
+'Failed to fetch data: {error}': 'Failed to fetch data: {error}'
+'Failed to list products: {error}': 'Failed to list products: {error}'
+'Failed to fetch product details: {error}': 'Failed to fetch product details: {error}'
+'Product ID cannot be empty': 'Product ID cannot be empty'
+'Rate limit exceeded: {reason}': 'Rate limit exceeded: {reason}'
+'API call failed: {error}': 'API call failed: {error}'
+'Failed to collect product: {error}': 'Failed to collect product: {error}'
+'Search keyword cannot be empty': 'Search keyword cannot be empty'
+'Failed to search products: {error}': 'Failed to search products: {error}'
+'AI optimization failed: {error}': 'AI optimization failed: {error}'
+'AI title generation failed: {options}': 'AI title generation failed: {options}'
+'Failed to generate AI title options: {error}': 'Failed to generate AI title options: {error}'
+'Please provide the title to select': 'Please provide the title to select'
+'Failed to select title: {error}': 'Failed to select title: {error}'
+'Product already published, cannot publish again': 'Product already published, cannot publish again'
+'Cannot connect to main database, check auth-center module path': 'Cannot connect to main database, check auth-center module path'
+'Failed to publish product: {error}': 'Failed to publish product: {error}'
+'Failed to unpublish product: {error}': 'Failed to unpublish product: {error}'
+'Failed to fetch image list: {error}': 'Failed to fetch image list: {error}'
+'Unsupported file format. Allowed: {allowed}': 'Unsupported file format. Allowed: {allowed}'
+'File too large, max {size}MB': 'File too large, max {size}MB'
+'Failed to upload image: {error}': 'Failed to upload image: {error}'
+'Failed to delete image: {error}': 'Failed to delete image: {error}'
+'Image order index count mismatch': 'Image order index count mismatch'
+'Failed to reorder images: {error}': 'Failed to reorder images: {error}'
+'Failed to fetch cache statistics: {error}': 'Failed to fetch cache statistics: {error}'
+'Cache clear failed: {error}': 'Cache clear failed: {error}'
+'Failed to fetch rate limit statistics: {error}': 'Failed to fetch rate limit statistics: {error}'
+'Failed to fetch API logs: {error}': 'Failed to fetch API logs: {error}'
+'Failed to fetch configuration: {error}': 'Failed to fetch configuration: {error}'
+'Configuration saved.': 'Configuration saved.'
+'Invalid callback URL': 'Invalid callback URL'
+'Failed to fetch token: {error}': 'Failed to fetch token: {error}'
+'Refresh failed: {error}': 'Refresh failed: {error}'
+'1688 authorization removed': '1688 authorization removed'
+'Query failed: {error}': 'Query failed: {error}'
+'Failed to fetch purchase order list: {error}': 'Failed to fetch purchase order list: {error}'
+'Missing purchase order ID': 'Missing purchase order ID'
+'Purchase order status is not pending procurement (current: {status}), cannot re-order': 'Purchase order status is not pending procurement (current: {status}), cannot re-order'
+'Order missing shipping address, please add it in order management': 'Order missing shipping address, please add it in order management'
+'1688 not authorized, please re-authorize in Configuration page': '1688 not authorized, please re-authorize in Configuration page'
+'1688 product unavailable: {error}': '1688 product unavailable: {error}'
+'Purchase order submitted to 1688': 'Purchase order submitted to 1688'
+'Failed to create purchase order: {error}': 'Failed to create purchase order: {error}'
+'Purchase order has not been placed on 1688': 'Purchase order has not been placed on 1688'
+'Failed to sync tracking: {error}': 'Failed to sync tracking: {error}'
+# ── Risk control editable config ──
+'Save risk control configuration': 'Save risk control configuration'
+'Circuit Breaker Window': 'Circuit Breaker Window'
+'Circuit Breaker Timeout': 'Circuit Breaker Timeout'
+'Max Retries': 'Max Retries'
+'Retry Delay': 'Retry Delay'
+'Invalid rate limit configuration': 'Invalid rate limit configuration'

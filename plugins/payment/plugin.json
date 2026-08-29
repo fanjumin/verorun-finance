@@ -1,0 +1,89 @@
+{
+  "name": "Payment Gateway",
+  "name_i18n_key": "plugin.name",
+  "identifier": "payment",
+  "python_dependencies": {
+    "required": [
+      "stripe"
+    ],
+    "optional": {}
+  },
+  "version": "1.5.0",
+  "category": "shop",
+  "tags": [
+    "payment",
+    "alipay",
+    "wechat",
+    "stripe",
+    "paypal",
+    "gateway"
+  ],
+  "icon": "plugins",
+  "icon_url": "",
+  "screenshots": [],
+  "readme_url": "",
+  "description": "Payment Gateway — Alipay/WeChat/Stripe/PayPal configuration management (independent PG schema)",
+  "author": "VeroRun",
+  "min_app_version": "0.10.0",
+  "agent_role": "finance",
+  "capabilities": [
+    "payment.create",
+    "payment.refund",
+    "payment.query",
+    "payment.gateway.manage"
+  ],
+  "dependencies": {},
+  "config": {
+    "default_currency": "CNY"
+  },
+  "permissions": [
+    "api:read",
+    "api:write",
+    "admin:access"
+  ],
+  "hooks": {
+    "provides": [
+      "payment/create",
+      "payment/verify_notify",
+      "payment/refund",
+      "payment/charge"
+    ],
+    "listens": []
+  },
+  "admin_url": "",
+  "menu": {
+    "group": "Business Center",
+    "key": "payment",
+    "icon": "plugins",
+    "label": "Payment Config"
+  },
+  "dashboard": {
+    "stats": [
+      {
+        "key": "total_logs",
+        "title": "支付日志数",
+        "type": "counter"
+      },
+      {
+        "key": "total_configs",
+        "title": "已配置渠道",
+        "type": "counter"
+      },
+      {
+        "key": "recent_payments",
+        "title": "24h 支付量",
+        "type": "gauge"
+      }
+    ]
+  },
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "default_currency": {
+        "type": "string",
+        "default": "CNY",
+        "description": "Default currency for payment orders"
+      }
+    }
+  }
+}

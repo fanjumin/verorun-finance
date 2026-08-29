@@ -1,0 +1,879 @@
+{# 1688 Supply Chain — Admin inline view (plugin standard v1.5 §10.3/§12.11) #}
+{# V20260819: 从 iframe（ali_admin/index.html + ali_console.js）转为内联 l_ali_api()，继承系统样式。
+   认证：全局 T（Authorization: Bearer T）；CSRF：/admin/ali-api/csrf-token 签发 + X-CSRF-Token 头。 #}
+window.l_ali_api = function () {
+  document.getElementById('pt').textContent = {{ _('1688 Supply Chain') | tojson }};
+  var mc = document.getElementById('mc');
+  mc.innerHTML =
+    '<div>' +
+    '<!-- 标签栏（系统 .ai-tab-bar/.ai-tab） -->' +
+    '<div class="ai-tab-bar" id="ali-main-tabs" style="border-radius:8px;margin-bottom:16px">' +
+      '<div class="ai-tab active" data-page="dashboard">{{ _('Dashboard') }}</div>' +
+      '<div class="ai-tab" data-page="products">{{ _('Product management') }}</div>' +
+      '<div class="ai-tab" data-page="collect">{{ _('Product collection') }}</div>' +
+      '<div class="ai-tab" data-page="supplier">{{ _('Drop Shipping Orders') }}</div>' +
+      '<div class="ai-tab" data-page="logs">{{ _('API Logs') }}</div>' +
+      '<div class="ai-tab" data-page="cache">{{ _('Cache Management') }}</div>' +
+      '<div class="ai-tab" data-page="config">{{ _('Configuration Info') }}</div>' +
+    '</div>' +
+
+    '<!-- Dashboard 面板（统计卡 .gr/.cd，系统类） -->' +
+    '<div id="dashboard-page" class="ali-page">' +
+      '<div class="gr">' +
+        '<div class="cd"><div class="l">{{ _('Total number of products') }}</div><div class="v g" id="total-items">0</div><div class="dim" style="font-size:11px;margin-top:2px">{{ _('Active') }}: <span id="active-items">0</span></div></div>' +
+        '<div class="cd"><div class="l">{{ _('API Call') }}</div><div class="v" id="total-calls" style="color:#58a6ff">0</div><div class="dim" style="font-size:11px;margin-top:2px">{{ _('Today: ') }}<span id="today-calls">0</span></div></div>' +
+        '<div class="cd"><div class="l">{{ _('User Statistics') }}</div><div class="v" id="total-users" style="color:#f0c040">0</div><div class="dim" style="font-size:11px;margin-top:2px">{{ _('API User Count') }}</div></div>' +
+      '</div>' +
+      '<div class="g2" style="gap:12px">' +
+        '<div class="cd"><div class="st">{{ _('Risk Control Status') }}</div><div class="g2" style="gap:12px" id="rate-limit-stats"><div class="dim" style="font-size:12px">{{ _('Loading...') }}</div></div></div>' +
+        '<div class="cd"><div class="st">{{ _('Cache Status') }}</div><div class="g2" style="gap:12px" id="cache-stats"><div class="dim" style="font-size:12px">{{ _('Loading...') }}</div></div></div>' +
+      '</div>' +
+    '</div>' +
+
+    '<!-- Products 面板 -->' +
+    '<div id="products-page" class="ali-page" style="display:none">' +
+      '<div class="sbar" style="margin-bottom:12px">' +
+        '<input class="in" id="product-search" placeholder=' + {{ _('Search product title, ID...') | tojson }} + ' style="max-width:300px">' +
+        '<select class="sl" id="status-filter">' +
+          '<option value="active">{{ _('Active Products') }}</option>' +
+          '<option value="all">{{ _('All Products') }}</option>' +
+          '<option value="inactive">{{ _('Inactive product') }}</option>' +
+        '</select>' +
+        '<button class="btn bp" id="search-btn">{{ _('Search') }}</button>' +
+      '</div>' +
+      '<div class="cd" style="padding:0;overflow-x:auto">' +
+        '<table>' +
+          '<thead><tr><th>ID</th><th>{{ _('Picture') }}</th><th>{{ _('Product title') }}</th><th>{{ _('Price') }}</th><th>{{ _('Category') }}</th><th>{{ _('Status') }}</th><th>{{ _('Last updated') }}</th><th>{{ _('Action') }}</th></tr></thead>' +
+          '<tbody id="products-table"><tr><td colspan="8" class="tc dim" style="padding:20px;text-align:center">{{ _('Loading...') }}</td></tr></tbody>' +
+        '</table>' +
+      '</div>' +
+      '<div id="products-pagination" class="ali-pg"></div>' +
+    '</div>' +
+
+    '<!-- Collect 面板 -->' +
+    '<div id="collect-page" class="ali-page" style="display:none">' +
+      '<div class="g2" style="gap:12px">' +
+        '<div class="cd">' +
+          '<div class="st">{{ _('Scrape Single Product') }}</div>' +
+          '<label style="display:block;font-size:12px;color:var(--muted);margin-bottom:3px">{{ _('Alibaba Product ID') }}</label>' +
+          '<input class="in" id="product-id" placeholder=' + {{ _('Example: 1234567890') | tojson }} + '>' +
+          '<div style="font-size:11px;color:var(--dim);margin-top:2px">{{ _('You can find the product ID in the Alibaba product detail page URL') }}</div>' +
+          '<button class="btn bp" id="collect-single-btn" style="margin-top:8px">{{ _('Start collecting') }}</button>' +
+          '<div id="collect-result"></div>' +
+        '</div>' +
+        '<div class="cd">' +
+          '<div class="st">{{ _('Search and Collect') }}</div>' +
+          '<label style="display:block;font-size:12px;color:var(--muted);margin-bottom:3px">{{ _('Search Keywords') }}</label>' +
+          '<input class="in" id="search-keywords" placeholder=' + {{ _('Example: Smartphone') | tojson }} + '>' +
+          '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px">' +
+            '<div style="flex:1;min-width:0"><label style="display:block;font-size:12px;color:var(--muted);margin-bottom:3px">{{ _('Page Number') }}</label><input class="in" type="number" id="search-page" value="1" min="1"></div>' +
+            '<div style="flex:1;min-width:0"><label style="display:block;font-size:12px;color:var(--muted);margin-bottom:3px">{{ _('Items per Page') }}</label><input class="in" type="number" id="search-size" value="20" min="1" max="50"></div>' +
+          '</div>' +
+          '<button class="btn bp" id="search-collect-btn" style="margin-top:8px">{{ _('Search and Collect') }}</button>' +
+          '<div id="search-result"></div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="cd" style="margin-top:12px">' +
+        '<div class="st">{{ _('AI Content Optimization') }}</div>' +
+        '<div style="background:rgba(88,166,255,.1);color:#58a6ff;border:1px solid rgba(88,166,255,.2);padding:8px 12px;border-radius:6px;font-size:12px;margin-bottom:8px">{{ _('Use AI to optimize product titles and descriptions to improve marketing effectiveness. AI service must be available.') }}</div>' +
+        '<div style="max-width:400px"><label style="display:block;font-size:12px;color:var(--muted);margin-bottom:3px">{{ _('Product ID') }}</label><input class="in" id="ai-product-id" placeholder=' + {{ _('Enter the product ID to optimize') | tojson }} + '></div>' +
+        '<button class="btn bp" id="ai-optimize-btn" style="margin-top:8px">{{ _('AI Optimization') }}</button>' +
+        '<div id="ai-result"></div>' +
+      '</div>' +
+    '</div>' +
+
+    '<!-- Supplier（代发订单）面板 -->' +
+    '<div id="supplier-page" class="ali-page" style="display:none">' +
+      '<div class="sbar" style="margin-bottom:12px">' +
+        '<strong>{{ _('Manage Drop Shipping Orders') }}</strong>' +
+        '<span class="dim" style="font-size:12px">{{ _('An procurement order is automatically created after payment. The admin confirms and places the order on 1688, and logistics information is automatically filled back.') }}</span>' +
+      '</div>' +
+      '<div class="sbar" style="margin-bottom:12px">' +
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+          '<select class="sl" id="po-status-filter" style="width:auto;min-width:120px">' +
+            '<option value="all">{{ _('All Statuses') }}</option>' +
+            '<option value="pending">{{ _('Pending procurement') }}</option>' +
+            '<option value="ordered">{{ _('Purchased') }}</option>' +
+            '<option value="shipped">{{ _('Shipped') }}</option>' +
+            '<option value="received">{{ _('Completed') }}</option>' +
+            '<option value="cancelled">{{ _('Cancelled') }}</option>' +
+          '</select>' +
+          '<button class="btn bp" id="refresh-po-btn">{{ _('Refresh') }}</button>' +
+        '</div>' +
+      '</div>' +
+      '<div style="overflow-x:auto"><table>' +
+        '<thead><tr><th>{{ _('Purchase Order ID') }}</th><th>{{ _('Local order') }}</th><th>{{ _('Product information') }}</th><th>{{ _('Client') }}</th><th>{{ _('1688 Products') }}</th><th>{{ _('Purchase Status') }}</th><th>{{ _('Logistics') }}</th><th>{{ _('Action') }}</th></tr></thead>' +
+        '<tbody id="po-tbody"><tr><td colspan="8" class="tc dim" style="padding:20px;text-align:center">{{ _('Loading...') }}</td></tr></tbody>' +
+      '</table></div>' +
+      '<div id="po-pagination" class="ali-pg"></div>' +
+    '</div>' +
+
+    '<!-- Logs 面板 -->' +
+    '<div id="logs-page" class="ali-page" style="display:none">' +
+      '<div class="sbar" style="margin-bottom:12px">' +
+        '<input class="in" id="log-endpoint" placeholder=' + {{ _('API Endpoint Filter') | tojson }} + ' style="max-width:300px">' +
+        '<select class="sl" id="log-success">' +
+          '<option value="">{{ _('All Statuses') }}</option>' +
+          '<option value="true">{{ _('Success') }}</option>' +
+          '<option value="false">{{ _('Failed') }}</option>' +
+        '</select>' +
+        '<button class="btn bp" id="filter-logs-btn">{{ _('Filter') }}</button>' +
+      '</div>' +
+      '<div class="cd" style="padding:0;overflow-x:auto">' +
+        '<table>' +
+          '<thead><tr><th>ID</th><th>{{ _('User') }}</th><th>{{ _('API Endpoint') }}</th><th>{{ _('Parameters') }}</th><th>{{ _('Response code') }}</th><th>{{ _('Time (ms)') }}</th><th>{{ _('Status') }}</th><th>{{ _('Time') }}</th></tr></thead>' +
+          '<tbody id="logs-table"><tr><td colspan="8" class="tc dim" style="padding:20px;text-align:center">{{ _('Loading...') }}</td></tr></tbody>' +
+        '</table>' +
+      '</div>' +
+      '<div id="logs-pagination" class="ali-pg"></div>' +
+    '</div>' +
+
+    '<!-- Cache 面板 -->' +
+    '<div id="cache-page" class="ali-page" style="display:none">' +
+      '<div class="g2" style="gap:12px">' +
+        '<div class="cd">' +
+          '<div class="st">{{ _('Cache Statistics') }}</div>' +
+          '<div id="cache-details"><div class="dim" style="font-size:12px">{{ _('Loading...') }}</div></div>' +
+          '<button class="btn bo" id="refresh-cache-stats" style="margin-top:8px">{{ _('Refresh Statistics') }}</button>' +
+        '</div>' +
+        '<div class="cd">' +
+          '<div class="st">{{ _('Cache Cleanup') }}</div>' +
+          '<div style="background:rgba(240,192,64,.1);color:#f0c040;border:1px solid rgba(240,192,64,.2);padding:8px 12px;border-radius:6px;font-size:12px;margin-bottom:8px">{{ _('Clearing cache will delete cached data, which may increase API calls.') }}</div>' +
+          '<label style="display:block;font-size:12px;color:var(--muted);margin-bottom:3px">{{ _('Cleanup Type') }}</label>' +
+          '<select class="sl" id="cache-type" style="width:100%">' +
+            '<option value="all">{{ _('All Caches') }}</option>' +
+            '<option value="product">{{ _('Product cache') }}</option>' +
+            '<option value="api">{{ _('API Response Cache') }}</option>' +
+          '</select>' +
+          '<div id="product-id-container" style="display:none;margin-top:8px">' +
+            '<label style="display:block;font-size:12px;color:var(--muted);margin-bottom:3px">{{ _('Product ID') }}</label>' +
+            '<input class="in" id="cache-product-id" placeholder=' + {{ _('Leave empty to clear all product cache') | tojson }} + '>' +
+          '</div>' +
+          '<button class="btn" id="clear-cache-btn" style="margin-top:8px;background:#f85149;color:#fff">{{ _('Clear Cache') }}</button>' +
+          '<div id="clear-result"></div>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+
+    '<!-- Config 面板 -->' +
+    '<div id="config-page" class="ali-page" style="display:none">' +
+      '<div class="g2" style="gap:12px">' +
+        '<div class="cd">' +
+          '<div class="st">{{ _('Alibaba Configuration') }}</div>' +
+          '<form onsubmit="return false;" id="ali-config-form">' +
+            '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px"><div style="flex:1;min-width:0"><label style="display:block;font-size:12px;color:var(--muted);margin-bottom:3px">{{ _('API Gateway') }}</label><input class="in" id="cfg-api-gateway" placeholder="https://gw.open.1688.com/openapi"></div></div>' +
+            '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px"><div style="flex:1;min-width:0"><label style="display:block;font-size:12px;color:var(--muted);margin-bottom:3px">{{ _('API Version') }}</label><input class="in" id="cfg-api-version" readonly></div></div>' +
+            '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px"><div style="flex:1;min-width:0"><label style="display:block;font-size:12px;color:var(--muted);margin-bottom:3px">{{ _('Signature Method') }}</label><input class="in" id="cfg-sign-method" readonly></div></div>' +
+            '<hr style="border:none;border-top:1px solid var(--border);margin:10px 0">' +
+            '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px"><div style="flex:1;min-width:0"><label style="display:block;font-size:12px;color:var(--muted);margin-bottom:3px">AppKey <span style="color:#f85149">*</span></label><input class="in" id="cfg-app-key" placeholder="{{ _('Enter 1688 AppKey') }}"></div></div>' +
+            '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px"><div style="flex:1;min-width:0"><label style="display:block;font-size:12px;color:var(--muted);margin-bottom:3px">AppSecret <span style="color:#f85149">*</span></label><input class="in" type="password" id="cfg-app-secret" placeholder="{{ _('Enter 1688 AppSecret') }}"></div></div>' +
+            '<button class="btn bp" id="save-config-btn">{{ _('Save configuration') }}</button>' +
+            '<div id="config-save-result" style="font-size:11px;color:var(--muted);margin-left:6px"></div>' +
+          '</form>' +
+        '</div>' +
+        '<div class="cd">' +
+          '<div class="st">{{ _('Risk control configuration') }}</div>' +
+          '<form id="rate-limit-form" onsubmit="event.preventDefault();aliSaveRateLimit()" style="display:flex;flex-direction:column;gap:8px">' +
+            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
+              '<div><label style="display:block;font-size:12px;color:var(--muted);margin-bottom:3px">{{ _('User Daily Limit') }}</label><input class="in" type="number" id="rl-user-daily" min="1" required></div>' +
+              '<div><label style="display:block;font-size:12px;color:var(--muted);margin-bottom:3px">{{ _('User Hourly Limit') }}</label><input class="in" type="number" id="rl-user-hourly" min="1" required></div>' +
+              '<div><label style="display:block;font-size:12px;color:var(--muted);margin-bottom:3px">{{ _('Global Concurrency Limit') }}</label><input class="in" type="number" id="rl-global-concurrent" min="1" required></div>' +
+              '<div><label style="display:block;font-size:12px;color:var(--muted);margin-bottom:3px">{{ _('Global QPS Limit') }}</label><input class="in" type="number" id="rl-global-qps" min="1" required></div>' +
+              '<div><label style="display:block;font-size:12px;color:var(--muted);margin-bottom:3px">{{ _('Circuit Breaker Threshold') }} (0-1)</label><input class="in" type="number" id="rl-cb-threshold" min="0.01" max="1" step="0.01" required></div>' +
+              '<div><label style="display:block;font-size:12px;color:var(--muted);margin-bottom:3px">{{ _('Circuit Breaker Window') }} (s)</label><input class="in" type="number" id="rl-cb-window" min="1" required></div>' +
+              '<div><label style="display:block;font-size:12px;color:var(--muted);margin-bottom:3px">{{ _('Circuit Breaker Timeout') }} (s)</label><input class="in" type="number" id="rl-cb-timeout" min="1" required></div>' +
+              '<div><label style="display:block;font-size:12px;color:var(--muted);margin-bottom:3px">{{ _('Max Retries') }}</label><input class="in" type="number" id="rl-max-retries" min="0" required></div>' +
+              '<div><label style="display:block;font-size:12px;color:var(--muted);margin-bottom:3px">{{ _('Retry Delay') }} (s)</label><input class="in" type="number" id="rl-retry-delay" min="0" step="0.1" required></div>' +
+            '</div>' +
+            '<div><button class="btn bp" type="submit" id="rl-save-btn">{{ _('Save risk control configuration') }}</button><span id="rl-save-result" style="font-size:11px;color:var(--muted);margin-left:6px"></span></div>' +
+          '</form>' +
+        '</div>' +
+        '<div class="cd">' +
+          '<div class="st">{{ _('Cache Configuration') }}</div>' +
+          '<dl class="ali-dl" id="cache-config"><dt>Redis</dt><dd><span class="bdg off">{{ _('Not configured') }}</span></dd><dt>{{ _('Memory Cache Size') }}</dt><dd>{{ _('Loading...') }}</dd><dt>{{ _('Product cache TTL') }}</dt><dd>{{ _('Loading...') }}</dd></dl>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+
+    '<!-- 全局加载遮罩（内联样式） -->' +
+    '<div id="ali-loading" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:9999;justify-content:center;align-items:center">' +
+      '<div style="width:24px;height:24px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:sp .8s linear infinite"></div>' +
+    '</div>' +
+
+    '<!-- AI 标题选择弹窗（系统 .modal/.modal-c） -->' +
+    '<div class="modal" id="ai-title-modal" style="display:none">' +
+      '<div class="modal-c">' +
+        '<div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;font-size:14px;font-weight:600">' +
+          '<span>{{ _('AI Title Options') }}</span><span onclick="aliCloseModal(\'ai-title-modal\')" style="width:24px;height:24px;display:flex;align-items:center;justify-content:center;cursor:pointer;border-radius:4px;color:var(--muted);font-size:16px">&times;</span>' +
+        '</div>' +
+        '<div style="padding:14px 18px">' +
+          '<div class="dim" style="font-size:12px;margin-bottom:10px">{{ _('AI generated 3 different style titles, please select the most suitable one.') }}</div>' +
+          '<div id="ai-title-options"><div style="padding:12px;font-size:12px;text-align:center;color:var(--dim)">{{ _('Loading...') }}</div></div>' +
+        '</div>' +
+        '<div style="padding:10px 18px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end">' +
+          '<button class="btn bo" onclick="aliCloseModal(\'ai-title-modal\')">{{ _('Cancel') }}</button>' +
+          '<button class="btn bp" id="confirm-title-btn">{{ _('Confirm Selection') }}</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+
+    '<!-- 图片管理弹窗 -->' +
+    '<div class="modal" id="image-gallery-modal" style="display:none">' +
+      '<div class="modal-c" style="max-width:1140px">' +
+        '<div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;font-size:14px;font-weight:600">' +
+          '<span>{{ _('Product image management') }}</span><span onclick="aliCloseModal(\'image-gallery-modal\')" style="width:24px;height:24px;display:flex;align-items:center;justify-content:center;cursor:pointer;border-radius:4px;color:var(--muted);font-size:16px">&times;</span>' +
+        '</div>' +
+        '<div style="padding:14px 18px">' +
+          '<div id="upload-zone" style="border:2px dashed var(--border);border-radius:8px;padding:20px;text-align:center;cursor:pointer;background:var(--bg)">' +
+            '<div style="font-size:24px;opacity:.5">&#x2601;</div>' +
+            '<div style="font-size:13px;margin-top:6px">{{ _('Drag image here or click to upload') }}</div>' +
+            '<div style="font-size:11px;color:var(--dim);margin-top:2px">{{ _('Supports JPG/PNG/WebP/GIF, up to 5MB per file') }}</div>' +
+            '<input type="file" id="image-upload-input" accept="image/png,image/jpeg,image/jpg,image/gif,image/webp" style="display:none" multiple>' +
+          '</div>' +
+          '<div id="image-gallery-container" style="margin-top:12px"><div style="padding:20px;text-align:center;color:var(--dim);font-size:12px">{{ _('No Images') }}</div></div>' +
+        '</div>' +
+        '<div style="padding:10px 18px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:flex-end;gap:8px">' +
+          '<span id="image-count" class="dim" style="font-size:12px;margin-right:auto">{{ _('No Images') }}</span>' +
+          '<button class="btn bo" onclick="aliCloseModal(\'image-gallery-modal\')">{{ _('Close') }}</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+    '</div>';
+  aliInit();
+};
+
+// ===== i18n（JS 动态字符串；守卫定义 window.__） =====
+window._ALI_LANG = "{{ lang }}";
+window._ALI_I18N = {{ translations | tojson }};
+window.__ = function (k) { return (window._ALI_LANG === 'zh-CN' && window._ALI_I18N[k]) || k; };
+
+// ===== 状态变量 =====
+var aliCurrentPage = 'dashboard';
+var aliCurrentProductPage = 1;
+var aliCurrentLogPage = 1;
+var aliCurrentAiItemId = null;
+var aliGalleryItemId = null;
+var aliPoPage = 1;
+var aliCsrfToken = '';
+
+// ===== 请求层（fetch 封装：Bearer T + CSRF 头） =====
+function aliFetch(url, method, data) {
+  var opts = { method: method || 'GET', headers: {} };
+  opts.headers['Authorization'] = 'Bearer ' + (window.T || '');
+  if (aliCsrfToken) opts.headers['X-CSRF-Token'] = aliCsrfToken;
+  if (data !== undefined) {
+    if (typeof FormData !== 'undefined' && data instanceof FormData) {
+      opts.body = data;
+    } else {
+      opts.headers['Content-Type'] = 'application/json';
+      opts.body = JSON.stringify(data);
+    }
+  }
+  return fetch(url, opts).then(function (r) {
+    return r.json().catch(function () { return {}; });
+  });
+}
+
+// ===== 工具函数（ali 前缀，避免全局冲突） =====
+function aliShowModal(id) {
+  var el = document.getElementById(id);
+  if (el) el.style.display = 'flex';
+}
+function aliCloseModal(id) {
+  var el = document.getElementById(id);
+  if (el) el.style.display = 'none';
+}
+function aliShowLoading() {
+  var el = document.getElementById('ali-loading');
+  if (el) el.style.display = 'flex';
+}
+function aliHideLoading() {
+  var el = document.getElementById('ali-loading');
+  if (el) el.style.display = 'none';
+}
+function aliShowMessage(elementId, message, type) {
+  var el = document.getElementById(elementId);
+  if (!el) return;
+  var st = type === 'error'
+    ? 'background:rgba(248,81,73,.1);color:#f85149;border:1px solid rgba(248,81,73,.2)'
+    : type === 'success'
+      ? 'background:rgba(0,212,170,.1);color:var(--accent);border:1px solid rgba(0,212,170,.2)'
+      : 'background:rgba(88,166,255,.1);color:#58a6ff;border:1px solid rgba(88,166,255,.2)';
+  el.innerHTML = '<div style="padding:8px 12px;border-radius:6px;font-size:12px;margin-top:8px;' + st + '">' + message + '</div>';
+}
+function aliFormatPrice(p) {
+  if (p === null || p === undefined) return __('Unpriced');
+  return '¥' + parseFloat(p).toFixed(2);
+}
+function aliFormatDate(d) {
+  if (!d) return '-';
+  try { return new Date(d).toLocaleString(); } catch (e) { return d; }
+}
+function aliGetProductStatusBadge(status) {
+  var m = {
+    'active': '<span class="bdg on">' + __('Active') + '</span>',
+    'inactive': '<span class="bdg off">' + __('Inactive') + '</span>',
+    'draft': '<span class="bdg gy" style="background:rgba(139,139,139,.12);color:var(--muted)">' + __('Draft') + '</span>',
+    'published': '<span class="bdg on">' + __('Published') + '</span>',
+    'unpublished': '<span class="bdg pd">' + __('Unpublished') + '</span>',
+    'failed': '<span class="bdg off">' + __('Failed') + '</span>'
+  };
+  return m[status] || '<span class="bdg gy" style="background:rgba(139,139,139,.12);color:var(--muted)">' + status + '</span>';
+}
+function aliGetPoStatusBadge(status) {
+  var colors = { 'pending': '#f0c040', 'ordered': '#58a6ff', 'shipped': '#00d4aa', 'received': '#00d4aa', 'cancelled': 'var(--dim)' };
+  var labels = { 'pending': __('Pending procurement'), 'ordered': __('Ordered'), 'shipped': __('Shipped'), 'received': __('Completed'), 'cancelled': __('Cancelled') };
+  return '<span style="color:' + (colors[status] || 'var(--dim)') + ';font-size:11px;font-weight:600">' + (labels[status] || status) + '</span>';
+}
+function aliStBadge(ok, yes, no) {
+  return ok ? '<span class="bdg on">' + yes + '</span>' : '<span class="bdg off">' + no + '</span>';
+}
+function aliEscHtml(s) {
+  if (!s) return '';
+  var d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+function aliSafeImgOnError(size) {
+  var svg = size === 'large'
+    ? '<svg xmlns="http://www.w3.org/2000/svg" width="180" height="180"><rect fill="#111" width="180" height="180"/><text x="55" y="95" font-size="14" fill="#555">' + __('Failed to load') + '</text></svg>'
+    : '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80"><rect fill="#111" width="80" height="80"/><text x="25" y="45" font-size="12" fill="#555">' + __('No image') + '</text></svg>';
+  this.src = 'data:image/svg+xml,' + encodeURIComponent(svg);
+}
+function aliParseJsonField(v, d) {
+  if (v === null || v === undefined) return d;
+  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return d; } }
+  return v;
+}
+function aliStyleLabel(s) {
+  var m = { 'professional': __('Professional'), 'attractive': __('Attractive'), 'concise': __('Concise'), 'normal': __('Generic') };
+  return m[s] || s;
+}
+function aliSelectAiTitle(el) {
+  document.querySelectorAll('.ali-to').forEach(function (e) { e.classList.remove('sel'); });
+  el.classList.add('sel');
+}
+function aliPaginationHtml(page, total, fnName) {
+  var h = '';
+  var prev = page > 1 ? '<a href="javascript:void(0)" onclick="' + fnName + '(' + (page - 1) + ');return false;" style="padding:4px 10px;font-size:12px;color:var(--muted);cursor:pointer;border-radius:4px;text-decoration:none;border:1px solid transparent">' + __('Previous') + '</a>'
+    : '<a style="padding:4px 10px;font-size:12px;opacity:.4;pointer-events:none;color:var(--dim)">' + __('Previous') + '</a>';
+  h += prev;
+  var start = Math.max(1, page - 2), end = Math.min(total, page + 2);
+  for (var i = start; i <= end; i++) {
+    h += i === page
+      ? '<a style="padding:4px 10px;font-size:12px;background:var(--accent);color:#000;font-weight:600;cursor:pointer;border-radius:4px;text-decoration:none">' + i + '</a>'
+      : '<a href="javascript:void(0)" onclick="' + fnName + '(' + i + ');return false;" style="padding:4px 10px;font-size:12px;color:var(--muted);cursor:pointer;border-radius:4px;text-decoration:none;border:1px solid transparent">' + i + '</a>';
+  }
+  var next = page < total ? '<a href="javascript:void(0)" onclick="' + fnName + '(' + (page + 1) + ');return false;" style="padding:4px 10px;font-size:12px;color:var(--muted);cursor:pointer;border-radius:4px;text-decoration:none;border:1px solid transparent">' + __('Next') + '</a>'
+    : '<a style="padding:4px 10px;font-size:12px;opacity:.4;pointer-events:none;color:var(--dim)">' + __('Next') + '</a>';
+  h += next;
+  return h;
+}
+
+// ===== 导航 =====
+function aliSwitchPage(name) {
+  aliCurrentPage = name;
+  document.querySelectorAll('#ali-main-tabs .ai-tab').forEach(function (b) { b.classList.remove('active'); });
+  var tb = document.querySelector('#ali-main-tabs .ai-tab[data-page="' + name + '"]');
+  if (tb) tb.classList.add('active');
+  ['dashboard', 'products', 'collect', 'supplier', 'logs', 'cache', 'config'].forEach(function (p) {
+    var el = document.getElementById(p + '-page');
+    if (el) el.style.display = (p === name) ? 'block' : 'none';
+  });
+  aliLoadPageData(name);
+}
+function aliLoadPageData(page) {
+  switch (page) {
+    case 'dashboard': aliLoadDashboard(); break;
+    case 'products': aliLoadProducts(); break;
+    case 'logs': aliLoadLogs(); break;
+    case 'cache': aliLoadCacheStats(); break;
+    case 'config': aliLoadConfig(); break;
+    case 'supplier': aliLoadPurchaseOrders(); break;
+  }
+}
+
+// ===== Dashboard =====
+async function aliLoadDashboard() {
+  try {
+    aliShowLoading();
+    var res = await aliFetch('/admin/ali-api/dashboard');
+    if (!res.success) return;
+    var d = res.data;
+    document.getElementById('total-items').textContent = d.items.total;
+    document.getElementById('active-items').textContent = d.items.active;
+    document.getElementById('total-calls').textContent = d.api_calls.total;
+    document.getElementById('today-calls').textContent = d.api_calls.today;
+    document.getElementById('total-users').textContent = d.users.total;
+    aliUpdateRateLimitStats(d.rate_limit);
+    aliUpdateCacheStats(d.cache);
+  } catch (e) { console.error('dashboard load failed', e); }
+  finally { aliHideLoading(); }
+}
+function aliUpdateRateLimitStats(s) {
+  var el = document.getElementById('rate-limit-stats');
+  if (!el || !s) return;
+  el.innerHTML = '<div><div style="font-size:11px;color:var(--dim)">' + __('User rate limiting') + '</div><div style="font-size:12px;color:var(--muted);margin-top:4px">' + __('Daily remaining') + ': ' + (s.user_limits && s.user_limits.daily_remaining !== undefined ? s.user_limits.daily_remaining : '-') + '/' + (s.user_limits && s.user_limits.daily_limit !== undefined ? s.user_limits.daily_limit : '-') + '<br>' + __('Hourly remaining') + ': ' + (s.user_limits && s.user_limits.hourly_remaining !== undefined ? s.user_limits.hourly_remaining : '-') + '/' + (s.user_limits && s.user_limits.hourly_limit !== undefined ? s.user_limits.hourly_limit : '-') + '</div></div><div><div style="font-size:11px;color:var(--dim)">' + __('Concurrency control') + '</div><div style="font-size:12px;color:var(--muted);margin-top:4px">' + __('Active requests') + ': ' + (s.concurrent ? s.concurrent.active_requests : 0) + '/' + (s.concurrent && s.concurrent.max_concurrent !== undefined ? s.concurrent.max_concurrent : '-') + '<br>' + __('Current QPS') + ': ' + (s.concurrent ? s.concurrent.current_qps : 0) + '/' + (s.concurrent && s.concurrent.qps_limit !== undefined ? s.concurrent.qps_limit : '-') + '</div></div>';
+}
+function aliUpdateCacheStats(s) {
+  var el = document.getElementById('cache-stats');
+  if (!el || !s) return;
+  var rc = s.redis && s.redis.connected;
+  el.innerHTML = '<div><div style="font-size:11px;color:var(--dim)">Redis</div><div style="font-size:12px;color:var(--muted);margin-top:4px">' + __('Status') + ': ' + aliStBadge(rc, __('Connected'), __('Not connected')) + (rc ? '<br>' + __('Memory') + ': ' + (s.redis.used_memory || 'N/A') : '<br>' + __('Using memory cache')) + '</div></div><div><div style="font-size:11px;color:var(--dim)">' + __('Memory cache') + '</div><div style="font-size:12px;color:var(--muted);margin-top:4px">' + __('Entries') + ': ' + (s.memory ? s.memory.size : 0) + '/' + (s.memory && s.memory.maxsize !== undefined ? s.memory.maxsize : '-') + '<br>TTL: ' + (s.memory && s.memory.ttl !== undefined ? s.memory.ttl : '-') + __('s') + '</div></div>';
+}
+
+// ===== Products =====
+async function aliLoadProducts(page) {
+  if (page === undefined) page = aliCurrentProductPage;
+  try {
+    aliShowLoading();
+    var status = (document.getElementById('status-filter') && document.getElementById('status-filter').value) || 'active';
+    var kw = (document.getElementById('product-search') && document.getElementById('product-search').value) || '';
+    var url = '/admin/ali-api/items?page=' + page + '&per_page=20&status=' + status;
+    if (kw) url += '&keyword=' + encodeURIComponent(kw);
+    var res = await aliFetch(url);
+    if (res.success) { aliUpdateProductsTable(res.data.items); aliUpdateProductsPagination(res.data.pagination); aliCurrentProductPage = page; }
+  } catch (e) { console.error('load products failed', e); aliShowMessage('products-table', __('Failed to load products'), 'error'); }
+  finally { aliHideLoading(); }
+}
+function aliUpdateProductsTable(items) {
+  var tbody = document.getElementById('products-table');
+  if (!tbody) return;
+  if (!items || items.length === 0) { tbody.innerHTML = '<tr><td colspan="8" class="tc dim" style="padding:20px;text-align:center">' + __('No products') + '</td></tr>'; return; }
+  tbody.innerHTML = items.map(function (item) {
+    var imgs = aliParseJsonField(item.images, []);
+    var imgH = imgs.length > 0 ? '<img src="' + aliEscHtml(imgs[0]) + '" class="ali-pr-img" alt="' + __('Image') + '" onerror="aliSafeImgOnError.call(this)">' : '<div class="ali-pr-img ali-pr-no">' + __('No image') + '</div>';
+    return '<tr><td>' + item.id + '</td><td>' + imgH + '</td><td><strong>' + aliEscHtml(item.title || item.original_title || __('No title')) + '</strong><br><span class="dim" style="font-size:10px">ID: ' + aliEscHtml(item.product_id) + '</span></td><td>' + aliFormatPrice(item.price) + '</td><td>' + aliEscHtml(item.category || __('Uncategorized')) + '</td><td>' + aliGetProductStatusBadge(item.status) + '<br>' + aliGetProductStatusBadge(item.publish_status) + '</td><td>' + aliFormatDate(item.updated_at) + '</td><td><div style="display:flex;gap:3px">' +
+      '<button class="btn bs" title="' + __('View') + '" onclick="aliViewProduct(' + item.id + ')">&#x1F441;</button>' +
+      '<button class="btn bs" title="' + __('Image') + '" onclick="aliOpenImageGallery(' + item.id + ')">&#x1F5BC;</button>' +
+      '<button class="btn bs" title="' + __('AI Title') + '" onclick="aliGenerateAiTitles(' + item.id + ')">&#x2728;</button>' +
+      '<button class="btn bs" title="' + __('Publish') + '" onclick="aliPublishProduct(' + item.id + ')"' + (item.publish_status === 'published' ? ' disabled' : '') + '>&#x2B06;</button>' +
+      '</div></td></tr>';
+  }).join('');
+}
+function aliUpdateProductsPagination(p) {
+  var el = document.getElementById('products-pagination');
+  if (!el) return;
+  el.innerHTML = aliPaginationHtml(p.page, p.total_pages, 'aliLoadProducts');
+}
+async function aliViewProduct(itemId) {
+  try {
+    var res = await aliFetch('/admin/ali-api/items/' + itemId);
+    if (!res.success) { alert(__('Failed to fetch') + ': ' + res.error); return; }
+    var p = res.data;
+    var specs = aliParseJsonField(p.specs, {});
+    var sku = aliParseJsonField(p.product_sku, []);
+    var images = aliParseJsonField(p.images, []);
+    var titleOpts = aliParseJsonField(p.ai_title_options, []);
+    var detail = 'ID: ' + p.id + '\n' + __('Product ID') + ': ' + p.product_id + '\n' + __('Title') + ': ' + (p.title || p.original_title || '-') + '\n';
+    if (p.ai_title) detail += __('AI Title') + ': ' + p.ai_title + '\n';
+    if (p.selected_title) detail += __('Selected title') + ': ' + p.selected_title + '\n';
+    detail += __('Price') + ': ' + aliFormatPrice(p.price) + '\n' + __('Original price') + ': ' + aliFormatPrice(p.original_price) + '\n' + __('Category') + ': ' + (p.category || '-') + '\n' + __('Status') + ': ' + p.status + ' | ' + __('Publish') + ': ' + p.publish_status + '\n' + __('Image') + ': ' + images.length + ' ' + __('pics');
+    if (p.target_product_id) detail += '\n' + __('Local product ID') + ': ' + p.target_product_id;
+    if (Object.keys(specs).length > 0) detail += '\n' + __('Specifications') + ': ' + JSON.stringify(specs, null, 2);
+    if (sku.length > 0) detail += '\n' + __('SKU') + ': ' + sku.length + ' ' + __('items');
+    if (images.length > 0) { detail += '\n\n' + __('Image list') + ':'; images.forEach(function (img, i) { var u = typeof img === 'string' ? img : (img.url || ''); detail += '\n  ' + (i + 1) + '. ' + u.substring(0, 60) + (u.length > 60 ? '...' : ''); }); }
+    if (titleOpts.length > 0) { detail += '\n\n' + __('AI title options') + ':'; titleOpts.forEach(function (opt, i) { detail += '\n  ' + (i + 1) + '. [' + opt.style + '] ' + opt.title; }); }
+    alert(detail);
+  } catch (e) { console.error(e); alert(__('View failed')); }
+}
+
+// ===== Image Gallery =====
+async function aliOpenImageGallery(itemId) {
+  aliGalleryItemId = itemId;
+  aliShowModal('image-gallery-modal');
+  await aliLoadGalleryImages(itemId);
+}
+async function aliLoadGalleryImages(itemId) {
+  var container = document.getElementById('image-gallery-container');
+  var countEl = document.getElementById('image-count');
+  if (!container) return;
+  try {
+    var res = await aliFetch('/admin/ali-api/items/' + itemId + '/images');
+    if (!res.success) { container.innerHTML = '<div style="padding:20px;text-align:center;color:#f85149">' + __('Failed to load') + ': ' + res.error + '</div>'; return; }
+    var images = res.data.images || [];
+    if (countEl) countEl.textContent = __('Total ') + images.length + __(' images');
+    if (images.length === 0) { container.innerHTML = '<div style="padding:20px;text-align:center;color:var(--dim);font-size:13px"><div style="font-size:28px;opacity:.4">&#x1F4E5;</div><p style="margin-top:8px">' + __('No images, click above to upload') + '</p></div>'; return; }
+    container.innerHTML = '<div class="ali-igg">' + images.map(function (img, idx) {
+      return '<div class="ali-ig-item"><img src="' + aliEscHtml(img.url) + '" class="ali-ig-img" alt="' + __('Image') + '" onerror="aliSafeImgOnError.call(this,\'large\')"><div class="ali-ig-ft"><span class="dim">' + (idx + 1) + '</span><button class="btn bs" onclick="aliDeleteGalleryImage(' + itemId + ',' + idx + ')" title="' + __('Delete') + '" style="color:#f85149">&times;</button></div></div>';
+    }).join('') + '</div>';
+  } catch (e) { container.innerHTML = '<div style="padding:20px;text-align:center;color:#f85149">' + __('Failed to load') + ': ' + e.message + '</div>'; }
+}
+async function aliDeleteGalleryImage(itemId, index) {
+  if (!confirm(__('Delete image #') + (index + 1) + __('?'))) return;
+  try {
+    aliShowLoading();
+    var res = await aliFetch('/admin/ali-api/items/' + itemId + '/images/' + index, 'DELETE');
+    if (res.success) { await aliLoadGalleryImages(itemId); if (aliCurrentPage === 'products') aliLoadProducts(aliCurrentProductPage); }
+    else alert(__('Delete failed') + ': ' + res.error);
+  } catch (e) { alert(__('Delete failed') + ': ' + (e.message || '')); }
+  finally { aliHideLoading(); }
+}
+async function aliUploadGalleryImages(itemId, files) {
+  if (!files || files.length === 0) return;
+  for (var i = 0; i < files.length; i++) {
+    var f = files[i];
+    if (f.size > 5 * 1024 * 1024) { alert(__('File ') + f.name + __(' exceeds 5MB limit')); continue; }
+    var ext = f.name.split('.').pop().toLowerCase();
+    if (['png', 'jpg', 'jpeg', 'gif', 'webp'].indexOf(ext) === -1) { alert(__('File ') + f.name + __(' format not supported')); continue; }
+    var fd = new FormData(); fd.append('file', f);
+    try {
+      aliShowLoading();
+      var r = await aliFetch('/admin/ali-api/items/' + itemId + '/images/upload', 'POST', fd);
+      if (!r.success) alert(__('Upload ') + f.name + __(' failed') + ': ' + r.error);
+    } catch (e) { alert(__('Upload ') + f.name + __(' failed') + ': ' + (e.message || '')); }
+    finally { aliHideLoading(); }
+  }
+  await aliLoadGalleryImages(itemId);
+  if (aliCurrentPage === 'products') aliLoadProducts(aliCurrentProductPage);
+}
+
+// ===== Collect =====
+async function aliCollectSingleProduct() {
+  var pid = (document.getElementById('product-id') && document.getElementById('product-id').value.trim()) || '';
+  if (!pid) { aliShowMessage('collect-result', __('Please enter the product ID'), 'error'); return; }
+  try {
+    aliShowLoading();
+    var res = await aliFetch('/admin/ali-api/items/collect', 'POST', { product_id: pid });
+    if (res.success) { var tag = res.data && res.data.from_cache ? __('(from cache)') : ''; aliShowMessage('collect-result', __('Collected') + tag + ' ' + __('Product ID') + ': ' + res.data.item_id, 'success'); document.getElementById('product-id').value = ''; if (aliCurrentPage === 'dashboard') aliLoadDashboard(); }
+    else aliShowMessage('collect-result', __('Collection failed') + ': ' + res.error, 'error');
+  } catch (e) { aliShowMessage('collect-result', __('Collection failed') + ': ' + (e.message || ''), 'error'); }
+  finally { aliHideLoading(); }
+}
+async function aliSearchCollect() {
+  var kw = (document.getElementById('search-keywords') && document.getElementById('search-keywords').value.trim()) || '';
+  if (!kw) { aliShowMessage('search-result', __('Enter search keywords'), 'error'); return; }
+  var page = (document.getElementById('search-page') && document.getElementById('search-page').value) || 1;
+  var size = (document.getElementById('search-size') && document.getElementById('search-size').value) || 20;
+  try {
+    aliShowLoading();
+    var res = await aliFetch('/admin/ali-api/items/search', 'POST', { keywords: kw, page_no: parseInt(page), page_size: parseInt(size) });
+    if (res.success) {
+      var d = res.data;
+      var msg = __('Search success: found ') + d.total + __(' products');
+      if (d.products && d.products.length > 0) { msg += '<br><br><b>' + __('Preview') + ':</b><br>'; d.products.slice(0, 5).forEach(function (p, i) { msg += (i + 1) + '. ' + aliEscHtml(p.title) + ' - ' + aliFormatPrice(p.price) + '<br>'; }); if (d.products.length > 5) msg += '...' + __('and ') + (d.products.length - 5) + __('items'); }
+      aliShowMessage('search-result', msg, 'success');
+    } else aliShowMessage('search-result', __('Search failed') + ': ' + res.error, 'error');
+  } catch (e) { aliShowMessage('search-result', __('Search failed') + ': ' + (e.message || ''), 'error'); }
+  finally { aliHideLoading(); }
+}
+
+// ===== AI titles =====
+async function aliGenerateAiTitles(itemId) {
+  if (!confirm(__('Generate AI title options?'))) return;
+  try {
+    aliShowLoading();
+    var res = await aliFetch('/admin/ali-api/items/' + itemId + '/ai-titles', 'POST');
+    if (res.success) { aliShowTitleSelectionModal(itemId, res.data.ai_title_options); }
+    else alert(__('AI title generation failed') + ': ' + res.error);
+  } catch (e) { alert(__('AI title generation failed') + ': ' + (e.message || '')); }
+  finally { aliHideLoading(); }
+}
+function aliShowTitleSelectionModal(itemId, options) {
+  aliCurrentAiItemId = itemId;
+  var list = document.getElementById('ai-title-options');
+  if (!list) return;
+  if (!options || options.length === 0) { list.innerHTML = '<div class="dim" style="font-size:12px">' + __('No valid AI title options') + '</div>'; }
+  else {
+    list.innerHTML = options.map(function (opt, idx) {
+      return '<div class="ali-to" onclick="aliSelectAiTitle(this,' + opt.id + ')" data-title="' + aliEscHtml(opt.title) + '"><div><span class="bdg gy" style="background:rgba(139,139,139,.12);color:var(--muted)">' + __('Option') + (idx + 1) + '</span><span class="bdg" style="background:rgba(88,166,255,.12);color:#58a6ff">' + aliStyleLabel(opt.style) + '</span>' + (idx === 0 ? '<span class="bdg pd">' + __('Recommended') + '</span>' : '') + '</div><div style="font-size:13px;margin-bottom:6px">' + aliEscHtml(opt.title) + '</div>' + (opt.reason ? '<div style="font-size:11px;color:var(--dim);margin-top:4px">' + aliEscHtml(opt.reason) + '</div>' : '') + '</div>';
+    }).join('');
+  }
+  var confirmBtn = document.getElementById('confirm-title-btn');
+  if (confirmBtn) confirmBtn.onclick = function () {
+    var sel = document.querySelector('.ali-to.sel');
+    if (!sel) { alert(__('Please select a title')); return; }
+    var title = sel.getAttribute('data-title') || '';
+    aliFetch('/admin/ali-api/items/' + aliCurrentAiItemId + '/select-title', 'POST', { title: title }).then(function (r) {
+      if (r.success) { alert(__('Title selected!')); aliCloseModal('ai-title-modal'); if (aliCurrentPage === 'products') aliLoadProducts(aliCurrentProductPage); }
+      else alert(__('Selection failed') + ': ' + r.error);
+    }).catch(function (e) { alert(__('Selection failed') + ': ' + (e.message || '')); });
+  };
+  aliShowModal('ai-title-modal');
+}
+async function aliPublishProduct(itemId) {
+  var stock = prompt(__('Enter stock quantity (default 999)'), '999');
+  if (stock === null) return;
+  var n = parseInt(stock) || 999;
+  if (!confirm(__('Publish to local store? Stock: ') + n)) return;
+  try {
+    aliShowLoading();
+    var res = await aliFetch('/admin/ali-api/items/' + itemId + '/publish', 'POST', { stock: n });
+    if (res.success) { alert(__('Published! Local ID: ') + res.data.target_product_id + '\n' + __('Title') + ': ' + res.data.title + '\n' + __('Price') + ': ' + aliFormatPrice(res.data.price)); if (aliCurrentPage === 'products') aliLoadProducts(aliCurrentProductPage); }
+    else alert(__('Publish failed') + ': ' + res.error);
+  } catch (e) { alert(__('Publish failed') + ': ' + (e.message || '')); }
+  finally { aliHideLoading(); }
+}
+
+// ===== API Logs =====
+async function aliLoadLogs(page) {
+  if (page === undefined) page = aliCurrentLogPage;
+  try {
+    aliShowLoading();
+    var endpoint = (document.getElementById('log-endpoint') && document.getElementById('log-endpoint').value.trim()) || '';
+    var success = (document.getElementById('log-success') && document.getElementById('log-success').value) || '';
+    var url = '/admin/ali-api/logs?page=' + page + '&per_page=20';
+    if (endpoint) url += '&endpoint=' + encodeURIComponent(endpoint);
+    if (success) url += '&success=' + success;
+    var res = await aliFetch(url);
+    if (res.success) { aliUpdateLogsTable(res.data.logs); aliUpdateLogsPagination(res.data.pagination); aliCurrentLogPage = page; }
+  } catch (e) { console.error('load logs failed', e); }
+  finally { aliHideLoading(); }
+}
+function aliUpdateLogsTable(logs) {
+  var tbody = document.getElementById('logs-table');
+  if (!tbody) return;
+  if (!logs || logs.length === 0) { tbody.innerHTML = '<tr><td colspan="8" class="tc dim" style="padding:20px;text-align:center">' + __('No logs') + '</td></tr>'; return; }
+  tbody.innerHTML = logs.map(function (log) {
+    var params = aliParseJsonField(log.params, {});
+    var paramsStr = Object.keys(params).length > 0 ? JSON.stringify(params).substring(0, 40) : '-';
+    var st = log.success ? '<span class="bdg on">' + __('Success') + '</span>' : '<span class="bdg off">' + __('Failed') + '</span>';
+    return '<tr><td>' + log.id + '</td><td>' + aliEscHtml(log.username || '-') + '</td><td><code style="font-size:11px">' + aliEscHtml(log.endpoint) + '</code></td><td><span title="' + aliEscHtml(JSON.stringify(params)) + '">' + aliEscHtml(paramsStr) + '</span></td><td>' + (log.code !== undefined ? log.code : '-') + '</td><td>' + log.elapsed_ms + '</td><td>' + st + '</td><td>' + aliFormatDate(log.created_at) + '</td></tr>';
+  }).join('');
+}
+function aliUpdateLogsPagination(p) {
+  var el = document.getElementById('logs-pagination');
+  if (el) el.innerHTML = aliPaginationHtml(p.page, p.total_pages, 'aliLoadLogs');
+}
+
+// ===== Cache =====
+async function aliLoadCacheStats() {
+  try {
+    aliShowLoading();
+    var res = await aliFetch('/admin/ali-api/cache/stats');
+    if (res.success) aliUpdateCacheDetails(res.data);
+  } catch (e) { console.error('cache stats failed', e); }
+  finally { aliHideLoading(); }
+}
+function aliUpdateCacheDetails(d) {
+  var el = document.getElementById('cache-details');
+  if (!el || !d) return;
+  var rc = d.redis && d.redis.connected;
+  el.innerHTML = '<div style="font-size:13px;line-height:1.9">' +
+    '<div style="display:flex;justify-content:space-between"><span class="dim">Redis</span><span>' + aliStBadge(rc, __('Connected'), __('Not connected')) + '</span></div>' +
+    '<div style="display:flex;justify-content:space-between"><span class="dim">' + __('Use Redis') + '</span><span>' + (d.use_redis ? __('Yes') : __('No')) + '</span></div>' +
+    '<div style="display:flex;justify-content:space-between"><span class="dim">' + __('Memory cache') + '</span><span>' + d.memory.size + ' / ' + (d.memory.maxsize !== undefined ? d.memory.maxsize : '-') + '</span></div>' +
+    '<div style="display:flex;justify-content:space-between"><span class="dim">' + __('Product cache TTL') + '</span><span>' + (d.memory.ttl !== undefined ? d.memory.ttl + __('s') : '-') + '</span></div>' +
+    '<div style="display:flex;justify-content:space-between"><span class="dim">' + __('Expired') + '</span><span>' + (d.memory.expired_entries !== undefined ? d.memory.expired_entries : 0) + '</span></div>' +
+    (rc ? '<div style="display:flex;justify-content:space-between"><span class="dim">' + __('Memory') + '</span><span>' + d.redis.used_memory + '</span></div><div style="display:flex;justify-content:space-between"><span class="dim">' + __('Connections') + '</span><span>' + d.redis.connected_clients + '</span></div>' : '') +
+    '</div>';
+}
+function aliToggleCacheProductInput() {
+  var typeEl = document.getElementById('cache-type');
+  var wrap = document.getElementById('product-id-container');
+  if (!typeEl || !wrap) return;
+  wrap.style.display = (typeEl.value === 'product') ? 'block' : 'none';
+}
+async function aliClearCache() {
+  if (!confirm(__('Confirm cache clear?'))) return;
+  var typeEl = document.getElementById('cache-type');
+  var type = (typeEl && typeEl.value) || 'all';
+  var productId = type === 'product' ? (document.getElementById('cache-product-id').value.trim() || '') : '';
+  var data = { type: type };
+  if (type === 'product' && productId) data.product_id = productId;
+  try {
+    aliShowLoading();
+    var res = await aliFetch('/admin/ali-api/cache/clear', 'POST', data);
+    if (res.success) { aliShowMessage('clear-result', res.message || __('Success'), 'success'); if (document.getElementById('cache-product-id')) document.getElementById('cache-product-id').value = ''; aliLoadCacheStats(); if (aliCurrentPage === 'dashboard') aliLoadDashboard(); }
+    else aliShowMessage('clear-result', __('Cleanup failed') + ': ' + res.error, 'error');
+  } catch (e) { aliShowMessage('clear-result', __('Cleanup failed') + ': ' + (e.message || ''), 'error'); }
+  finally { aliHideLoading(); }
+}
+
+// ===== Config =====
+async function aliLoadConfig() {
+  try {
+    var res = await aliFetch('/admin/ali-api/config');
+    if (!res.success) return;
+    var d = res.data;
+    document.getElementById('cfg-api-gateway').value = d.alibaba.api_gateway || '';
+    document.getElementById('cfg-api-version').value = d.alibaba.api_version || '';
+    document.getElementById('cfg-sign-method').value = d.alibaba.sign_method || '';
+    document.getElementById('cfg-app-key').placeholder = d.alibaba.app_key_configured ? __('Configured, enter new value to overwrite') : __('Enter 1688 AppKey');
+    document.getElementById('cfg-app-secret').placeholder = d.alibaba.app_key_configured ? __('Configured, enter new value to overwrite') : __('Enter 1688 AppSecret');
+    var rl = document.getElementById('rate-limit-config');
+    if (rl) rl.innerHTML = '<dt>' + __('User daily limit') + '</dt><dd>' + d.rate_limit.user_daily_limit + '</dd><dt>' + __('User hourly limit') + '</dt><dd>' + d.rate_limit.user_hourly_limit + '</dd><dt>' + __('Global concurrency') + '</dt><dd>' + d.rate_limit.global_concurrent_limit + '</dd><dt>' + __('Global QPS') + '</dt><dd>' + d.rate_limit.global_qps_limit + '</dd><dt>' + __('Circuit breaker threshold') + '</dt><dd>' + d.rate_limit.circuit_breaker_threshold + '</dd>';
+    var rlf = document.getElementById('rate-limit-form');
+    if (rlf) {
+      var rlSet = function (id, v) { var el = document.getElementById(id); if (el && v !== undefined && v !== null) el.value = v; };
+      rlSet('rl-user-daily', d.rate_limit.user_daily_limit);
+      rlSet('rl-user-hourly', d.rate_limit.user_hourly_limit);
+      rlSet('rl-global-concurrent', d.rate_limit.global_concurrent_limit);
+      rlSet('rl-global-qps', d.rate_limit.global_qps_limit);
+      rlSet('rl-cb-threshold', d.rate_limit.circuit_breaker_threshold);
+      rlSet('rl-cb-window', d.rate_limit.circuit_breaker_window);
+      rlSet('rl-cb-timeout', d.rate_limit.circuit_breaker_timeout);
+      rlSet('rl-max-retries', d.rate_limit.max_retries);
+      rlSet('rl-retry-delay', d.rate_limit.retry_delay);
+    }
+    var cc = document.getElementById('cache-config');
+    if (cc) cc.innerHTML = '<dt>Redis</dt><dd>' + aliStBadge(d.cache.redis_configured, __('Configured'), __('Not configured')) + '</dd><dt>' + __('Memory cache') + '</dt><dd>' + d.cache.memory_cache_maxsize + '</dd><dt>' + __('Product cache TTL') + '</dt><dd>' + d.cache.product_cache_ttl + __('s') + '</dd>';
+  } catch (e) { console.error('load config failed', e); }
+}
+async function aliSaveConfig() {
+  var appKey = (document.getElementById('cfg-app-key').value || '').trim();
+  var appSecret = (document.getElementById('cfg-app-secret').value || '').trim();
+  var apiGateway = (document.getElementById('cfg-api-gateway').value || '').trim();
+  if (!appKey && !appSecret && !apiGateway) { aliShowMessage('config-save-result', __('Fill in AppKey, AppSecret or API Gateway URL'), 'error'); return; }
+  var btn = document.getElementById('save-config-btn');
+  if (btn) { btn.disabled = true; btn.textContent = __('Saving...'); }
+  try {
+    var res = await aliFetch('/admin/ali-api/config', 'POST', { app_key: appKey, app_secret: appSecret, api_gateway: apiGateway });
+    if (btn) { btn.disabled = false; btn.textContent = __('Save configuration'); }
+    if (res.success) { aliShowMessage('config-save-result', __('Saved'), 'success'); aliLoadConfig(); }
+    else aliShowMessage('config-save-result', __('Save failed') + ': ' + res.error, 'error');
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = __('Save configuration'); }
+    aliShowMessage('config-save-result', __('Save failed') + ': ' + (e.message || ''), 'error');
+  }
+}
+
+async function aliSaveRateLimit() {
+  var val = function (id) { var el = document.getElementById(id); return el ? el.value : ''; };
+  var payload = {
+    user_daily_limit: val('rl-user-daily'),
+    user_hourly_limit: val('rl-user-hourly'),
+    global_concurrent_limit: val('rl-global-concurrent'),
+    global_qps_limit: val('rl-global-qps'),
+    circuit_breaker_threshold: val('rl-cb-threshold'),
+    circuit_breaker_window: val('rl-cb-window'),
+    circuit_breaker_timeout: val('rl-cb-timeout'),
+    max_retries: val('rl-max-retries'),
+    retry_delay: val('rl-retry-delay'),
+  };
+  var btn = document.getElementById('rl-save-btn');
+  var out = document.getElementById('rl-save-result');
+  if (btn) { btn.disabled = true; btn.textContent = __('Saving...'); }
+  try {
+    var res = await aliFetch('/admin/ali-api/config', 'POST', { rate_limit: payload });
+    if (btn) { btn.disabled = false; btn.textContent = __('Save risk control configuration'); }
+    if (res.success) { if (out) out.textContent = __('Saved'); aliLoadConfig(); }
+    else if (out) out.textContent = __('Save failed') + ': ' + (res.error || '');
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = __('Save risk control configuration'); }
+    if (out) out.textContent = __('Save failed') + ': ' + (e.message || '');
+  }
+}
+
+// ===== Supplier（代发订单） =====
+function aliPoLoadPage(p) { aliPoPage = p; aliLoadPurchaseOrders(); }
+async function aliLoadPurchaseOrders() {
+  try {
+    aliShowLoading();
+    var status = (document.getElementById('po-status-filter') && document.getElementById('po-status-filter').value) || 'all';
+    var res = await aliFetch('/admin/ali-api/orders/supplier?status=' + status + '&page=' + aliPoPage + '&limit=50');
+    if (res.success) {
+      var d = res.data;
+      var tbody = document.getElementById('po-tbody');
+      if (tbody) tbody.innerHTML = aliPoTableHtml(d.items);
+      var pg = document.getElementById('po-pagination');
+      if (pg) pg.innerHTML = aliPaginationHtml(aliPoPage, Math.max(1, Math.ceil((d.total || 0) / 50)), 'aliPoLoadPage');
+    }
+  } catch (e) { console.error('load purchase orders failed', e); }
+  finally { aliHideLoading(); }
+}
+function aliPoTableHtml(items) {
+  if (!items || items.length === 0) return '<tr><td colspan="8" class="tc dim" style="padding:20px;text-align:center">' + __('No drop-shipping orders') + '</td></tr>';
+  return items.map(function (po) {
+    var thumb = po.prod_thumb ? '<img src="' + esc(po.prod_thumb) + '" style="width:48px;height:48px;object-fit:cover;border-radius:6px;border:1px solid var(--border);display:block" alt="' + __('Image') + '" onerror="aliSafeImgOnError.call(this)">' : '<div style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;background:var(--bg);font-size:10px;color:var(--dim);border-radius:6px">' + __('No image') + '</div>';
+    var localStatus = po.order_status === 'completed' ? '<span class="bdg on">' + __('Completed') + '</span>'
+      : po.order_status === 'cancelled' ? '<span class="bdg off">' + __('Cancelled') + '</span>'
+      : po.order_status === 'pending' ? '<span class="bdg pd">' + __('Pending procurement') + '</span>'
+      : po.order_status === 'paid' ? '<span class="bdg on">' + __('Paid') + '</span>'
+      : po.order_status === 'shipped' ? '<span class="bdg on">' + __('Shipped') + '</span>'
+      : (po.order_status || po.local_status || '-');
+    var logistics = po.tracking_number
+      ? '<div style="font-size:11px">' + esc(po.tracking_company || '') + ' <strong>' + esc(po.tracking_number) + '</strong></div>'
+      : '<span class="dim" style="font-size:11px">-</span>';
+    var action = '';
+    if (po.ali_order_status === 'pending') action = '<button class="btn bp" onclick="aliCreatePurchaseOrder(' + po.id + ')">' + __('One-click Purchase') + '</button>';
+    else if (po.ali_order_status === 'ordered') action = '<button class="btn bs" onclick="aliSyncTracking(' + po.id + ')">' + __('Sync Tracking') + '</button>';
+    else action = '<span class="dim" style="font-size:11px">-</span>';
+    return '<tr><td><strong>' + po.id + '</strong><br><span class="dim" style="font-size:10px">' + esc(po.ali_order_id || '-') + '</span></td>' +
+      '<td><span class="dim" style="font-size:11px">#<strong>' + po.local_order_item_id + '</strong></span><br>' + localStatus + '</td>' +
+      '<td><div style="display:flex;gap:8px;align-items:center">' + thumb + '<div><div style="font-size:12px;font-weight:600;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(po.prod_title || __('No title')) + '</div><div class="dim" style="font-size:10px">ID: ' + esc(po.ali_product_id) + ' × ' + po.quantity + '</div></div></div></td>' +
+      '<td><div style="font-size:12px">' + esc(po.buyer_username || '-') + '</div><div class="dim" style="font-size:10px">' + esc(po.buyer_phone || '') + '</div></td>' +
+      '<td><a href="https://detail.1688.com/offer/' + esc(po.ali_product_id) + '.html" target="_blank" rel="noopener" style="color:var(--accent);font-size:11px">' + __('1688 product link') + ' ↗</a></td>' +
+      '<td>' + aliGetPoStatusBadge(po.ali_order_status) + '</td>' +
+      '<td>' + logistics + '</td>' +
+      '<td>' + action + '</td></tr>';
+  }).join('');
+}
+async function aliCreatePurchaseOrder(poId) {
+  if (!confirm(__('Create 1688 purchase order? Verify price and stock.'))) return;
+  try {
+    aliShowLoading();
+    var res = await aliFetch('/admin/ali-api/orders/create-purchase', 'POST', { purchase_order_id: poId });
+    if (res.success) { alert(__('Purchase order submitted to 1688, order# ') + ((res.data && res.data.ali_order_id) || '')); aliLoadPurchaseOrders(); }
+    else alert(__('Order failed') + ': ' + res.error);
+  } catch (e) { alert(__('Order failed') + ': ' + (e.message || __('Unknown error'))); }
+  finally { aliHideLoading(); }
+}
+async function aliSyncTracking(poId) {
+  try {
+    aliShowLoading();
+    var res = await aliFetch('/admin/ali-api/orders/sync-tracking', 'POST', { purchase_order_id: poId });
+    if (res.success) { alert(__('Tracking synced: ') + ((res.data && res.data.tracking_number) || '')); aliLoadPurchaseOrders(); }
+    else { if (res.error && res.error.indexOf('尚未') >= 0) alert(__('1688 has not shipped yet')); else alert(__('Sync failed') + ': ' + res.error); }
+  } catch (e) { alert(__('Sync failed') + ': ' + (e.message || '')); }
+  finally { aliHideLoading(); }
+}
+
+// ===== 初始化 =====
+function aliInit() {
+  if (!document.getElementById('ali-plugin-styles')) {
+    var st = document.createElement('style');
+    st.id = 'ali-plugin-styles';
+    st.textContent = '.ali-pg{display:flex;justify-content:center;gap:2px;margin-top:12px;flex-wrap:wrap}.ali-pr-img{width:64px;height:48px;object-fit:cover;border-radius:6px;border:1px solid var(--border);display:block}.ali-pr-no{display:flex;align-items:center;justify-content:center;background:var(--bg);font-size:10px;color:var(--dim)}.ali-igg{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-top:12px}.ali-ig-item{border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--bg)}.ali-ig-img{width:100%;height:110px;object-fit:cover;display:block}.ali-ig-ft{display:flex;justify-content:space-between;align-items:center;padding:4px 6px}.ali-to{padding:10px;margin-bottom:8px;border:1px solid var(--border);border-radius:8px;cursor:pointer;transition:all .15s}.ali-to:hover{border-color:var(--accent)}.ali-to.sel{border-color:var(--accent);background:rgba(0,212,170,.06)}.ali-dl{margin:0}.ali-dl dt{font-size:11px;color:var(--dim);margin-top:8px}.ali-dl dd{font-size:13px;color:var(--text);margin:2px 0 0 0}';
+    document.head.appendChild(st);
+  }
+  document.querySelectorAll('#ali-main-tabs .ai-tab').forEach(function (b) {
+    b.addEventListener('click', function () { aliSwitchPage(this.getAttribute('data-page')); });
+  });
+  var searchBtn = document.getElementById('search-btn');
+  if (searchBtn) searchBtn.addEventListener('click', function () { aliLoadProducts(1); });
+  var psearch = document.getElementById('product-search');
+  if (psearch) psearch.addEventListener('keydown', function (e) { if (e.key === 'Enter') aliLoadProducts(1); });
+  var stFilter = document.getElementById('status-filter');
+  if (stFilter) stFilter.addEventListener('change', function () { aliLoadProducts(1); });
+  var csb = document.getElementById('collect-single-btn');
+  if (csb) csb.addEventListener('click', aliCollectSingleProduct);
+  var scb = document.getElementById('search-collect-btn');
+  if (scb) scb.addEventListener('click', aliSearchCollect);
+  var aob = document.getElementById('ai-optimize-btn');
+  if (aob) aob.addEventListener('click', function () {
+    var pid = (document.getElementById('ai-product-id').value || '').trim();
+    if (!pid) { aliShowMessage('ai-result', __('Please enter the product ID'), 'error'); return; }
+    aliShowLoading();
+    aliFetch('/admin/ali-api/items/' + pid + '/ai-optimize', 'POST').then(function (r) {
+      aliShowMessage('ai-result', (r.message || __('AI optimization completed')), r.success ? 'success' : 'error');
+    }).catch(function (e) { aliShowMessage('ai-result', __('AI title generation failed') + ': ' + (e.message || ''), 'error'); }).then(function () { aliHideLoading(); });
+  });
+  var flb = document.getElementById('filter-logs-btn');
+  if (flb) flb.addEventListener('click', function () { aliLoadLogs(1); });
+  var lsearch = document.getElementById('log-endpoint');
+  if (lsearch) lsearch.addEventListener('keydown', function (e) { if (e.key === 'Enter') aliLoadLogs(1); });
+  var rcs = document.getElementById('refresh-cache-stats');
+  if (rcs) rcs.addEventListener('click', aliLoadCacheStats);
+  var ctype = document.getElementById('cache-type');
+  if (ctype) ctype.addEventListener('change', aliToggleCacheProductInput);
+  var ccbtn = document.getElementById('clear-cache-btn');
+  if (ccbtn) ccbtn.addEventListener('click', aliClearCache);
+  var sbtn = document.getElementById('save-config-btn');
+  if (sbtn) sbtn.addEventListener('click', aliSaveConfig);
+  var uz = document.getElementById('upload-zone');
+  var ui = document.getElementById('image-upload-input');
+  if (uz && ui) {
+    uz.addEventListener('click', function () { ui.click(); });
+    uz.addEventListener('dragover', function (e) { e.preventDefault(); uz.style.borderColor = 'var(--accent)'; });
+    uz.addEventListener('dragleave', function () { uz.style.borderColor = 'var(--border)'; });
+    uz.addEventListener('drop', function (e) { e.preventDefault(); uz.style.borderColor = 'var(--border)'; if (e.dataTransfer.files.length) aliUploadGalleryImages(aliGalleryItemId, e.dataTransfer.files); });
+    ui.addEventListener('change', function () { aliUploadGalleryImages(aliGalleryItemId, ui.files); ui.value = ''; });
+  }
+  var pst = document.getElementById('po-status-filter');
+  if (pst) pst.addEventListener('change', function () { aliPoPage = 1; aliLoadPurchaseOrders(); });
+  var rpo = document.getElementById('refresh-po-btn');
+  if (rpo) rpo.addEventListener('click', function () { aliLoadPurchaseOrders(); });
+  aliFetch('/admin/ali-api/csrf-token').then(function (r) { if (r.success) aliCsrfToken = r.token; }).catch(function () {});
+  aliLoadDashboard();
+}

@@ -1,0 +1,6 @@
+# VeroRun CLI 专属依赖（不污染仓库根 requirements.txt）
+click>=8.1
+requests>=2.31
+PyYAML>=6.0
+PyJWT>=2.8
+rich>=13.0

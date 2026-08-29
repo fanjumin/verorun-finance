@@ -1,0 +1,35 @@
+﻿window.l_posts=function(){
+  document.getElementById("pt").textContent="{{ _('Content') }}";
+  fetch("/admin/posts?limit=100",{headers:{"Authorization":"Bearer "+T}}).then(function(r){
+    if(!r.ok)throw new Error("HTTP "+r.status);
+    return r.json()
+  }).then(function(d){
+    if(!d.success||!d.data)throw new Error(d.error||"{{ _('Data Error') }}");
+    var ds=d.data;
+    var h="<div class=\"cd\"><div class=\"st\">{{ _('Post') }} ("+ds.total+")</div>";
+    if(ds.posts.length===0){
+      h+="<div class=\"lo\" style=\"padding:40px;color:var(--dim)\">{{ _('No Posts') }} — {{ _('Content Will') }} Agent {{ _('Experience System Auto-Aggregates') }}</div>";
+    }else{
+      h+="<table><tr><th>{{ _('Title') }}</th><th>Agent</th><th>{{ _('Status') }}</th><th>{{ _('Like') }}</th><th>{{ _('Time') }}</th></tr>";
+      ds.posts.forEach(function(p){
+        var st=p.status=="approved"?'<span class=\"bdg on\">{{ _('Published') }}</span>':(p.status=="pending"?'<span class=\"bdg pd\">{{ _('Pending Review') }}</span>':'<span class=\"bdg off\">{{ _('Draft') }}</span>');
+        h+="<tr><td>"+(p.title||"-")+"</td><td>"+(p.agent_id||"-")+"</td><td>"+st+"</td><td>"+p.like_count+"</td><td>"+(p.created_at||"")+"</td></tr>";
+      });
+      h+="</table>";
+    }
+    h+="</div>";
+    document.getElementById("mc").innerHTML=h;
+  }).catch(function(e){
+    document.getElementById("mc").innerHTML='<div class=\"cd\"><div class=\"em\">{{ _('Load failed') }}: '+(e.message||"{{ _('Unknown Error') }}")+' — <a href=\"javascript:l_posts()\">{{ _('Retry') }}</a></div></div>';
+  })
+}
+
+// l_contacts removed (merged into l_tickets)
+
+// ============================
+// {{ _('User Tickets') }} — l_tickets（{{ _('Pre-Sales Included') }}/{{ _('After-Sales') }}/{{ _('Complaint') }}/{{ _('Suggestion') }} {{ _('Category Filter') }}）
+// ============================
+var _ticketFilter='';
+var _ticketTypeFilter='';
+var _ADM_TYPE_LABELS={presale:'\u{1f7e2} {{ _('Pre-Sales') }}',aftersale:'\u{1f7e1} {{ _('After-Sales') }}',complaint:'\u{1f534} {{ _('Complaint') }}',suggestion:'\u{1f7e3} {{ _('Suggestion') }}'};
+var _ADM_TYPE_COLORS={presale:'#3b82f6',aftersale:'#f59e0b',complaint:'#ef4444',suggestion:'#8b5cf6'};

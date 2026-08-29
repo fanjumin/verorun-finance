@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>{{ _('Admin') }} — {{ brand.site_name_en if brand else '' }}</title>
+<link rel="icon" type="image/png" sizes="32x32" href="{{ brand.favicon_url if brand and brand.favicon_url else '/static/favicon-32x32.png' }}">
+<link rel="icon" type="image/png" sizes="16x16" href="{{ brand.favicon_url if brand and brand.favicon_url else '/static/favicon-16x16.png' }}">
+<link href="/static/lib/quill.snow.css" rel="stylesheet">
+<style>
+:root{--w:200px;--bg:#0a0a0f;--card:#111118;--border:#1a1a2e;--text:#e0e0e0;--muted:#8b8b8b;--dim:#555;--accent:#00d4aa;--radius:8px}
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC",sans-serif;background:var(--bg);color:var(--text);display:flex;min-height:100vh}
+.sidebar{width:var(--w);background:#0d0d18;border-right:1px solid var(--border);height:100vh;position:sticky;top:0;overflow-y:auto}
+.sidebar .logo{padding:16px;font-size:14px;font-weight:700;color:var(--accent);border-bottom:1px solid var(--border)}
+.sidebar nav{padding:4px 0}
+.ns{font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;padding:10px 16px 3px}
+.ni{display:flex;align-items:center;gap:8px;padding:7px 16px;color:var(--muted);font-size:12px;cursor:pointer;border:none;background:none;width:100%;text-align:left}
+.ni:hover{color:var(--text);background:rgba(255,255,255,.02)}
+.ni.sel{color:var(--accent);background:rgba(0,212,170,.06);border-right:2px solid var(--accent)}
+.main{flex:1;overflow-y:auto}
+.top{display:flex;align-items:center;justify-content:space-between;padding:10px 24px;border-bottom:1px solid var(--border);font-size:13px}
+.top .pt{font-weight:600}
+.con{padding:20px 24px}
+.gr{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:16px}
+.cd{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px}
+.cd .l{font-size:10px;color:var(--dim);text-transform:uppercase}
+.cd .v{font-size:18px;font-weight:700;margin-top:2px}
+.cd .v.g{color:var(--accent)}.cd .v.b{color:#58a6ff}.cd .v.r{color:#f85149}
+table{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px}
+th{background:var(--bg);color:var(--dim);padding:6px 8px;text-align:left;border-bottom:2px solid var(--border);font-weight:500}
+td{padding:6px 8px;border-bottom:1px solid var(--border);color:var(--muted)}
+.st{font-size:13px;font-weight:600;padding-bottom:6px;border-bottom:1px solid var(--border);margin-bottom:10px}
+.em{padding:30px;text-align:center;color:var(--dim);font-size:12px}
+.sbar{display:flex;gap:8px;margin-bottom:12px;align-items:center}
+.sbar input{padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;flex:1;max-width:260px;outline:none}
+.sbar input:focus{border-color:var(--accent)}
+.btn{padding:5px 12px;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;border:none}
+.bp{background:var(--accent);color:#fff}
+.bo{background:transparent;color:var(--text);border:1px solid var(--border)}
+.bs{padding:3px 8px;font-size:10px}
+.bdg{display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:600}
+.bdg.on{background:rgba(0,212,170,.12);color:var(--accent)}
+.bdg.off{background:rgba(248,81,73,.1);color:#f85149}
+.bdg.pd{background:rgba(240,192,64,.12);color:#f0c040}
+.lo{text-align:center;padding:40px;color:var(--dim)}
+.s{width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:sp .8s linear infinite;margin:0 auto 8px}
+@keyframes sp{to{transform:rotate(360deg)}}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+.in{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:4px;font-size:12px;outline:none}
+.in:focus{border-color:var(--accent)}
+.sl{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:5px;border-radius:4px;font-size:12px}
+.ta{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:5px;border-radius:4px;font-size:12px;resize:vertical;width:100%}
+.fl{display:flex;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);gap:8px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center}
+.modal-box{background:var(--card);border:1px solid var(--border);border-radius:12px;width:640px;max-width:90vw;max-height:80vh;overflow-y:auto;padding:24px}
+.modal-box h3{font-size:16px;color:var(--text);margin-bottom:8px;padding-right:30px}
+.modal-meta{font-size:12px;color:var(--dim);margin-bottom:16px;line-height:1.8}
+.modal-meta span{color:var(--muted);margin-right:12px}
+.modal-body{font-size:13px;color:var(--text);line-height:1.7;padding:16px;background:var(--bg);border-radius:8px;border:1px solid var(--border);white-space:pre-wrap;word-break:break-word}
+.modal-body img{max-width:100%;border-radius:4px}
+.modal-attach{margin-top:12px}
+.modal-attach a{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;margin:2px;background:var(--bg);border-radius:4px;font-size:12px;color:var(--accent);text-decoration:none}
+.modal-attach a:hover{background:var(--border)}
+.toast{position:fixed;bottom:30px;left:50%;transform:translateX(-50%);background:#1a1a2e;color:var(--text);padding:10px 20px;border-radius:8px;font-size:13px;z-index:2000;opacity:0;transition:opacity .3s;pointer-events:none;border:1px solid var(--border)}
+.toast.show{opacity:1}
+.toast.error{color:#f85149;border-color:#f85149}
+.toast.success{color:var(--accent);border-color:var(--accent)}
+@media(max-width:768px){.sidebar{width:50px}.sidebar .logo span,.ni span,.ns{display:none}}
+</style>
+</head>
+<body>
+<div class="sidebar">
+  <div class="logo"><span>{{ _('Admin') }}</span></div>
+  <nav id="nav"></nav>
+</div>
+<div class="main">
+  <div class="top"><div class="pt" id="pt">{{ _('Admin') }}</div><div><span id="an">-</span> | <a href="/" style="color:var(--dim);font-size:11px">{{ _('Back') }}</a></div></div>
+  <div class="con" id="mc"><div class="lo"><div class="s"></div>{{ _('Verifying...') }}</div></div>
+</div>
+<div class="toast" id="adminToast"></div>
+<script src="/static/lib/quill.min.js"></script>
+<script>
+var T=localStorage.getItem("sso_token")||localStorage.getItem("tm_token")||localStorage.getItem("token");
+if(T)document.cookie="sso_token="+T+"; path=/; max-age=604800";
+var P=new URLSearchParams(location.search);
+if(P.get("token")){T=P.get("token");localStorage.setItem("sso_token",T);localStorage.setItem("tm_token",T);localStorage.setItem("token",T);document.cookie="sso_token="+T+"; path=/; max-age=604800";window.history.replaceState({},"",window.location.pathname)}
+var NAV=[["dashboard", "■", "{{ _('Overview') }}", ""], ["", "", "{{ _('Management') }}", "ns"], ["users", "👥", "{{ _('Users') }}", ""], ["agents", "🤖", "{{ _('Agent Management') }}", ""], ["keys", "🔑", "API Key", ""], ["posts", "💬", "{{ _('Community Content') }}", ""], ["contacts", "✉️", "{{ _('Tickets') }}", ""], ["matrix", "🤖", "{{ _('Agent Matrix') }}", ""], ["cms", "📄", "{{ _('CMS Management') }}", ""], ["downloads", "⬇", "{{ _('Download Management') }}", ""], ["", "", "{{ _('Finance') }}", "ns"], ["revenue", "📊", "{{ _('Revenue Dashboard') }}", ""], ["orders", "💳", "{{ _('Orders') }}", ""], ["", "", "{{ _('System') }}", "ns"], ["config", "⚙️", "{{ _('System Settings') }}", ""], ["logs", "📄", "{{ _('Audit Log') }}", ""]];
+var navEl=document.getElementById("nav");
+NAV.forEach(function(n){
+  if(n[3]=="ns"){navEl.innerHTML+='<div class="ns">'+n[2]+'</div>';return}
+  navEl.innerHTML+='<div class="ni" onclick="go(\''+n[0]+'\')" id="n-'+n[0]+'">'+n[1]+' <span>'+n[2]+'</span></div>';
+});
+
+if(!T){document.getElementById("mc").innerHTML='<div class="em">{{ _('Please') }} <a href="/login?redirect=/admin">{{ _('Log In') }}</a></div>'}else{init()}
+
+function init(){
+  fetch("/admin/dashboard",{headers:{"Authorization":"Bearer "+T}}).then(function(r){
+    if(r.status===403){document.getElementById("mc").innerHTML='<div class="em">{{ _('Admin Only') }}</div>';return Promise.reject()}
+    if(r.status===401){document.getElementById("mc").innerHTML='<div class="em">{{ _('Please') }} <a href="/login?redirect=/admin">{{ _('Log In') }}</a></div>';return Promise.reject()}
+    return r.json()
+  }).then(function(d){if(d.success){document.getElementById("an").textContent="{{ _('Admin') }}";go("dashboard")}else{document.getElementById("mc").innerHTML='<div class="em">{{ _('Auth Failed') }} - <a href="/login?redirect=/admin">{{ _('Please Re-login') }}</a></div>'}}).catch(function(){})
+}
+
+function go(s){
+  document.querySelectorAll(".ni").forEach(function(n){n.classList.remove("sel")});
+  var el=document.getElementById("n-"+s);if(el)el.classList.add("sel");
+  document.getElementById("mc").innerHTML='<div class="lo"><div class="s"></div>{{ _('Loading...') }}</div>';
+  if(typeof window["l_"+s]=="function")window["l_"+s]();
+}
+
+window.l_dashboard=function(){
+  document.getElementById("pt").textContent="{{ _('Overview') }}";
+  fetch("/admin/dashboard",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success)return;
+    var ds=d.data;
+    var h="<div class=\"gr\">";
+    h+=hk("{{ _('Total Users') }}",ds.total_users,"b");
+    h+=hk("{{ _('Active Users') }}",ds.active_users,"g");
+    h+=hk("API Key",ds.active_api_keys+"/"+ds.total_api_keys,"");
+    h+=hk("{{ _('Total Calls') }}",ds.total_calls,"b");
+    h+=hk("{{ _("Today's Calls") }}",ds.today_calls,"g");
+    h+=hk("{{ _('Pending Posts') }}",ds.pending_posts,"r");
+    h+=hk("{{ _('Pending Tickets') }}",ds.pending_contacts,"r");
+    h+=hk("{{ _('Monthly Revenue') }}","\u00a5"+ds.monthly_revenue,"g");
+    h+="</div><div class=\"cd\"><div class=\"st\">{{ _('Recent Registrations') }}</div><table>";
+    if(ds.recent_users&&ds.recent_users.length){
+      h+="<tr><th>ID</th><th>{{ _('Nickname') }}</th><th>{{ _('Phone') }}</th><th>{{ _('Time') }}</th></tr>";
+      ds.recent_users.forEach(function(u){h+="<tr><td>"+u.id+"</td><td>"+(u.nickname||"-")+"</td><td>"+(u.phone||"-")+"</td><td>"+u.created_at+"</td></tr>"});
+    }
+    h+="</table></div>";
+    document.getElementById("mc").innerHTML=h;
+  }).catch(function(){})
+};
+function hk(l,v,c){return '<div class="cd"><div class="l">'+l+'</div><div class="v '+(c||"")+'">'+v+'</div></div>'}
+
+/**
+ * {{ _('Revenue Dashboard') }}
+ */
+window.l_revenue=function(){
+  document.getElementById("pt").textContent="{{ _('Revenue Dashboard') }}";
+  fetch("/admin/revenue/dashboard",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success)return;
+    var ds=d.data;
+    var h="";
+
+    h+='<div class="gr">';
+    h+=hk('{{ _("Today's Revenue") }}','¥'+ds.summary.today_revenue,'g');
+    h+=hk('{{ _('Monthly Revenue') }}','¥'+ds.summary.this_month,'b');
+    h+=hk('{{ _('Last Month Revenue') }}','¥'+ds.summary.last_month,'');
+    h+=hk('{{ _('MoM') }}',(ds.summary.month_change>=0?'+':'')+ds.summary.month_change_pct+'%',ds.summary.month_change>=0?'g':'r');
+    h+=hk('MRR','¥'+(ds.subscriptions.mrr||0),'g');
+    h+=hk('{{ _('Active Subscriptions') }}',ds.subscriptions.active||0,'b');
+    h+=hk('{{ _('Paid Users') }}',ds.subscriptions.total_paid_users||0,'');
+    var churnCls=(ds.subscriptions.churn_rate||0)>5?'r':'g';
+    h+=hk('{{ _('Churn Rate (This Month)') }}',(ds.subscriptions.churn_rate||0)+'%',churnCls);
+    h+=hk('{{ _('Last Month Churn Rate') }}',(ds.subscriptions.last_churn_rate||0)+'%','');
+    h+=hk('{{ _('New This Month') }}',ds.subscriptions.new_this_month||0,'g');
+    h+=hk('{{ _('Canceled This Month') }}',ds.subscriptions.canceled_this_month||0,'r');
+    h+=hk('{{ _('Expired This Month') }}',ds.subscriptions.expired_this_month||0,'');
+    h+=hk('{{ _('This Year') }}','¥'+ds.summary.this_year,'b');
+    h+='</div>';
+
+    // {{ _('Active Subs (30d)') }}
+    var subTrend=ds.subscriptions.active_trend_30d||[];
+    if(subTrend.length){
+      var maxAct=0;
+      subTrend.forEach(function(t){if(t.active_count>maxAct)maxAct=t.active_count});
+      maxAct=maxAct||1;
+      var subH='<div class="cd"><div class="st">{{ _('Active Subs (30d)') }}</div><div style="display:flex;align-items:flex-end;gap:2px;height:100px;padding-top:10px">';
+      subTrend.forEach(function(t){
+        var pct=Math.max(3,t.active_count/maxAct*100);
+        var dayLabel=t.day.slice(5);
+        subH+='<div style="flex:1;display:flex;flex-direction:column;align-items:center;height:100px;justify-content:flex-end">';
+        subH+='<div style="width:100%;background:var(--accent);height:'+pct+'%;border-radius:2px 2px 0 0;min-height:2px;transition:height .3s" title="'+t.day+': '+t.active_count+'"></div>';
+        subH+='<div style="font-size:7px;color:var(--dim);margin-top:2px;transform:rotate(-45deg);white-space:nowrap">'+dayLabel+'</div>';
+        subH+='</div>';
+      });
+      subH+='</div></div>';
+      h+=subH;
+    }
+
+    // {{ _('Monthly Churn Trend') }}
+    var churnTrend=ds.subscriptions.churn_trend_12m||[];
+    if(churnTrend.length){
+      var maxChurn=0;
+      churnTrend.forEach(function(t){if(t.churn_rate>maxChurn)maxChurn=t.churn_rate});
+      maxChurn=maxChurn||1;
+      var churnH='<div class="cd"><div class="st">{{ _('12-Month Churn Trend') }}</div><div style="display:flex;align-items:flex-end;gap:4px;height:120px;padding-top:10px">';
+      churnTrend.forEach(function(t){
+        var pct=Math.max(3,t.churn_rate/maxChurn*100);
+        churnH+='<div style="flex:1;display:flex;flex-direction:column;align-items:center;height:120px;justify-content:flex-end">';
+        churnH+='<div style="font-size:8px;color:var(--dim);margin-bottom:2px">'+(t.churn_rate||'0')+'%</div>';
+        churnH+='<div style="width:100%;background:'+(t.churn_rate>10?'#f85149':t.churn_rate>5?'#f0c040':'var(--accent3)')+';height:'+pct+'%;border-radius:2px 2px 0 0;min-height:2px;transition:height .3s" title="'+t.ym+': '+t.churn_rate+'%"></div>';
+        churnH+='<div style="font-size:8px;color:var(--dim);margin-top:2px">'+(t.ym||'').slice(5)+'</div>';
+        churnH+='</div>';
+      });
+      churnH+='</div></div>';
+      h+=churnH;
+    }
+
+    // {{ _('30-Day Revenue Trend') }}
+    var trend=ds.trend_30d||[];
+    if(trend.length){
+      var maxRev=0;
+      trend.forEach(function(t){if(t.revenue>maxRev)maxRev=t.revenue});
+      maxRev=maxRev||1;
+      var barH='<div class="cd"><div class="st">{{ _('30-Day Revenue Trend') }}</div><div style="display:flex;align-items:flex-end;gap:2px;height:140px;padding-top:10px">';
+      trend.forEach(function(t){
+        var pct=Math.max(3,t.revenue/maxRev*100);
+        var dayLabel=t.day.slice(5);
+        barH+='<div style="flex:1;display:flex;flex-direction:column;align-items:center;height:140px;justify-content:flex-end">';
+        barH+='<div style="width:100%;background:'+(t.revenue>0?'var(--accent)':'var(--border)')+';height:'+pct+'%;border-radius:2px 2px 0 0;min-height:2px;transition:height .3s" title="'+t.day+': ¥'+t.revenue+'"></div>';
+        barH+='<div style="font-size:7px;color:var(--dim);margin-top:2px;transform:rotate(-45deg);white-space:nowrap">'+dayLabel+'</div>';
+        barH+='</div>';
+      });
+      barH+='</div></div>';
+      h+=barH;
+    }
+
+    // {{ _('Revenue by Type') }}
+    var byType=ds.by_type||[];
+    if(byType.length){
+      h+='<div class="cd"><div class="st">{{ _('Revenue by Type') }}</div><table><tr><th>{{ _('Type') }}</th><th>{{ _('Amount') }}</th><th>{{ _('Share') }}</th></tr>';
+      var totalType=0;
+      byType.forEach(function(t){totalType+=t.revenue});
+      totalType=totalType||1;
+      byType.forEach(function(t){
+        var pct=(t.revenue/totalType*100).toFixed(1);
+        h+='<tr><td>'+t.type+'</td><td>¥'+t.revenue+'</td><td><div style="display:flex;align-items:center;gap:6px"><div style="background:var(--accent);width:'+pct+'px;max-width:100px;height:8px;border-radius:4px"></div>'+pct+'%</div></td></tr>';
+      });
+      h+='</table></div>';
+    }
+
+    // {{ _('Payment Method Distribution') }}
+    var pm=ds.pay_methods||[];
+    if(pm.length){
+      h+='<div class="cd"><div class="st">{{ _('Payment Method Distribution') }}</div><table><tr><th>{{ _('Method') }}</th><th>{{ _('Amount') }}</th></tr>';
+      pm.forEach(function(p){
+        var methodName={'wechat':'{{ _('WeChat Pay') }}','alipay':'{{ _('Alipay') }}','wxpay':'{{ _('WeChat Pay') }}','':'{{ _('Other') }}'}[p.method]||p.method;
+        h+='<tr><td>'+methodName+'</td><td>¥'+p.revenue+'</td></tr>';
+      });
+      h+='</table></div>';
+    }
+
+    // {{ _('12-Month Revenue') }}
+    var monthly=ds.monthly_12m||[];
+    if(monthly.length){
+      h+='<div class="cd"><div class="st">{{ _('12-Month Revenue') }}</div><table><tr><th>{{ _('Month') }}</th><th>{{ _('Revenue') }}</th></tr>';
+      monthly.forEach(function(m){
+        h+='<tr><td>'+m.ym+'</td><td>¥'+m.revenue+'</td></tr>';
+      });
+      h+='</table></div>';
+    }
+
+    document.getElementById("mc").innerHTML=h;
+  }).catch(function(){document.getElementById("mc").innerHTML='<div class="em">{{ _('Load Failed') }}</div>'})
+}
+
+window.l_users=function(){
+  document.getElementById("pt").textContent="{{ _('Users') }}";
+  fetch("/admin/users?limit=100",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success||!d.data)return;
+    var ds=d.data;
+    var h="<div class=\"cd\"><div class=\"st\">{{ _('User List') }} ("+ds.total+")</div><table><tr><th>ID</th><th>{{ _('Nickname') }}</th><th>{{ _('Phone') }}</th><th>Agent</th><th>{{ _('Tier') }}</th><th>{{ _('Status') }}</th><th>{{ _('Registered') }}</th></tr>";
+    ds.users.forEach(function(u){
+      var st=u.active?'<span class="bdg on">{{ _('Active') }}</span>':'<span class="bdg off">{{ _('Disabled') }}</span>';
+      h+="<tr><td>"+u.id+"</td><td>"+u.nickname+"</td><td>"+(u.phone||"-")+"</td><td>"+(u.agent_nickname||"-")+"</td><td>"+(u.tier||"free")+"</td><td>"+st+"</td><td>"+(u.created_at||"")+"</td></tr>";
+    });
+    h+="</table></div>";
+    document.getElementById("mc").innerHTML=h;
+  }).catch(function(){})
+}
+
+window.l_agents=function(){
+  document.getElementById("pt").textContent="{{ _('Agent Management') }}";
+  fetch("/admin/agents?limit=100",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success||!d.data)return;
+    var ds=d.data;
+    var h="<div class=\"cd\"><div class=\"st\">{{ _('Agent List') }} ("+ds.total+")</div><table><tr><th>ID</th><th>{{ _('Nickname') }}</th><th>{{ _('Belongs To') }}</th><th>{{ _('Phone') }}</th><th>{{ _('Time') }}</th></tr>";
+    ds.agents.forEach(function(a){h+="<tr><td>"+(a.agent_id||"-")+"</td><td>"+(a.agent_nickname||"-")+"</td><td>"+(a.nickname||"-")+"</td><td>"+(a.phone||"-")+"</td><td>"+(a.created_at||"")+"</td></tr>"});
+    h+="</table></div>";
+    document.getElementById("mc").innerHTML=h;
+  }).catch(function(){})
+}
+
+window.l_keys=function(){
+  document.getElementById("pt").textContent="{{ _('API Keys') }}";
+  fetch("/admin/api-keys?limit=100",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success||!d.data)return;
+    var ds=d.data;
+    var h="<div class=\"cd\"><div class=\"st\">{{ _('Global Keys') }} ("+ds.total+")</div><table><tr><th>{{ _('Name') }}</th><th>Key</th><th>{{ _('User') }}</th><th>{{ _('Calls') }}</th><th>{{ _('Status') }}</th><th>{{ _('Time') }}</th></tr>";
+    ds.keys.forEach(function(k){
+      var st=k.active?'<span class="bdg on">{{ _('Enabled') }}</span>':'<span class="bdg off">{{ _('Revoked') }}</span>';
+      h+="<tr><td>"+(k.name||"-")+"</td><td>"+k.key_prefix+"...</td><td>"+(k.user_name||"-")+"</td><td>"+k.calls_total+"</td><td>"+st+"</td><td>"+(k.created_at||"")+"</td></tr>";
+    });
+    h+="</table></div>";
+    document.getElementById("mc").innerHTML=h;
+  }).catch(function(){})
+}
+
+window.l_posts=function(){
+  document.getElementById("pt").textContent="{{ _('Community Content') }}";
+  fetch("/admin/posts?limit=100",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success||!d.data)return;
+    var ds=d.data;
+    var h="<div class=\"cd\"><div class=\"st\">{{ _('Posts') }} ("+ds.total+")</div><table><tr><th>{{ _('Title') }}</th><th>Agent</th><th>{{ _('Status') }}</th><th>{{ _('Likes') }}</th><th>{{ _('Time') }}</th></tr>";
+    ds.posts.forEach(function(p){
+      var st=p.status=="approved"?'<span class="bdg on">{{ _('Published') }}</span>':(p.status=="pending"?'<span class="bdg pd">{{ _('Pending Review') }}</span>':'<span class="bdg off">{{ _('Draft') }}</span>');
+      h+="<tr><td>"+(p.title||"-")+"</td><td>"+(p.agent_id||"-")+"</td><td>"+st+"</td><td>"+p.like_count+"</td><td>"+(p.created_at||"")+"</td></tr>";
+    });
+    h+="</table></div>";
+    document.getElementById("mc").innerHTML=h;
+  }).catch(function(){})
+}
+
+window.l_contacts=function(){
+  document.getElementById("pt").textContent="{{ _('Ticket Management') }}";
+  fetch("/admin/contacts?limit=100",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success||!d.data)return;
+    var ds=d.data;
+    var h="<div class=\"cd\"><div class=\"st\">{{ _('Tickets') }} ("+ds.total+")</div><table><tr><th>{{ _('Name') }}</th><th>{{ _('Subject') }}</th><th>{{ _('Status') }}</th><th>{{ _('Time') }}</th></tr>";
+    ds.contacts.forEach(function(c){
+      var st=c.handled?'<span class="bdg on">{{ _('Processed') }}</span>':'<span class="bdg pd">{{ _('Pending') }}</span>';
+      h+="<tr><td>"+(c.name||"-")+"</td><td>"+(c.subject||(c.message||"-")).slice(0,40)+"</td><td>"+st+"</td><td>"+(c.created_at||"")+"</td></tr>";
+    });
+    h+="</table></div>";
+    document.getElementById("mc").innerHTML=h;
+  }).catch(function(){})
+}
+
+window.l_orders=function(){
+  document.getElementById("pt").textContent="{{ _('Order Management') }}";
+  fetch("/admin/orders?limit=100",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success||!d.data)return;
+    var ds=d.data;
+    var h="<div class=\"cd\"><div class=\"st\">{{ _('Orders') }} ("+ds.total+")</div><table><tr><th>{{ _('Order No.') }}</th><th>{{ _('User') }}</th><th>{{ _('Amount') }}</th><th>{{ _('Type') }}</th><th>{{ _('Status') }}</th><th>{{ _('Time') }}</th></tr>";
+    ds.orders.forEach(function(o){
+      var st=o.status=="paid"?'<span class="bdg on">{{ _('Paid') }}</span>':'<span class="bdg pd">'+o.status+'</span>';
+      h+="<tr><td>"+o.order_no+"</td><td>"+(o.user_name||"-")+"</td><td>\u00a5"+o.amount+"</td><td>"+o.item_type+"</td><td>"+st+"</td><td>"+(o.created_at||"")+"</td></tr>";
+    });
+    h+="</table></div>";
+    document.getElementById("mc").innerHTML=h;
+  }).catch(function(){})
+}
+
+window.l_config=function(){
+  document.getElementById("pt").textContent="{{ _('System Settings') }}";
+  var h='<div style="margin-bottom:12px;display:flex;gap:8px"><button class="btn bp" onclick="seedConfig()">{{ _('Init Config') }}</button><button class="btn bo" onclick="uploadConfig()">{{ _('Upload AccessKey.csv') }}</button><input type="file" id="csvFile" accept=".csv" style="display:none" onchange="doUpload()"></div>';
+  h+='<div id="cl"><div class="lo"><div class="s"></div></div></div>';
+  document.getElementById("mc").innerHTML=h;
+  loadConfigs();
+}
+function loadConfigs(){
+  fetch("/user/config",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success){document.getElementById("cl").innerHTML='<div class="em">{{ _('Cannot Load') }}</div>';return}
+    var cats=d.categories||[{id:"other",title:"{{ _('System Config') }}"}];
+    var data=d.data||[];
+    var schema=d.schema||{};
+    var c="";
+    cats.forEach(function(cat){
+      var items=data.filter(function(k){return k.category==cat.id});
+      if(!items.length)return;
+      c+='<div class="cd" style="margin-bottom:12px">';
+      c+='<div class="st">'+cat.title+'</div>';
+      items.forEach(function(k){
+        var isSensitive=k.sensitive;
+        var displayVal=k.sensitive?k.masked_value:k.value;
+        var safeVal=(k.value||"").replace(/"/g,"&quot;");
+        var safeMasked=(k.masked_value||"").replace(/"/g,"&quot;");
+        var label=k.label||k.key;
+        var ph=k.placeholder||"";
+        c+='<div class="fl">';
+        c+='<div style="flex:1;min-width:0">';
+        c+='<div style="font-size:12px;font-weight:600">'+label+'</div>';
+        c+='<div style="font-size:10px;color:var(--dim)">'+(k.description||"")+'</div></div>';
+        if(isSensitive){
+          c+='<input class="in" id="cf-'+k.key+'" type="password" value="'+safeMasked+'" placeholder="'+ph+'" style="width:180px" onfocus="this.value=\'\'" onblur="if(!this.value)this.value=\''+safeMasked+'\'">';
+        }else{
+          c+='<input class="in" id="cf-'+k.key+'" value="'+safeVal+'" placeholder="'+ph+'" style="width:200px">';
+        }
+        c+='<button class="btn bp bs" onclick="scfg(\''+k.key+'\')">{{ _('Save') }}</button></div>';
+      });
+      c+='</div>';
+    });
+    document.getElementById("cl").innerHTML=c||'<div class="em">{{ _('No config items. Click Init Config to create.') }}</div>';
+  }).catch(function(){document.getElementById("cl").innerHTML='<div class="em">{{ _('Load Failed') }}</div>'})
+}
+function scfg(k){
+  var v=document.getElementById("cf-"+k).value.trim();
+  if(!v)return;
+  fetch("/user/config",{method:"PUT",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify({key:k,value:v})}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){alert("{{ _('Saved') }}");loadConfigs()}else{alert(d.error||"{{ _('Save Failed') }}")}
+  }).catch(function(){alert("{{ _('Save Failed') }}")})
+}
+function seedConfig(){
+  if(!confirm("{{ _('Initialize all email/SMS config items (existing will not be overwritten)?') }}"))return;
+  fetch("/user/config/seed",{method:"POST",headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){alert(d.message);loadConfigs()}else{alert(d.error||"{{ _('Init Failed') }}")}
+  })
+}
+function uploadConfig(){document.getElementById("csvFile").click()}
+function doUpload(){
+  var file=document.getElementById("csvFile").files[0];
+  if(!file)return;
+  var fd=new FormData();fd.append("file",file);
+  fetch("/user/config/upload",{method:"POST",headers:{"Authorization":"Bearer "+T},body:fd}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){alert(d.message+" ("+d.access_key_prefix+")");loadConfigs()}else{alert(d.error||"{{ _('Import Failed') }}")}
+  }).catch(function(){alert("{{ _('Upload Failed') }}")});
+  document.getElementById("csvFile").value="";
+}
+
+window.l_logs=function(){
+  document.getElementById("pt").textContent="{{ _('Audit Log') }}";
+  fetch("/admin/logs",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success||!d.data)return;
+    var h="<div class=\"cd\"><div class=\"st\">{{ _('Audit Log') }}</div><table><tr><th>{{ _('Admin') }}</th><th>{{ _('Action') }}</th><th>{{ _('Target') }}</th><th>{{ _('Details') }}</th><th>IP</th><th>{{ _('Time') }}</th></tr>";
+    d.data.forEach(function(l){h+="<tr><td>"+(l.admin_name||"-")+"</td><td>"+l.action+"</td><td>"+l.target_type+"/"+l.target_id+"</td><td>"+(l.detail||"")+"</td><td>"+l.ip_address+"</td><td>"+l.created_at+"</td></tr>"});
+    h+="</table></div>";
+    document.getElementById("mc").innerHTML=h;
+  }).catch(function(){})
+}
+
+window.l_matrix=function(){
+  document.getElementById("pt").textContent="{{ _('Agent Matrix') }}";
+  fetch("/admin/agent-matrix",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success||!d.data)return;
+    var a=d.data;
+    var ms=a.filter(function(x){return x.type=="master"});
+    var cs=a.filter(function(x){return x.type=="child"});
+    var h="<button class=\"btn bp\" onclick=\"scf()\" style=\"margin-bottom:12px\">{{ _('+ Create Agent') }}</button>";
+    h+=fm();
+    h+="<div class=\"cd\" style=\"margin-bottom:12px\"><div class=\"st\">{{ _('Main Agent') }} "+ms.length+"</div>";
+    h+=ms.length?mt(ms):'<div class="em">{{ _('None') }}</div>';
+    h+="</div><div class=\"cd\"><div class=\"st\">{{ _('Sub Agent') }} "+cs.length+"</div>";
+    h+=cs.length?mt(cs):'<div class="em">{{ _('None') }}</div>';
+    h+="</div>";
+    document.getElementById("mc").innerHTML=h;
+  }).catch(function(){})
+};
+function fm(){
+  return '<div id="cf" style="display:none;margin-bottom:16px" class="cd"><div class="st">{{ _('Create Agent') }}</div><div class="g2">'+
+    '<div><div style="font-size:11px;color:var(--dim)">{{ _('Type') }}</div><select class="sl" id="cft" style="width:100%"><option value="master">{{ _('Main Agent') }}</option><option value="child">{{ _('Sub Agent') }}</option></select></div>'+
+    '<div><div style="font-size:11px;color:var(--dim)">{{ _('Name (12 chars)') }}</div><input class="in" id="cfa" maxlength="12" placeholder="{{ _('Community Mgmt Agent') }}" style="width:100%"></div>'+
+    '<div style="grid-column:1/3"><div style="font-size:11px;color:var(--dim)">{{ _('Core Mission (64 chars)') }}</div><input class="in" id="cfm" maxlength="64" placeholder="{{ _('Responsible for...') }}" style="width:100%"></div>'+
+    '<div style="grid-column:1/3"><div style="font-size:11px;color:var(--dim)">{{ _('Prompt (3000 chars)') }}</div><textarea class="ta" id="cfp" maxlength="3000" rows="3"></textarea></div>'+
+    '<div><div style="font-size:11px;color:var(--dim)">{{ _('Model Provider') }}</div><select class="sl" id="cfpr" onchange="uburl()" style="width:100%"><option value="openai">OpenAI</option><option value="deepseek">DeepSeek</option><option value="openrouter">OpenRouter</option></select></div>'+
+    '<div><div style="font-size:11px;color:var(--dim)">{{ _('Model Name') }}</div><input class="in" id="cfmo" value="gpt-4o" style="width:100%"></div>'+
+    '<div style="grid-column:1/3"><div style="font-size:11px;color:var(--dim)">{{ _('API Endpoint') }}</div><input class="in" id="cfb" value="https://api.openai.com/v1" style="width:100%"></div>'+
+    '<div style="grid-column:1/3"><div style="font-size:11px;color:var(--dim)">{{ _('API Key') }}</div><input class="in" id="cfak" type="password" style="width:100%"></div>'+
+    '<div style="grid-column:1/3"><div style="font-size:11px;color:var(--dim);margin-bottom:4px">{{ _('Capabilities') }}</div>'+
+    '<label style="font-size:12px;color:var(--muted);margin-right:12px"><input type="checkbox" checked disabled> {{ _('Text') }}</label>'+
+    '<label style="font-size:12px;color:var(--muted);margin-right:12px"><input type="checkbox" id="cs" value="stt"> {{ _('Speech to Text') }}</label>'+
+    '<label style="font-size:12px;color:var(--muted);margin-right:12px"><input type="checkbox" id="ct" value="tts"> {{ _('Text-to-Speech') }}</label>'+
+    '<label style="font-size:12px;color:var(--muted);margin-right:12px"><input type="checkbox" id="cv" value="vision"> {{ _('Vision') }}</label>'+
+    '<label style="font-size:12px;color:var(--muted);margin-right:12px"><input type="checkbox" id="cg" value="image_gen"> {{ _('Image Generation') }}</label></div>'+
+    '</div><div style="margin-top:10px"><button class="btn bp" onclick="dc()">{{ _('Confirm Create') }}</button> <button class="btn bo" onclick="hc()">{{ _('Cancel') }}</button></div></div>';
+}
+function mt(arr){
+  var h="<table><tr><th>ID</th><th>{{ _('Name') }}</th><th>{{ _('Mission') }}</th><th>{{ _('Model') }}</th><th>{{ _('Capabilities') }}</th><th>{{ _('Status') }}</th><th>{{ _('Action') }}</th></tr>";
+  arr.forEach(function(a){
+    var st=a.is_active?'<span class="bdg on">{{ _('Enabled') }}</span>':'<span class="bdg off">{{ _('Disable') }}</span>';
+    h+="<tr><td>"+a.id+"</td><td>"+(a.alias||"-")+"</td><td>"+(a.mission||"-").slice(0,30)+"</td><td>"+a.model_name+"</td><td>"+(a.capabilities||"text")+"</td><td>"+st+"</td><td>"+
+      '<button class="btn bo bs" onclick="tg('+a.id+','+(a.is_active?0:1)+')">'+(a.is_active?"{{ _('Disable') }}":"{{ _('Enabled') }}")+'</button> '+
+      '<button class="btn bp bs" onclick="tt('+a.id+')">{{ _('Test') }}</button></td></tr>';
+  });
+  return h+"</table>";
+}
+function scf(){document.getElementById("cf").style.display="block"}
+function hc(){document.getElementById("cf").style.display="none"}
+function uburl(){
+  var u={openai:"https://api.openai.com/v1",deepseek:"https://api.deepseek.com",openrouter:"https://openrouter.ai/api/v1"};
+  var p=document.getElementById("cfpr").value;
+  if(u[p])document.getElementById("cfb").value=u[p];
+}
+function dc(){
+  var ca=["text"];
+  ["cs","ct","cv","cg"].forEach(function(c){var e=document.getElementById(c);if(e&&e.checked)ca.push(e.value)});
+  var b={type:document.getElementById("cft").value,alias:document.getElementById("cfa").value,mission:document.getElementById("cfm").value,system_prompt:document.getElementById("cfp").value,provider:document.getElementById("cfpr").value,model_name:document.getElementById("cfmo").value,base_url:document.getElementById("cfb").value,api_key:document.getElementById("cfak").value,capabilities:ca.join(",")};
+  fetch("/admin/agent-matrix",{method:"POST",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify(b)}).then(function(r){return r.json()}).then(function(d){if(d.success){alert("{{ _('Created') }}");l_matrix()}else{alert(d.error||"{{ _('Create Failed') }}")}});
+}
+function tg(id,v){
+  fetch("/admin/agent-matrix/"+id,{method:"PUT",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify({is_active:v})}).then(function(r){return r.json()}).then(function(d){if(d.success)l_matrix()});
+}
+function tt(id){
+  var q=prompt("{{ _('Send test message to this agent:') }}\n{{ _('(e.g. \"Analyze recent stock market\")') }}");
+  if(!q)return;
+  fetch("/admin/agent-matrix/"+id+"/test",{method:"POST",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify({query:q})}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){alert("{{ _('Response:') }}\n"+d.data.response)}else{alert(d.error||"{{ _('Test Failed') }}")}
+  });
+}
+
+window.l_email=function(){
+  document.getElementById("pt").textContent="{{ _('Email Management') }}";
+  var h='<div style="margin-bottom:12px"><button class="btn bp" onclick="se()">{{ _('New Email') }}</button></div>';
+  h+='<div id="sendForm" style="display:none;margin-bottom:16px" class="cd"><div class="st">{{ _('New Email') }}</div>';
+  h+='<div style="margin-bottom:10px">';
+  h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><span style="font-size:12px;color:var(--dim)">{{ _('To') }}</span><span style="font-size:11px;color:var(--dim)">{{ _('Separate with commas') }}</span></div>';
+  h+='<input class="in" id="em-to" placeholder="email1@example.com, email2@example.com" style="width:100%">';
+  h+='<div id="em-recipients" style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px"></div></div>';
+  h+='<div style="margin-bottom:10px"><div style="font-size:12px;color:var(--dim);margin-bottom:4px">{{ _('Subject') }}</div><input class="in" id="em-sub" placeholder="{{ _('Email Subject') }}" style="width:100%"></div>';
+  h+='<div style="margin-bottom:10px"><div style="font-size:12px;color:var(--dim);margin-bottom:4px">{{ _('Content') }}</div><div id="em-editor" style="min-height:200px;background:rgba(0,0,0,.3);border-radius:8px;border:1px solid var(--border)"></div></div>';
+  h+='<div style="margin-bottom:10px"><div style="font-size:12px;color:var(--dim);margin-bottom:4px">{{ _('Attachment') }}</div>';
+  h+='<input type="file" id="em-file" multiple onchange="addAttach()" style="display:none">';
+  h+='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn bo bs" onclick="document.getElementById(\'em-file\').click()">{{ _('+ Add Attachment') }}</button><div id="em-attach-list" style="display:flex;gap:6px;flex-wrap:wrap"></div></div></div>';
+  h+='<div style="margin-top:10px;display:flex;gap:8px"><button class="btn bp" onclick="ds()">{{ _('Send') }}</button> <button class="btn bo" onclick="hsf()">{{ _('Cancel') }}</button></div></div>';
+  h+='<div class="cd"><div class="st">{{ _('Inbox') }}</div><div id="inboxList"><div class="lo"><div class="s"></div></div></div></div>';
+  h+='<div class="cd" style="margin-top:12px"><div class="st" style="cursor:pointer" onclick="toggleContacts()">📇 {{ _('Contacts') }} <span id="contactToggle" style="font-size:10px;color:var(--dim)">[{{ _('Expand') }}]</span></div>';
+  h+='<div id="contactsPanel" style="display:none">';
+  h+='<div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">';
+  h+='<button class="btn bp bs" onclick="selectAllContacts()">{{ _('Select All') }}</button>';
+  h+='<button class="btn bo bs" onclick="deselectAllContacts()">{{ _('Deselect All') }}</button>';
+  h+='<button class="btn bp" onclick="sendBulk()" style="font-size:11px">{{ _('Mass Send to Selected') }}</button>';
+  h+='<span id="contactCount" style="font-size:11px;color:var(--dim)">0 {{ _('contacts') }}</span>';
+  h+='</div><div id="contactsList"><div class="lo"><div class="s"></div></div></div></div></div>';
+  document.getElementById("mc").innerHTML=h;
+  window.emEditor=null;
+  window.emAttachments=[];
+  loadContacts();
+  document.getElementById("em-to").addEventListener("input",parseRecipients);
+  fetch("/admin/email/inbox",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success||!d.data){document.getElementById("inboxList").innerHTML='<div class="em">{{ _('Load Failed') }}</div>';return}
+    var lst=d.data.items||d.data;
+    if(!lst.length){document.getElementById("inboxList").innerHTML='<div class="em">{{ _('No Emails') }}</div>';return}
+    var tbl='<table><tr><th>{{ _('From') }}</th><th>{{ _('Subject') }}</th><th>{{ _('Attachment') }}</th><th>{{ _('Time') }}</th><th>{{ _('Action') }}</th></tr>';
+    lst.forEach(function(e){
+      var attIcon=e.has_attachments?' <span style="color:var(--accent)">📎</span>':'';
+      tbl+='<tr><td>'+(e.from||'-')+'</td><td>'+(e.subject||'{{ _('(No Subject)') }}')+attIcon+'</td><td>'+(e.has_attachments?'<span style="color:var(--accent)">{{ _('Yes') }}</span>':'')+'</td><td>'+(e.date||'')+'</td>';
+      tbl+='<td><button class="btn bo bs" onclick="re('+e.uid+',\''+e.from.replace(/'/g,'')+'\',\''+(e.subject||'').replace(/'/g,'')+'\')">{{ _('Reply') }}</button> <button class="btn bo" onclick="viewEmail('+e.uid+')">{{ _('View') }}</button></td></tr>';
+    });
+    tbl+='</table>';
+    document.getElementById("inboxList").innerHTML=tbl;
+  }).catch(function(){})
+};
+
+var emContacts=[];
+var emSelectedContacts=[];
+function loadContacts(){
+  fetch("/admin/email/contacts",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(d.success&&d.data){emContacts=d.data;renderContacts()}
+  }).catch(function(){})
+}
+function renderContacts(){
+  var el=document.getElementById("contactsList");
+  if(!el)return;
+  var total=emContacts.length;
+  document.getElementById("contactCount").textContent=total+" {{ _('contacts') }}";
+  if(!total){el.innerHTML='<div class="em">{{ _('No contacts (auto-collected)') }}</div>';return}
+  var h='<table><tr><th style="width:36px"><input type="checkbox" onchange="toggleAllContacts(this.checked)"></th><th>{{ _('Name') }}</th><th>{{ _('Email') }}</th><th>{{ _('Source') }}</th><th>{{ _('Count') }}</th></tr>';
+  emContacts.forEach(function(c,i){
+    var checked=emSelectedContacts.indexOf(c.email)>=0?' checked':'';
+    var src=c.source==='contact'?'<span class="bdg pd">{{ _('Form') }}</span>':'<span class="bdg on">{{ _('Sent') }}</span>';
+    h+='<tr><td><input type="checkbox" class="contact-cb" data-email="'+c.email+'" data-name="'+c.name+'"'+checked+' onchange="toggleContact(this)"></td>'+
+      '<td>'+(c.name||'-')+'</td><td style="color:var(--accent)">'+c.email+'</td><td>'+src+'</td><td>'+c.count+'</td></tr>';
+  });
+  h+='</table>';
+  el.innerHTML=h;
+}
+function toggleAllContacts(checked){
+  var cbs=document.querySelectorAll("#contactsList .contact-cb");
+  cbs.forEach(function(cb){cb.checked=checked;toggleContact(cb)});
+}
+function toggleContact(cb){
+  var email=cb.getAttribute("data-email");
+  if(cb.checked){if(emSelectedContacts.indexOf(email)<0)emSelectedContacts.push(email)}
+  else{emSelectedContacts=emSelectedContacts.filter(function(e){return e!==email})}
+}
+function selectAllContacts(){
+  var cbs=document.querySelectorAll("#contactsList .contact-cb");
+  cbs.forEach(function(cb){cb.checked=true;if(emSelectedContacts.indexOf(cb.getAttribute("data-email"))<0)emSelectedContacts.push(cb.getAttribute("data-email"))});
+}
+function deselectAllContacts(){
+  var cbs=document.querySelectorAll("#contactsList .contact-cb");
+  cbs.forEach(function(cb){cb.checked=false});
+  emSelectedContacts=[];
+}
+function toggleContacts(){
+  var p=document.getElementById("contactsPanel");
+  var t=document.getElementById("contactToggle");
+  if(p.style.display==="none"||!p.style.display){
+    p.style.display="block";
+    t.textContent="[{{ _('Collapse') }}]";
+    renderContacts();
+  }else{
+    p.style.display="none";
+    t.textContent="[{{ _('Expand') }}]";
+  }
+}
+function sendBulk(){
+  if(!emSelectedContacts.length){alert("{{ _('Please select contacts first') }}");return}
+  var count=emSelectedContacts.length;
+  var el=document.getElementById("em-to");
+  el.value=emSelectedContacts.join(", ");
+  parseRecipients();
+  se();
+  emSelectedContacts=[];
+  document.querySelectorAll("#contactsList .contact-cb").forEach(function(cb){cb.checked=false});
+  showToast("{{ _('Filled') }} "+count+" {{ _('recipients, edit and send') }}","success");
+}
+function parseRecipients(){
+  var el=document.getElementById("em-to");
+  var raw=el.value;
+  var addrs=raw.split(",").map(function(a){return a.trim()}).filter(function(a){return a.length>0&&a.includes("@")});
+  var container=document.getElementById("em-recipients");
+  if(!addrs.length){container.innerHTML="";return}
+  var h='';
+  addrs.forEach(function(a){
+    var name='';
+    for(var i=0;i<emContacts.length;i++){if(emContacts[i].email.toLowerCase()===a.toLowerCase()){name=emContacts[i].name;break}}
+    var label=name||a.split("@")[0];
+    h+='<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;background:rgba(0,212,170,.1);border:1px solid rgba(0,212,170,.3);border-radius:4px;font-size:12px">'+label+' <span style="color:var(--dim);font-size:10px">'+a+'</span></span>';
+  });
+  container.innerHTML=h;
+}
+var emAttachments=[];
+function addAttach(){
+  var files=document.getElementById("em-file").files;
+  for(var i=0;i<files.length;i++){
+    var f=files[i];
+    if(f.size>10*1024*1024){alert('{{ _('Attachment') }} '+f.name+' {{ _('exceeds 10MB limit') }}');continue}
+    var reader=new FileReader();
+    reader.onload=function(fn,fsize){return function(e){
+      emAttachments.push({filename:fn,data:e.target.result.split(',')[1],content_type:fn.split('.').pop()==='pdf'?'application/pdf':'application/octet-stream',size:fsize});
+      renderAttachList();
+    }}(f.name,f.size);
+    reader.readAsDataURL(f);
+  }
+  document.getElementById("em-file").value='';
+}
+function renderAttachList(){
+  var el=document.getElementById("em-attach-list");
+  if(!emAttachments.length){el.innerHTML='';return}
+  var h='';
+  emAttachments.forEach(function(a,i){
+    var size=(a.size/1024).toFixed(1)+'KB';
+    if(a.size>1024*1024)size=(a.size/1024/1024).toFixed(1)+'MB';
+    h+='<span style="display:inline-flex;align-items:center;gap:4px;padding:4px 8px;background:var(--bg);border-radius:4px;font-size:11px">📎 '+a.filename+' ('+size+') <span onclick="removeAttach('+i+')" style="cursor:pointer;color:var(--dim)">✕</span></span>';
+  });
+  el.innerHTML=h;
+}
+function removeAttach(i){emAttachments.splice(i,1);renderAttachList()}
+function se(){
+  document.getElementById("sendForm").style.display="block";
+  if(!window.emEditor){
+    window.emEditor=new Quill('#em-editor',{theme:'snow',placeholder:'{{ _('Email body...') }}',modules:{toolbar:[['bold','italic','underline','strike'],[{list:'ordered'},{list:'bullet'}],['link','blockquote','code-block'],[{size:['small',false,'large','huge']}],[{color:[]},{background:[]}],['clean']]}});
+  }
+  setTimeout(function(){window.emEditor&&window.emEditor.focus()},100)
+}
+function hsf(){document.getElementById("sendForm").style.display="none"}
+function ds(){
+  var to=document.getElementById("em-to").value.trim();
+  var sub=document.getElementById("em-sub").value.trim();
+  var html=window.emEditor?window.emEditor.root.innerHTML:'';
+  var text=window.emEditor?window.emEditor.getText().trim():"";
+  if(!to||!sub||(!html&&!text)){showToast('{{ _('Please fill all fields') }}','error');return}
+  var body=text||'';
+  fetch("/admin/email/send",{method:"POST",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify({to:to,subject:sub,body:body,body_html:html||null,attachments:emAttachments.length?emAttachments:null})}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){showToast('{{ _('✅ Sent') }}','success');emAttachments=[];renderAttachList();hsf();l_email()}else{showToast('❌ '+(d.error||'{{ _('Send Failed') }}'),'error')}
+  }).catch(function(){showToast('❌ {{ _('Send Failed') }}','error')})
+}
+function re(uid,from,sub){
+  document.getElementById("em-to").value=from;
+  var rsub=sub.startsWith("Re:")?sub:"Re: "+sub;
+  document.getElementById("em-sub").value=rsub;
+  if(window.emEditor)window.emEditor.root.innerHTML='';
+  se();
+}
+function showToast(msg,type){
+  var t=document.getElementById("adminToast");
+  t.textContent=msg;
+  t.className="toast show "+(type||"");
+  setTimeout(function(){t.classList.remove("show")},3000);
+}
+function viewEmail(uid){
+  fetch("/admin/email/read/"+uid,{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success){showToast("{{ _('Load Failed') }}: "+(d.error||""),"error");return}
+    var m=d.data;
+    var bodyHtml=m.body_html||"";
+    var bodyText=(m.body||'{{ _('(No content)') }}').replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\n/g,"<br>");
+    var h='<div class="modal-overlay" onclick="closeEmailModal(event)">';
+    h+='<div class="modal-box" onclick="event.stopPropagation()">';
+    h+='<button onclick="closeEmailModal()" style="float:right;background:none;border:none;color:var(--dim);font-size:20px;cursor:pointer;line-height:1">✕</button>';
+    h+='<h3>'+(m.subject||'{{ _('(No Subject)') }}')+'</h3>';
+    h+='<div class="modal-meta">';
+    h+='<div><span>{{ _('From') }}</span> '+(m.from||"-")+'</div>';
+    h+='<div><span>{{ _('To') }}</span> '+(

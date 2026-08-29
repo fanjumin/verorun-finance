@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+
+<html lang="{{ lang }}">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>{{ post.title }} — {{ brand.site_name_en if brand else '' }}</title>
+<meta content="{{ post.excerpt[:160] }}" name="description"/>
+<link href="{{ brand.favicon_url if brand and brand.favicon_url else '/static/favicon-32x32.png' }}" rel="icon" sizes="32x32" type="image/png"/>
+<link href="/static/css/fonts.css" rel="stylesheet"/>
+<link href="/static/css/landing.css" rel="stylesheet"/>
+<style>
+.article-header{max-width:800px;margin:0 auto;padding:140px 32px 0}
+.article-header .back{color:var(--text-muted);text-decoration:none;font-size:13px;display:inline-flex;align-items:center;gap:6px;margin-bottom:20px;transition:color .25s}
+.article-header .back:hover{color:var(--text-high)}
+.article-header h1{font-size:clamp(1.8em,3vw,2.4em);font-weight:800;color:var(--text-high);margin-bottom:12px;letter-spacing:-.01em;line-height:1.2}
+.article-header .meta{color:var(--text-muted);font-size:13px;margin-bottom:32px;padding-bottom:16px;border-bottom:1px solid var(--border)}
+.article-content{max-width:740px;margin:0 auto;padding:40px 32px 60px;font-size:15px;color:var(--text-dim);line-height:1.9}
+.article-content p{margin-bottom:16px}
+.article-content h2,.article-content h3{color:var(--text-high);margin:32px 0 12px;font-weight:600}
+.article-content h2{font-size:1.3em}
+.article-content h3{font-size:1.1em}
+.article-content ul,.article-content ol{margin:12px 0 12px 24px}
+.article-content li{margin-bottom:6px}
+.article-content a{color:var(--cyan);text-decoration:underline}
+.article-content blockquote{border-left:3px solid var(--indigo);padding:12px 20px;margin:16px 0;background:var(--bg-glass);border-radius:0 8px 8px 0;color:var(--text-dim)}
+.article-content code{background:var(--bg-elevated);padding:2px 6px;border-radius:4px;font-size:13px;color:var(--cyan)}
+.article-content img{max-width:100%;border-radius:var(--radius);margin:24px 0;border:1px solid var(--border)}
+</style>
+</head>
+<body>
+<div id="particles-bg"></div>
+<nav class="nav">
+<div class="nav-inner">
+<a class="nav-logo" href="/">
+<div class="logo-icon">E</div>
+<span>{{ brand.site_name_en if brand else '' }}</span>
+</a>
+<button aria-label="{{ _('Menu') }}" class="mobile-toggle" onclick="toggleMobileNav()">☰</button>
+<div class="nav-links" id="navLinks">
+<a href="/services">{{ _('Services') }}</a>
+<a href="/docs">{{ _('Docs') }}</a>
+<a class="active" href="/insights">{{ _('Updates') }}</a>
+<a href="/download">{{ _('Download') }}</a>
+<a href="/community">{{ _('Community') }}</a>
+<a class="nav-cta" href="/start">{{ _('🚀 Get Started Now') }}</a>
+</div>
+</div>
+</nav>
+<div class="article-header">
+<a class="back" href="/insights">{{ _('← Back to Updates') }}</a>
+<h1>{{ post.title }}</h1>
+<div class="meta">
+    {% if post.author %}<span>👤 {{ post.author }}</span> · {% endif %}
+    <span>📅 {{ post.published_at[:10] }}</span>
+    {% if post.view_count is defined and post.view_count > 0 %}· <span>👀 {{ _('{count} Reads', count=post.view_count) }}</span>{% endif %}
+    {{ post.published_at or post.created_at }} ·
+    {{ post.author or (brand.site_name_en if brand else '') }} ·
+    <span style="color:var(--cyan)">{{ post.category }}</span>
+</div>
+</div>
+<div class="article-content">
+  {% autoescape false %}{{ post.content }}{% endautoescape %}
+</div>
+<div class="article-comments" style="max-width:740px;margin:40px auto;padding:0 32px">
+<h3 style="font-size:18px;font-weight:700;margin-bottom:20px;color:var(--text-high)">Comments <span id="cmtCount">0</span></h3>
+<div class="cd" style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:24px">
+<div style="margin-bottom:10px"><input class="in" id="cmtNick" placeholder="Name (optional)" style="width:200px;font-size:13px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--text)"/></div>
+<textarea class="ta" id="cmtContent" maxlength="500" placeholder="Write a comment... (max 500 chars)" style="width:100%;min-height:80px;font-size:13px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;color:var(--text);resize:vertical"></textarea>
+<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+<span id="cmtCounter" style="font-size:11px;color:var(--dim)">0 / 500</span>
+<button class="btn bp" onclick="submitComment()" style="padding:8px 20px;font-size:13px;border:none;border-radius:6px;background:var(--accent);color:#000;font-weight:600;cursor:pointer">Post Comment</button>
+</div>
+<div id="cmtMsg" style="margin-top:8px;font-size:12px;display:none"></div>
+</div>
+<div id="cmtList"></div>
+</div>
+<script>
+var POST_ID = {{ post.id }};
+document.addEventListener('DOMContentLoaded',function(){
+  var ta=document.getElementById('cmtContent');
+  if(ta)ta.addEventListener('input',function(){
+    document.getElementById('cmtCounter').textContent=this.value.length+' / 500';
+  });
+  loadComments();
+});
+function loadComments(){
+  fetch('/api/v1/comments/'+POST_ID).then(function(r){return r.json()}).then(function(d){
+    if(!d.success)return;
+    var items=d.data.items||[];
+    document.getElementById('cmtCount').textContent=d.data.total;
+    var h='';
+    if(!items.length)h='<div style="text-align:center;padding:30px;color:var(--dim);font-size:13px">No comments yet</div>';
+    else items.forEach(function(c){
+      h+='<div style="padding:14px 0;border-bottom:1px solid var(--border)">';
+      h+='<div style="display:flex;justify-content:space-between;margin-bottom:4px">';
+      h+='<span style="font-weight:600;font-size:13px">'+esc(c.nickname||'Anonymous')+'</span>';
+      h+='<span style="font-size:11px;color:var(--dim)">'+(c.created_at||'').slice(0,10)+'</span></div>';
+      h+='<div style="font-size:13px;line-height:1.6;color:var(--text-dim)">'+esc(c.content)+'</div></div>';
+    });
+    document.getElementById('cmtList').innerHTML=h;
+  }).catch(function(){});
+}
+function submitComment(){
+  var c=document.getElementById('cmtContent').value.trim();
+  if(!c||c.length>500){showToast('1-500 characters','error');return}
+  var n=document.getElementById('cmtNick').value.trim()||'Anonymous';
+  var btn=document.querySelector('.article-comments .btn');
+  btn.disabled=true;btn.textContent='Submitting...';
+  fetch('/api/v1/comments',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({post_id:POST_ID,content:c,nickname:n})}).then(function(r){return r.json()}).then(function(d){
+    btn.disabled=false;btn.textContent='Post Comment';
+    var m=document.getElementById('cmtMsg');m.style.display='block';
+    if(d.success||(d.data&&d.data.status!=='rejected')){
+      m.style.color='var(--accent)';m.textContent=d.data?d.data.message:'Posted!';
+      document.getElementById('cmtContent').value='';document.getElementById('cmtCounter').textContent='0 / 500';
+      loadComments();
+    }else{
+      m.style.color='#f85149';m.textContent=(d.data?d.data.message:d.error)||'Failed';
+    }
+    setTimeout(function(){m.style.display='none'},4000);
+  }).catch(function(){btn.disabled=false;btn.textContent='Post Comment';});
+}
+</script>
+
+
+<div class="comment-section" style="max-width:740px;margin:40px auto 20px;padding:0 32px">
+<h3 style="font-size:18px;font-weight:700;margin-bottom:20px">{{ _('Comments') }}<span id="cmtCount" style="font-size:13px;color:var(--text-muted);font-weight:400"></span></h3>
+<div class="cd" style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:24px">
+<div style="display:flex;gap:12px;margin-bottom:10px">
+<input class="in" id="cmtNickname" placeholder="{{ _('Nickname') }}" style="flex:1;font-size:13px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--text)"/>
+<input class="in" id="cmtEmail" placeholder="{{ _('Email (optional)') }}" style="flex:1;font-size:13px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--text)"/>
+</div>
+<textarea id="cmtContent" maxlength="500" placeholder="{{ _('Write a comment... (max 500 chars)') }}" style="width:100%;min-height:80px;font-size:13px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px 12px;color:var(--text);resize:vertical;font-family:inherit"></textarea>
+<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+<span id="cmtCharCount" style="font-size:11px;color:var(--text-muted)">0/500</span>
+<button class="btn bp" onclick="submitComment({{ post.id }})" style="padding:8px 20px;border-radius:6px;cursor:pointer;border:none;background:var(--accent);color:#000;font-size:13px;font-weight:600">{{ _('Post Comment') }}</button>
+</div>
+<div id="cmtMsg" style="margin-top:8px;font-size:12px;display:none"></div>
+</div>
+<div id="cmtList"></div>
+</div>
+
+<script>
+var POST_ID = {{ post.id }};
+function submitComment(postId){
+  var nm=document.getElementById('cmtNickname').value.trim()||'Anonymous';
+  var ct=document.getElementById('cmtContent').value.trim();
+  if(!ct){showCmtMsg("{{ translations['Please enter comment content'] }}",'error');return}
+  if(ct.length>500){showCmtMsg("{{ translations['Comment cannot exceed 500 characters'] }}",'error');return}
+  var btn=event.target;btn.disabled=true;btn.textContent="{{ translations['Submitting...'] }}";
+  fetch('/api/v1/comments',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({post_id:postId,nickname:nm,content:ct})})
+    .then(function(r){return r.json()}).then(function(d){
+      if(d.success){showCmtMsg(d.data.message||"{{ translations['Comment posted successfully'] }}",'success');
+        document.getElementById('cmtContent').value='';loadComments(postId)}
+      else{showCmtMsg(d.error||"{{ translations['Failed'] }}",'error')}
+      btn.disabled=false;btn.textContent="{{ translations['Post Comment'] }}";
+    }).catch(function(){showCmtMsg("{{ translations['Request failed'] }}",'error');btn.disabled=false;btn.textContent="{{ translations['Post Comment'] }}"});
+}
+function loadComments(postId){
+  fetch('/api/v1/comments/'+postId).then(function(r){return r.json()}).then(function(d){
+    if(!d.success||!d.data)return;
+    var items=d.data.items||[];
+    var el=document.getElementById('cmtList');
+    var cnt=document.getElementById('cmtCount');
+    if(cnt)cnt.textContent='('+d.data.total+')';
+    if(!items.length){el.innerHTML='<div style="font-size:13px;color:var(--text-muted);text-align:center;padding:20px">{{ translations['No comments yet'] }}</div>';return}
+    var h='';
+    items.forEach(function(c){
+      h+='<div style="padding:12px 0;border-bottom:1px solid var(--border)">';
+      h+='<div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-weight:600;font-size:13px">'+esc(c.nickname)+'</span><span style="font-size:11px;color:var(--text-muted)">'+(c.created_at||'').slice(0,16)+'</span></div>';
+      h+='<div style="font-size:13px;color:var(--text-dim);line-height:1.6">'+esc(c.content)+'</div></div>';
+    });
+    el.innerHTML=h;
+  }).catch(function(){});
+}
+function showCmtMsg(msg,type){
+  var el=document.getElementById('cmtMsg');
+  if(!el)return;el.textContent=msg;el.style.display='block';
+  el.style.color=type==='error'?'#f85149':'var(--accent)';
+  setTimeout(function(){el.style.display='none'},4000);
+}
+function esc(s){if(!s)return'';return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
+document.addEventListener('DOMContentLoaded',function(){loadComments(POST_ID);var ta=document.getElementById('cmtContent');if(ta)ta.addEventListener('input',function(){var cnt=document.getElementById('cmtCharCount');if(cnt)cnt.textContent=this.value.length+'/500'})});
+</script>
+<footer class="footer">
+<div class="footer-grid" style="max-width:1200px;margin:0 auto;padding-bottom:24px">
+<div class="footer-col">
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+<div style="width:32px;height:32px;background:var(--gradient-primary);border-radius:10px;display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-size:14px;font-weight:900;color:#fff">E</div>
+<span style="font-family:var(--font-display);font-weight:700;font-size:16px;background:var(--gradient-primary);-webkit-background-clip:text;-webkit-text-fill-color:transparent">{{ brand.site_name_en if brand else '' }}</span>
+</div>
+<p class="footer-brand">{{ _('Building financial analysis, collaboration and market intelligence for AI agents.') }}</p>
+</div>
+<div class="footer-col"><h4>{{ _('Products') }}</h4><a href="/services">{{ _('Services') }}</a><a href="/download">{{ _('Download') }}</a><a href="/docs">{{ _('Docs') }}</a></div>
+<div class="footer-col"><h4>{{ _('Community') }}</h4><a href="/community">{{ _('Agent Community') }}</a><a href="/insights">{{ _('Industry Insights') }}</a></div>
+<div class="footer-col"><h4>{{ _('Legal') }}</h4><a href="/brand">{{ _('Contact') }}</a><a href="#">{{ _('Privacy Policy') }}</a></div>
+</div>
+<div class="footer-bottom" style="max-width:1200px;margin:0 auto;padding-top:20px">
+<span>{{ (brand.copyright | safe) if brand else '&copy; 2026 ' + (brand.site_name_en if brand else 'VeroRun') }}</span>
+<span class="disclaimer">{{ _('Content is Agent research opinions and community discussion, not investment advice.') }}</span>
+</div>
+</footer>
+
+<script src="/static/js/tsparticles.bundle.min.js"></script>
+<script src="/static/js/app.js"></script>
+<script>function toggleMobileNav(){document.getElementById("navLinks").classList.toggle("open")}</script>
+</body>
+</html>

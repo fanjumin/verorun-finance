@@ -1,0 +1,364 @@
+function esc(s){if(!s)return'';return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;').replace(/'/g,'&#39;')}
+function hk(l,v,c){return '<div class="cd"><div class="l">'+l+'</div><div class="v '+(c||"")+'">'+v+'</div></div>'}
+
+// ── 主题确认弹窗 ──
+var _scCB=null;
+function showConfirm(title,text,cb,okLabel){
+  _scCB=cb;
+  var ov=document.getElementById("scOverlay");
+  if(!ov){
+    ov=document.createElement("div");ov.id="scOverlay";
+    ov.style.cssText="position:fixed;top:0;left:0;width:100%;height:100%;z-index:99999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.45);backdrop-filter:blur(2px)";
+    ov.innerHTML='<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:28px 32px;min-width:340px;max-width:420px;box-shadow:0 8px 32px rgba(0,0,0,0.3)">'
+      +'<div class="scTitle" style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:10px"></div>'
+      +'<div class="scText" style="font-size:13px;color:var(--text-dim);margin-bottom:22px;line-height:1.5"></div>'
+      +'<div style="display:flex;gap:10px;justify-content:flex-end">'
+      +'<button class="scCancel btn bo bs">{{ _("Cancel") }}</button>'
+      +'<button class="scOk" style="padding:6px 16px;background:var(--rose);color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:500"></button>'
+      +'</div></div>';
+    document.body.appendChild(ov);
+    ov.querySelector(".scCancel").onclick=function(){ov.style.display="none";_scCB=null};
+    ov.onclick=function(e){if(e.target.id==="scOverlay"){ov.style.display="none";_scCB=null}};
+    ov.querySelector(".scOk").onclick=function(){
+      ov.style.display="none";
+      if(_scCB){_scCB();_scCB=null}
+    };
+  }
+  ov.querySelector(".scTitle").textContent=title;
+  ov.querySelector(".scText").innerHTML=text;
+  ov.querySelector(".scOk").textContent=okLabel||'{{ _("Delete") }}';
+  ov.style.display="";
+}
+
+if(!T){document.getElementById("mc").innerHTML='<div class="em">{{ _('Please') }} <a href="/admin/login">{{ _('Log In') }}</a></div>'}
+
+function init(){try{
+  var _qp=new URLSearchParams(window.location.search);
+  if(_qp.get('force_pwd')==='1'){showForcePasswordChange();return}
+  document.getElementById("an").textContent="{{ _('Admin') }}";
+  var path=window.location.pathname.replace(/\/+$/,'');
+  var seg=path.split('/').filter(Boolean);
+  var section=seg.length>=2?seg[1]:'dashboard';
+  go(section);
+}catch(e){console.error('init:',e)}}
+setTimeout(function(){
+  var mc=document.getElementById("mc");
+  if(mc&&mc.innerHTML.indexOf('lo')>-1)try{go("dashboard")}catch(e){console.error('init_deferred:',e)}
+},100);
+
+function logout(){
+  localStorage.removeItem("sso_token");
+  localStorage.removeItem("tm_token");
+  localStorage.removeItem("token");
+  localStorage.removeItem("admin_token");
+  localStorage.removeItem("admin_user");
+  window.location.href="/admin/logout";
+}
+
+/* ── Force password change on first login ── */
+function showForcePasswordChange(){
+  var mc=document.getElementById("mc");
+  mc.innerHTML='<div style="display:flex;align-items:center;justify-content:center;min-height:70vh">'
+    +'<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:32px;max-width:440px;width:100%">'
+    +'<div style="font-size:18px;font-weight:700;margin-bottom:6px">{{ _('Change Your Password') }}</div>'
+    +'<div style="font-size:12px;color:var(--rose);margin-bottom:18px">{{ _('You must change your password before first use. At least 10 characters with uppercase, lowercase, numbers and special characters.') }}</div>'
+    +'<div style="margin-bottom:12px"><label style="font-size:12px;font-weight:500;color:var(--text-muted);display:block;margin-bottom:4px">{{ _('New Password') }}</label>'
+    +'<input class="in" id="fpwd" type="password" placeholder="{{ _('At least 10 characters') }}" style="width:100%"></div>'
+    +'<div style="margin-bottom:18px"><label style="font-size:12px;font-weight:500;color:var(--text-muted);display:block;margin-bottom:4px">{{ _('Confirm New Password') }}</label>'
+    +'<input class="in" id="fpwdConfirm" type="password" placeholder="{{ _('Re-enter password') }}" style="width:100%"></div>'
+    +'<div id="fpwdMsg" style="font-size:12px;color:var(--rose);margin-bottom:12px;display:none"></div>'
+    +'<button class="btn" style="width:100%;padding:12px;background:var(--gradient-primary);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-size:14px;font-weight:600" onclick="submitFirstPassword()">{{ _('Set Password') }}</button>'
+    +'</div></div>';
+}
+function submitFirstPassword(){
+  var pwd=document.getElementById("fpwd").value;
+  var confirm=document.getElementById("fpwdConfirm").value;
+  var msg=document.getElementById("fpwdMsg");
+  if(!pwd||pwd.length<10){msg.style.display="";msg.textContent="{{ _('Password must be at least 10 characters') }}";return}
+  if(pwd!==confirm){msg.style.display="";msg.textContent="{{ _('Passwords do not match') }}";return}
+  if(!/[A-Z]/.test(pwd)){msg.style.display="";msg.textContent="{{ _('Password must contain uppercase letter') }}";return}
+  if(!/[a-z]/.test(pwd)){msg.style.display="";msg.textContent="{{ _('Password must contain lowercase letter') }}";return}
+  if(!/[0-9]/.test(pwd)){msg.style.display="";msg.textContent="{{ _('Password must contain a number') }}";return}
+  if(!/[!@#$%^&*(),.?":{}|<>_+\-=\[\]~`\/;]/.test(pwd)){msg.style.display="";msg.textContent="{{ _('Password must contain special character') }}";return}
+  msg.style.display="none";
+  var btn=document.querySelector("#mc button");btn.disabled=true;btn.textContent="{{ _('Setting...') }}";
+  fetch('/api/admin/first-password-set',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+T},
+    body:JSON.stringify({password:pwd})
+  }).then(function(r){return r.json()}).then(function(d){
+    if(d.success){
+      msg.style.cssText="font-size:12px;color:var(--success);margin-bottom:12px";
+      msg.style.display="";
+      msg.textContent="{{ _('Password set successfully! Redirecting to login...') }}";
+      setTimeout(function(){localStorage.clear();window.location.href="/admin/login"},1500);
+    }else{
+      msg.style.display="";msg.textContent=d.error||"{{ _('Failed to set password') }}";btn.disabled=false;btn.textContent="{{ _('Set Password') }}"
+    }
+  }).catch(function(){
+    msg.style.display="";msg.textContent="{{ _('Network error') }}";btn.disabled=false;btn.textContent="{{ _('Set Password') }}"
+  });
+}
+
+var sectionMap={};
+// 从 GROUPS 自动填充：已知内联 section 给予 100 次重试（异步插件组件加载需更长时间）
+if(typeof GROUPS!=="undefined"){GROUPS.forEach(function(g){g[2].forEach(function(m){if(m[0]!=="_section")sectionMap[m[0]]=true})})}
+function go(s){
+  document.querySelectorAll(".ni").forEach(function(n){n.classList.remove("sel")});
+  var el=document.getElementById("n-"+s);if(el)el.classList.add("sel");
+  document.getElementById("mc").innerHTML='<div class="lo"><div class="s"></div>{{ _('Loading...') }}...</div>';
+  var maxRetries=sectionMap.hasOwnProperty(s)?100:3;
+  var _tries=0;
+  (function _try(){_tries++;if(typeof window["l_"+s]=="function"){window["l_"+s]()}else if(_tries<maxRetries)setTimeout(_try,50);else document.getElementById("mc").innerHTML='<div class="em">{{ _('Plugin render function') }} l_'+s+'() {{ _('not found') }}. {{ _('Try refreshing the page') }}.'})();
+}
+
+// Phase 2 (2026-08-09): dual-channel — l_<key>() inline preferred; embed_url iframe as fallback
+function goPlugin(key,embedUrl){
+  document.querySelectorAll(".ni").forEach(function(n){n.classList.remove("sel")});
+  var el=document.getElementById("n-"+key);if(el)el.classList.add("sel");
+  document.getElementById("mc").innerHTML='<div class="lo"><div class="s"></div>{{ _('Loading...') }}</div>';
+
+  var _tries=0;
+  var _maxTries=10;
+  (function _try(){_tries++;
+    // Channel 1 (preferred): inline partial via l_<key>()
+    if(typeof window["l_"+key]=="function"){
+      window["l_"+key]();
+      if(embedUrl)console.log("[goPlugin] l_"+key+"() used (embed_url on "+esc(key)+" ignored)");
+      return;
+    }
+    if(_tries<_maxTries){setTimeout(_try,100);return}
+    // Retries exhausted — fallback to Channel 2: iframe
+    if(embedUrl){
+      console.warn("[deprecated] embed_url iframe in use for plugin:",key);
+      var ifr=document.createElement('iframe');
+      ifr.style.cssText='width:100%;height:calc(100vh - 70px);border:none;background:#050508';
+      ifr.src=embedUrl + (embedUrl.indexOf('?')>=0?'&':'?') + 'token=' + encodeURIComponent(T||'');
+      ifr.onerror=function(){document.getElementById("mc").innerHTML='<div class="em">{{ _('Plugin page failed to load.') }}</div>';};
+      document.getElementById("mc").innerHTML='';
+      document.getElementById("mc").appendChild(ifr);
+    }else{
+      document.getElementById("mc").innerHTML='<div class="em">{{ _('Plugin render function') }} l_'+esc(key)+'() {{ _('not found') }}. {{ _('Try refreshing the page') }}.</div>';
+    }
+  })();
+}
+
+// ── Plugin Bridges: 插件内联渲染函数 ──
+
+// Coupon Plugin Bridge
+window.l_shop_coupons=function(){window.l_coupons_plugin()};
+window.l_coupons_plugin=function(){
+  document.getElementById("pt").textContent={{ _('Smart Coupon') | tojson }};
+  document.getElementById("mc").innerHTML='<div class="lo"><div class="s"></div>{{ _('Loading...') }}</div>';
+  loadPluginCouponView();
+};
+function loadPluginCouponView(){
+  fetch("/plugin/coupons/admin/list",{headers:{"Authorization":"Bearer "+T}}).then(function(r){
+    if(!r.ok){
+      document.getElementById("mc").innerHTML='<div class="em">{{ _('Plugin route not registered, enable the plugin first') }} (404)</div>';
+      return Promise.reject();
+    }
+    return r.json()
+  }).then(function(d){
+    if(!d.success)return;
+    var cs=d.data||[];
+    var h='<div class="sbar"><button class="btn bp" onclick="showPluginCouponForm()">+ ' + {{ _('New Coupon') | tojson }} + '</button>';
+    h+='<button class="btn bs bo" onclick="loadPluginCouponStats()">📊 ' + {{ _('Statistics') | tojson }} + '</button>';
+    h+='<input id="cpSearch" placeholder="' + {{ _('Search') | tojson }} + '" oninput="filterPluginCoupons()" style="flex:1;max-width:200px;height:30px;padding:0 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text)"></div>';
+    h+='<div class="gr" id="cpSummary"></div>';
+    h+='<div class="cd" id="cpForm" style="display:none;margin-top:16px"><div class="st" id="cpFormTitle">{{ _('Create Coupon') }}</div>';
+    h+='<div class="g2"><div><label>{{ _('Coupon Code') }}</label><input class="in" id="cpCode" style="width:100%;font-family:monospace" placeholder="SUMMER2026"></div>';
+    h+='<div><label>{{ _('Name') }}</label><input class="in" id="cpName" style="width:100%" placeholder="' + {{ _('Summer Sale') | tojson }} + '"></div></div>';
+    h+='<div class="g3"><div><label>{{ _('Category') }}</label><select class="sl" id="cpCategory"><option value="general">{{ _('General Coupon') }}</option><option value="new_user">{{ _('New User Coupon') }}</option><option value="threshold">{{ _('Full Reduction Coupon') }}</option><option value="promotion">{{ _('Promotion Coupon') }}</option></select></div>';
+    h+='<div><label>{{ _('Type') }}</label><select class="sl" id="cpType" onchange="toggleCpType()"><option value="fixed">{{ _('Fixed Amount') }}</option><option value="percent">{{ _('Percentage') }}</option><option value="free_shipping">{{ _('Free Shipping') }}</option></select></div>';
+    h+='<div><label>{{ _('Denomination') }}</label><input class="in" id="cpValue" type="number" step="0.01" placeholder="0.00" style="width:100%"></div></div>';
+    h+='<div class="g3"><div><label>{{ _('Minimum Spend') }}(¥)</label><input class="in" id="cpMin" type="number" step="0.01" value="0" style="width:100%"></div>';
+    h+='<div><label>{{ _('Scenario') }}</label><select class="sl" id="cpScene"><option value="">{{ _('General') }}</option></select></div>';
+    h+='<div><label>{{ _('Limit per User') }}</label><input class="in" id="cpPerUser" type="number" value="1" style="width:100%"></div></div>';
+    h+='<div class="g2"><div><label>{{ _('Total Limit') }}(0=Unlimited)</label><input class="in" id="cpLimit" type="number" value="0" style="width:100%"></div>';
+    h+='<div><label>{{ _('Expired') }}</label><input class="in" id="cpExpire" type="date" style="width:100%"></div></div>';
+    h+='<div><label>{{ _('Description') }}</label><textarea class="ta" id="cpDesc" style="width:100%;height:50px;font-size:11px" placeholder="' + {{ _('Optional') | tojson }} + '"></textarea></div>';
+    h+='<div><label>{{ _('Applicable Products') }} ID ({{ _('Comma Separated') }})</label><input class="in" id="cpProducts" style="width:100%;font-family:monospace" placeholder="1,5,12"></div>';
+    h+='<div style="margin-top:8px;display:flex;gap:8px"><button class="btn bp" onclick="savePluginCoupon()">{{ _('Save') }}</button><button class="btn bo" onclick="hidePluginCouponForm()">{{ _('Cancel') }}</button></div>';
+    h+='<input type="hidden" id="cpEditId" value=""></div>';
+    h+='<div class="cd"><div class="st">{{ _('Coupon List') }} ('+cs.length+')</div><div style="overflow-x:auto"><table id="cpTable"><tr><th>ID</th><th>{{ _('Code') }}</th><th>{{ _('Name') }}</th><th>{{ _('Category') }}</th><th>{{ _('Type') }}</th><th>{{ _('Denomination') }}</th><th>{{ _('Minimum') }}</th><th>{{ _('Scenario') }}</th><th>{{ _('Used/Total') }}</th><th>{{ _('Expired') }}</th><th>{{ _('Status') }}</th><th>{{ _('Action') }}</th></tr>';
+    if(!cs.length)h+='<tr><td colspan="12"><div class="em">{{ _('No Coupons Available') }}</div></td></tr>';
+    else cs.forEach(function(c){
+      var st=c.is_active?'<span class="bdg on">{{ _('Enable') }}</span>':'<span class="bdg off">{{ _('Disable') }}</span>';
+      var sceneLabel=c.scene||{{ _('General') | tojson }};
+      h+='<tr class="cpRow" data-search="'+(c.code+' '+c.name).toLowerCase()+'"><td>'+c.id+'</td>';
+      h+='<td style="font-family:monospace">'+esc(c.code)+'</td>';
+      h+='<td>'+esc(c.name||'-')+'</td>';
+      h+='<td>'+(c.coupon_category||'-')+'</td>';
+      h+='<td>'+(c.coupon_type||'-')+'</td>';
+      h+='<td>'+(c.coupon_type==='percent'?c.value+'%':'¥'+c.value)+'</td>';
+      h+='<td>¥'+(c.min_amount||0)+'</td>';
+      h+='<td>'+sceneLabel+'</td>';
+      h+='<td>'+c.used_count+'/'+(c.usage_limit||'∞')+'</td>';
+      h+='<td style="font-size:10px;white-space:nowrap">'+(c.expire_at?c.expire_at.slice(0,10):{{ _('Permanent') | tojson }})+'</td><td>'+st+'</td>';
+      h+='<td style="white-space:nowrap"><button class="btn bs bo" onclick="showPluginCouponForm('+c.id+')">{{ _('Edit') }}</button> ';
+      h+='<button class="btn bs bo" onclick="togglePluginCoupon('+c.id+','+(c.is_active?0:1)+')">'+(c.is_active?{{ _('Disable') | tojson }}:{{ _('Enable') | tojson }})+'</button> ';
+      h+='<button class="btn bs bo" onclick="showPluginDistribute('+c.id+',\''+esc(c.code)+'\')">{{ _('Issue') }}</button> ';
+      h+='<button class="btn bs bo" onclick="showPluginRedemptions('+c.id+')">{{ _('Record') }}</button></td></tr>';
+    });
+    h+='</table></div></div>';
+    h+='<div class="cd" id="cpDistForm" style="display:none;margin-top:16px"><div class="st">{{ _('Issue Coupon') }} <span id="cpDistCode"></span></div>';
+    h+='<div style="margin-bottom:8px"><label><input type="radio" name="cpDistMode" value="all" checked onchange="toggleCpDistMode()"> {{ _('Distribute to All') }}</label>';
+    h+='<label style="margin-left:16px"><input type="radio" name="cpDistMode" value="specific" onchange="toggleCpDistMode()"> {{ _('Specific User') }}ID</label></div>';
+    h+='<div id="cpDistIds" style="display:none"><textarea class="ta" id="cpDistIdsInput" placeholder="{{ _('One User') }} ID per line" style="width:100%;height:80px;font-size:11px"></textarea></div>';
+    h+='<div style="margin-top:8px"><button class="btn bp" onclick="doPluginDistribute()">{{ _('Confirm Issue') }}</button> <button class="btn bo" onclick="document.getElementById(\'cpDistForm\').style.display=\'none\'">{{ _('Cancel') }}</button></div>';
+    h+='<input type="hidden" id="cpDistId"></div>';
+    h+='<div class="cd" id="cpRedemptionLog" style="display:none;margin-top:16px"><div class="st">{{ _('Usage Record') }}</div><div id="cpRedemptionContent"></div></div>';
+    document.getElementById("mc").innerHTML=h;
+    loadPluginCouponStats(true);
+    loadSceneOptions();
+  });
+}
+function filterPluginCoupons(){
+  var q=(document.getElementById("cpSearch")?.value||"").toLowerCase();
+  document.querySelectorAll(".cpRow").forEach(function(r){
+    r.style.display=(!q||r.getAttribute("data-search").includes(q))?"":"none";
+  });
+}
+function loadSceneOptions(){
+  fetch("/plugin/coupons/scenes",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success)return;
+    var sel=document.getElementById("cpScene");
+    if(!sel)return;
+    (d.data||[]).forEach(function(s){
+      var o=document.createElement("option");
+      o.value=s.name;o.textContent=s.label;
+      sel.appendChild(o);
+    });
+  });
+}
+function toggleCpType(){
+  var t=document.getElementById("cpType").value;
+  document.getElementById("cpValue").disabled=(t==='free_shipping');
+  if(t==='free_shipping')document.getElementById("cpValue").value=0;
+}
+function showPluginCouponForm(id){
+  document.getElementById("cpEditId").value=id||"";
+  document.getElementById("cpFormTitle").textContent=id?{{ _('Edit Coupon') | tojson }}:{{ _('Create Coupon') | tojson }};
+  if(id){
+    fetch("/plugin/coupons/admin/list",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+      var c=(d.data||[]).find(function(x){return x.id==id});if(!c)return;
+      document.getElementById("cpCode").value=c.code||"";
+      document.getElementById("cpName").value=c.name||"";
+      document.getElementById("cpCategory").value=c.coupon_category||"general";
+      document.getElementById("cpType").value=c.coupon_type||"fixed";
+      document.getElementById("cpValue").value=c.value||"";
+      document.getElementById("cpMin").value=c.min_amount||"";
+      document.getElementById("cpScene").value=c.scene||"";
+      document.getElementById("cpPerUser").value=c.per_user_limit||1;
+      document.getElementById("cpLimit").value=c.usage_limit||"";
+      document.getElementById("cpExpire").value=(c.expire_at||"").slice(0,10);
+      document.getElementById("cpDesc").value=c.description||"";
+      document.getElementById("cpProducts").value=c.applicable_products||"";
+      toggleCpType();
+    });
+  }else{
+    ["cpCode","cpName","cpValue","cpMin","cpLimit","cpExpire","cpDesc","cpProducts"].forEach(function(i){var el=document.getElementById(i);if(el)el.value=""});
+    document.getElementById("cpCategory").value="general";
+    document.getElementById("cpType").value="fixed";
+    document.getElementById("cpScene").value="";
+    document.getElementById("cpPerUser").value=1;
+  }
+  document.getElementById("cpForm").style.display="block";
+  document.getElementById("cpForm").scrollIntoView({behavior:"smooth"});
+}
+function hidePluginCouponForm(){document.getElementById("cpForm").style.display="none";document.getElementById("cpEditId").value="";}
+function savePluginCoupon(){
+  var id=document.getElementById("cpEditId").value;
+  var data={
+    code: document.getElementById("cpCode").value.trim().toUpperCase(),
+    name: document.getElementById("cpName").value.trim(),
+    coupon_category: document.getElementById("cpCategory").value,
+    coupon_type: document.getElementById("cpType").value,
+    value: parseFloat(document.getElementById("cpValue").value)||0,
+    min_amount: parseFloat(document.getElementById("cpMin").value)||0,
+    scene: document.getElementById("cpScene").value,
+    per_user_limit: parseInt(document.getElementById("cpPerUser").value)||1,
+    usage_limit: parseInt(document.getElementById("cpLimit").value)||0,
+    expire_at: document.getElementById("cpExpire").value||"",
+    description: document.getElementById("cpDesc").value.trim(),
+    applicable_products: document.getElementById("cpProducts").value.trim()
+  };
+  if(!data.code){showToast("{{ _('Enter coupon code') }}","error");return;}
+  var url=id?"/plugin/coupons/admin/update/"+id:"/plugin/coupons/admin/create";
+  fetch(url,{method:"POST",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify(data)})
+    .then(function(r){return r.json()}).then(function(d){
+      if(d.success){showToast(id?{{ _('✅ Updated') | tojson }}:{{ _('✅ Created') | tojson }},"success");hidePluginCouponForm();l_coupons_plugin()}
+      else showToast(d.error||{{ _('Failed') | tojson }},"error");
+    });
+}
+function togglePluginCoupon(id,active){
+  fetch("/plugin/coupons/admin/update/"+id,{method:"POST",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify({is_active:active})})
+    .then(function(r){return r.json()}).then(function(d){if(d.success){showToast('✅' + {{ _('Completed') | tojson }},"success");l_coupons_plugin()}});
+}
+function loadPluginCouponStats(summaryOnly){
+  fetch("/plugin/coupons/admin/stats",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success)return;
+    var s=d.data;
+    var el=document.getElementById("cpSummary");
+    if(el)el.innerHTML=hk("{{ _('Total Coupons') }}",s.total_coupons,"")+hk({{ _('Enable') | tojson }},s.active_coupons,"#3fb950")+hk("{{ _('Total Used') }}",s.total_used,"#58a6ff")+hk("{{ _('Total Saved') }}","¥"+s.total_discount,"#d2a8ff");
+    if(!summaryOnly){
+      var h='<div class="gr">'+hk("{{ _('Total Coupons') }}",s.total_coupons,"")+hk({{ _('Enable') | tojson }},s.active_coupons,"#3fb950")+hk("{{ _('Total Used') }}",s.total_used,"#58a6ff")+hk("{{ _('Total Saved') }}","¥"+s.total_discount,"#d2a8ff")+'</div>';
+      if(s.by_category&&s.by_category.length){
+        h+='<div class="cd"><div class="st">{{ _('Category Statistics') }}</div><table><tr><th>{{ _('Category') }}</th><th>{{ _('Quantity') }}</th></tr>';
+        s.by_category.forEach(function(x){h+='<tr><td>'+esc(x.coupon_category)+'</td><td>'+x.c+'</td></tr>'});
+        h+='</table></div>';
+      }
+      if(s.top_used&&s.top_used.length){
+        h+='<div class="cd"><div class="st">{{ _('Usage Rank Top 10') }}</div><table><tr><th>{{ _('Code') }}</th><th>{{ _('Name') }}</th><th>{{ _('Usage Count') }}</th></tr>';
+        s.top_used.forEach(function(x){h+='<tr><td>'+esc(x.code)+'</td><td>'+esc(x.name||'-')+'</td><td>'+x.used_count+'</td></tr>'});
+        h+='</table></div>';
+      }
+      h+='<div style="margin-top:8px"><button class="btn bo" onclick="l_coupons_plugin()">← {{ _('Return to List') }}</button></div>';
+      document.getElementById("mc").innerHTML=h;
+    }
+  });
+}
+function showPluginDistribute(cid,code){
+  document.getElementById("cpDistId").value=cid;
+  document.getElementById("cpDistCode").textContent="— "+code;
+  document.getElementById("cpDistForm").style.display="block";
+  document.getElementById("cpDistForm").scrollIntoView({behavior:"smooth"});
+}
+function toggleCpDistMode(){
+  var mode=document.querySelector('input[name="cpDistMode"]:checked').value;
+  document.getElementById("cpDistIds").style.display=mode==="specific"?"block":"none";
+}
+function doPluginDistribute(){
+  var cid=document.getElementById("cpDistId").value;
+  var mode=document.querySelector('input[name="cpDistMode"]:checked').value;
+  var data={coupon_id:parseInt(cid),all_users:mode==="all"};
+  if(mode==="specific"){
+    var ids=document.getElementById("cpDistIdsInput").value.trim().split("\n").map(function(x){return parseInt(x.trim())}).filter(function(x){return!isNaN(x)});
+    if(!ids.length){showToast("{{ _('Enter User') }}ID","error");return}
+    data.user_ids=ids;
+  }
+  fetch("/plugin/coupons/admin/distribute",{method:"POST",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify(data)})
+    .then(function(r){return r.json()}).then(function(d){
+      if(d.success){showToast(d.message||{{ _('✅ Issued') | tojson }},"success");document.getElementById("cpDistForm").style.display="none";l_coupons_plugin()}
+      else showToast(d.error||{{ _('Failed') }},"error");
+    });
+}
+function showPluginRedemptions(cid){
+  var el=document.getElementById("cpRedemptionLog");
+  var content=document.getElementById("cpRedemptionContent");
+  el.style.display="block";
+  content.innerHTML='<div class="lo"><div class="s"></div>{{ _('Loading...') }}</div>';
+  el.scrollIntoView({behavior:"smooth"});
+  fetch("/plugin/coupons/admin/redemptions/"+cid,{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success)return;
+    var rs=d.data;
+    var h='<div style="margin-bottom:6px;color:var(--dim)">{{ _('Total') }} '+rs.total+' {{ _('Records') }}</div><table><tr><th>ID</th><th>{{ _('User') }}</th><th>{{ _('Order Number') }}</th><th>{{ _('Discount') }}(min)</th><th>{{ _('Time') }}</th></tr>';
+    if(!rs.redemptions||!rs.redemptions.length)h+='<tr><td colspan="5"><div class="em">{{ _('No Usage Record') }}</div></td></tr>';
+    else rs.redemptions.forEach(function(r){
+      h+='<tr><td>'+r.id+'</td><td>'+(r.nickname||r.phone||'#'+r.user_id)+'</td><td style="font-size:10px">'+esc(r.order_no)+'</td><td>'+(r.discount_fen/100).toFixed(2)+'</td><td style="font-size:10px;color:var(--dim)">'+(r.created_at||'').slice(0,16)+'</td></tr>';
+    });
+    h+='</table>';
+    content.innerHTML=h;
+  });
+}

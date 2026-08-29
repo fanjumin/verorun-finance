@@ -1,0 +1,3 @@
+# 根 .gitignore 的 `_*.py` 会误忽略打包必需文件，在此放行
+!__main__.py
+!_base.py

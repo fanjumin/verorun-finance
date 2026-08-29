@@ -1,0 +1,309 @@
+/* ══════════════════════════════════════════════════════════════
+   Cookie Consent Banner — styles for VeroRun
+   Aligned with Design System v2.0 (design-system.css)
+   Mobile-first · Dark mode native · a11y
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── CSS variables (fallback when design-system.css not loaded) ── */
+.cc-root {
+  --cc-bg:        var(--bg-glass, rgba(15,15,26,0.85));
+  --cc-card:      var(--bg-card, #12121e);
+  --cc-border:    var(--border, rgba(255,255,255,0.06));
+  --cc-text:      var(--text, #f1f5f9);
+  --cc-dim:       var(--text-dim, #94a3b8);
+  --cc-muted:     var(--text-muted, #475569);
+  --cc-accent:    var(--indigo, #6366f1);
+  --cc-cyan:      var(--cyan, #22d3ee);
+  --cc-green:     var(--green, #00ff9f);
+  --cc-rose:      var(--rose, #f43f5e);
+  --cc-radius:    var(--radius, 12px);
+  --cc-radius-sm: var(--radius-sm, 8px);
+  --cc-shadow:    var(--shadow-lg, 0 20px 60px rgba(0,0,0,0.5));
+  --cc-ease:      var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+  --cc-font-en:   var(--font-en, 'Inter', system-ui, sans-serif);
+  --cc-font-cn:   var(--font-cn, 'PingFang SC', system-ui, sans-serif);
+  --cc-z-banner:  99999;
+  --cc-z-panel:   100000;
+}
+.cc-root,
+.cc-root *,
+.cc-root *::before,
+.cc-root *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* ── Banner overlay ── */
+.cc-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  z-index: var(--cc-z-banner);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 24px;
+  animation: ccFadeIn 0.2s var(--cc-ease);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+@keyframes ccFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ── Banner card ── */
+.cc-banner {
+  width: 100%;
+  max-width: 640px;
+  background: var(--cc-bg);
+  border: 1px solid var(--cc-border);
+  border-radius: var(--cc-radius);
+  box-shadow: var(--cc-shadow);
+  padding: 28px 32px 24px;
+  font-family: var(--cc-font-cn);
+  color: var(--cc-text);
+  line-height: 1.6;
+  animation: ccSlideUp 0.35s var(--cc-ease);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+}
+@keyframes ccSlideUp {
+  from { transform: translateY(24px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+.cc-banner-title {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 10px;
+  font-family: var(--cc-font-en);
+  letter-spacing: -0.01em;
+}
+.cc-banner-text {
+  font-size: 13px;
+  color: var(--cc-dim);
+  margin-bottom: 20px;
+}
+.cc-banner-text a {
+  color: var(--cc-cyan);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.cc-banner-text a:hover {
+  color: var(--cc-accent);
+}
+
+/* ── Buttons row ── */
+.cc-btn-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.cc-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 20px;
+  border-radius: var(--cc-radius-sm);
+  font-size: 13px;
+  font-family: var(--cc-font-en);
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--cc-border);
+  background: var(--cc-card);
+  color: var(--cc-text);
+  transition: all 0.15s var(--cc-ease);
+  white-space: nowrap;
+}
+.cc-btn:hover {
+  border-color: var(--cc-accent);
+  background: rgba(99,102,241,0.08);
+}
+.cc-btn:focus-visible {
+  outline: 2px solid var(--cc-cyan);
+  outline-offset: 2px;
+}
+.cc-btn-accept {
+  background: var(--cc-accent);
+  color: #fff;
+  border-color: var(--cc-accent);
+}
+.cc-btn-accept:hover {
+  background: #5558e6;
+  border-color: #5558e6;
+}
+.cc-btn-decline {
+  color: var(--cc-dim);
+}
+.cc-btn-decline:hover {
+  color: var(--cc-rose);
+  border-color: var(--cc-rose);
+  background: rgba(244,63,94,0.06);
+}
+.cc-btn-settings {
+  font-weight: 500;
+}
+.cc-spacer {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ── Settings panel (hidden by default) ── */
+.cc-settings {
+  display: none;
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid var(--cc-border);
+}
+.cc-settings.open {
+  display: block;
+}
+.cc-setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+}
+.cc-setting-row + .cc-setting-row {
+  border-top: 1px solid var(--cc-border);
+}
+.cc-setting-info {
+  flex: 1;
+  min-width: 0;
+}
+.cc-setting-label {
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--cc-font-en);
+}
+.cc-setting-desc {
+  font-size: 11px;
+  color: var(--cc-muted);
+  margin-top: 2px;
+}
+.cc-setting-always {
+  font-size: 10px;
+  color: var(--cc-green);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  margin-top: 2px;
+}
+
+/* ── Toggle switch ── */
+.cc-toggle {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+}
+.cc-toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.cc-toggle-slider {
+  position: absolute;
+  inset: 0;
+  background: var(--cc-border);
+  border-radius: 24px;
+  cursor: pointer;
+  transition: background 0.2s var(--cc-ease);
+}
+.cc-toggle-slider::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.2s var(--cc-ease);
+}
+.cc-toggle input:checked + .cc-toggle-slider {
+  background: var(--cc-accent);
+}
+.cc-toggle input:checked + .cc-toggle-slider::before {
+  transform: translateX(20px);
+}
+.cc-toggle input:disabled + .cc-toggle-slider {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── Floating reopen button ── */
+.cc-float {
+  position: fixed;
+  right: 16px;
+  bottom: 20px;
+  z-index: var(--cc-z-banner);
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--cc-card);
+  border: 1px solid var(--cc-border);
+  color: var(--cc-dim);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  box-shadow: var(--cc-shadow);
+  transition: all 0.15s var(--cc-ease);
+  opacity: 0.7;
+}
+.cc-float:hover {
+  opacity: 1;
+  color: var(--cc-cyan);
+  border-color: var(--cc-cyan);
+  transform: scale(1.1);
+}
+.cc-float:focus-visible {
+  outline: 2px solid var(--cc-cyan);
+  outline-offset: 2px;
+  opacity: 1;
+}
+
+/* ── Mobile (≤ 600px) ── */
+@media (max-width: 600px) {
+  .cc-overlay {
+    padding: 12px;
+    align-items: flex-end;
+  }
+  .cc-banner {
+    padding: 24px 20px 20px;
+    border-radius: var(--cc-radius-sm) var(--cc-radius-sm) 0 0;
+    max-width: 100%;
+  }
+  .cc-banner-title {
+    font-size: 15px;
+  }
+  .cc-banner-text {
+    font-size: 12px;
+  }
+  .cc-btn-row {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .cc-btn {
+    width: 100%;
+    justify-content: center;
+    padding: 12px 16px;
+    font-size: 14px;
+  }
+  .cc-spacer {
+    display: none;
+  }
+  .cc-float {
+    right: 10px;
+    bottom: 14px;
+    width: 36px;
+    height: 36px;
+    font-size: 16px;
+  }
+}

@@ -1,0 +1,179 @@
+# Subscription Plugin — 中文翻译
+# 用于 _t() 函数，由 plugins/subscription/__init__.py 加载
+plugin.name: 订阅
+
+subscription: 订阅管理
+my_subscriptions: 我的订阅
+available_items: 可订阅项
+subscribe: 订阅
+cancel: 取消
+renew: 续费
+orders: 订单
+order_no: 订单号
+amount: 金额
+status: 状态
+interval_type: 计费周期
+period_start: 开始日期
+period_end: 到期日期
+auto_renew: 自动续费
+active: 生效中
+canceled: 已取消
+expired: 已过期
+suspended: 已暂停
+pending: 待支付
+paid: 已支付
+failed: 支付失败
+refunded: 已退款
+month: 月付
+year: 年付
+base: 系统底座
+miniapp: 小程序
+feature: 能力
+price: 价格
+subscribe_success: 订阅成功
+subscribe_failed: 订阅失败
+cancel_success: 取消成功
+cancel_failed: 取消失败
+renew_success: 续费成功
+renew_failed: 续费失败
+already_subscribed: 已订阅
+not_subscribed: 未订阅
+subscription_not_found: 订阅不存在
+subscription_item_not_found: 订阅项不存在
+subscription_item_not_available: 该订阅项暂不可用
+invalid_interval: 无效的计费周期
+invalid_price: 无效的价格
+included_in_base: 该功能已包含在系统底座中，无需单独订阅
+payment_channel: 支付方式
+alipay: 支付宝
+wechat_pay: 微信支付
+stripe: Stripe
+paypal: PayPal
+scan_to_pay: 扫码支付
+redirect_to_pay: 前往支付
+trial_days: 试用天数
+grace_days: 宽限期
+confirm_cancel: 确认取消
+confirm_cancel_text: 确定要取消该订阅吗？
+cancel_immediate: 立即取消
+cancel_end_of_period: 到期不续费
+renewal: 续费
+subscription_required: 需要订阅
+subscription_required_text: 您需要订阅 {item} 才能使用此功能
+base_description: CMS 内容管理 + Agent 矩阵 + 口令控制台 + 模型配置 + 邮件服务 + AI 图片生成
+market_cn: 中国区
+market_intl: 国际区
+
+# ── API 错误消息（M-04：路由/服务层原文 key） ──
+'Authentication required': 需要身份认证
+'Admin required': 需要管理员权限
+'item_key is required': 缺少 item_key 参数
+'interval_type must be month or year': interval_type 必须为 month 或 year
+'item_key required': 缺少 item_key 参数
+'Invalid webhook': 无效的 Webhook 请求
+'Not found': 未找到
+'user_id required': 缺少 user_id 参数
+'Subscription item not found': 订阅项不存在
+'Subscription item is not available': 该订阅项暂不可用
+'Already subscribed': 已订阅
+'Invalid interval type': 无效的计费周期
+'Invalid price': 无效的价格
+'Payment creation failed: {error}': 支付创建失败：{error}
+'Subscription not found': 订阅不存在
+'This item is included in your Base subscription and cannot be canceled separately': 该功能已包含在系统底座中，无法单独取消订阅
+'Renewal': 续费
+'Order not found': 订单不存在
+'Order cannot be refunded (current status: {status})': 订单当前状态无法退款（当前状态：{status}）
+'Refund failed: {error}': 退款失败：{error}
+
+# ── 用户门户模板（subscribe.html，P2-04） ──
+item: 商品
+channel: 支付渠道
+date: 日期
+pay: 支付
+qr_code: 二维码
+close: 关闭
+subscribed: 已订阅
+expires: 到期
+network_error: 网络错误
+market: 市场
+no_subscriptions_yet: 暂无订阅
+no_orders_yet: 暂无订单
+cancel_this_subscription: 确定取消该订阅吗？
+'Subscription Management': 订阅管理
+
+# Portal JS texts (subscribe.html)
+Free: 免费
+per_year: /年
+per_month: /月
+Monthly: 月付
+Quarterly: 季付
+Semi-Annual: 半年付
+Yearly: 年付
+times_per_day: " 次/天"
+Choose: "选择 "
+Free Sign Up: 免费注册
+Confirm Payment: 确认支付
+Creating order...: 创建订单...
+Please log in first: 请先登录
+Redirecting to login page...: 即将跳转登录页...
+Failed to create order: 创建订单失败
+Redirecting to payment...: 正在跳转到支付...
+Return here after payment: 支付完成后请返回本站
+Payment channel not configured, please contact admin: 支付渠道未配置，请联系管理员
+Subscription successful!: 订阅成功！
+Plan activated: 套餐已激活
+Confirmation failed: 确认失败
+Retry: 重试
+Network error, please retry: 网络错误，请重试
+Console: 控制台
+Yearly only: 年付仅
+Quarterly only: 季付仅
+Semi-Annual only: 半年付仅
+Save: 省
+
+# ── Admin 订阅管理（subscribe_admin.html，插件自身词条） ──
+'Active Subs': '有效订阅数'
+'Add Plan': '添加计划'
+'Billing': '计费'
+'Billing Events': '计费事件'
+'Channel': '渠道'
+'Coupon Management': '优惠券管理'
+'Currency Settings': '货币设置'
+'Date': '日期'
+'Delete this plan?': '删除此计划？'
+'Deploy Codes': '部署码'
+'Duration (days)': '时长（天）'
+'Enter category:': '输入分类：'
+'Enter description (Chinese):': '输入描述（中文）：'
+'Enter description (English):': '输入描述（英文）：'
+'Enter monthly price (yuan):': '输入月付价格（元）：'
+'Enter plan key:': '输入计划键：'
+'Enter plan name (Chinese):': '输入计划名称（中文）：'
+'Enter plan name (English):': '输入计划名称（英文）：'
+'Enter user ID': '输入用户 ID'
+'Enter yearly price (yuan):': '输入年付价格（元）：'
+'Filter by User ID': '按用户 ID 筛选'
+'Generated code': '生成的代码'
+'Host': '主机'
+'Item': '项目'
+'Item Key': '项目键'
+'MRR': 'MRR（月度经常性收入）'
+'Manage subscription plans, user subscriptions, and orders': '管理订阅计划、用户订阅和订单'
+'No billing events': '无计费事件'
+'No deploy codes': '无部署码'
+'No orders found': '未找到订单'
+'No plans configured': '未配置计划'
+'No subscriptions found': '未找到订阅'
+'Pending Orders': '待处理订单'
+'Plans': '计划'
+'Refund': '退款'
+'Subscribers': '订阅用户'
+'Stats': '统计'
+'Subscription Plans': '订阅计划'
+'Revenue Overview': '营收概览'
+'Revenue Trend (30 days)': '营收趋势（30 天）'
+'Refund this order?': '退款此订单？'
+'User ID is required': '需要用户 ID'
+'Update status?': '更新状态？'
+'Result': '结果'

@@ -1,0 +1,424 @@
+window.l_comments=function(){
+  document.getElementById("pt").textContent="{{ _('Comment Management') }}";
+  var h='<div style="margin-bottom:12px;display:flex;gap:4px">';
+  h+='<button class="btn bp" onclick="comLoad(&quot;&quot;)" id="com-t0">{{ _('All') }}</button>';
+  h+='<button class="btn bo" onclick="comLoad(&quot;pending&quot;)" id="com-t1">⏳ {{ _('Pending Review') }}</button>';
+  h+='<button class="btn bo" onclick="comLoad(&quot;approved&quot;)" id="com-t2">✅ {{ _('Approved') }}</button>';
+  h+='<button class="btn bo" onclick="comLoad(&quot;rejected&quot;)" id="com-t3">❌ {{ _('Rejected') }}</button>';
+  h+='</div><div id="comList"><div class="lo"><div class="s"></div></div></div>';
+  document.getElementById("mc").innerHTML=h;
+  comLoad("");
+};
+
+var comFilter="";
+function comLoad(filter){
+  comFilter=filter||"";
+  document.querySelectorAll('[id^="com-t"]').forEach(function(e){e.className="btn bo"});
+  var el=document.getElementById("com-t"+(comFilter==="pending"?1:comFilter==="approved"?2:comFilter==="rejected"?3:0));
+  if(el)el.className="btn bp";
+  var url="/admin/comments?status="+comFilter+"&limit=50";
+  fetch(url,{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success){document.getElementById("comList").innerHTML='<div class="em">{{ _('Load failed') }}</div>';return}
+    var items=d.data&&d.data.items?d.data.items:[];
+    if(!items.length){document.getElementById("comList").innerHTML='<div class="em">{{ _('No Comments') }}</div>';return}
+    var h='<div class="cd"><div class="st">{{ _('Comments') }} ('+items.length+')</div><table><tr><th>{{ _('Article') }}</th><th>{{ _('Nickname') }}</th><th>{{ _('Content') }}</th><th>AI{{ _('Rating') }}</th><th>{{ _('Status') }}</th><th>{{ _('Time') }}</th><th>{{ _('Actions') }}</th></tr>';
+    items.forEach(function(c){
+      var st=c.status;
+      var stHtml={pending:'<span class="bdg pd">{{ _('Pending Review') }}</span>',approved:'<span class="bdg on">{{ _('Approved') }}</span>',rejected:'<span class="bdg off">{{ _('Rejected') }}</span>'}[st]||'<span class="bdg pd">'+st+'</span>';
+      var score=c.ai_score!==null&&c.ai_score!==undefined?'<span style="font-size:10px;color:'+(c.ai_score<0.3?'var(--green)':c.ai_score<0.7?'var(--dim)':'var(--red)')+'">'+c.ai_score.toFixed(2)+'</span>':'<span style="font-size:10px;color:var(--dim)">-</span>';
+      h+='<tr><td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;font-size:11px">'+esc(c.post_title||"-")+'</td>';
+      h+='<td>'+esc(c.nickname||"-")+'</td>';
+      h+='<td style="max-width:250px;overflow:hidden;text-overflow:ellipsis">'+esc(c.content||"").slice(0,80)+'</td>';
+      h+='<td>'+score+'</td><td>'+stHtml+'</td>';
+      h+='<td style="font-size:10px">'+(c.created_at||"").slice(0,16)+'</td>';
+      h+='<td style="white-space:nowrap">';
+      if(c.status==="pending"){h+='<button class="btn bp bs" onclick="comApprove('+c.id+')">{{ _('Approve') }}</button> <button class="btn bo bs" onclick="comReject('+c.id+')">{{ _('Reject') }}</button>'}
+      else{h+='<button class="btn bo bs" onclick="comDelete('+c.id+')">{{ _('Delete') }}</button>'}
+      h+='</td></tr>';
+    });
+    h+='</table></div>';
+    document.getElementById("comList").innerHTML=h;
+  }).catch(function(){document.getElementById("comList").innerHTML='<div class="em">{{ _('Request Failed') }}</div>'});
+}
+
+function comApprove(id){
+  fetch("/admin/comments/"+id+"/review",{method:"PUT",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify({action:"approve"})}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){showToast("{{ _('Approved') }}","success");comLoad(comFilter)}
+    else{showToast(d.error||"{{ _('Operation Failed') }}","error")}
+  }).catch(function(){showToast("{{ _('Request Failed') }}","error")});
+}
+
+function comReject(id){
+  fetch("/admin/comments/"+id+"/review",{method:"PUT",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify({action:"reject"})}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){showToast("{{ _('Rejected') }}","success");comLoad(comFilter)}
+    else{showToast(d.error||"{{ _('Operation Failed') }}","error")}
+  }).catch(function(){showToast("{{ _('Request Failed') }}","error")});
+}
+
+function comDelete(id){
+  if(!confirm("{{ _('Delete this comment?') }}"))return;
+  fetch("/admin/comments/"+id+"/review",{method:"PUT",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify({action:"delete"})}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){showToast("{{ _('Deleted') }}","success");comLoad(comFilter)}
+    else{showToast(d.error||"{{ _('Operation Failed') }}","error")}
+  }).catch(function(){showToast("{{ _('Request Failed') }}","error")});
+}
+
+var aS={}; // {{ _('Currently Selected') }} sub tab
+function aLStats(){
+  fetch("/admin/automation/stats",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success){document.getElementById("mc").innerHTML='<div class="em">{{ _('Load failed') }}，{{ _('Confirm Installed') }} APScheduler</div>';return}
+    var s=d.data;
+    var h='<div class="gr">';
+    h+=hka('Cron {{ _('Tasks') }}',s.total_jobs,'g');
+    h+=hka('{{ _('Active Tasks') }}',s.active_jobs,'b');
+    h+=hka('{{ _('Workflow') }}',s.total_workflows,'g');
+    h+=hka('{{ _('Running') }}',s.running_instances,'b');
+    h+=hka('{{ _('Today Completed') }}',s.completed_today,'g');
+    h+=hka('{{ _('Today Failures') }}',s.failed_today,'r');
+    h+='</div>';
+    // {{ _('Scheduler Status') }}
+    if(s.scheduler){
+      h+='<div class="cd" style="margin-bottom:12px"><div class="st">🟢 {{ _('Scheduler Status') }}</div>';
+      h+='<div style="font-size:12px;color:var(--muted)">{{ _('Instance') }}: '+esc(s.scheduler.scheduler_id)+'</div>';
+      h+='<div style="font-size:12px;color:var(--muted)">{{ _('Scheduled Tasks') }}: '+s.scheduler.scheduled_jobs+'</div>';
+      h+='</div>';
+    }
+    // {{ _('Action Button') }}
+    h+='<div style="display:flex;gap:8px;margin-bottom:12px">';
+    h+='<button class="btn bp" onclick="aLTab(\'jobs\')">📋 {{ _('Task Management') }}</button>';
+    h+='<button class="btn bp" onclick="aLTab(\'workflows\')">🔧 {{ _('Workflow') }}</button>';
+    h+='<button class="btn bp" onclick="aLTab(\'instances\')">📊 {{ _('Execution History') }}</button>';
+    h+='<button class="btn bo" onclick="aLTab(\'logs\')">📄 {{ _('Log') }}</button>';
+    h+='</div>';
+    // {{ _('Content Area') }}
+    h+='<div id="aLContent"><div class="em">{{ _('Select Function to Start Settings') }}</div></div>';
+    document.getElementById("mc").innerHTML=h;
+  }).catch(function(){
+    document.getElementById("mc").innerHTML='<div class="em">{{ _('Load failed') }}，{{ _('Please Confirm Scheduler is Running') }}</div>';
+  });
+}
+
+function hka(l,v,c){return '<div class="cd"><div class="l">'+l+'</div><div class="v '+(c||'')+'">'+(v!=null?v:'-')+'</div></div>'}
+
+// ---- 子 Tab {{ _('Switch') }} ----
+function aLTab(tab){
+  aS.current=tab;
+  if(tab=='jobs')aLJobs();
+  else if(tab=='workflows')aLWorkflows();
+  else if(tab=='instances')aLInstances();
+  else if(tab=='logs')aLLogs();
+}
+
+// ===== {{ _('Task Management') }} =====
+var aJobs=[];
+function aLJobs(){
+  document.getElementById("aLContent").innerHTML='<div class="lo"><div class="s"></div>{{ _('Load Tasks') }}...</div>';
+  fetch("/admin/automation/jobs?limit=100",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success||!d.data)return;
+    aJobs=d.data.jobs||[];
+    var h='<div class="cd"><div class="st">📋 Cron {{ _('Tasks') }} ('+d.data.total+')';
+    h+=' <button class="btn bp bs" onclick="aJNew()" style="float:right">+ {{ _('New') }}</button></div>';
+    h+='<table><tr><th>{{ _('Name') }}</th><th>{{ _('Type') }}</th><th>{{ _('Expression') }}</th><th>{{ _('Priority') }}</th><th>Agent</th><th>{{ _('Last') }}</th><th>{{ _('Status') }}</th><th>{{ _('Actions') }}</th></tr>';
+    if(!aJobs.length)h+='<tr><td colspan="8"><div class="em">{{ _('No Tasks') }}</div></td></tr>';
+    else aJobs.forEach(function(j){
+      var st=j.is_active?'<span class="bdg on">{{ _('Active') }}</span>':'<span class="bdg off">{{ _('Pause') }}</span>';
+      var ls=j.last_status?('<span class="bdg '+(j.last_status=='success'?'on':j.last_status=='failed'?'off':'pd')+'">'+j.last_status+'</span>'):'-';
+      h+='<tr><td style="font-weight:600">'+esc(j.name)+'</td>';
+      h+='<td>'+j.job_type+'</td>';
+      h+='<td style="font-family:monospace;font-size:11px">'+esc(j.cron_expr||j.natural_expr||j.interval_seconds+'s')+'</td>';
+      h+='<td>'+j.priority+'</td>';
+      h+='<td>'+j.agent_type+'</td>';
+      h+='<td style="font-size:11px">'+(j.last_run_at||'-')+'</td>';
+      h+='<td>'+st+'</td>';
+      h+='<td>'+
+        '<button class="btn bo bs" onclick="aJRun('+j.id+')">▶</button> '+
+        '<button class="btn bo bs" onclick="aJToggle('+j.id+','+j.is_active+')">'+(j.is_active?'⏸':'▶')+'</button> '+
+        '<button class="btn bo bs" onclick="aJEdit('+j.id+')">✏️</button> '+
+        '<button class="btn bo bs" onclick="aJDel('+j.id+')">🗑️</button></td></tr>';
+    });
+    h+='</table></div>';
+    document.getElementById("aLContent").innerHTML=h;
+  }).catch(function(){});
+}
+
+function aJForm(editJob){
+  var j=editJob||{};
+  var h='<div class="cd" id="aJForm" style="margin-bottom:12px">';
+  h+='<div class="st">'+(j.id?'{{ _('Edit Task') }}':'{{ _('New Task') }}')+'</div>';
+  h+='<div class="g2">';
+  h+='<div><div style="font-size:11px;color:var(--dim)">{{ _('Name') }} *</div><input class="in" id="aJName" value="'+esc(j.name||'')+'" style="width:100%"></div>';
+  h+='<div><div style="font-size:11px;color:var(--dim)">{{ _('Type') }}</div><select class="sl" id="aJType" style="width:100%"><option value="cron" '+(j.job_type=='cron'?'selected':'')+'>Cron</option><option value="interval" '+(j.job_type=='interval'?'selected':'')+'>{{ _('Interval') }}</option><option value="once" '+(j.job_type=='once'?'selected':'')+'>{{ _('One-Time') }}</option></select></div>';
+  h+='<div><div style="font-size:11px;color:var(--dim)">Cron {{ _('Expression') }} <span style="color:var(--dim)">{{ _('Or Natural Language') }}</span></div><input class="in" id="aJCron" value="'+esc(j.cron_expr||j.natural_expr||'')+'" placeholder="0 30 9 * * 1-5 或 {{ _('Per Trading Day') }}9:30" style="width:100%"></div>';
+  h+='<div><div style="font-size:11px;color:var(--dim)">{{ _('Interval Seconds') }}</div><input class="in" id="aJInterval" value="'+esc(j.interval_seconds||'')+'" style="width:100%"></div>';
+  h+='<div><div style="font-size:11px;color:var(--dim)">{{ _('Priority') }}</div><select class="sl" id="aJPriority" style="width:100%"><option value="critical" '+(j.priority=='critical'?'selected':'')+'>{{ _('High') }}({{ _('Critical') }})</option><option value="high" '+(j.priority=='high'?'selected':'')+'>{{ _('High') }}</option><option value="normal" '+(j.priority=='normal'?'selected':'')+'>{{ _('Middle') }}</option><option value="low" '+(j.priority=='low'?'selected':'')+'>{{ _('Low') }}</option></select></div>';
+  h+='<div><div style="font-size:11px;color:var(--dim)">Agent {{ _('Type') }}</div><select class="sl" id="aJAgent" style="width:100%"><option value="system" '+(j.agent_type=='system'?'selected':'')+'>{{ _('System') }} Agent</option><option value="user" '+(j.agent_type=='user'?'selected':'')+'>{{ _('User') }} Agent</option></select></div>';
+  h+='<div><div style="font-size:11px;color:var(--dim)">{{ _('Target Type') }}</div><select class="sl" id="aJTarget" style="width:100%"><option value="workflow" '+(j.target_type=='workflow'?'selected':'')+'>{{ _('Workflow') }}</option><option value="api" '+(j.target_type=='api'?'selected':'')+'>API</option><option value="script" '+(j.target_type=='script'?'selected':'')+'>{{ _('Script') }}</option></select></div>';
+  h+='<div><div style="font-size:11px;color:var(--dim)">{{ _('Timeout (seconds)') }}</div><input class="in" id="aJTimeout" value="'+esc(j.timeout_seconds||'300')+'" style="width:100%"></div>';
+  h+='<div style="grid-column:1/3"><div style="font-size:11px;color:var(--dim)">{{ _('Description') }}</div><input class="in" id="aJDesc" value="'+esc(j.description||'')+'" style="width:100%"></div>';
+  h+='</div><div style="margin-top:8px"><button class="btn bp" onclick="aJSave('+(j.id||'')+')">{{ _('Save') }}</button> <button class="btn bo" onclick="document.getElementById(\'aJForm\').remove();aLJobs()">{{ _('Cancel') }}</button></div></div>';
+  return h;
+}
+
+function aJSave(id){
+  var name=document.getElementById("aJName").value.trim();
+  if(!name){showToast("{{ _('Name is required') }}","error");return}
+  var cron=document.getElementById("aJCron").value.trim();
+  var data={
+    name:name,
+    job_type:document.getElementById("aJType").value,
+    cron_expr:cron,
+    natural_expr:cron,
+    interval_seconds:parseInt(document.getElementById("aJInterval").value)||0,
+    priority:document.getElementById("aJPriority").value,
+    agent_type:document.getElementById("aJAgent").value,
+    target_type:document.getElementById("aJTarget").value,
+    timeout_seconds:parseInt(document.getElementById("aJTimeout").value)||300,
+    description:document.getElementById("aJDesc").value.trim()
+  };
+  var url="/admin/automation/jobs"+(id?"/"+id:"");
+  var method=id?"PUT":"POST";
+  fetch(url,{method:method,headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify(data)}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){showToast("{{ _('Saved') }}","success");aLJobs()}
+    else{showToast(d.error||"{{ _('Save failed') }}","error")}
+  }).catch(function(){showToast("{{ _('Request Failed') }}","error")});
+}
+
+function aJToggle(id,active){
+  fetch("/admin/automation/jobs/"+id+"/toggle",{method:"POST",headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){showToast(d.message||"{{ _('Switched') }}","success");aLJobs()}
+    else{showToast(d.error||"{{ _('Operation Failed') }}","error")}
+  }).catch(function(){});
+}
+
+function aJRun(id){
+  fetch("/admin/automation/jobs/"+id+"/run",{method:"POST",headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(d.success)showToast("{{ _('Task triggered') }}","success");
+    else showToast(d.error||"{{ _('Trigger Failed') }}","error");
+  }).catch(function(){});
+}
+
+function aJEdit(id){
+  console.log("aJEdit called with id:", id, typeof id);
+  var j=null;
+  for(var i=0;i<aJobs.length;i++){console.log("  aJobs["+i+"].id:", aJobs[i].id, typeof aJobs[i].id);if(aJobs[i].id===id){j=aJobs[i];break}}
+  console.log("  found j:", j ? j.name : null);
+  if(!j){showToast("{{ _('Task not found') }}","error");return}
+  // {{ _('Insert Form Above Table') }}
+  var h=aJForm(j);
+  console.log("  form HTML length:", h.length);
+  var el=document.getElementById("aLContent");
+  console.log("  aLContent element:", el);
+  if(el)el.insertAdjacentHTML("afterbegin",h);
+  window.scrollTo(0,0);
+}
+
+function aJNew(){var h=aJForm();var el=document.getElementById("aLContent");if(el){el.insertAdjacentHTML("afterbegin",h);window.scrollTo(0,0)}}
+
+function aJDel(id){
+  if(!confirm("{{ _('Delete this task?') }}"))return;
+  fetch("/admin/automation/jobs/"+id,{method:"DELETE",headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){showToast("{{ _('Deleted') }}","success");aLJobs()}
+    else{showToast(d.error||"{{ _('Delete failed') }}","error")}
+  }).catch(function(){});
+}
+
+// ===== {{ _('Workflow Management') }} =====
+var aWfs=[];
+function aLWorkflows(){
+  document.getElementById("aLContent").innerHTML='<div class="lo"><div class="s"></div>{{ _('Loading Workflow') }}...</div>';
+  fetch("/admin/automation/workflows?limit=100",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success||!d.data)return;
+    aWfs=d.data.workflows||[];
+    var h='<div class="cd"><div class="st">🔧 {{ _('Workflow Definition') }} ('+d.data.total+')';
+    h+=' <button class="btn bp bs" onclick="aWNew()" style="float:right">+ {{ _('New') }}</button></div>';
+    h+='<table><tr><th>{{ _('Name') }}</th><th>{{ _('Version') }}</th><th>Agent</th><th>{{ _('Nodes') }}</th><th>{{ _('Trigger') }}</th><th>{{ _('Status') }}</th><th>{{ _('Actions') }}</th></tr>';
+    if(!aWfs.length)h+='<tr><td colspan="7"><div class="em">{{ _('No Workflow') }}</div></td></tr>';
+    else aWfs.forEach(function(w){
+      var def=(typeof w.definition=='string')?JSON.parse(w.definition||'{}'):(w.definition||{});
+      var nodes=def.nodes||[];
+      var st=w.is_active?'<span class="bdg on">{{ _('Enabled') }}</span>':'<span class="bdg off">{{ _('Disable') }}</span>';
+      h+='<tr><td style="font-weight:600">'+esc(w.name)+'</td>';
+      h+='<td>v'+w.version+'</td>';
+      h+='<td>'+w.agent_type+'</td>';
+      h+='<td>'+nodes.length+'</td>';
+      h+='<td>'+(w.triggers&&w.triggers.length?w.triggers.map(function(t){return t.type}).join(","):'{{ _('Manual') }}')+'</td>';
+      h+='<td>'+st+'</td>';
+      h+='<td>'+
+        '<button class="btn bp bs" onclick="aWRun('+w.id+')">▶ {{ _('Run') }}</button> '+
+        '<button class="btn bo bs" onclick="aWEdit('+w.id+')">✏️</button> '+
+        '<button class="btn bo bs" onclick="aWDel('+w.id+')">🗑️</button></td></tr>';
+    });
+    h+='</table></div>';
+    document.getElementById("aLContent").innerHTML=h;
+  }).catch(function(){});
+}
+
+function aWForm(editWf){
+  var w=editWf||{};
+  var def=(typeof w.definition=='string')?JSON.parse(w.definition||'{"nodes":[],"edges":[]}'):(w.definition||{nodes:[],edges:[]});
+  var nodesTxt=JSON.stringify(def,null,2);
+  var h='<div class="cd" id="aWForm" style="margin-bottom:12px">';
+  h+='<div class="st">'+(w.id?'{{ _('Edit Workflow') }}':'{{ _('New Workflow') }}')+'</div>';
+  h+='<div class="g2">';
+  h+='<div><div style="font-size:11px;color:var(--dim)">{{ _('Name') }} *</div><input class="in" id="aWName" value="'+esc(w.name||'')+'" style="width:100%"></div>';
+  h+='<div><div style="font-size:11px;color:var(--dim)">Agent {{ _('Type') }}</div><select class="sl" id="aWAgent" style="width:100%"><option value="system" '+(w.agent_type=='system'?'selected':'')+'>{{ _('System') }} Agent</option><option value="user" '+(w.agent_type=='user'?'selected':'')+'>{{ _('User') }} Agent</option></select></div>';
+  h+='<div style="grid-column:1/3"><div style="font-size:11px;color:var(--dim)">{{ _('Description') }}</div><input class="in" id="aWDesc" value="'+esc(w.description||'')+'" style="width:100%"></div>';
+  h+='<div style="grid-column:1/3"><div style="font-size:11px;color:var(--dim)">DAG ' + {{ _('Define') | tojson }} + ' (JSON) <span style="color:var(--dim)">' + {{ _('Node') | tojson }} + '+' + {{ _('Edge') | tojson }} + '</span></div>';
+  h+='<textarea class="ta" id="aWDef" rows="15" style="font-family:monospace;font-size:11px;line-height:1.5">'+esc(nodesTxt)+'</textarea></div>';
+  h+='<div style="grid-column:1/3;font-size:11px;color:var(--dim)">{{ _('Node Type') }}: ai_agent, data_collect, ai_process, condition, approve, publish, notify, wait, sub_workflow, market_check, http_request, script</div>';
+  h+='</div><div style="margin-top:8px"><button class="btn bp" onclick="aWSave('+(w.id||'')+')">{{ _('Save') }}</button> <button class="btn bo" onclick="aWCloseForm()">{{ _('Cancel') }}</button></div></div>';
+  return h;
+}
+function aWCloseForm(){document.getElementById("aWForm").remove();aLWorkflows()}
+function aWNew(){var h=aWForm();document.getElementById("aLContent").insertAdjacentHTML("afterbegin",h);window.scrollTo(0,0);}
+
+function aWSave(id){
+  var name=document.getElementById("aWName").value.trim();
+  if(!name){showToast("{{ _('Name is required') }}","error");return}
+  var defText=document.getElementById("aWDef").value.trim();
+  try{JSON.parse(defText)}catch(e){showToast("JSON {{ _('Invalid Format') }}: "+e.message,"error");return}
+  var data={name:name,description:document.getElementById("aWDesc").value.trim(),agent_type:document.getElementById("aWAgent").value,definition:defText};
+  var url="/admin/automation/workflows"+(id?"/"+id:"");
+  var method=id?"PUT":"POST";
+  fetch(url,{method:method,headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify(data)}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){showToast("{{ _('Saved') }}","success");aWCloseForm()}
+    else{showToast(d.error||"{{ _('Save failed') }}","error")}
+  }).catch(function(){showToast("{{ _('Request Failed') }}","error")});
+}
+
+function aWRun(id){
+  fetch("/admin/automation/workflows/"+id+"/run",{method:"POST",headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){showToast(d.message||"{{ _('Workflow Started') }}","success");aLInstances()}
+    else{showToast(d.error||"{{ _('Start Failed') }}","error")}
+  }).catch(function(){});
+}
+
+function aWEdit(id){
+  var w=null;
+  for(var i=0;i<aWfs.length;i++){if(aWfs[i].id===id){w=aWfs[i];break}}
+  if(!w){showToast("{{ _('Workflow not found') }}","error");return}
+  var h=aWForm(w);
+  document.getElementById("aLContent").insertAdjacentHTML("afterbegin",h);
+  window.scrollTo(0,0);
+}
+
+function aWDel(id){
+  if(!confirm("{{ _('Delete this workflow?') }}"))return;
+  fetch("/admin/automation/workflows/"+id,{method:"DELETE",headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){showToast("{{ _('Deleted') }}","success");aLWorkflows()}
+    else{showToast(d.error||"{{ _('Delete failed') }}","error")}
+  }).catch(function(){});
+}
+
+// ===== {{ _('Execution History') }} =====
+var aInsts=[];
+function aLInstances(){
+  document.getElementById("aLContent").innerHTML='<div class="lo"><div class="s"></div>{{ _('Loading Execution History') }}...</div>';
+  fetch("/admin/automation/instances?limit=50",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success||!d.data)return;
+    aInsts=d.data.instances||[];
+    var h='<div class="cd"><div class="st">📊 {{ _('WorkflowExecution History') }} ('+d.data.total+')</div>';
+    h+='<table><tr><th>ID</th><th>{{ _('Workflow') }}</th><th>{{ _('Trigger') }}</th><th>{{ _('Status') }}</th><th>{{ _('Duration') }}</th><th>{{ _('Start Time') }}</th><th>{{ _('Actions') }}</th></tr>';
+    if(!aInsts.length)h+='<tr><td colspan="7"><div class="em">{{ _('No Execution Records') }}</div></td></tr>';
+    else aInsts.forEach(function(i){
+      var stMap={'running':'<span class="bdg pd">{{ _('Running') }}</span>','completed':'<span class="bdg on">{{ _('Complete') }}</span>','failed':'<span class="bdg off">{{ _('Failed') }}</span>','cancelled':'<span class="bdg off">{{ _('Cancelled') }}</span>','timeout':'<span class="bdg off">{{ _('Timeout') }}</span>','paused':'<span class="bdg pd">{{ _('Paused') }}</span>'};
+      var st=stMap[i.status]||i.status;
+      h+='<tr><td>#'+i.id+'</td><td>'+(i.workflow_id||'')+'</td><td>'+i.trigger_type+'</td><td>'+st+'</td><td>'+(i.duration_ms?Math.round(i.duration_ms/1000)+'s':'-')+'</td><td style="font-size:11px">'+(i.created_at||'')+'</td>';
+      h+='<td>';
+      if(i.status=='running'||i.status=='paused'){
+        h+='<button class="btn bo bs" onclick="aIPause('+i.id+',\''+i.status+'\')">'+(i.status=='paused'?'▶':'⏸')+'</button> ';
+        h+='<button class="btn bo bs" onclick="aICancel('+i.id+')">🛑</button> ';
+      }
+      h+='<button class="btn bo bs" onclick="aIDetail('+i.id+')">📋</button></td></tr>';
+    });
+    h+='</table></div>';
+    document.getElementById("aLContent").innerHTML=h;
+  }).catch(function(){});
+}
+
+function aIPause(id,status){
+  var action=status=='paused'?'resume':'pause';
+  fetch("/admin/automation/instances/"+id+"/"+action,{method:"POST",headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){showToast(d.message,"success");aLInstances()}
+    else showToast(d.error||"{{ _('Operation Failed') }}","error");
+  }).catch(function(){});
+}
+
+function aICancel(id){
+  if(!confirm("{{ _('Cancel this workflow?') }}"))return;
+  fetch("/admin/automation/instances/"+id+"/cancel",{method:"POST",headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){showToast("{{ _('Cancelled') }}","success");aLInstances()}
+    else showToast(d.error||"{{ _('Cancel Failed') }}","error");
+  }).catch(function(){});
+}
+
+function aIDetail(id){
+  fetch("/admin/automation/instances/"+id,{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success||!d.data)return;
+    var inst=d.data.instance;
+    var nodes=d.data.nodes||[];
+    var wfName=d.data.workflow_name||'{{ _('Unknown') }}';
+    var h='<div class="modal-overlay" onclick="if(event.target==this)this.remove()"><div class="modal-box">';
+    h+='<h3>📋 {{ _('Workflow Execution') }} #'+inst.id+' - '+esc(wfName)+'</h3>';
+    h+='<div class="modal-meta"><span>{{ _('Status') }}: '+(inst.status||'-')+'</span><span>{{ _('Trigger') }}: '+inst.trigger_type+'</span><span>{{ _('Duration') }}: '+(inst.duration_ms?Math.round(inst.duration_ms/1000)+'s':'-')+'</span></div>';
+    h+='<div class="modal-meta"><span>{{ _('Start') }}: '+(inst.started_at||'-')+'</span><span>{{ _('End') }}: '+(inst.finished_at||'-')+'</span></div>';
+    if(inst.error_message)h+='<div class="modal-body" style="color:#f85149;margin-bottom:12px">❌ '+esc(inst.error_message)+'</div>';
+    // {{ _('Node List') }}
+    h+='<div class="st">{{ _('Node Execution Details') }}</div><table><tr><th>{{ _('Node') }}</th><th>{{ _('Type') }}</th><th>{{ _('Status') }}</th><th>{{ _('Duration') }}</th><th>{{ _('Error') }}</th></tr>';
+    nodes.forEach(function(n){
+      var s=n.status=='completed'?'<span class="bdg on">{{ _('Complete') }}</span>':n.status=='running'?'<span class="bdg pd">{{ _('Running') }}</span>':n.status=='failed'?'<span class="bdg off">{{ _('Failed') }}</span>':n.status=='waiting_approval'?'<span class="bdg pd">{{ _('Pending Approval') }}</span>':'<span class="bdg off">'+n.status+'</span>';
+      var note=(n.log_snippet&&n.approval_status)?'<div style="font-size:11px;color:var(--text-dim)">'+(n.approval_status=='approved'?'✅ ':'❌ ')+esc(n.log_snippet)+'</div>':'';
+      var act='';
+      if(n.status=='waiting_approval'){
+        act='<button class="btn on" onclick="aNApprove('+inst.id+','+n.id+',true)">✅ {{ _('Approve') }}</button> <button class="btn off" onclick="aNApprove('+inst.id+','+n.id+',false)">❌ {{ _('Reject') }}</button>';
+      }
+      h+='<tr><td>'+esc(n.node_name||n.node_id)+'</td><td>'+n.node_type+'</td><td>'+s+note+'</td><td>'+(n.duration_ms?Math.round(n.duration_ms/1000)+'s':'-')+'</td><td style="color:#f85149;font-size:11px">'+(n.error_message?esc(n.error_message).slice(0,50):'')+(act?'<div style="margin-top:4px">'+act+'</div>':'')+'</td></tr>';
+    });
+    h+='</table>';
+    h+='<div style="margin-top:12px"><button class="btn bo" onclick="this.closest(\'.modal-overlay\').remove()">{{ _('Close') }}</button></div>';
+    h+='</div></div>';
+    document.body.insertAdjacentHTML("beforeend",h);
+  }).catch(function(){});
+}
+
+// 审批：通过/拒绝工作流审批节点
+function aNApprove(instId,nodeInstId,approved){
+  var msg=approved?'{{ _('Approval Note (optional)') }}':'{{ _('Rejection Reason') }}';
+  var note=prompt(msg,'');
+  if(note===null)return;
+  fetch("/admin/automation/instances/"+instId+"/nodes/"+nodeInstId+"/approve",{
+    method:"POST",
+    headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},
+    body:JSON.stringify({approved:approved,note:note||''})
+  }).then(function(r){return r.json()}).then(function(d){
+    showToast(d.message||d.error||'{{ _('Done') }}',d.success?'success':'error');
+    var overlay=document.querySelector('.modal-overlay');
+    if(overlay)overlay.remove();
+    aLInstances();
+  }).catch(function(){showToast('{{ _('Request Failed') }}','error')});
+}
+
+// ===== {{ _('Log') }} =====
+function aLLogs(){
+  document.getElementById("aLContent").innerHTML='<div class="lo"><div class="s"></div>{{ _('Load Logs') }}...</div>';
+  fetch("/admin/automation/logs?limit=100",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success||!d.data)return;
+    var logs=d.data.logs||[];
+    var h='<div class="cd"><div class="st">📄 {{ _('Execution Log') }} ('+d.data.total+')</div>';
+    h+='<table><tr><th>{{ _('Type') }}</th><th>{{ _('Level') }}</th><th>{{ _('Message') }}</th><th>{{ _('Time') }}</th></tr>';
+    if(!logs.length)h+='<tr><td colspan="4"><div class="em">{{ _('No Logs Yet') }}</div></td></tr>';
+    else logs.forEach(function(l){
+      var lvlMap={info:'<span class="bdg on">info</span>',warn:'<span class="bdg pd">warn</span>',error:'<span class="bdg off">error</span>',fatal:'<span class="bdg off" style="background:rgba(248,81,73,.2)">fatal</span>'};
+      h+='<tr><td>'+l.source_type+'</td><td>'+(lvlMap[l.level]||l.level)+'</td><td style="max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(l.message)+'</td><td style="font-size:11px">'+l.created_at+'</td></tr>';
+    });
+    h+='</table></div>';
+    document.getElementById("aLContent").innerHTML=h;
+  }).catch(function(){});
+}
+
+// ============================================================
+// {{ _('Admin Management') }} — l_admins (2026-05-10 v2 - inline expand)
+// ============================================================
+var adminsData = [];
+var admMe = null;  // current admin's own data
+

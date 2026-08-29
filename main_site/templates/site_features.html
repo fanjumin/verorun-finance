@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+
+<html lang="{{ lang }}">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>{{ site.name }} - {{ _('Features') }}</title>
+    <style>
+        :root {
+            --primary-color: {{ site.theme_color }};
+            --accent-color: {{ site.accent_color }};
+            --bg-color: #f8fafc;
+            --text-color: #1e293b;
+            --card-bg: #ffffff;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg-color); color: var(--text-color); }
+        .container { max-width: 1200px; margin: 0 auto; padding: 0 20px; }
+        
+        header { background: var(--card-bg); box-shadow: 0 2px 8px rgba(0,0,0,0.08); position: sticky; top: 0; z-index: 100; }
+        header .container { display: flex; justify-content: space-between; align-items: center; height: 70px; }
+        header .logo { font-size: 24px; font-weight: 700; color: var(--primary-color); }
+        header nav a { margin-left: 30px; text-decoration: none; color: #64748b; transition: color 0.3s; }
+        header nav a:hover { color: var(--primary-color); }
+        
+        .features-header { padding: 80px 0; text-align: center; }
+        .features-header h1 { font-size: 42px; margin-bottom: 20px; }
+        .features-header p { font-size: 18px; color: #64748b; }
+        
+        .features-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 40px; padding: 40px 0 80px; }
+        .feature-item { display: flex; gap: 30px; background: var(--card-bg); padding: 40px; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); transition: transform 0.3s; }
+        .feature-item:hover { transform: translateY(-3px); }
+        .feature-icon { font-size: 56px; flex-shrink: 0; }
+        .feature-content h3 { font-size: 24px; margin-bottom: 15px; }
+        .feature-content p { color: #64748b; line-height: 1.8; }
+        
+        .tier-comparison { padding: 80px 0; background: var(--card-bg); }
+        .tier-comparison h2 { text-align: center; font-size: 36px; margin-bottom: 60px; }
+        .comparison-table { width: 100%; border-collapse: collapse; }
+        .comparison-table th, .comparison-table td { padding: 20px; text-align: center; border-bottom: 1px solid #e2e8f0; }
+        .comparison-table th { background: var(--bg-color); font-weight: 600; }
+        .comparison-table .check { color: #10b981; font-size: 20px; }
+        .comparison-table .cross { color: #ef4444; font-size: 20px; }
+        
+        footer { background: #1e293b; color: white; padding: 60px 0; }
+        footer .container { display: grid; grid-template-columns: repeat(4, 1fr); gap: 40px; }
+        footer h4 { margin-bottom: 20px; }
+        footer ul { list-style: none; }
+        footer li { margin-bottom: 10px; }
+        footer a { color: #94a3b8; text-decoration: none; }
+        footer a:hover { color: white; }
+        
+        @media (max-width: 768px) {
+            .features-grid { grid-template-columns: 1fr; }
+            .features-header h1 { font-size: 32px; }
+            header nav { display: none; }
+        }
+    </style>
+</head>
+<body>
+<header>
+<div class="container">
+<div class="logo">{{ site.name }}</div>
+<nav>
+<a href="/">{{ _('Home') }}</a>
+<a href="/features">{{ _('Features') }}</a>
+<a href="/pricing">{{ _('Pricing') }}</a>
+<a href="/contact">{{ _('Contact Us') }}</a>
+</nav>
+</div>
+</header>
+<section class="features-header">
+<div class="container">
+<h1>{{ _('Powerful Features') }}</h1>
+<p>{{ _('AI-powered smart site platform — your comprehensive online solution.') }}</p>
+</div>
+</section>
+<section class="features-grid">
+<div class="container">
+<div class="feature-item">
+<div class="feature-icon">🎨</div>
+<div class="feature-content">
+<h3>{{ _('Visual Editor') }}</h3>
+<p>{{ _('Drag & drop, WYSIWYG. No coding needed. Multiple layout templates for quick page building.') }}</p>
+</div>
+</div>
+<div class="feature-item">
+<div class="feature-icon">🤖</div>
+<div class="feature-content">
+<h3>{{ _('AI Content Generation') }}</h3>
+<p>{{ _('DeepSeek-powered content: articles, product descriptions, SEO copy. One-click generation.') }}</p>
+</div>
+</div>
+<div class="feature-item">
+<div class="feature-icon">💬</div>
+<div class="feature-content">
+<h3>{{ _('Smart Customer Service') }}</h3>
+<p>{{ _('24/7 AI customer service with multi-turn conversation and smart routing to human agents.') }}</p>
+</div>
+</div>
+<div class="feature-item">
+<div class="feature-icon">📊</div>
+<div class="feature-content">
+<h3>{{ _('Analytics') }}</h3>
+<p>{{ _('Real-time analytics, user behavior, conversion funnels — data-driven decisions.') }}</p>
+</div>
+</div>
+<div class="feature-item">
+<div class="feature-icon">📱</div>
+<div class="feature-content">
+<h3>{{ _('Multi-Platform Adaptive') }}</h3>
+<p>{{ _('Auto-adaptive to mobile, tablet, desktop. Create once, show everywhere.') }}</p>
+</div>
+</div>
+<div class="feature-item">
+<div class="feature-icon">⚡</div>
+<div class="feature-content">
+<h3>{{ _('High-Performance Hosting') }}</h3>
+<p>{{ _('CDN acceleration, SSL certificate, auto backups. 99.9% uptime guarantee.') }}</p>
+</div>
+</div>
+</div>
+</section>
+<section class="tier-comparison">
+<div class="container">
+<h2>{{ _('Feature Comparison') }}</h2>
+<table class="comparison-table">
+<thead>
+<tr>
+<th>{{ _('Features') }}</th>
+<th>{{ _('Free Plan') }}</th>
+<th>{{ _('Starter') }}</th>
+<th>{{ _('Professional') }}</th>
+<th>{{ _('Enterprise') }}</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>{{ _('Site Pages') }}</td>
+<td><span class="check">✓</span></td>
+<td><span class="check">✓</span></td>
+<td><span class="check">✓</span></td>
+<td><span class="check">✓</span></td>
+</tr>
+<tr>
+<td>{{ _('Content Blocks') }}</td>
+<td>10</td>
+<td>50</td>
+<td>{{ _('Unlimited') }}</td>
+<td>{{ _('Unlimited') }}</td>
+</tr>
+<tr>
+<td>{{ _('AI Content Generation') }}</td>
+<td><span class="cross">✗</span></td>
+<td><span class="check">✓</span></td>
+<td><span class="check">✓</span></td>
+<td><span class="check">✓</span></td>
+</tr>
+<tr>
+<td>{{ _('Smart Customer Service') }}</td>
+<td><span class="cross">✗</span></td>
+<td><span class="cross">✗</span></td>
+<td><span class="check">✓</span></td>
+<td><span class="check">✓</span></td>
+</tr>
+<tr>
+<td>{{ _('Analytics') }}</td>
+<td><span class="cross">✗</span></td>
+<td><span class="check">✓</span></td>
+<td><span class="check">✓</span></td>
+<td><span class="check">✓</span></td>
+</tr>
+<tr>
+<td>{{ _('Social Media Publish') }}</td>
+<td><span class="cross">✗</span></td>
+<td><span class="cross">✗</span></td>
+<td><span class="check">✓</span></td>
+<td><span class="check">✓</span></td>
+</tr>
+<tr>
+<td>{{ _('Private Deployment') }}</td>
+<td><span class="cross">✗</span></td>
+<td><span class="cross">✗</span></td>
+<td><span class="cross">✗</span></td>
+<td><span class="check">✓</span></td>
+</tr>
+<tr>
+<td>{{ _('SLA Guarantee') }}</td>
+<td><span class="cross">✗</span></td>
+<td><span class="cross">✗</span></td>
+<td><span class="cross">✗</span></td>
+<td><span class="check">✓</span></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<footer>
+<div class="container">
+<div>
+<h4>{{ site.name }}</h4>
+<p>{{ _('Smart Website Platform') }}</p>
+</div>
+<div>
+<h4>{{ _('Products') }}</h4>
+<ul>
+<li><a href="/features">{{ _('Features') }}</a></li>
+<li><a href="/pricing">{{ _('Pricing Plans') }}</a></li>
+</ul>
+</div>
+<div>
+<h4>{{ _('Support') }}</h4>
+<ul>
+<li><a href="/contact">{{ _('Contact Us') }}</a></li>
+</ul>
+</div>
+<div>
+<h4>{{ _('Legal') }}</h4>
+<ul>
+<li><a href="#">{{ _('Privacy Policy') }}</a></li>
+<li><a href="#">{{ _('Terms of Service') }}</a></li>
+</ul>
+</div>
+</div>
+</footer>
+</body>
+</html>

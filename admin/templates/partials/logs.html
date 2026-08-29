@@ -1,0 +1,11 @@
+﻿window.l_logs=function(){
+  document.getElementById("pt").textContent="{{ _('Operation Log') }}";
+  fetch("/admin/logs",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success||!d.data)return;
+    var h="<div class=\"cd\"><div class=\"st\">{{ _('Audit Log') }}</div><table><tr><th>{{ _('Admin') }}</th><th>{{ _('Actions') }}</th><th>{{ _('Target') }}</th><th>{{ _('Details') }}</th><th>IP</th><th>{{ _('Time') }}</th></tr>";
+    d.data.forEach(function(l){h+="<tr><td>"+(l.admin_name||"-")+"</td><td>"+l.action+"</td><td>"+l.target_type+"/"+l.target_id+"</td><td>"+(l.detail||"")+"</td><td>"+l.ip_address+"</td><td>"+l.created_at+"</td></tr>"});
+    h+="</table></div>";
+    document.getElementById("mc").innerHTML=h;
+  }).catch(function(){})
+}
+

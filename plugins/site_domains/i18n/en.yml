@@ -1,0 +1,49 @@
+# Site Domains Plugin — English translations (source is English, identity mapping)
+plugin.name: Site Domains
+Site Domains: Site Domains
+Loading...: Loading...
+Load failed: Load failed
+Connection Failed: Connection Failed
+Domain Quota: Domain Quota
+Used: Used
+Add Domain: Add Domain
+Quota Full: Quota Full
+Subdomain: Subdomain
+Full Domain: Full Domain
+Type: Type
+Port: Port
+Display Name: Display Name
+Status: Status
+Actions: Actions
+No Domains: No Domains
+Active: Active
+Disabled: Disabled
+Independent Service: Independent Service
+Content Site: Content Site
+Edit: Edit
+Config: Config
+Delete: Delete
+Add Subdomain: Add Subdomain
+Subdomain Prefix: Subdomain Prefix
+e.g.: e.g.
+Online Store: Online Store
+Content Site (serve by site app, no Nginx config needed): Content Site (serve by site app, no Nginx config needed)
+Independent Service (separate backend, Nginx config generated): Independent Service (separate backend, Nginx config generated)
+Service Port: Service Port
+Cancel: Cancel
+Create: Create
+Please enter a valid port number: Please enter a valid port number
+Please fill in all fields: Please fill in all fields
+Create Failed: Create Failed
+Edit Domain: Edit Domain
+Save: Save
+Display name cannot be empty: Display name cannot be empty
+Save Failed: Save Failed
+This action cannot be undone: This action cannot be undone
+Delete Failed: Delete Failed
+Load Failed: Load Failed
+Nginx Config: Nginx Config
+Server path: Server path
+Copy: Copy
+Close: Close
+Config copied to clipboard: Config copied to clipboard

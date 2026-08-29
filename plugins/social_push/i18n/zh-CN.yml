@@ -1,0 +1,165 @@
+# Social Push Plugin — 中文翻译
+plugin.name: 社交推送
+plugin.description: 社媒发布 — 多平台社媒内容发布（微信公众号/微博/头条），含发布历史
+plugin.stats.total_publishes: 累计发布
+plugin.stats.today_publishes: 今日发布
+Article Edit: 文章编辑
+Add Image: 配图
+Publish: 发布
+Edit Content: 编辑内容
+Platform: 平台
+WeChat OA Articles: 公众号文章
+Weibo: 微博
+Type: 类型
+Notification: 通知
+Promote: 推广
+Theme: 主题
+Enter Topic: 输入主题
+Transform Finance: 赋能金融
+Generate: 生成
+Clear: 清空
+Import: 导入
+Content: 内容
+Title: 标题
+Summary: 摘要
+Optional: 可选
+Body: 正文
+Body Content: 正文内容
+Layout: 排版
+Use this feature in the editor first: 请先在编辑器中使用此功能
+Loading: 加载中
+No Published: 暂无已发布
+Select: 选择
+Article Import: 文章导入
+Categories: 分类
+Time: 时间
+Actions: 操作
+Close: 关闭
+Request Failed: 请求失败
+Load failed: 加载失败
+Article not found: 未找到文章
+Imported: 已导入
+Article: 文章
+Body cannot be empty: 正文不能为空
+AI Formatting (~10s)...: AI 排版中（约10秒）...
+Layout complete: 排版完成
+Layout Failed: 排版失败
+Article Image: 文章配图
+Image Description: 图片描述
+Auto Generate if Empty: 留空自动生成
+Fintech: 金融科技
+Dark Sci-Fi: 暗黑科幻
+AI Generating Image (~30s)...: AI 生成图片中（约30秒）...
+Image generated, URL inserted at bottom: 图片已生成，链接已插入到底部
+Image Attach Failed: 配图失败
+AI Image Generation: AI 图片生成
+AI Copywriting: AI 文案
+AI Image API Key: AI 图片 API Key
+AI Copywriting API Key: AI 文案 API Key
+Enter an image description or article title: 请输入图片描述或文章标题
+Enter a topic: 请输入主题
+Generating: 生成中
+Generation Failed: 生成失败
+Generation complete: 生成完成
+Image Generation: 图片生成
+Description: 描述
+Describe Image Effect: 描述图片效果
+Ink Landscape: 水墨山水
+As Cover Image: 作为封面图
+Generate Picture: 生成图片
+Current Cover: 当前封面
+Cleared: 已清除
+Clear Cover: 清除封面
+Enter image description: 请输入图片描述
+AI Generating Image: AI 生成图片中
+Generation Result: 生成结果
+Set as Cover: 设为封面
+View Original: 查看原图
+Image generated: 图片已生成
+Push To: 推送到
+Publish Channels: 发布渠道
+AI Tools: AI 工具
+AI Creation Tools: AI 创作工具
+AI tools are for content creation, not publish targets: AI 工具用于内容创作，不是发布目标
+Not Configured: 未配置
+No Configured Platform: 无已配置平台
+First: 请先在
+System Settings: 系统设置
+Configure WeChat OA: 配置微信公众号
+Weibo or AI Image: 微博或 AI 图片
+Go to Config: 前往配置
+Preview: 预览
+No Title: 无标题
+No Body: 无正文
+Direct WeChat Publish: 微信直接发布
+Unchecked: 不勾选
+Draft Only: 仅存草稿
+Always Direct Publish to Weibo: 微博始终直接发布
+Send to Selected Platform: 发送到所选平台
+Push History: 推送历史
+Title and body are required: 标题和正文不能为空
+Select at least one platform: 请至少选择一个平台
+Failed to send: 发送失败
+No Push Records: 暂无推送记录
+'<table><tr><th>Platform</th><th>Title</th><th>Status</th><th>ID</th><th>Time</th><th>Action</th></tr>': '<table><tr><th>平台</th><th>标题</th><th>状态</th><th>ID</th><th>时间</th><th>操作</th></tr>'
+Draft: 草稿
+Publishing: 发布中
+Published: 已发布
+Failed: 失败
+Delete: 删除
+'Total: ': '共 '
+' entries': ' 条'
+Delete?: 确认删除？
+Deleted: 已删除
+Delete failed: 删除失败
+Publish History: 发布历史
+Refresh: 刷新
+Check Configuration Failed: 检查配置失败
+X (Twitter): X (Twitter)
+LinkedIn: LinkedIn
+Reddit: Reddit
+Telegram Channel: Telegram 频道
+Tweet: 推文
+Link Post: 链接帖子
+Text Post: 文字帖子
+Channel Message: 频道消息
+Publish Failed: 发布失败
+Subreddit: 板块
+Import from CMS: 从CMS导入
+Published on Toutiao: 已发布到今日头条
+Twitter/X not configured: Twitter/X 未配置
+tweepy not installed: 未安装 tweepy
+Reddit not configured: Reddit 未配置
+No subreddit specified: 未指定 Subreddit
+praw not installed: 未安装 praw
+LinkedIn not configured: LinkedIn 未配置
+Telegram not configured: Telegram 未配置
+'Telegram API Error: {desc}': 'Telegram API 错误：{desc}'
+'{platform} credentials not configured': '{platform} 凭据未配置'
+Publish too frequent, please try again later: 发布过于频繁，请稍后再试
+Account Name: 账号名称
+Account not found: 未找到账号
+Account name is required: 账号名称不能为空
+Accounts: 账号
+Active: 启用
+Add Account: 新增账号
+Cancel: 取消
+Edit Account: 编辑账号
+'e.g. Official Weibo #1': '例如：官方微博 1 号'
+Inactive: 停用
+Leave blank to keep unchanged: 留空保持不变
+No accounts yet: 暂无账号
+Save: 保存
+Saved: 已保存
+Social Account Management: 社媒账号管理
+Status: 状态
+Test: 测试
+Test Failed: 测试失败
+Test OK: 连接正常
+Testing...: 测试中...
+Toggle: 切换
+Toutiao: 今日头条
+Unsupported platform: 不支持的平台
+Update failed: 更新失败
+Updated: 已更新
+WeChat Official Account: 微信公众号

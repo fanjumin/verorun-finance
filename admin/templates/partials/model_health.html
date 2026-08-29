@@ -1,0 +1,74 @@
+// Model Health — AI Hub 兜底引擎健康监控
+window.l_model_health = function(targetId){
+  if(!targetId) document.getElementById("pt").textContent="{{ _('Model Health') }}";
+  var target = document.getElementById(targetId||"mc");
+  render();
+
+  function render(){
+    target.innerHTML='<div class="lo"><div class="s"></div>{{ _('Loading...') }}</div>';
+    var p1 = fetch("/admin/ai-model-health",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()});
+    var p2 = fetch("/admin/ai-model-failover-events",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()});
+    Promise.all([p1,p2]).then(function(res){
+      var hd = res[0]||{}, ed = res[1]||{};
+      if(!hd.success){target.innerHTML='<div class="em">{{ _('Load failed') }}</div>';return}
+      var t = targetId||'';
+      var h='<div class="cd">';
+      h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">';
+      h+='<h3 style="margin:0;font-size:16px;color:var(--accent)">{{ _('Model Health') }}</h3>';
+      h+='<span style="flex:1"></span>';
+      h+='<button class="bp" onclick="l_model_health(\''+t+'\')" style="padding:6px 16px;font-size:13px;cursor:pointer">{{ _('Refresh') }}</button>';
+      h+='</div>';
+      var rows = hd.data||[];
+      if(!rows.length){
+        h+='<div class="em">{{ _('No health records yet.') }}</div>';
+      }else{
+        h+='<table class="dt"><thead><tr>';
+        h+='<th>{{ _('Model') }}</th><th>{{ _('Status') }}</th><th>{{ _('Consecutive Failures') }}</th><th>{{ _('Circuit Open') }}</th><th>{{ _('Calls') }}</th><th>{{ _('Failures') }}</th><th>{{ _('Last Success') }}</th><th>{{ _('Last Failure') }}</th>';
+        h+='</tr></thead><tbody>';
+        rows.forEach(function(r){
+          var st = r.status||'unknown';
+          var stLabel = {'healthy':'{{ _('Healthy') }}','degraded':'{{ _('Degraded') }}','cooldown':'{{ _('Cooldown') }}','unknown':'{{ _('Unknown') }}'}[st]||st;
+          var good = st==='healthy';
+          h+='<tr>';
+          h+='<td><b>'+esc(r.model_name)+'</b> <span style="font-size:10px;color:var(--dim)">('+esc(r.provider_slug)+')</span></td>';
+          h+='<td><span class="bdg '+(good?'on':'off')+'" style="color:'+(good?'var(--accent3)':'var(--gold)')+'">'+esc(stLabel)+'</span></td>';
+          h+='<td>'+(r.circuit_open?'<span style="color:var(--rose);font-weight:600">'+r.consecutive_failures+'</span>':r.consecutive_failures)+'</td>';
+          h+='<td>'+(r.circuit_open?'<span style="color:var(--rose);font-weight:600">{{ _('Yes') }}</span>':'{{ _('No') }}')+'</td>';
+          h+='<td>'+r.total_calls+'</td>';
+          h+='<td>'+r.total_failures+'</td>';
+          h+='<td style="font-size:11px;color:var(--dim)">'+(r.last_success_at||'—')+'</td>';
+          h+='<td style="font-size:11px;color:var(--dim)">'+(r.last_failure_at||'—')+'</td>';
+          h+='</tr>';
+        });
+        h+='</tbody></table>';
+      }
+      h+='</div>';
+
+      h+='<div class="cd" style="margin-top:12px">';
+      h+='<h3 style="margin:0 0 12px;font-size:16px;color:var(--accent)">{{ _('Failover Events') }}</h3>';
+      var evs = ed.data||[];
+      if(!evs.length){
+        h+='<div class="em">{{ _('No failover events yet.') }}</div>';
+      }else{
+        h+='<table class="dt"><thead><tr>';
+        h+='<th>{{ _('Time') }}</th><th>{{ _('From Model') }}</th><th>{{ _('To Model') }}</th><th>{{ _('Reason') }}</th><th>{{ _('Request ID') }}</th>';
+        h+='</tr></thead><tbody>';
+        evs.forEach(function(e){
+          h+='<tr>';
+          h+='<td style="font-size:11px;color:var(--dim)">'+esc(e.created_at)+'</td>';
+          h+='<td style="font-size:11px">'+esc(e.from_provider)+' / '+esc(e.from_model)+'</td>';
+          h+='<td style="font-size:11px;color:var(--accent)">'+esc(e.to_provider)+' / '+esc(e.to_model)+'</td>';
+          h+='<td><span class="bdg off">'+esc(e.reason)+'</span></td>';
+          h+='<td style="font-size:11px;color:var(--dim)">'+esc(e.request_id||'—')+'</td>';
+          h+='</tr>';
+        });
+        h+='</tbody></table>';
+      }
+      h+='</div>';
+      if(targetId) h = '<div class="ai-hub-subtitle">{{ _('AI Hub') }} <span style="color:var(--dim)">&rsaquo;</span> {{ _('Model Health') }}</div>' + h;
+      target.innerHTML=h;
+    }).catch(function(){
+      target.innerHTML='<div class="em">{{ _('Load failed') }} — <a href="javascript:l_model_health(\''+(targetId||'')+'\')">{{ _('Retry') }}</a></div>';
+    });
+  }
+};

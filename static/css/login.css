@@ -1,0 +1,183 @@
+/* ══════════════════════════════════════════
+   login.css — 登录页样式
+   依赖: design-system.css
+   ══════════════════════════════════════════ */
+
+/* ── Page ── */
+.login-page{min-height:100vh;display:flex;flex-direction:column;background:var(--bg-deep)}
+.login-bg{position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:radial-gradient(ellipse 80% 60% at 50% 0%,rgba(99,102,241,0.08) 0%,transparent 70%),
+             radial-gradient(ellipse 60% 50% at 80% 80%,rgba(0,245,255,0.04) 0%,transparent 60%)}
+.login-bg-grid{position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:linear-gradient(rgba(99,102,241,0.03) 1px,transparent 1px),
+                   linear-gradient(90deg,rgba(99,102,241,0.03) 1px,transparent 1px);
+  background-size:60px 60px}
+
+/* ── Top Header ── */
+.login-header{display:flex;align-items:center;justify-content:space-between;padding:0;width:100%;max-width:1100px}
+.lh-left{display:flex;align-items:center;gap:12px}
+.lh-icon{width:32px;height:32px;border-radius:8px;object-fit:contain}
+.lh-name{font-size:18px;font-weight:700;color:var(--text-high);letter-spacing:-.3px}
+.lh-right{font-size:13px;color:var(--text-dim);max-width:400px;text-align:right;line-height:1.4}
+
+/* ── Container ── */
+.login-container{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:80px 20px;position:relative;z-index:1}
+
+/* ── Split Layout ── */
+.login-split{display:flex;gap:48px;align-items:stretch;width:100%;max-width:1100px;min-height:500px}
+
+/* ── Left: Plans ── */
+.login-left{flex:1;display:flex;flex-direction:column;justify-content:center}
+
+.ll-plans{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.ll-plan-card{display:flex;gap:16px;padding:16px 18px;background:var(--bg-glass);backdrop-filter:blur(12px);border:1px solid var(--border);border-radius:14px;transition:all .25s;cursor:default}
+.ll-plan-card:hover{border-color:var(--border-accent);background:rgba(15,15,26,0.85);transform:translateX(4px)}
+.ll-plan-icon{flex-shrink:0;width:44px;height:44px;border-radius:12px;overflow:hidden}
+.ll-plan-icon-img{width:100%;height:100%;object-fit:contain}
+.ll-plan-icon-placeholder{width:100%;height:100%;border-radius:12px;display:flex;align-items:center;justify-content:center}
+.ll-plan-info{flex:1;min-width:0}
+.ll-plan-name{font-size:15px;font-weight:600;color:var(--text-high);margin-bottom:4px}
+.ll-plan-price{display:flex;align-items:baseline;gap:2px;margin-bottom:8px}
+.ll-plan-price-num{font-size:22px;font-weight:800;font-family:var(--font-display);color:var(--cyan);letter-spacing:-1px}
+.ll-plan-price-unit{font-size:12px;color:var(--text-muted)}
+.ll-plan-features{list-style:none;padding:0;margin:0;display:flex;flex-wrap:wrap;gap:4px 14px}
+.ll-plan-features li{font-size:12px;color:var(--text-dim);display:flex;align-items:center;gap:4px}
+.ll-feat-check{flex-shrink:0;color:var(--green)}
+.ll-plan-more{color:var(--text-muted);font-size:11px}
+.ll-plans-empty{text-align:center;color:var(--text-muted);padding:40px 20px;font-size:14px}
+
+/* ── Right: Login Card ── */
+.login-right{width:420px;flex-shrink:0;display:flex;align-items:center}
+
+.login-card{width:100%;background:var(--bg-glass);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
+  border:1px solid var(--border);border-radius:20px;padding:36px 32px 32px;
+  box-shadow:0 0 0 1px rgba(99,102,241,0.04),0 8px 48px rgba(0,0,0,0.5);
+  animation:card-in .5s var(--ease-out)}
+@keyframes card-in{from{opacity:0;transform:translateY(24px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+
+/* ── Tabs ── */
+.login-tabs{display:flex;gap:4px;background:rgba(11,17,32,0.6);border-radius:10px;padding:4px;margin-bottom:24px}
+.login-tab{flex:1;padding:9px 12px;border:none;border-radius:8px;background:transparent;
+  color:var(--text-muted);font-size:13px;font-weight:500;cursor:pointer;
+  transition:all .25s;font-family:var(--font-cn)}
+.login-tab:hover{color:var(--text-dim)}
+.login-tab.active{background:rgba(99,102,241,0.12);color:var(--cyan);box-shadow:0 0 12px rgba(99,102,241,0.1)}
+
+/* ── Form ── */
+.lf{margin-bottom:16px}
+.lf-label{display:block;font-size:12px;font-weight:500;color:var(--text-muted);margin-bottom:6px;letter-spacing:.3px}
+.lf-row{display:flex;gap:8px}
+.lf-wrap{position:relative;flex:1}
+.lf-icon{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--text-muted);pointer-events:none;display:flex;align-items:center}
+.lf-in{width:100%;padding:12px 14px 12px 42px;background:rgba(11,17,32,0.5);border:1.5px solid var(--border);
+  border-radius:var(--radius-sm);color:var(--text);font-size:14px;transition:all .25s;font-family:var(--font-cn);box-sizing:border-box}
+.lf-in::placeholder{color:var(--text-muted)}
+.lf-in:focus{outline:none;border-color:rgba(99,102,241,0.4);box-shadow:0 0 0 3px rgba(99,102,241,0.1)}
+.lf-in:disabled{opacity:0.4;cursor:not-allowed}
+
+.lf-btn-send{padding:12px 18px;background:rgba(99,102,241,0.08);border:1.5px solid rgba(99,102,241,0.2);
+  border-radius:var(--radius-sm);color:var(--cyan);font-size:13px;font-weight:600;cursor:pointer;
+  white-space:nowrap;transition:all .25s;font-family:var(--font-cn);min-width:100px;text-align:center}
+.lf-btn-send:hover{background:rgba(99,102,241,0.15);border-color:rgba(99,102,241,0.4)}
+.lf-btn-send:disabled{opacity:0.3;cursor:not-allowed}
+.lf-btn-send.countdown{color:var(--text-muted)}
+
+.lf-pwd-row{display:flex;align-items:stretch}
+.lf-pwd-row .lf-in{flex:1;border-top-right-radius:0;border-bottom-right-radius:0}
+.lf-pwd-eye{width:40px;border:1.5px solid var(--border);border-left:none;background:rgba(11,17,32,0.6);
+  border-radius:0 var(--radius-sm) var(--radius-sm) 0;color:var(--text-muted);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;transition:color .15s;padding:0}
+.lf-pwd-eye:hover{color:var(--text)}
+
+/* ── Primary Button ── */
+.lf-btn-primary{width:100%;padding:13px;background:var(--gradient-primary);border:none;border-radius:var(--radius-sm);
+  color:#fff;font-size:15px;font-weight:600;cursor:pointer;position:relative;overflow:hidden;
+  transition:all .25s;font-family:var(--font-cn);box-shadow:0 4px 20px rgba(99,102,241,0.25)}
+.lf-btn-primary:hover{box-shadow:0 6px 28px rgba(99,102,241,0.4);transform:translateY(-1px)}
+.lf-btn-primary:active{transform:scale(.98)}
+.lf-btn-primary:disabled{opacity:0.4;cursor:not-allowed;transform:none}
+.lf-btn-primary .lf-spinner{display:none;width:20px;height:20px;border:2px solid rgba(255,255,255,.2);
+  border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;margin:0 auto}
+.lf-btn-primary.loading .lf-btn-text{visibility:hidden}
+.lf-btn-primary.loading .lf-spinner{display:block}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── Messages ── */
+.lf-msg{font-size:12px;margin-top:8px;padding:9px 12px;border-radius:8px;display:none;align-items:center;gap:8px}
+.lf-msg.error{display:flex;background:rgba(244,63,94,0.08);border:1px solid rgba(244,63,94,0.2);color:var(--rose)}
+.lf-msg.success{display:flex;background:rgba(0,255,159,0.08);border:1px solid rgba(0,255,159,0.2);color:var(--green)}
+
+/* ── Captcha ── */
+.lf-captcha{margin:18px 0}
+
+/* ── Toggle ── */
+.lf-toggle{margin-top:14px;text-align:center}
+.lf-toggle a,.lf-toggle button{background:none;border:none;color:var(--text-muted);font-size:12px;cursor:pointer;transition:color .25s;font-family:var(--font-cn);text-decoration:none}
+.lf-toggle a:hover,.lf-toggle button:hover{color:var(--cyan)}
+
+/* ── Divider ── */
+.lf-divider{display:flex;align-items:center;margin:22px 0;gap:12px}
+.lf-divider::before,.lf-divider::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,transparent,var(--border),transparent)}
+.lf-divider span{color:var(--text-muted);font-size:11px;text-transform:uppercase;letter-spacing:1px}
+
+/* ── Social ── */
+.lf-btn-social{width:100%;padding:12px;background:rgba(99,102,241,0.06);border:1.5px solid rgba(99,102,241,0.15);
+  border-radius:var(--radius-sm);color:var(--text-dim);font-size:14px;font-weight:500;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:8px;transition:all .25s;font-family:var(--font-cn)}
+.lf-btn-social:hover{background:rgba(99,102,241,0.12);color:var(--cyan)}
+.lf-social-row{display:flex;gap:8px}
+.lf-social-row .lf-btn-social{flex:1}
+
+/* ── Agreement ── */
+.lf-agreement{font-size:11px;color:var(--text-muted);text-align:center;margin:12px 0 4px;line-height:1.5}
+.lf-agreement a{color:var(--cyan);text-decoration:none}
+.lf-agreement a:hover{text-decoration:underline}
+
+/* ── Register ── */
+.lf-register{text-align:center;margin-top:16px;font-size:13px;color:var(--text-muted)}
+.lf-register a{color:var(--cyan);text-decoration:none;font-weight:500}
+.lf-register a:hover{text-decoration:underline}
+
+/* ── Footer ── */
+.login-footer{text-align:center;padding:20px;color:var(--text-muted);font-size:11px;position:relative;z-index:1;border-top:1px solid rgba(99,102,241,0.06);display:flex;justify-content:center;gap:4px 10px;flex-wrap:wrap}
+.lf-company{color:var(--text-dim)}
+.login-footer .lf-icp a,.login-footer .lf-security a{color:var(--text-muted);text-decoration:none}
+.login-footer .lf-icp a:hover,.login-footer .lf-security a:hover{color:var(--cyan)}
+
+/* ── Toast ── */
+.toast-wrap{position:fixed;top:24px;right:24px;z-index:999;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+.toast-el{padding:12px 20px;border-radius:10px;background:var(--bg-glass);backdrop-filter:blur(12px);
+  border:1px solid var(--border);color:var(--text);font-size:13px;
+  box-shadow:0 8px 32px rgba(0,0,0,0.5);display:flex;align-items:center;gap:10px;
+  animation:slide-in .3s var(--ease-out);pointer-events:auto;max-width:360px}
+.toast-el.success{border-color:rgba(0,255,159,0.3)}
+.toast-el.error{border-color:rgba(244,63,94,0.3)}
+.toast-el.leave{animation:slide-out .25s ease-in forwards}
+@keyframes slide-in{from{opacity:0;transform:translateX(60px)}to{opacity:1;transform:translateX(0)}}
+@keyframes slide-out{from{opacity:1;transform:translateX(0)}to{opacity:0;transform:translateX(60px)}}
+
+/* ── Responsive ── */
+@media(max-width:900px){
+  .login-header{padding:16px 24px}
+  .lh-right{font-size:12px;max-width:250px}
+  .login-split{flex-direction:column;gap:32px;max-width:420px;min-height:auto}
+  .login-left{padding:0}
+  .ll-plans{grid-template-columns:1fr 1fr}
+  .ll-plan-card{flex-direction:column;padding:14px}
+  .ll-plan-card:hover{transform:translateY(-2px)}
+  .login-right{width:100%}
+  .login-container{padding-top:0}
+}
+
+@media(max-width:480px){
+  .login-header{flex-direction:column;align-items:flex-start;gap:6px;padding:16px 20px}
+  .lh-right{text-align:left;max-width:100%}
+  .login-card{padding:28px 20px 24px;border-radius:16px}
+  .toast-wrap{left:16px;right:16px;top:16px}
+  .toast-el{max-width:100%}
+  .lf-row{flex-direction:column;gap:8px}
+  .lf-btn-send{width:100%}
+  .ll-plans{grid-template-columns:1fr}
+  .ll-plan-card{min-width:auto}
+  .lf-social-row{flex-direction:column}
+}

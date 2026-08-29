@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Two-Factor Authentication</title>
+    <!-- 主题与全局设计系统同步（与 setup.html 同规范） -->
+    <link rel="stylesheet" href="/static/css/design-system.css">
+    <link rel="stylesheet" href="/static/css/themes.css">
+    <style>
+        /* 主题/色值全部走 design-system 变量（审计 #18：禁止硬编码色值） */
+        body { background: var(--bg-card); color: var(--text); font-family: system-ui, sans-serif; display:flex; align-items:center; justify-content:center; min-height:100vh; margin:0; }
+        .card { max-width: 420px; width:100%; margin: 24px; padding: 28px; border-radius: var(--radius); box-shadow: var(--shadow-md); }
+        .code-input { font-size:22px; letter-spacing:6px; padding:10px; width:100%; text-align:center; box-sizing:border-box; border:1px solid var(--border); border-radius:6px; background: var(--bg-card); color: var(--text); }
+        .btn { padding:10px 18px; border:none; border-radius:6px; cursor:pointer; font-size:14px; }
+        .btn-primary { background: var(--accent); color:#fff; }
+        .link { color: var(--accent); cursor:pointer; font-size:13px; text-decoration:none; }
+        .muted { color: var(--text-dim); font-size:13px; }
+        .error { color: var(--danger); font-size:13px; min-height:18px; margin-top:8px; }
+    </style>
+    <script>
+        // 插件内文案：经系统 _() 渲染（标准 §12.1），词条只存在于插件目录
+        var T = {
+            title: {{ _('Two-Factor Authentication')|tojson }},
+            hint: {{ _('Enter the 6-digit code from your authenticator app.')|tojson }},
+            placeholder: {{ _('6-digit code')|tojson }},
+            recoveryHint: {{ _('Enter your 10-character recovery code (XXXXX-XXXXX).')|tojson }},
+            verify: {{ _('Verify')|tojson }},
+            useRecovery: {{ _('Use recovery code')|tojson }},
+            useTotp: {{ _('Use authenticator code')|tojson }},
+            success: {{ _('Verified, signing in...')|tojson }},
+            invalid: {{ _('Invalid code, please try again')|tojson }},
+            locked: {{ _('Too many attempts, account locked. Please try again later')|tojson }},
+            expired: {{ _('Challenge expired, please login again')|tojson }},
+            used: {{ _('Challenge already used, please login again')|tojson }},
+            missing: {{ _('Missing challenge info, please login again')|tojson }},
+            deviceChanged: {{ _('Device changed, please login again')|tojson }},
+            netError: {{ _('Network error, please retry')|tojson }}
+        };
+        var CHALLENGE = {{ challenge_token|tojson }};
+        var REDIRECT = {{ redirect|tojson }} || window.location.origin;
+
+        function t(k){ return T[k] || k; }
+
+        (function(){
+            var KEY='verorun_admin_theme';
+            function applyTheme(){
+                try{
+                    var theme=localStorage.getItem(KEY);
+                    if(theme==='slate'||theme==='light'){document.documentElement.setAttribute('data-theme',theme);}
+                    else if(document.documentElement.hasAttribute('data-theme')){document.documentElement.removeAttribute('data-theme');}
+                }catch(e){}
+            }
+            applyTheme();
+            window.addEventListener('storage',function(e){if(e.key===KEY||e.key===null)applyTheme();});
+            setInterval(applyTheme,1000);
+        })();
+
+        function setMode(recovery){
+            document.getElementById('useRecovery').style.display = recovery ? 'none' : 'block';
+            document.getElementById('useTotp').style.display = recovery ? 'block' : 'none';
+            document.getElementById('hint').textContent = recovery ? t('recoveryHint') : t('hint');
+            var inp = document.getElementById('code');
+            inp.maxLength = recovery ? 11 : 6;
+            inp.placeholder = recovery ? 'XXXXX-XXXXX' : t('placeholder');
+            inp.value = '';
+            inp.focus();
+        }
+
+        async function submit(){
+            var inp = document.getElementById('code');
+            var code = inp.value.trim().replace(/\s/g,'');
+            var errEl = document.getElementById('error');
+            var btn = document.getElementById('btn');
+            if(!code){ errEl.textContent = t('missing'); return; }
+            errEl.textContent = '';
+            btn.disabled = true; btn.textContent = '...';
+            try{
+                var r = await fetch('/plugin/two_factor_auth/challenge/verify', {
+                    method:'POST',
+                    headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({challenge_token: CHALLENGE, code: code})
+                });
+                var d = await r.json();
+                if(r.ok && d.success && d.data && d.data.token){
+                    // sso_token 已由服务端 HttpOnly cookie 种下，不再复制进 localStorage
+                    //（方案 §6/§8：token 不进 localStorage，缩小 XSS 半径）
+                    document.getElementById('hint').textContent = t('success');
+                    btn.textContent = t('success');
+                    setTimeout(function(){ window.location.href = REDIRECT; }, 400);
+                    return;
+                }
+                if(r.status === 429){ errEl.textContent = t('locked'); }
+                else if(r.status === 401){ errEl.textContent = t('invalid'); }
+                else if(r.status === 400){
+                    errEl.textContent = (d && d.error && d.error.indexOf('device') !== -1) ? t('deviceChanged')
+                        : ((d && d.error && d.error.indexOf('expired') !== -1) ? t('expired')
+                        : ((d && d.error && d.error.indexOf('used') !== -1) ? t('used') : t('missing')));
+                }
+                else { errEl.textContent = (d && d.error) || t('invalid'); }
+            }catch(e){
+                errEl.textContent = t('netError');
+            }
+            btn.disabled = false; btn.textContent = t('verify');
+        }
+
+        document.addEventListener('DOMContentLoaded', function(){
+            document.title = t('title');
+            document.getElementById('title').textContent = t('title');
+            document.getElementById('hint').textContent = t('hint');
+            document.getElementById('btn').textContent = t('verify');
+            document.getElementById('btn').addEventListener('click', submit);
+            document.getElementById('useRecovery').addEventListener('click', function(){ setMode(true); });
+            document.getElementById('useTotp').addEventListener('click', function(){ setMode(false); });
+            document.getElementById('code').addEventListener('keydown', function(e){ if(e.key==='Enter') submit(); });
+        });
+    </script>
+</head>
+<body>
+    <div class="card">
+        <h2 id="title" style="margin-top:0;">Two-Factor Authentication</h2>
+        <p id="hint" class="muted">Enter the 6-digit code from your authenticator app.</p>
+        <input id="code" class="code-input" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456">
+        <div class="error" id="error"></div>
+        <button id="btn" class="btn btn-primary" style="width:100%;margin-top:12px;">Verify</button>
+        <p style="margin-top:14px;">
+            <a id="useRecovery" class="link">Use recovery code</a>
+            <a id="useTotp" class="link" style="display:none;">Use authenticator code</a>
+        </p>
+    </div>
+</body>
+</html>

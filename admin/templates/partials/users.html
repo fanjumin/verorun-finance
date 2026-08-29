@@ -1,0 +1,498 @@
+﻿window.l_users=function(){
+  document.getElementById("pt").textContent="{{ _('User Management') }}";
+  var _pause = {{ _('Pause') | tojson }};
+  var _activate = {{ _('Activate') | tojson }};
+  var ind=document.getElementById("uIndustry")?document.getElementById("uIndustry").value:'';
+  var occ=document.getElementById("uOccupation")?document.getElementById("uOccupation").value:'';
+  var reg=document.getElementById("uRegion")?document.getElementById("uRegion").value:'';
+  var url="/admin/users?limit=100";
+  if(ind)url+="&industry="+encodeURIComponent(ind);
+  if(occ)url+="&occupation="+encodeURIComponent(occ);
+  if(reg)url+="&region="+encodeURIComponent(reg);
+  fetch(url,{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success||!d.data)return;
+    var ds=d.data;
+    var h='<div class="cd">';
+    // {{ _("Filter Bar") }}
+    h+='<div class="st" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">';
+    h+='<span style="font-size:12px">{{ _('User List') }} ('+ds.total+')</span>';
+    h+='<select id="uIndustry" onchange="l_users()" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:3px 6px;font-size:11px"><option value="">{{ _('All Industries') }}</option><option value="{{ _('Fintech') }}">{{ _('Fintech') }}</option><option value="{{ _('AI') }}">{{ _('AI') }}</option><option value="{{ _('Quantitative Trading') }}">{{ _('Quantitative Trading') }}</option><option value="{{ _('Blockchain') }}">{{ _('Blockchain') }}</option><option value="{{ _('Traditional Finance') }}">{{ _('Traditional Finance') }}</option><option value="{{ _('Internet') }}">{{ _('Internet') }}</option><option value="{{ _('Education') }}">{{ _('Education') }}</option><option value="{{ _('Healthcare') }}">{{ _('Healthcare') }}</option><option value="{{ _('E-Commerce') }}">{{ _('E-Commerce') }}</option><option value="{{ _('Other') }}">{{ _('Other') }}</option></select>';
+    h+='<select id="uOccupation" onchange="l_users()" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:3px 6px;font-size:11px"><option value="">{{ _('All Occupations') }}</option><option value="{{ _('Developer') }}">{{ _('Developer') }}</option><option value="{{ _('Quantitative Engineer') }}">{{ _('Quantitative Engineer') }}</option><option value="{{ _('Trader') }}">{{ _('Trader') }}</option><option value="{{ _('Researcher') }}">{{ _('Researcher') }}</option><option value="{{ _('Product Manager') }}">{{ _('Product Manager') }}</option><option value="{{ _('Designer') }}">{{ _('Designer') }}</option><option value="{{ _('Student') }}">{{ _('Student') }}</option><option value="{{ _('Freelancer') }}">{{ _('Freelancer') }}</option><option value="{{ _('Other') }}">{{ _('Other') }}</option></select>';
+    h+='<input type="text" id="uRegion" placeholder="{{ _('Region Filter') }}..." onchange="l_users()" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:3px 6px;font-size:11px;width:120px">';
+    h+='<span class="btn bo bs" style="padding:2px 8px;font-size:11px" onclick="document.getElementById(\'uIndustry\').value=\'\';document.getElementById(\'uOccupation\').value=\'\';document.getElementById(\'uRegion\').value=\'\';l_users()">{{ _('Reset') }}</span>';
+    h+='<span class="btn bo bs" style="padding:2px 8px;font-size:11px" onclick="exportUsers()">{{ _('Export') }}CSV</span>';
+    h+='<span style="font-weight:400;font-size:11px;color:var(--dim)">{{ _('Click Row for Details') }} · {{ _('Click') }}🤖{{ _('Expand') }}Agent</span>';
+    h+='</div>';
+    h+='<table><tr><th>ID</th><th>{{ _('Avatar') }}</th><th>{{ _('Nickname') }}</th><th>{{ _('Phone') }}</th><th>Agent</th><th>{{ _('Industry') }}</th><th>{{ _('Career') }}</th><th>{{ _('Certification') }}</th><th>{{ _('Level') }}</th><th>{{ _('Status') }}</th><th>{{ _('Registered') }}</th></tr>';
+    ds.users.forEach(function(u){
+      var st=u.active?'<span class="bdg on">{{ _('Active') }}</span>':'<span class="bdg off">{{ _('Disabled') }}</span>';
+      var verified=u.verified_by?'<span class="bdg on">'+u.verified_by+'</span>':'<span class="bdg dim">{{ _('Unverified') }}</span>';
+      var ava=u.avatar_url?'<img src="'+escAttr(u.avatar_url)+'" style="width:28px;height:28px;border-radius:50%;object-fit:cover;border:1px solid var(--border)">':dicebearImgTag(u.nickname||u.phone||u.id,'initials',28);
+      h+='<tr style="cursor:pointer" onclick="showUserDetail('+u.id+')"><td>'+u.id+'</td><td>'+ava+'</td><td>'+(u.nickname||'')+'</td><td>'+(u.phone||'-')+'</td>';
+      h+='<td><span class="btn bo bs" style="padding:2px 8px;font-size:11px;cursor:pointer" onclick="event.stopPropagation();toggleUserAgents('+u.id+',this)">🤖 {{ _('Expand') }}</span></td>';
+      h+='<td style="font-size:11px">'+(u.industry||'-')+'</td><td style="font-size:11px">'+(u.occupation||'-')+'</td>';
+      h+='<td style="font-size:11px">'+verified+'</td>';
+      h+='<td>'+(u.tier||'free')+'</td><td>'+st+'</td><td>'+(u.created_at||'')+'</td></tr>';
+      h+='<tr id="ua-row-'+u.id+'" style="display:none"><td colspan="11"><div id="ua-content-'+u.id+'" style="padding:8px 16px;background:var(--bg2);border-radius:6px;font-size:12px">{{ _('Loading...') }}...</div></td></tr>';
+    });
+    h+="</table></div>";
+    document.getElementById("mc").innerHTML=h;
+  }).catch(function(){
+    document.getElementById("mc").innerHTML='<div class="em">{{ _('Load failed') }}</div>';
+  });
+}
+
+function exportUsers(){
+  var ind=document.getElementById("uIndustry")?document.getElementById("uIndustry").value:'';
+  var occ=document.getElementById("uOccupation")?document.getElementById("uOccupation").value:'';
+  var reg=document.getElementById("uRegion")?document.getElementById("uRegion").value:'';
+  var url="/admin/users/export?";
+  var params=[];
+  if(ind)params.push("industry="+encodeURIComponent(ind));
+  if(occ)params.push("occupation="+encodeURIComponent(occ));
+  if(reg)params.push("region="+encodeURIComponent(reg));
+  url+=params.join("&");
+  window.open(url);
+}
+
+function toggleUserAgents(uid,btn){
+  var row=document.getElementById("ua-row-"+uid);
+  if(!row)return;
+  if(row.style.display!="none"){
+    row.style.display="none";
+    btn.textContent="{{ _('🤖 Expand') }}";
+    return;
+  }
+  row.style.display="table-row";
+  btn.textContent="{{ _('🤖 Collapse') }}";
+  var content=document.getElementById("ua-content-"+uid);
+  if(content.dataset.loaded)return;
+  fetch("/admin/users/"+uid+"/user-agents",{headers:{"Authorization":"Bearer "+T}})
+    .then(function(r){return r.json()})
+    .then(function(d){
+      if(!d.success||!d.data){content.innerHTML='<span style="color:var(--dim)">{{ _('Load failed') }}</span>';return}
+      var agents=d.data.agents||[];
+      if(agents.length===0){content.innerHTML='<span style="color:var(--dim)">{{ _('This User Has No') }} Agent</span> <span class="btn bp" style="padding:2px 8px;font-size:11px" onclick="event.stopPropagation();adminCreateAgent('+uid+')">+ {{ _('Create') }}</span>';return}
+      var h='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><b>🤖 '+agents.length+' {{ _('Agents') }}</b> <span class="btn bp" style="padding:2px 8px;font-size:11px" onclick="event.stopPropagation();adminCreateAgent('+uid+')">+ {{ _('Create') }}</span></div>';
+      h+='<table style="font-size:12px"><tr><th>ID</th><th>{{ _('Name') }}</th><th>{{ _('Type') }}</th><th>{{ _('Status') }}</th><th>Key count</th><th>{{ _('Last Active') }}</th><th>{{ _('Actions') }}</th></tr>';
+      agents.forEach(function(a){
+        var stCls=a.status==='active'?'bdg on':'bdg off';
+        var stText=a.status==='active'?'{{ _('Active') }}':(a.status==='suspended'?'{{ _('Pause') }}':'{{ _('Inactive') }}');
+        h+='<tr><td>'+a.id+'</td><td>'+escAttr(a.agent_name)+'</td><td>'+a.agent_type+'</td>';
+        h+='<td><span class="'+stCls+'">'+stText+'</span></td>';
+        h+='<td>'+(a.active_keys||0)+'</td><td>'+(a.last_active_at||'-')+'</td>';
+        h+='<td>';
+        if(a.status==='active'){
+          h+='<span class="btn bo bs" style="padding:2px 6px;font-size:10px" onclick="event.stopPropagation();setAgentStatus('+a.id+',\x27suspended\x27,\x27'+escAttr(a.agent_name)+'\x27)">'+_pause+'</span>';
+        }else{
+          h+='<span class="btn bp" style="padding:2px 6px;font-size:10px" onclick="event.stopPropagation();setAgentStatus('+a.id+',\x27active\x27,\x27'+escAttr(a.agent_name)+'\x27)">'+_activate+'</span>';
+        }
+        h+='</td></tr>';
+      });
+      h+='</table>';
+      content.innerHTML=h;
+      content.dataset.loaded="1";
+    }).catch(function(){content.innerHTML='<span style="color:var(--dim)">{{ _('Request Failed') }}</span>'});
+}
+
+function adminCreateAgent(uid){
+  var name=prompt("{{ _("Please enter") }} Agent {{ _("Name") }}：");
+  if(!name||!name.trim())return;
+  fetch("/admin/users/"+uid+"/user-agents",{
+    method:"POST",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},
+    body:JSON.stringify({agent_name:name.trim()})
+  }).then(function(r){return r.json()}).then(function(d){
+    if(d.success){showToast("{{ _('Agent created') }}","success");
+      // Reload agents for this user
+      var content=document.getElementById("ua-content-"+uid);
+      if(content)delete content.dataset.loaded;
+      toggleUserAgents(uid,document.querySelector('#ua-row-'+uid+' .btn'));
+    }else{showToast(d.error||"{{ _("Creation Failed") }}","error")}
+  }).catch(function(){showToast("{{ _('Request Failed') }}","error")});
+}
+
+function setAgentStatus(aid,status,name){
+  var action=status==='suspended'?'{{ _('Pause') }}':'{{ _('Activate') }}';
+  if(!confirm("{{ _("Go") }}"+action+" Agent \""+name+"\"？"))return;
+  fetch("/admin/user-agents/"+aid+"/status",{
+    method:"PUT",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},
+    body:JSON.stringify({status:status})
+  }).then(function(r){return r.json()}).then(function(d){
+    if(d.success){showToast("Agent {{ _('Done: ') }}"+action,"success");l_users()}
+    else{showToast(d.error||"{{ _("Operation Failed") }}","error")}
+  }).catch(function(){showToast("{{ _('Request Failed') }}","error")});
+}
+
+// ── {{ _("User Details Popup") }}（{{ _("Edit Avatar") }}） ──
+var _avatarSelectedUserId = 0;
+var _avatarDefaultsData = null;
+
+function loadAvatarDefaults(cb) {
+  if (_avatarDefaultsData) { cb(_avatarDefaultsData); return; }
+  fetch("/admin/avatars/defaults",{headers:{"Authorization":"Bearer "+T}})
+    .then(function(r){return r.json()})
+    .then(function(d){
+      if(d.success) { _avatarDefaultsData = d.data; cb(d.data); }
+    }).catch(function(){});
+}
+
+function showUserDetail(uid) {
+  _avatarSelectedUserId = uid;
+  fetch("/admin/users/"+uid,{headers:{"Authorization":"Bearer "+T}})
+    .then(function(r){return r.json()})
+    .then(function(d){
+      if(!d.success||!d.data){showToast("{{ _('Load failed') }}","error");return}
+      var u=d.data.user;
+      renderUserDetail(u);
+    }).catch(function(){showToast("{{ _('Request Failed') }}","error")});
+}
+
+function escAttr(s){
+  return (s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+function escJs(s){return (s||'').replace(/'/g,"\\'");}
+
+// ── DiceBear {{ _("Local Avatar Generation") }} ──
+function dicebearAvatar(seed, style, size) {
+  style = style || 'initials';
+  size = size || 72;
+  seed = seed || '?';
+  try {
+    var avatar = window.dicebear.createAvatar(window.dicebear.styles[style], {
+      seed: seed, size: size, backgroundColor: 'transparent'
+    });
+    return avatar.toString();
+  } catch(e) {
+    return '<img src="/avatar/gen/'+encodeURIComponent(seed)+'" width="'+size+'" height="'+size+'" style="border-radius:50%;object-fit:cover">';
+  }
+}
+function dicebearImgTag(seed, style, size) {
+  size = size || 72;
+  seed = seed || '?';
+  return '<img src="/avatar/gen/'+encodeURIComponent(seed)+'" width="'+size+'" height="'+size+'" style="border-radius:50%;object-fit:cover">';
+}
+
+function renderUserDetail(u) {
+  var avaUrl = u.avatar_url||'';
+  var agentAva = u.agent_avatar_url||'';
+  var h = '<div class="modal-overlay" onclick="closeUserDetail(event)">';
+  h += '<div class="modal-box" style="width:720px;max-width:95vw" onclick="event.stopPropagation()">';
+  h += '<button onclick="closeUserDetail()" style="float:right;background:none;border:none;color:var(--dim);font-size:20px;cursor:pointer;line-height:1">✕</button>';
+  h += '<h3 style="font-size:16px;margin-bottom:8px">{{ _('User Details') }} #'+u.id+' — '+(u.nickname||u.phone||'')+'</h3>';
+
+  // Tab {{ _("Navigation") }}
+  h += '<div style="display:flex;gap:0;margin-bottom:12px;border-bottom:1px solid var(--border)">';
+  h += '<span id="dt-basic" class="dt-tab" onclick="switchDetailTab('+u.id+',\'basic\')" style="padding:6px 14px;cursor:pointer;font-size:13px;border-bottom:2px solid var(--accent);color:var(--accent)">{{ _('Basic Info') }}</span>';
+  h += '<span id="dt-profile" class="dt-tab" onclick="switchDetailTab('+u.id+',\'profile\')" style="padding:6px 14px;cursor:pointer;font-size:13px;color:var(--dim)">{{ _('Extended Profile') }}</span>';
+  h += '<span id="dt-address" class="dt-tab" onclick="switchDetailTab('+u.id+',\'address\')" style="padding:6px 14px;cursor:pointer;font-size:13px;color:var(--dim)">{{ _('Shipping Address') }}</span>';
+  h += '</div>';
+
+  // Tab 1: {{ _("Basic Info") }}
+  h += '<div id="dt-content-basic" class="detail-tab-content">';
+  h += '<div class="g2" style="margin-bottom:16px">';
+  h += '<div><span style="color:var(--dim);font-size:11px">{{ _('Phone') }}</span><div style="font-size:13px">'+(u.phone||'-')+'</div></div>';
+  h += '<div><span style="color:var(--dim);font-size:11px">{{ _('Nickname') }}</span><div style="font-size:13px">'+(u.nickname||'-')+'</div></div>';
+  h += '<div><span style="color:var(--dim);font-size:11px">Agent ID</span><div style="font-size:13px">'+(u.agent_id||'-')+'</div></div>';
+  h += '<div><span style="color:var(--dim);font-size:11px">Agent {{ _('Nickname') }}</span><div style="font-size:13px">'+(u.agent_nickname||'-')+'</div></div>';
+  h += '</div>';
+  // {{ _("User Avatar") }}
+  h += '<div class="cd" style="margin-bottom:12px"><div class="st">{{ _('User Avatar') }}</div>';
+  h += '<div style="display:flex;gap:16px;align-items:center;margin-bottom:12px">';
+  h += '<div id="userAvaPreview" style="width:72px;height:72px;border-radius:50%;border:2px solid var(--border);overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:var(--bg)">';
+  if(avaUrl) {
+    h += '<img src="'+escAttr(avaUrl)+'" style="width:72px;height:72px;object-fit:cover" onerror="this.style.display=\'none\';this.parentNode.innerHTML=dicebearAvatar(\''+escAttr(u.nickname||u.phone||u.id)+'\',\'initials\',72)">';
+  } else {
+    h += dicebearAvatar(u.nickname||u.phone||u.id,'initials',72);
+  }
+  h += '</div><div>';
+  h += '<input type="file" id="userAvaFile" accept="image/*" style="display:none" onchange="uploadUserAvatar('+u.id+')">';
+  h += '<button class="btn bp" onclick="document.getElementById(\'userAvaFile\').click()">📤 {{ _('Upload Avatar') }}</button> ';
+  h += '<button class="btn bo" onclick="showDefaultAvatars(\'user\','+u.id+')">🎨 {{ _('Select Default') }}</button>';
+  if(avaUrl) h += ' <button class="btn bo bs" onclick="removeUserAvatar('+u.id+')" style="color:#f85149">{{ _('Remove') }}</button>';
+  h += '<div id="userAvaStatus" style="font-size:11px;color:var(--dim);margin-top:4px">512×512 / 512KB {{ _('Within') }}</div>';
+  h += '</div></div>';
+  h += '<div id="userDefaultGrid" style="display:none;margin-top:8px"><div class="st" style="font-size:12px">{{ _('Select Default Avatar') }}</div><div style="display:grid;grid-template-columns:repeat(auto-fill,48px);gap:6px" id="userDefaultGridInner"></div></div>';
+  h += '</div>';
+  // Agent {{ _('Avatar') }}
+  h += '<div class="cd"><div class="st">Agent {{ _('Avatar') }}</div>';
+  h += '<div style="display:flex;gap:16px;align-items:center;margin-bottom:12px">';
+  h += '<div id="agentAvaPreview" style="width:72px;height:72px;border-radius:50%;border:2px solid var(--border);overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:var(--bg)">';
+  if(agentAva) {
+    h += '<img src="'+escAttr(agentAva)+'" style="width:72px;height:72px;object-fit:cover" onerror="this.style.display=\'none\';this.parentNode.innerHTML=dicebearAvatar(\''+escAttr(u.agent_nickname||u.nickname||u.phone||u.id)+'\',\'identicon\',72)">';
+  } else {
+    h += dicebearAvatar(u.agent_nickname||u.nickname||u.phone||u.id,'identicon',72);
+  }
+  h += '</div><div>';
+  h += '<input type="file" id="agentAvaFile" accept="image/*" style="display:none" onchange="uploadAgentAvatar('+u.id+')">';
+  h += '<button class="btn bp" onclick="document.getElementById(\'agentAvaFile\').click()">📤 {{ _('Upload Avatar') }}</button> ';
+  h += '<button class="btn bo" onclick="showDefaultAvatars(\'agent\','+u.id+')">🎨 {{ _('Select Default') }}</button>';
+  if(agentAva) h += ' <button class="btn bo bs" onclick="removeAgentAvatar('+u.id+')" style="color:#f85149">{{ _('Remove') }}</button>';
+  h += '<div style="font-size:11px;color:var(--dim);margin-top:4px">512×512 / 512KB {{ _('Within') }}</div>';
+  h += '</div></div>';
+  h += '<div id="agentDefaultGrid" style="display:none;margin-top:8px"><div class="st" style="font-size:12px">{{ _('Select Default Avatar') }}</div><div style="display:grid;grid-template-columns:repeat(auto-fill,48px);gap:6px" id="agentDefaultGridInner"></div></div>';
+  h += '</div>';
+  h += '</div>';  // end Tab 1
+
+  // Tab 2: {{ _('Extended Profile') }}
+  h += '<div id="dt-content-profile" class="detail-tab-content" style="display:none">';
+  h += '<div class="lo" id="dt-profile-loading">{{ _('Loading...') }}...</div>';
+  h += '</div>';
+
+  // Tab 3: {{ _('Shipping Address') }}
+  h += '<div id="dt-content-address" class="detail-tab-content" style="display:none">';
+  h += '<div class="lo" id="dt-address-loading">{{ _('Loading...') }}...</div>';
+  h += '</div>';
+
+  h += '</div></div>';
+  document.getElementById("mc").innerHTML = h;
+
+  // Lazy-load profile + addresses
+  fetch("/admin/users/"+u.id+"/profile",{headers:{"Authorization":"Bearer "+T}})
+    .then(function(r){return r.json()})
+    .then(function(d){
+      if(d.success&&d.data){
+        renderDetailProfile(d.data);
+        renderDetailAddresses(d.data);
+      } else {
+        document.getElementById("dt-profile-loading").textContent="{{ _('No data') }}";
+        document.getElementById("dt-address-loading").textContent="{{ _('No data') }}";
+      }
+    }).catch(function(){
+      document.getElementById("dt-profile-loading").textContent="{{ _('Load failed') }}";
+      document.getElementById("dt-address-loading").textContent="{{ _('Load failed') }}";
+    });
+}
+
+function closeUserDetail(e) {
+  if(e && e.target !== e.currentTarget) return;
+  var m = document.querySelector('.modal-overlay');
+  if(m) m.remove();
+}
+
+function switchDetailTab(uid, tab){
+  // Update tab styles
+  var tabs = document.querySelectorAll('.dt-tab');
+  for(var i=0;i<tabs.length;i++){
+    tabs[i].style.color = 'var(--dim)';
+    tabs[i].style.borderBottom = '2px solid transparent';
+  }
+  var activeTab = document.getElementById('dt-'+tab);
+  if(activeTab){
+    activeTab.style.color = 'var(--accent)';
+    activeTab.style.borderBottom = '2px solid var(--accent)';
+  }
+  // Show/hide content
+  var contents = document.querySelectorAll('.detail-tab-content');
+  for(var i=0;i<contents.length;i++){
+    contents[i].style.display = 'none';
+  }
+  var target = document.getElementById('dt-content-'+tab);
+  if(target) target.style.display = 'block';
+}
+
+function renderDetailProfile(data){
+  var p = data.profile || {};
+  var cont = document.getElementById('dt-profile-loading');
+  if(!cont) return;
+  var genderMap = {'male':'{{ _('Male') }}','female':'{{ _('Female') }}','other':'{{ _('Other') }}','secret':'{{ _('Confidential') }}'};
+  var ints = Array.isArray(p.interests) ? p.interests : [];
+  var intTags = ints.length>0 ? ints.map(function(t){return '<span style="display:inline-block;background:var(--accent);color:#fff;padding:2px 8px;border-radius:4px;font-size:11px;margin:2px">'+t+'</span>'}).join('') : '<span style="color:var(--dim)">{{ _('None') }}</span>';
+  var h = '<div class="cd"><div class="st">{{ _('Extended Profile') }}</div>';
+  h += '<div class="g2">';
+  h += '<div><span style="color:var(--dim);font-size:11px">{{ _('Gender') }}</span><div style="font-size:13px">'+(genderMap[p.gender]||'{{ _('Not Filled') }}')+'</div></div>';
+  h += '<div><span style="color:var(--dim);font-size:11px">{{ _('Date of Birth') }}</span><div style="font-size:13px">'+(p.birth_date||'{{ _('Not Filled') }}')+'</div></div>';
+  h += '<div><span style="color:var(--dim);font-size:11px">{{ _('Career') }}</span><div style="font-size:13px">'+(p.occupation||'{{ _('Not Filled') }}')+'</div></div>';
+  h += '<div><span style="color:var(--dim);font-size:11px">{{ _('Industry') }}</span><div style="font-size:13px">'+(p.industry||'{{ _('Not Filled') }}')+'</div></div>';
+  h += '</div>';
+  h += '<div style="margin-top:8px"><span style="color:var(--dim);font-size:11px">{{ _('Interest Tags') }}</span><div style="margin-top:4px">'+intTags+'</div></div>';
+  if(p.bio) h += '<div style="margin-top:8px"><span style="color:var(--dim);font-size:11px">{{ _('Bio') }}</span><div style="font-size:13px;margin-top:4px;line-height:1.6">'+p.bio+'</div></div>';
+  h += '</div>';
+  cont.innerHTML = h;
+}
+
+function renderDetailAddresses(data){
+  var addrs = data.addresses || [];
+  var cont = document.getElementById('dt-address-loading');
+  if(!cont) return;
+  if(addrs.length===0){
+    cont.innerHTML = '<div class="cd"><div class="st">{{ _('Shipping Address') }}</div><div style="color:var(--dim);font-size:13px;padding:12px">{{ _('No Shipping Address for This User') }}</div></div>';
+    return;
+  }
+  var h = '<div class="cd"><div class="st">{{ _('Shipping Address') }} ('+addrs.length+')</div>';
+  for(var i=0;i<addrs.length;i++){
+    var a = addrs[i];
+    var star = a.is_default ? ' ★' : '';
+    h += '<div style="background:var(--bg2);border-radius:6px;padding:10px;margin-bottom:8px;'+(a.is_default?'border:1px solid var(--accent)':'border:1px solid var(--border)')+'">';
+    h += '<div style="font-size:12px;color:var(--muted);margin:4px 0">'+a.province+a.city+a.district+' '+a.street_address+star+'</div>';
+    if(a.postal_code) h += '<div style="font-size:11px;color:var(--dim)">{{ _('Postal Code') }}: '+a.postal_code+'</div>';
+    h += '</div>';
+  }
+  h += '</div>';
+  cont.innerHTML = h;
+}
+
+function uploadUserAvatar(uid) {
+  var f = document.getElementById("userAvaFile");
+  if(!f.files||!f.files[0]) return;
+  var fd = new FormData();
+  fd.append("avatar", f.files[0]);
+  var status = document.getElementById("userAvaStatus");
+  if(status) status.textContent="{{ _('Uploading...') }}";
+  fetch("/admin/users/"+uid+"/avatar", {
+    method:"POST", headers:{"Authorization":"Bearer "+T},
+    body:fd
+  }).then(function(r){return r.json()}).then(function(d){
+    if(d.success) {
+      showToast("{{ _('Avatar updated') }}","success");
+      showUserDetail(uid);
+    } else {
+      showToast(d.error||"{{ _('Upload failed') }}","error");
+      if(status) status.textContent = d.error||"{{ _('Upload failed') }}";
+    }
+  }).catch(function(){
+    showToast("{{ _('Upload request failed') }}","error");
+    if(status) status.textContent="{{ _('Upload request failed') }}";
+  });
+}
+
+function uploadAgentAvatar(uid) {
+  var f = document.getElementById("agentAvaFile");
+  if(!f.files||!f.files[0]) return;
+  var fd = new FormData();
+  fd.append("avatar", f.files[0]);
+  fetch("/admin/users/"+uid+"/agent-avatar", {
+    method:"POST", headers:{"Authorization":"Bearer "+T},
+    body:fd
+  }).then(function(r){return r.json()}).then(function(d){
+    if(d.success) {
+      showToast("{{ _('Agent avatar updated') }}","success");
+      showUserDetail(uid);
+    } else {
+      showToast(d.error||"{{ _('Upload failed') }}","error");
+    }
+  }).catch(function(){showToast("{{ _('Upload request failed') }}","error")});
+}
+
+function showDefaultAvatars(type, uid) {
+  var gridId = type==='user' ? 'userDefaultGrid' : 'agentDefaultGrid';
+  var innerId = type==='user' ? 'userDefaultGridInner' : 'agentDefaultGridInner';
+  var grid = document.getElementById(gridId);
+  var inner = document.getElementById(innerId);
+  if(!grid || !inner) return;
+  grid.style.display = grid.style.display==='none'?'block':'none';
+  if(grid.style.display==='block' && !inner.children.length) {
+    // ── {{ _('Existing Static') }} SVG {{ _('Default Avatar') }} ──
+    loadAvatarDefaults(function(data){
+      var items = type==='user' ? data.users : data.agents;
+      inner.innerHTML = '';
+      items.forEach(function(item){
+        var img = document.createElement('img');
+        img.src = item.url;
+        img.style.cssText = 'width:48px;height:48px;border-radius:8px;cursor:pointer;object-fit:cover;border:2px solid transparent';
+        img.title = item.filename;
+        img.onmouseover = function(){this.style.borderColor='var(--accent)'};
+        img.onmouseout = function(){this.style.borderColor='transparent'};
+        img.onclick = function(){
+          var endpoint = type==='user' ? '/admin/users/'+uid+'/avatar/default' : '/admin/users/'+uid+'/agent-avatar/default';
+          fetch(endpoint, {
+            method:"PUT", headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},
+            body:JSON.stringify({default: item.filename})
+          }).then(function(r){return r.json()}).then(function(d){
+            if(d.success) { showToast("{{ _('Default avatar set') }}","success"); showUserDetail(uid); }
+            else { showToast(d.error||"{{ _('Set Failed') }}","error"); }
+          }).catch(function(){showToast("{{ _('Request Failed') }}","error")});
+        };
+        inner.appendChild(img);
+      });
+    });
+    // ── DiceBear {{ _('Style Selector') }} ──
+    var dbSection = document.createElement('div');
+    dbSection.style.cssText = 'margin-top:10px;border-top:1px solid var(--border);padding-top:10px';
+    dbSection.innerHTML = '<div class="st" style="font-size:12px;margin-bottom:6px">DiceBear {{ _('Generate') }}</div>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px" id="dbStyles_'+type+'"></div>' +
+      '<div style="display:flex;gap:8px;align-items:center" id="dbPreview_'+type+'"></div>';
+    inner.parentNode.appendChild(dbSection);
+    // {{ _('Render Style Previews') }}
+    var dbStyles = ['initials','identicon','avataaars','lorelei'];
+    var dbStyleLabels = {initials:'{{ _('First Letter') }}',identicon:'{{ _('Geometric') }}',avataaars:'{{ _('Cartoon') }}',lorelei:'{{ _('Style') }}'};
+    var dbContainer = document.getElementById('dbStyles_'+type);
+    var dbPreview = document.getElementById('dbPreview_'+type);
+    if(!dbContainer || !dbPreview) return;
+    // {{ _('Get Seed') }}
+    var seed = document.querySelector('#userAvaPreview span, #userAvaPreview img') ? 'user' : 'agent';
+    var seedVal = ''+ uid;
+    // {{ _('Get Seed from User Details') }}
+    var uNick = document.querySelector('#userAvaPreview')?.getAttribute('data-seed') || '';
+    if(!uNick) {
+      // {{ _('Try to Get from Currently Displayed User Info') }}
+      var modalTitle = document.querySelector('.modal-box h3');
+      if(modalTitle) {
+        var parts = modalTitle.textContent.match(/—\s*(.+)/);
+        if(parts) seedVal = parts[1].trim();
+      }
+    }
+    dbStyles.forEach(function(style){
+      var btn = document.createElement('button');
+      btn.className = 'btn bo';
+      btn.textContent = dbStyleLabels[style];
+      btn.style.cssText = 'padding:3px 10px;font-size:11px';
+      btn.onclick = function(){
+        // {{ _('Preview Generation') }}
+        dbPreview.innerHTML = '';
+        var sizes = [28, 46, 72];
+        sizes.forEach(function(s){
+          var wrap = document.createElement('div');
+          wrap.style.cssText = 'display:inline-flex;flex-direction:column;align-items:center;gap:4px';
+          wrap.innerHTML = dicebearAvatar(seedVal, style, s) +
+            '<span style="font-size:9px;color:var(--dim)">'+s+'px</span>';
+          dbPreview.appendChild(wrap);
+        });
+        // {{ _('Apply Button') }}
+        var applyBtn = document.createElement('button');
+        applyBtn.className = 'btn bp';
+        applyBtn.textContent={{ _('App') | tojson }}+dbStyleLabels[style];
+        applyBtn.style.cssText = 'padding:4px 12px;font-size:11px;margin-left:8px';
+        applyBtn.onclick = function(){
+          // {{ _('Generate') }} SVG → {{ _('Upload') }}
+          var avatar = window.dicebear.createAvatar(window.dicebear.styles[style], {
+            seed: seedVal, size: 256, backgroundColor: 'transparent'
+          });
+          var svgStr = avatar.toString();
+          var blob = new Blob([svgStr], {type: 'image/svg+xml'});
+          var file = new File([blob], 'dicebear_'+style+'.svg', {type: 'image/svg+xml'});
+          var fd = new FormData();
+          fd.append('avatar', file);
+          var endpoint = type==='user' ? '/admin/users/'+uid+'/avatar' : '/admin/users/'+uid+'/agent-avatar';
+          fetch(endpoint, {method:'POST', headers:{"Authorization":"Bearer "+T}, body:fd})
+            .then(function(r){return r.json()}).then(function(d){
+              if(d.success) { showToast("{{ _('DiceBear avatar set') }}","success"); showUserDetail(uid); }
+              else { showToast(d.error||"{{ _('Set Failed') }}","error"); }
+            }).catch(function(){showToast("{{ _('Request Failed') }}","error")});
+        };
+        dbPreview.appendChild(applyBtn);
+      };
+      dbContainer.appendChild(btn);
+    });
+  }
+}
+
+function removeUserAvatar(uid) {
+  if(!confirm("{{ _('Remove user avatar?') }}")) return;
+  fetch("/admin/users/"+uid+"/avatar/clear", {
+    method:"POST", headers:{"Authorization":"Bearer "+T}
+  }).then(function(r){return r.json()}).then(function(d){
+    if(d.success) { showToast("{{ _('Avatar removed') }}","success"); showUserDetail(uid); }
+    else { showToast(d.error||"{{ _('Operation Failed') }}","error"); }
+  }).catch(function(){showToast("{{ _('Request Failed') }}","error")});
+}
+
+function removeAgentAvatar(uid) {
+  if(!confirm("{{ _('Remove agent avatar?') }}")) return;
+  fetch("/admin/users/"+uid+"/agent-avatar/clear", {
+    method:"POST", headers:{"Authorization":"Bearer "+T}
+  }).then(function(r){return r.json()}).then(function(d){
+    if(d.success) { showToast("{{ _('Agent avatar removed') }}","success"); showUserDetail(uid); }
+    else { showToast(d.error||"{{ _('Operation Failed') }}","error"); }
+  }).catch(function(){showToast("{{ _('Request Failed') }}","error")});
+}
+

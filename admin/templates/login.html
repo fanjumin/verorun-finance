@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>{{ _('Login') }} — {{ brand.site_name_cn if brand and brand.site_name_cn else '' }}</title>
+<link rel="icon" type="image/png" sizes="32x32" href="{{ brand.favicon_url if brand and brand.favicon_url else '/static/favicon-32x32.png' }}">
+<link rel="stylesheet" href="/static/puzzle-captcha.css">
+<style>
+/* ═══════════════════════════════════════════════════════
+   VeroRun Admin Login — Dark Fintech, Glassmorphism
+   ═══════════════════════════════════════════════════════ */
+
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+
+:root {
+  --bg-deep: #060B18;
+  --bg-card: rgba(13, 21, 42, 0.75);
+  --border: rgba(47, 107, 255, 0.12);
+  --border-focus: rgba(47, 107, 255, 0.4);
+  --text: #E4E8F0;
+  --text-muted: #8894B0;
+  --text-dim: #4B5675;
+  --accent: #2F6BFF;
+  --accent2: #00C2FF;
+  --success: #00D68F;
+  --danger: #FF3D71;
+  --radius: 16px;
+  --radius-sm: 10px;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', system-ui, 'Noto Sans SC', sans-serif;
+  background: var(--bg-deep);
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+}
+
+/* ── Background effects ────────────────────────── */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 0%, rgba(47, 107, 255, 0.08) 0%, transparent 70%),
+    radial-gradient(ellipse 60% 50% at 80% 80%, rgba(0, 194, 255, 0.05) 0%, transparent 60%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── Grid overlay ──────────────────────────────── */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(47, 107, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(47, 107, 255, 0.02) 1px, transparent 1px);
+  background-size: 60px 60px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── Page wrapper (fix: footer at bottom) ──────── */
+.tm-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* ── Container ─────────────────────────────────── */
+.tm-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Login card (Glassmorphism) ────────────────── */
+.tm-card {
+  width: 100%;
+  max-width: 420px;
+  background: var(--bg-card);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 36px 32px 32px;
+  box-shadow:
+    0 0 0 1px rgba(47, 107, 255, 0.04),
+    0 8px 48px rgba(0, 0, 0, 0.5),
+    0 0 60px rgba(47, 107, 255, 0.04);
+  animation: tm-card-in 0.5s ease-out;
+}
+@keyframes tm-card-in {
+  from { opacity: 0; transform: translateY(24px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ── Brand ─────────────────────────────────────── */
+.tm-brand {
+  text-align: center;
+  margin-bottom: 32px;
+}
+.tm-brand-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px; height: 52px;
+  background: linear-gradient(135deg, #2F6BFF, #00C2FF);
+  border-radius: 14px;
+  margin-bottom: 14px;
+  box-shadow: 0 0 28px rgba(47, 107, 255, 0.35);
+}
+.tm-brand-logo svg { width: 28px; height: 28px; fill: #fff; }
+.tm-brand h1 {
+  font-size: 22px; font-weight: 700; letter-spacing: -0.3px;
+  background: linear-gradient(135deg, #E4E8F0, #A0B0D0);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  margin-bottom: 4px;
+}
+.tm-brand p { font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+
+/* ── Tabs ──────────────────────────────────────── */
+.tm-tabs {
+  display: flex;
+  gap: 4px;
+  background: rgba(11, 17, 32, 0.6);
+  border-radius: 10px;
+  padding: 4px;
+  margin-bottom: 24px;
+}
+.tm-tab {
+  flex: 1; padding: 9px 12px;
+  border: none; border-radius: 8px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 13px; font-weight: 500;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  font-family: inherit;
+  letter-spacing: 0.2px;
+}
+.tm-tab:hover { color: var(--text-muted); }
+.tm-tab.active {
+  background: rgba(47, 107, 255, 0.12);
+  color: var(--accent2);
+  box-shadow: 0 0 12px rgba(47, 107, 255, 0.1);
+}
+
+/* ── Form ──────────────────────────────────────── */
+.tm-field { margin-bottom: 16px; }
+.tm-field-label {
+  display: block; font-size: 12px; font-weight: 500;
+  color: var(--text-muted); margin-bottom: 6px;
+  letter-spacing: 0.3px; text-transform: uppercase;
+}
+.tm-input-row { display: flex; gap: 8px; }
+.tm-input-wrap { position: relative; flex: 1; }
+.tm-input-icon {
+  position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+  width: 16px; height: 16px; color: var(--text-dim); pointer-events: none;
+}
+.tm-input-icon svg { width: 16px; height: 16px; fill: currentColor; }
+.tm-input {
+  width: 100%; padding: 12px 14px 12px 42px;
+  background: rgba(11, 17, 32, 0.5);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text); font-size: 14px;
+  transition: all 0.25s ease;
+  font-family: inherit;
+  letter-spacing: 0.2px;
+}
+.tm-input::placeholder { color: var(--text-dim); }
+.tm-input:focus {
+  outline: none;
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px rgba(47, 107, 255, 0.1), 0 0 12px rgba(47, 107, 255, 0.06);
+}
+.tm-input:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Send code button ──────────────────────────── */
+.tm-btn-send {
+  padding: 12px 18px;
+  background: rgba(47, 107, 255, 0.08);
+  border: 1.5px solid rgba(47, 107, 255, 0.2);
+  border-radius: var(--radius-sm);
+  color: var(--accent2);
+  font-size: 13px; font-weight: 600;
+  cursor: pointer; white-space: nowrap;
+  transition: all 0.25s ease;
+  font-family: inherit;
+  letter-spacing: 0.2px;
+  min-width: 100px; text-align: center;
+}
+.tm-btn-send:hover {
+  background: rgba(47, 107, 255, 0.15);
+  border-color: rgba(47, 107, 255, 0.4);
+  box-shadow: 0 0 16px rgba(47, 107, 255, 0.12);
+}
+.tm-btn-send:disabled { opacity: 0.3; cursor: not-allowed; }
+.tm-btn-send.countdown { color: var(--text-dim); font-variant-numeric: tabular-nums; }
+
+/* ── Primary button ────────────────────────────── */
+.tm-btn-primary {
+  width: 100%; padding: 13px;
+  background: linear-gradient(135deg, #2F6BFF, #0066FF);
+  border: none; border-radius: var(--radius-sm);
+  color: #fff; font-size: 15px; font-weight: 600;
+  cursor: pointer; position: relative; overflow: hidden;
+  transition: all 0.25s ease;
+  font-family: inherit;
+  letter-spacing: 0.3px;
+  box-shadow: 0 4px 20px rgba(47, 107, 255, 0.25);
+}
+.tm-btn-primary:hover {
+  box-shadow: 0 6px 28px rgba(47, 107, 255, 0.4);
+  transform: translateY(-1px);
+}
+.tm-btn-primary:active { transform: scale(0.98); }
+.tm-btn-primary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+.tm-btn-primary .tm-spinner {
+  display: none; width: 20px; height: 20px;
+  border: 2px solid rgba(255,255,255,0.2); border-top-color: #fff;
+  border-radius: 50%; animation: spin 0.7s linear infinite; margin: 0 auto;
+}
+.tm-btn-primary.loading .tm-btn-text { visibility: hidden; }
+.tm-btn-primary.loading .tm-spinner { display: block; }
+
+/* ── Message ───────────────────────────────────── */
+.tm-msg {
+  font-size: 12px; margin-top: 8px; padding: 9px 12px;
+  border-radius: 8px; display: none; align-items: center; gap: 8px;
+  letter-spacing: 0.2px;
+}
+.tm-msg.error {
+  display: flex;
+  background: rgba(255, 61, 113, 0.08);
+  border: 1px solid rgba(255, 61, 113, 0.2);
+  color: var(--danger);
+}
+.tm-msg.success {
+  display: flex;
+  background: rgba(0, 214, 143, 0.08);
+  border: 1px solid rgba(0, 214, 143, 0.2);
+  color: var(--success);
+}
+.tm-msg svg { width: 14px; height: 14px; flex-shrink: 0; fill: currentColor; }
+
+/* ── Captcha wrapper ────────────────────────────── */
+.tm-captcha { margin: 18px 0; }
+
+/* ── Password toggle ────────────────────────────── */
+.tm-pwd-toggle {
+  margin-top: 14px; text-align: center;
+}
+.tm-pwd-toggle a,
+.tm-pwd-toggle button {
+  background: none; border: none;
+  color: var(--text-dim); font-size: 12px;
+  cursor: pointer;
+  transition: color 0.25s;
+  font-family: inherit;
+  text-decoration: none;
+}
+.tm-pwd-toggle a:hover,
+.tm-pwd-toggle button:hover { color: var(--accent2); }
+
+/* ── Divider ────────────────────────────────────── */
+.tm-pwd-hint { font-size: 11px; color: var(--text-dim); margin-top: 6px; line-height: 1.4; }
+/* ── Password row (input + eye) ────────────── */
+.tm-pwd-row { display: flex; gap: 0; align-items: stretch; }
+.tm-pwd-row .tm-input { flex: 1; border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.tm-pwd-eye { width: 40px; border: 1px solid var(--border); border-left: none; background: var(--input-bg, rgba(11,17,32,0.6)); border-radius: 0 var(--radius-sm,10px) var(--radius-sm,10px) 0; color: var(--text-muted); cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; transition: color .15s; }
+.tm-pwd-eye:hover { color: var(--text); }
+.tm-btn-genpwd { font-size: 11px; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--text-muted); cursor: pointer; white-space: nowrap; transition: all .15s; }
+.tm-btn-genpwd:hover { border-color: var(--accent); color: var(--accent); background: rgba(47,107,255,0.06); }
+
+
+.tm-divider {
+  display: flex; align-items: center; margin: 22px 0; gap: 12px;
+}
+.tm-divider::before, .tm-divider::after {
+  content: ''; flex: 1; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border), transparent);
+}
+.tm-divider span {
+  color: var(--text-dim); font-size: 11px; text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* ── Douyin button ──────────────────────────────── */
+.tm-btn-douyin {
+  width: 100%; padding: 12px;
+  background: rgba(7, 193, 96, 0.08);
+  border: 1.5px solid rgba(7, 193, 96, 0.2);
+  border-radius: var(--radius-sm);
+  color: #07C160; font-size: 14px; font-weight: 600;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  gap: 8px; transition: all 0.25s ease; font-family: inherit;
+}
+.tm-btn-douyin:hover {
+  background: rgba(7, 193, 96, 0.14);
+  box-shadow: 0 0 20px rgba(7, 193, 96, 0.1);
+}
+.tm-btn-douyin svg { width: 18px; height: 18px; }
+
+/* ── Footer ─────────────────────────────────────── */
+.tm-footer {
+  text-align: center; padding: 20px;
+  color: var(--text-dim); font-size: 11px;
+  position: relative; z-index: 1;
+  border-top: 1px solid rgba(47, 107, 255, 0.06);
+  width: 100%;
+  flex-shrink: 0;
+}
+.tm-footer a { color: var(--text-dim); text-decoration: none; transition: color 0.25s; }
+.tm-footer a:hover { color: var(--text-muted); }
+.tm-footer .dot { padding: 0 8px; }
+
+/* ── Toast ──────────────────────────────────────── */
+.tm-toast-wrap {
+  position: fixed; top: 24px; right: 24px; z-index: 999;
+  display: flex; flex-direction: column; gap: 8px; pointer-events: none;
+}
+.tm-toast {
+  padding: 12px 20px; border-radius: 10px;
+  background: rgba(13, 21, 42, 0.9);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+  color: var(--text); font-size: 13px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  display: flex; align-items: center; gap: 10px;
+  animation: tm-slide-in 0.3s ease-out;
+  pointer-events: auto; max-width: 360px;
+}
+.tm-toast.toast-success { border-color: rgba(0, 214, 143, 0.3); }
+.tm-toast.toast-error { border-color: rgba(255, 61, 113, 0.3); }
+.tm-toast .toast-icon { width: 18px; height: 18px; flex-shrink: 0; }
+.tm-toast.toast-success .toast-icon { color: var(--success); }
+.tm-toast.toast-error .toast-icon { color: var(--danger); }
+.tm-toast.toast-leave { animation: tm-slide-out 0.25s ease-in forwards; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes tm-slide-in {
+  from { opacity: 0; transform: translateX(60px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes tm-slide-out {
+  from { opacity: 1; transform: translateX(0); }
+  to { opacity: 0; transform: translateX(60px); }
+}
+
+@media (max-width: 480px) {
+  .tm-card { padding: 28px 20px 24px; border-radius: 16px; }
+  .tm-toast-wrap { left: 16px; right: 16px; top: 16px; }
+  .tm-toast { max-width: 100%; }
+  .tm-input-row { flex-direction: column; gap: 8px; }
+  .tm-btn-send { width: 100%; }
+}
+</style>
+</head>
+<body>
+
+<div class="tm-toast-wrap" id="toastWrap"></div>
+
+<div class="tm-page">
+
+<div class="tm-container">
+  <div class="tm-card">
+    <!-- Brand -->
+    <div class="tm-brand">
+      <div class="tm-brand-logo">
+        {% if brand and brand.logo_icon_url %}
+        <img src="{{ brand.logo_icon_url }}" style="width:48px;height:48px;border-radius:10px;object-fit:contain" alt="{{ brand.software_name }}">
+        {% else %}
+        <svg viewBox="0 0 24 24"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
+        {% endif %}
+      </div>
+      <h1>{{ brand.software_name if brand else '' }}</h1>
+      <p>{{ brand.slogan if brand else '' }}</p>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tm-tabs">
+      <button type="button" class="tm-tab active" id="tabSms">{{ _('SMS Login') }}</button>
+      <button type="button" class="tm-tab" id="tabPwd">{{ _('Password Login') }}</button>
+    </div>
+
+    <!-- Captcha: shape-matching puzzle (served by the captcha_embedded plugin on admin:8084) -->
+    <div class="tm-captcha">
+      <div id="puzzle-captcha"></div>
+    </div>
+    <div style="font-size:11px;color:var(--text-dim);margin:-8px 0 16px;text-align:center">{{ _('Drag the correct shape into the slot to verify') }}</div>
+
+    <!-- SMS Tab -->
+    <div id="smsTab">
+      <div class="tm-field">
+        <label class="tm-field-label" for="phone">{{ _('Phone Number') }}</label>
+        <div class="tm-input-row">
+          <div class="tm-input-wrap">
+            <span class="tm-input-icon"><svg viewBox="0 0 24 24"><path d="M20 10.999h2C22 5.869 18.127 2 12.99 2v2C17.052 4 20 6.943 20 10.999z"/></svg></span>
+            <input class="tm-input" type="tel" id="phone" placeholder="{{ _('Enter phone number') }}" maxlength="13" autocomplete="tel" oninput="fmtPhone(this)">
+          </div>
+          <button type="button" class="tm-btn-send" id="sendBtn" onclick="sendCode()">{{ _('Get Code') }}</button>
+        </div>
+        <div class="tm-msg" id="phoneMsg"></div>
+      </div>
+      <div class="tm-field">
+        <label class="tm-field-label" for="code">{{ _('Verification Code') }}</label>
+        <div class="tm-input-wrap">
+          <span class="tm-input-icon"><svg viewBox="0 0 24 24"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM9 6c0-1.66 1.34-3 3-3s3 1.34 3 3v2H9V6z"/></svg></span>
+          <input class="tm-input" type="text" id="code" placeholder="{{ _('Enter 6-digit code') }}" maxlength="6" inputmode="numeric" autocomplete="one-time-code" oninput="this.value=this.value.replace(/\D/g,'');autoSubmit()">
+        </div>
+        <div class="tm-msg" id="codeMsg"></div>
+      </div>
+      <button type="button" class="tm-btn-primary" id="loginSmsBtn" onclick="smsLogin()">
+        <span class="tm-btn-text">{{ _('Login / Register') }}</span><div class="tm-spinner"></div>
+      </button>
+      <div class="tm-pwd-toggle"><button onclick="switchTab('pwd')">{{ _('Use password to login') }}</button></div>
+    </div>
+
+    <!-- Password Tab -->
+    <div id="pwdTab" style="display:none">
+      <div class="tm-field">
+        <label class="tm-field-label" for="pwdPhone">{{ _('Username / Email') }}</label>
+        <div class="tm-input-wrap">
+          <span class="tm-input-icon"><svg viewBox="0 0 24 24"><path d="M20 10.999h2C22 5.869 18.127 2 12.99 2v2C17.052 4 20 6.943 20 10.999z"/></svg></span>
+           <input class="tm-input" type="text" id="pwdPhone" placeholder="{{ _('Username or email') }}" autocomplete="username">
+        </div>
+      </div>
+      <div class="tm-field">
+        <label class="tm-field-label" for="password">{{ _('Password') }}</label>
+        <div class="tm-input-wrap">
+          <span class="tm-input-icon"><svg viewBox="0 0 24 24"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2z"/></svg></span>
+          <div class="tm-pwd-row">
+          <input class="tm-input" type="password" id="password" placeholder="{{ _('Enter password') }}" autocomplete="new-password">
+            <button type="button" class="tm-pwd-eye" id="pwdEye" onclick="togglePwd()" title="{{ _('Show/Hide Password') }}">👁</button>
+          </div>
+          <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+            <span class="tm-pwd-hint">{{ _('At least 8 characters with uppercase, lowercase, numbers and special characters') }}</span>
+          </div>
+          <div class="tm-msg" id="pwdMsg"></div>
+      </div>
+      <button type="button" class="tm-btn-primary" id="loginPwdBtn" onclick="pwdLogin()">
+        <span class="tm-btn-text">{{ _('Log In') }}</span><div class="tm-spinner"></div>
+      </button>
+      <div class="tm-pwd-toggle"><a href="/reset-password">{{ _('Forgot password?') }}</a></div>
+    </div>
+  </div>
+</div>
+
+<div class="tm-footer">
+  {{ brand.software_name if brand else '' }} v{{ brand.version if brand else '' }} | {{ brand.software_slogan if brand else '' }} · <a href="https://beian.miit.gov.cn/">{{ brand.icp_number | safe if brand and brand.icp_number else '' }}</a>
+</div>
+
+</div><!-- /tm-page -->
+
+<script src="/static/js/vue.global.prod.js"></script>
+<script src="/static/puzzle-captcha.js"></script>
+<script>
+let cd = 0, cdTimer = null, tab = 'sms', capToken = '', capSolved = false, capLoadFailed = false;
+
+/* Captcha 超时降级检测 */
+setTimeout(() => {
+  if (!capSolved && !capLoadFailed) {
+    capLoadFailed = true;
+    const el = document.getElementById('puzzle-captcha');
+    if (el && !el.dataset.solved) {
+      // 检查 puzzle-captcha 组件是否已在内部完成渲染
+      const canvas = el.querySelector('.pc3-canvas');
+      if (!canvas) {
+        const wrap = document.querySelector('.tm-captcha');
+        if (wrap) {
+          const hint = document.createElement('div');
+          hint.style.cssText = 'color:#FF3D71;font-size:12px;padding:8px;text-align:center;margin-top:8px';
+          hint.textContent = "{{ _('Captcha failed to load, please refresh the page') }}";
+          wrap.appendChild(hint);
+        }
+      }
+    }
+  }
+}, 60000);
+
+document.addEventListener('captcha-success', e => { capToken = e.detail.token; capSolved = true; const el=document.getElementById('puzzle-captcha'); if(el){el.dataset.token=e.detail.token;el.dataset.solved='1';} });
+// Also listen directly on the element (in case bubbling fails)
+(function(){const el=document.getElementById('puzzle-captcha');if(el)el.addEventListener('captcha-success',function(e){capToken=e.detail.token;capSolved=true;if(el){el.dataset.token=e.detail.token;el.dataset.solved='1';}});})();
+
+document.addEventListener('DOMContentLoaded', () => {
+  const p = localStorage.getItem('admin_phone');
+  if (p) { document.getElementById('phone').value = p; document.getElementById('phone').focus(); }
+  document.getElementById('phone').addEventListener('keydown', e => { if (e.key === 'Enter') sendCode(); });
+  document.getElementById('code').addEventListener('keydown', e => { if (e.key === 'Enter') smsLogin(); });
+  document.getElementById('pwdPhone').addEventListener('keydown', e => { if (e.key === 'Enter') pwdLogin(); });
+  document.getElementById('password').addEventListener('keydown', e => { if (e.key === 'Enter') pwdLogin(); });
+  // Tab switching — direct event listeners (avoids onclick scope issues)
+  document.getElementById('tabSms').addEventListener('click', () => switchTab('sms'));
+  document.getElementById('tabPwd').addEventListener('click', () => switchTab('pwd'));
+  // "{{ _('Use password to login') }}" link in SMS tab
+  const pwdToggle = document.querySelector('#smsTab .tm-pwd-toggle button');
+  if (pwdToggle) pwdToggle.addEventListener('click', () => switchTab('pwd'));
+});
+
+function switchTab(t) { tab = t; document.getElementById('smsTab').style.display = t === 'sms' ? '' : 'none'; document.getElementById('pwdTab').style.display = t === 'pwd' ? '' : 'none'; document.getElementById('tabSms').classList.toggle('active', t === 'sms'); document.getElementById('tabPwd').classList.toggle('active', t === 'pwd'); setTimeout(() => document.getElementById(t === 'sms' ? 'phone' : 'pwdPhone').focus(), 100); }
+
+function fmtPhone(i) { let v = i.value.replace(/\D/g, '').slice(0, 11); if (v.length > 7) v = v.slice(0, 3) + ' ' + v.slice(3, 7) + ' ' + v.slice(7); else if (v.length > 3) v = v.slice(0, 3) + ' ' + v.slice(3); i.value = v; }
+
+function rawPhone() { return document.getElementById('phone').value.replace(/\D/g, ''); }
+
+async function sendCode() {
+  const p = rawPhone();
+  if (p.length < 11) { showMsg('phoneMsg', "{{ _('Please enter 11-digit phone number') }}", 'error'); return; }
+  if (!capSolved) { showMsg('phoneMsg', "{{ _('Please complete the captcha first') }}", 'error'); return; }
+  hideMsg('phoneMsg');
+  const btn = document.getElementById('sendBtn'); btn.disabled = true; btn.classList.add('countdown');
+  try {
+    const r = await fetch('/auth/sms/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: p, purpose: 'login', captcha_id: capToken }) });
+    const d = await r.json();
+    if (d.success) { localStorage.setItem('admin_phone', p); toast("{{ _('Code sent') }}", 'success'); startCd(60); capSolved = false; capToken = ''; setTimeout(() => document.getElementById('code').focus(), 100); }
+    else { showMsg('phoneMsg', d.error || "{{ _('Failed to send') }}", 'error'); btn.disabled = false; btn.classList.remove('countdown'); if (d.error && d.error.includes("{{ _('Verification Code') }}")) { capSolved = false; capToken = ''; } }
+  } catch (e) { showMsg('phoneMsg', "{{ _('Network error, please retry') }}", 'error'); btn.disabled = false; btn.classList.remove('countdown'); }
+}
+
+function startCd(s) { cd = s; const btn = document.getElementById('sendBtn'); const tick = () => { cd--; btn.textContent = cd + 's'; if (cd <= 0) { clearInterval(cdTimer); btn.textContent = "{{ _('Resend') }}"; btn.disabled = false; btn.classList.remove('countdown'); } }; tick(); clearInterval(cdTimer); cdTimer = setInterval(tick, 1000); }
+
+function autoSubmit() { if (document.getElementById('code').value.replace(/\D/g, '').length === 6 && rawPhone().length === 11) smsLogin(); }
+
+async function smsLogin() {
+  const p = rawPhone(), c = document.getElementById('code').value.replace(/\D/g, '');
+  if (!p || p.length < 11) { showMsg('codeMsg', "{{ _('Please enter your phone number') }}", 'error'); return; }
+  if (!c || c.length < 6) { showMsg('codeMsg', "{{ _('Please enter 6-digit code') }}", 'error'); return; }
+  hideMsg('codeMsg');
+  const btn = document.getElementById('loginSmsBtn'); btn.disabled = true; btn.classList.add('loading');
+  try {
+    const r = await fetch('/auth/sms/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: p, code: c }) });
+    const d = await r.json();
+    if (d.success) { localStorage.setItem('admin_token', d.data.token); localStorage.setItem('admin_user', JSON.stringify(d.data.user)); toast("{{ _('Login successful, redirecting...') }}", 'success'); setTimeout(function(){ var forcePwd = d.data.user && !d.data.user.password_changed_at ? '&force_pwd=1' : ''; window.location.href = '/admin?token=' + d.data.token + forcePwd; }, 100); }
+    else { showMsg('codeMsg', d.error || "{{ _('Login failed') }}", 'error'); btn.disabled = false; btn.classList.remove('loading'); }
+  } catch (e) { showMsg('codeMsg', "{{ _('Network error') }}", 'error'); btn.disabled = false; btn.classList.remove('loading'); }
+}
+
+async function pwdLogin() {
+  const p = document.getElementById('pwdPhone').value.trim(), pw = document.getElementById('password').value;
+  if (!p || !pw) { showMsg('pwdMsg', "{{ _('Please enter username and password') }}", 'error'); return; }
+  if (pw.length < 8) { showMsg('pwdMsg', "{{ _('Password must be at least 8 characters') }}", 'error'); return; }
+  if (!/[A-Z]/.test(pw)) { showMsg('pwdMsg', "{{ _('Password must contain uppercase letter') }}", 'error'); return; }
+  if (!/[a-z]/.test(pw)) { showMsg('pwdMsg', "{{ _('Password must contain lowercase letter') }}", 'error'); return; }
+  if (!/[0-9]/.test(pw)) { showMsg('pwdMsg', "{{ _('Password must contain a number') }}", 'error'); return; }
+  if (!/[!@#$%^&*(),.?":{}|<>_+\-=\[\]~`\/;]/.test(pw)) { showMsg('pwdMsg', "{{ _('Password must contain special character (!@#$%^&*etc.)') }}", 'error'); return; }
+  // Check captcha state — use both capSolved and DOM for robustness
+  if (!capSolved) {
+    const pc = document.getElementById('puzzle-captcha');
+    if (pc && pc.dataset.solved === '1' && pc.classList.contains('pc3-success')) {
+      capSolved = true;
+      if (pc.dataset.token) capToken = pc.dataset.token;
+    }
+  }
+  if (!capSolved) { showMsg('pwdMsg', "{{ _('Please complete the captcha first') }}", 'error'); return; }
+  hideMsg('pwdMsg');
+  const btn = document.getElementById('loginPwdBtn'); btn.disabled = true; btn.classList.add('loading');
+  try {
+    const r = await fetch('/user/password/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: p, password: pw, captcha_id: capToken || (document.getElementById('puzzle-captcha').dataset.token || '') }) });
+    const d = await r.json();
+    if (d.success) { localStorage.setItem('admin_token', d.data.token); localStorage.setItem('admin_user', JSON.stringify(d.data.user)); toast("{{ _('Login successful, redirecting...') }}", 'success'); setTimeout(function(){ var forcePwd = d.data.user && d.data.user.is_admin && !d.data.user.password_changed_at ? '&force_pwd=1' : ''; window.location.href = '/admin?token=' + d.data.token + forcePwd; }, 600); }
+    else { showMsg('pwdMsg', d.error || "{{ _('Login failed') }}", 'error'); btn.disabled = false; btn.classList.remove('loading'); if (d.error && d.error.includes("{{ _('Verification Code') }}")) { capSolved = false; capToken = ''; } }
+  } catch (e) { showMsg('pwdMsg', "{{ _('Network error') }}", 'error'); btn.disabled = false; btn.classList.remove('loading'); }
+}
+
+function showMsg(id, msg, t) {
+  const el = document.getElementById(id);
+  el.className = 'tm-msg ' + t;
+  // SAFE: build SVG element separately, then append text via textContent
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.style.cssText = 'width:14px;height:14px;flex-shrink:0;fill:currentColor';
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('d', t === 'error' ? 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z' : 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z');
+  svg.appendChild(path);
+  el.innerHTML = '';
+  el.appendChild(svg);
+  el.appendChild(document.createTextNode(msg));
+}
+function hideMsg(id) { const el = document.getElementById(id); el.className = 'tm-msg'; }
+function toast(msg, t) {
+  const c = document.getElementById('toastWrap');
+  if (!c) return;
+  const el = document.createElement('div');
+  el.className = 'tm-toast toast-' + t;
+  // SAFE: use createElement + textContent to prevent XSS
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('class', 'toast-icon');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('d', t === 'success' ? 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z' : 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z');
+  svg.appendChild(path);
+  const msgSpan = document.createElement('span');
+  msgSpan.textContent = msg;
+  el.appendChild(svg);
+  el.appendChild(msgSpan);
+  c.appendChild(el);
+  setTimeout(() => { el.classList.add('toast-leave'); setTimeout(() => el.remove(), 250); }, 3000);
+}
+
+function togglePwd() {
+  const el = document.getElementById('password');
+  const eye = document.getElementById('pwdEye');
+  if (el.type === 'password') { el.type = 'text'; eye.textContent = '🙈'; }
+  else { el.type = 'password'; eye.textContent = '👁'; }
+}
+</script>
+</body>
+</html>

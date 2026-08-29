@@ -1,0 +1,15 @@
+plugin.name: Stock Analysis
+menu.stock_analysis: Stock Analysis
+Stock Analysis: Stock Analysis
+Stock code, e.g. 600519: Stock code, e.g. 600519
+Analysis Type: Analysis Type
+AI Comprehensive: AI Comprehensive
+Technical: Technical
+Fundamental: Fundamental
+Sentiment: Sentiment
+Analyze: Analyze
+Enter a stock code to start analysis.: Enter a stock code to start analysis.
+Analyzing...: Analyzing...
+Signal: Signal
+Analysis failed: Analysis failed
+Request failed: Request failed

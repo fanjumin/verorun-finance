@@ -1,0 +1,128 @@
+﻿window.l_themes=function(){
+  document.getElementById("pt").textContent="{{ _('Template Management') }}";
+  var mc=document.getElementById("mc");
+  mc.innerHTML='<div class="lo"><div class="s"></div>{{ _('Load Theme List') }}...</div>';
+
+  Promise.all([
+    fetch("/admin/themes",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}),
+    fetch("/admin/themes/sites",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()})
+  ]).then(function(results){
+    var themes=results[0],sites=results[1];
+    if(!themes.success||!sites.success){mc.innerHTML='<div class="empty-state">{{ _('Load failed') }}</div>';return}
+    renderThemeGrid(mc,themes.data,sites.data);
+  }).catch(function(e){
+    mc.innerHTML='<div class="empty-state">{{ _('Load failed') }}: '+esc(e.message)+'</div>';
+  });
+};
+
+function themeInstall(){
+  var fi=document.getElementById("themeFileInput");
+  if(fi)fi.click();
+}
+function themeDoInstall(el){
+  var f=el.files[0];
+  if(!f)return;
+  var fd=new FormData();
+  fd.append("file",f);
+  var mc=document.getElementById("mc");
+  mc.innerHTML='<div class="lo"><div class="s"></div>{{ _('Installing') }}...</div>';
+  fetch("/admin/themes/install",{method:"POST",headers:{"Authorization":"Bearer "+T},body:fd})
+    .then(function(r){return r.json()})
+    .then(function(d){
+      if(d.success){showToast("{{ _('Install Success') }}: "+d.theme.name,"success");l_themes()}
+      else{showToast(d.error||"{{ _('Install Failed') }}","error");l_themes()}
+    }).catch(function(){showToast("{{ _('Network error') }}","error");l_themes()});
+}
+function themeActivate(themeId,themeName){
+  var siteKey=prompt("{{ _('Select Target Site') }}:\n\nmain = {{ _('Main Site') }}\nplatform = {{ _('User Dashboard') }}\nadmin = {{ _('Admin Panel') }}","admin");
+  if(!siteKey)return;
+  var keys=["main","platform","admin"];
+  if(keys.indexOf(siteKey)===-1){showToast("{{ _('Invalid site') }}","error");return}
+  fetch("/admin/themes/sites",{
+    method:"PUT",
+    headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},
+    body:JSON.stringify({site_key:siteKey,theme_id:themeId})
+  }).then(function(r){return r.json()})
+    .then(function(d){
+      if(d.success){showToast(themeName+" → "+siteKey+" {{ _('Enabled') }}","success");l_themes()}
+      else{showToast(d.error||"{{ _('Switch Failed') }}","error")}
+    }).catch(function(){showToast("{{ _('Network error') }}","error")});
+}
+function themeActivateDefault(siteKey){
+  if(!siteKey)return;
+  fetch("/admin/themes/sites",{
+    method:"PUT",
+    headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},
+    body:JSON.stringify({site_key:siteKey,theme_id:null})
+  }).then(function(r){return r.json()})
+    .then(function(d){
+      if(d.success){showToast("{{ _('Site') }} "+siteKey+" {{ _('Restored Default Theme') }}","success");l_themes()}
+      else{showToast(d.error||"{{ _('Switch Failed') }}","error")}
+    }).catch(function(){showToast("{{ _('Network error') }}","error")});
+}
+function themeDelete(themeId,themeName,themeSlug){
+  if(themeSlug==="default"){showToast("{{ _('Cannot delete default theme') }}","error");return}
+  if(!confirm("{{ _('Confirm Theme Uninstall') }}\""+themeName+"\"吗？\n\n{{ _('Sites using this theme will auto-restore Default Theme') }}。"))return;
+  fetch("/admin/themes/"+themeId,{method:"DELETE",headers:{"Authorization":"Bearer "+T}})
+    .then(function(r){return r.json()})
+    .then(function(d){
+      if(d.success){showToast("{{ _('Uninstalled') }}","success");l_themes()}
+      else{showToast(d.error||"{{ _('Delete failed') }}","error")}
+    }).catch(function(){showToast("{{ _('Network error') }}","error")});
+}
+function themePreview(thumbnailUrl){
+  if(!thumbnailUrl)return;
+  window.open(thumbnailUrl,"_blank");
+}
+function renderThemeGrid(mc,themes,sites){
+  var siteMap={};
+  sites.forEach(function(s){siteMap[s.site_key]=s});
+  var h='';
+  h+='<div class="cfg-section">';
+  h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">';
+  h+='<h3 class="cfg-section-title" style="margin:0">{{ _('Theme Installed') }} ('+themes.length+')</h3>';
+  h+='<button class="btn bp" onclick="themeInstall()">+ {{ _('Install Theme') }}</button>';
+  h+='</div>';
+  h+='<input type="file" id="themeFileInput" accept=".zip" style="display:none" onchange="themeDoInstall(this)">';
+  h+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px">';
+  themes.forEach(function(t){
+    var activeSites=[];
+    for(var k in siteMap){if(siteMap[k].theme_id===t.id)activeSites.push(siteMap[k].label)}
+    var isDefault=t.slug==="default";
+    h+='<div class="glass-card" style="padding:16px;display:flex;flex-direction:column;gap:12px">';
+    var thumbUrl=t.thumbnail||'';
+    h+='<div style="background:var(--bg-card);border-radius:8px;height:140px;overflow:hidden;display:flex;align-items:center;justify-content:center;cursor:pointer" onclick="themePreview(\''+escAttr(thumbUrl)+'\')">';
+    h+=(thumbUrl?'<img src="'+escAttr(thumbUrl)+'" alt="'+escAttr(t.name)+'" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display=\'none\';this.parentElement.innerHTML=\'<div style=color:var(--text-muted);font-size:13px>{{ _('No Preview') }}</div>\'">':'<div style="color:var(--text-muted);font-size:13px">{{ _('No Preview') }}</div>');
+    h+='</div>';
+    h+='<div>'
+    h+='<div style="font-weight:600;font-size:14px;color:var(--text)">'+esc(t.name)+'</div>';
+    h+='<div style="font-size:11px;color:var(--text-muted);margin-top:2px">v'+esc(t.version)+(t.author?' · '+esc(t.author):'')+(isDefault?' · {{ _('Built-in') }}':'')+'</div>';
+    if(t.industry)h+='<span style="display:inline-block;margin-top:6px;padding:2px 8px;border-radius:4px;font-size:10px;background:var(--bg-glass);color:var(--blue);border:1px solid var(--border)">'+esc(t.industry)+'</span>';
+    h+='</div>';
+    if(activeSites.length>0){
+      h+='<div style="font-size:11px;color:var(--text-dim)">{{ _('Enabled') }}: '+activeSites.join(" · ")+'</div>';
+    }
+    h+='<div style="display:flex;gap:8px;margin-top:auto">';
+    if(!isDefault){
+      h+='<select style="flex:1;padding:6px 8px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;font-size:12px" onchange="var v=this.value;this.value=\'\';if(v===\'default\')themeActivateDefault(\''+siteMap[Object.keys(siteMap)[0]]?siteMap[Object.keys(siteMap)[0]].site_key:''+'\');else themeActivate('+t.id+',\''+escAttr(t.name)+'\',v)">';
+      h+='<option value="">{{ _('Enabled') }} ▼</option>';
+      h+='<option value="default">{{ _('Restore Default') }}</option>';
+      sites.forEach(function(s){
+        var sel=siteMap[s.site_key]&&siteMap[s.site_key].theme_id===t.id?' ✓':'';
+        h+='<option value="'+escAttr(s.site_key)+'">'+esc(s.label)+sel+'</option>';
+      });
+      h+='</select>';
+    }
+    h+='<button class="btn" style="padding:6px 10px;font-size:11px" onclick="themePreview(\''+escAttr(thumbUrl)+'\')">{{ _('Preview') }}</button>';
+    if(!isDefault)h+='<button class="btn" style="padding:6px 10px;font-size:11px;color:var(--rose)" onclick="themeDelete('+t.id+',\''+escAttr(t.name)+'\',\''+escAttr(t.slug)+'\')">{{ _('Delete') }}</button>';
+    h+='</div></div>';
+  });
+  h+='</div>';
+  if(themes.length===0)h+='<div class="empty-state">{{ _('No Installed Theme') }}<br><br><button class="btn bp" onclick="themeInstall()">{{ _('Install First Theme') }}</button></div>';
+  h+='</div>';
+  mc.innerHTML=h;
+}
+
+// ════════════════════════════════════════════════════════
+// {{ _('Sub-site Nav Management') }} (header_nav)
+// ════════════════════════════════════════════════════════

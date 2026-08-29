@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Two-Factor Authentication</title>
+    <!-- §15.6 主题同步：iframe 页面需跟随 admin 主题 -->
+    <link rel="stylesheet" href="/static/css/design-system.css">
+    <link rel="stylesheet" href="/static/css/themes.css">
+    <style>
+        /* §15.6：禁止硬编码色值，一律使用 design-system 变量 */
+        body { background: var(--bg-card); color: var(--text); font-family: system-ui, sans-serif; }
+        .container { max-width: 520px; margin: 32px auto; padding: 24px; }
+        .qr-box { background: var(--card-bg); border:1px solid var(--border); padding: 16px; border-radius: 8px; text-align:center; display:inline-block; }
+        .code-grid { display:flex; flex-wrap:wrap; gap:8px; margin:16px 0; }
+        .code-item { background: var(--card-bg); color: var(--text); border:1px solid var(--border); padding:6px 10px; border-radius:4px; font-family:monospace; }
+        .btn { padding:8px 16px; border:none; border-radius:6px; cursor:pointer; }
+        .btn-primary { background: var(--accent); color:#fff; }
+        .btn-success { background: var(--success); color:#fff; }
+        .muted { color: var(--text-dim); font-size:13px; }
+        input.code { font-size:22px; letter-spacing:6px; padding:8px; width:200px; text-align:center; }
+    </style>
+    <script>
+        // §15.6 主题同步铁律（iframe 例外页允许 <script>）
+        (function(){
+            var KEY='verorun_admin_theme';
+            function apply(){
+                try{
+                    var t=localStorage.getItem(KEY);
+                    if(t==='slate'||t==='light'){document.documentElement.setAttribute('data-theme',t);}
+                    else if(document.documentElement.hasAttribute('data-theme')){document.documentElement.removeAttribute('data-theme');}
+                }catch(e){}
+            }
+            apply();
+            window.addEventListener('storage',function(e){if(e.key===KEY||e.key===null)apply();});
+            setInterval(apply,1000);
+        })();
+    </script>
+</head>
+<body>
+    <div class="container" id="app">
+        <h2 id="title">Two-Factor Authentication</h2>
+        <div id="step1">
+            <p id="t-scan">Scan QR Code</p>
+            <div class="qr-box"><img id="qrImg" src="" alt="QR" width="200" height="200"></div>
+            <p class="muted" id="t-manual">或手动输入密钥：</p>
+            <div id="manualKey" style="margin:8px 0;font-family:monospace;word-break:break-all;"></div>
+            <button class="btn btn-primary" onclick="initSetup()">Initialize</button>
+        </div>
+        <div id="step2" style="display:none;">
+            <p id="t-enter">Enter 6-digit code</p>
+            <input id="codeInput" class="code" type="text" maxlength="6" inputmode="numeric" placeholder="123456">
+            <br><br>
+            <!-- F-01：已启用 2FA 用户重绑定需先输入旧码确认（服务端校验通过后才覆盖） -->
+            <div id="oldCodeGroup" style="display:none;">
+                <p id="t-oldcode">Enter your current 2FA code to confirm the change</p>
+                <input id="oldCodeInput" class="code" type="text" maxlength="6" inputmode="numeric" placeholder="123456">
+                <br><br>
+            </div>
+            <button class="btn btn-success" onclick="verifySetup()">Enable 2FA</button>
+        </div>
+        <div id="step3" style="display:none;">
+            <h3 id="t-recovery">Save Your Recovery Codes</h3>
+            <p class="muted" id="t-recovery-hint">请离线保存，每个仅可用一次。</p>
+            <div id="recoveryBox" class="code-grid"></div>
+            <button class="btn btn-primary" onclick="finish()">Done</button>
+        </div>
+        <p id="msg" class="muted"></p>
+    </div>
+
+    <script>
+        // 双语文案：经系统 _() 渲染（标准 §12.1），词条只存在于插件目录
+        var T = {
+            title: {{ _('Two-Factor Authentication')|tojson }},
+            scan: {{ _('Scan QR Code')|tojson }},
+            manual: {{ _('Or enter this key manually:')|tojson }},
+            init: {{ _('Initialize')|tojson }},
+            enter: {{ _('Enter 6-digit code')|tojson }},
+            enable: {{ _('Enable 2FA')|tojson }},
+            recovery: {{ _('Save Your Recovery Codes')|tojson }},
+            rhint: {{ _('Store offline; each code works once.')|tojson }},
+            done: {{ _('Done')|tojson }},
+            copy: {{ _('Copy')|tojson }},
+            copied: {{ _('Copied')|tojson }},
+            errInit: {{ _('Init failed')|tojson }},
+            errVerify: {{ _('Invalid code, please retry')|tojson }},
+            success: {{ _('2FA enabled')|tojson }},
+            oldCode: {{ _('Enter your current 2FA code to confirm the change')|tojson }},
+            alreadyInit: {{ _('Already initialized, please reopen the setup page')|tojson }},
+            setupLocked: {{ _('Setup locked, please try again later')|tojson }}
+        };
+
+        function applyText(){
+            document.getElementById('title').textContent = T.title;
+            document.getElementById('t-scan').textContent = T.scan;
+            document.getElementById('t-manual').textContent = T.manual;
+            document.getElementById('t-enter').textContent = T.enter;
+            document.getElementById('t-oldcode').textContent = T.oldCode;
+            document.getElementById('t-recovery').textContent = T.recovery;
+            document.getElementById('t-recovery-hint').textContent = T.rhint;
+            document.querySelector('#step1 .btn-primary').textContent = T.init;
+            document.querySelector('#step2 .btn-success').textContent = T.enable;
+            document.querySelector('#step3 .btn-primary').textContent = T.done;
+        }
+        applyText();
+
+        // 从 URL 读取短期 setup_token（门户经 /setup-token 换取，不再暴露长期登录 JWT）
+        function getToken(){
+            return new URLSearchParams(location.search).get('setup_token') || '';
+        }
+        function authHeaders(){
+            return {'Content-Type':'application/json', 'Authorization':'Bearer ' + getToken()};
+        }
+        function setMsg(s){ document.getElementById('msg').textContent = s; }
+
+        async function initSetup(){
+            try{
+                const res = await fetch('/plugin/two_factor_auth/setup/init', {
+                    method:'POST', headers: authHeaders()
+                });
+                const data = await res.json();
+                if(!res.ok){
+                    if(res.status === 400 && data.error === 'already initialized'){
+                        // F-01：同一 setup_token 仅可 init 一次，需重新进入设置页获取新令牌
+                        setMsg(T.alreadyInit);
+                        return;
+                    }
+                    setMsg(T.errInit);
+                    return;
+                }
+                document.getElementById('qrImg').src = 'data:image/png;base64,' + data.qr_code;
+                document.getElementById('manualKey').textContent = data.secret;
+                document.getElementById('step1').style.display='none';
+                document.getElementById('step2').style.display='block';
+            }catch(e){ setMsg(T.errInit); }
+        }
+
+        async function verifySetup(){
+            const code = document.getElementById('codeInput').value.trim();
+            const oldCode = document.getElementById('oldCodeInput').value.trim();
+            const body = {code};
+            if(oldCode){ body.confirm_old_code = oldCode; }
+            const res = await fetch('/plugin/two_factor_auth/setup/verify', {
+                method:'POST', headers: authHeaders(),
+                body: JSON.stringify(body)
+            });
+            const data = await res.json();
+            if(res.ok && data.success){
+                document.getElementById('step2').style.display='none';
+                document.getElementById('step3').style.display='block';
+                const box = document.getElementById('recoveryBox');
+                box.innerHTML = '';
+                (data.recovery_codes||[]).forEach(function(c){
+                    const span = document.createElement('span');
+                    span.className='code-item';
+                    span.textContent = c;
+                    box.appendChild(span);
+                });
+                setMsg(T.success);
+            }else if(res.status === 429){
+                setMsg(T.setupLocked);
+            }else if(res.status === 400 && data.error === 'old code required'){
+                // F-01：账户已启用 2FA，需先输入当前动态码确认升级
+                document.getElementById('oldCodeGroup').style.display='block';
+                document.getElementById('oldCodeInput').focus();
+                setMsg('');
+            }else{
+                setMsg(T.errVerify);
+            }
+        }
+
+        function finish(){
+            var done = {{ done|tojson }};
+            window.location.href = done;
+        }
+    </script>
+</body>
+</html>

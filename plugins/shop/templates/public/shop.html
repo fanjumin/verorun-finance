@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+
+<html lang="{{ lang }}">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width,initial-scale=1.0" name="viewport"/>
+<title>{{ _('Shop') }} — {{ brand.site_name_cn if brand else '' }}</title>
+<link href="{{ brand.favicon_url if brand and brand.favicon_url else '/static/favicon-32x32.png' }}" rel="icon" sizes="32x32" type="image/png"/>
+<link href="/static/css/landing.css" rel="stylesheet"/>
+<style>
+body{background:var(--bg);color:var(--text);font-family:var(--font-cn)}
+.shop-hero{text-align:center;padding:120px 32px 30px}
+.shop-hero h1{font-size:clamp(1.8em,3.5vw,2.4em);font-weight:800;background:var(--gradient-primary);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.shop-hero p{color:var(--text-dim);font-size:14px;margin-top:8px}
+/* Categories */
+.cat-bar{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;max-width:900px;margin:0 auto 24px;padding:0 16px}
+.cat-btn{padding:8px 20px;border:1px solid var(--border);border-radius:20px;background:var(--bg-glass);color:var(--text-dim);font-size:13px;cursor:pointer;font-family:var(--font-cn);transition:all .2s}
+.cat-btn:hover{border-color:var(--accent);color:var(--text)}
+.cat-btn.active{background:var(--indigo);border-color:var(--indigo);color:#fff}
+/* Product grid */
+.prod-grid{max-width:1200px;margin:0 auto;padding:0 24px 80px;display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px}
+.prod-card{background:var(--bg-glass);backdrop-filter:blur(16px);border:1px solid var(--border);border-radius:16px;overflow:hidden;transition:all .3s;cursor:pointer;display:flex;flex-direction:column}
+.prod-card:hover{border-color:var(--border-accent);transform:translateY(-3px);box-shadow:var(--shadow-glow)}
+.prod-card .thumb{width:100%;height:180px;object-fit:cover;background:var(--bg-elevated);display:flex;align-items:center;justify-content:center;font-size:36px;color:var(--dim)}
+.prod-card .body{padding:16px 18px;flex:1;display:flex;flex-direction:column}
+.prod-card .body .title{font-size:16px;font-weight:700;color:var(--text-high);margin-bottom:4px}
+.prod-card .body .subtitle{font-size:12px;color:var(--text-dim);margin-bottom:10px}
+.prod-card .body .tags{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.prod-card .body .tags .tag{padding:2px 8px;border-radius:12px;font-size:10px;background:rgba(99,102,241,.12);color:var(--indigo)}
+.prod-card .body .price-row{display:flex;align-items:baseline;gap:8px;margin-top:auto}
+.prod-card .body .price{font-size:22px;font-weight:800;color:var(--accent);font-family:var(--font-display)}
+.prod-card .body .orig-price{font-size:13px;color:var(--text-muted);text-decoration:line-through}
+.prod-card .body .sales{font-size:11px;color:var(--dim);margin-left:auto}
+/* Loading / Empty */
+.loading-spinner{text-align:center;padding:80px;color:var(--dim)}
+.empty-state{text-align:center;padding:100px 32px;color:var(--dim)}
+.empty-state .icon{font-size:48px;margin-bottom:12px}
+</style>
+</head>
+<body>
+<div id="particles-bg"></div>
+{% include '_header.html' ignore missing %}
+<div class="shop-hero">
+<h1>📦 {{ brand.site_name_cn if brand else '' }}{{ _('Mall') }}</h1>
+<p>{{ _('AI-Powered Site Building · Templates · Plugins · Usage Packs') }}</p>
+</div>
+<div class="cat-bar" id="catBar">
+<button class="cat-btn active" data-cat="" onclick="filterProducts('')">{{ _('All') }}</button>
+<button class="cat-btn" data-cat="ai" onclick="filterProducts('ai')">{{ _('AI Services') }}</button>
+<button class="cat-btn" data-cat="template" onclick="filterProducts('template')">{{ _('Templates') }}</button>
+<button class="cat-btn" data-cat="vip" onclick="filterProducts('vip')">{{ _('VIP Plan') }}</button>
+<button class="cat-btn" data-cat="service" onclick="filterProducts('service')">{{ _('Site Building Service') }}</button>
+<button class="cat-btn" data-cat="token" onclick="filterProducts('token')">{{ _('Usage Packs') }}</button>
+<button class="cat-btn" data-cat="cloud" onclick="filterProducts('cloud')">{{ _('☁️ Cloud Computing') }}</button>
+</div>
+<div class="prod-grid" id="productList">
+<div class="loading-spinner"><div class="s"></div></div>
+</div>
+
+<script src="{{ url_for('shop_public.static', filename='js/tsparticles.bundle.min.js') }}"></script>
+<script>
+var T = '{{ token or "" }}';
+
+// Load products
+function loadProducts(cat){
+  document.getElementById("productList").innerHTML='<div class="loading-spinner"><div class="s"></div></div>';
+  var url="/shop/api/products"+(cat&&cat!=='cloud'?"?category="+encodeURIComponent(cat):"");
+  fetch(url,{headers:T?{"Authorization":"Bearer "+T}:{}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success){document.getElementById("productList").innerHTML='<div class="empty-state">{{ _('Load Failed') }}</div>';return}
+    var ps=d.data||[], h="";
+    if(cat==='cloud') ps=ps.filter(function(p){return p.product_type==='cloud_service'});
+    if(!ps.length){h='<div class="empty-state"><div class="icon">📭</div>{{ _('No Products') }}</div>'}
+    else ps.forEach(function(p){
+      var types={"vip":"{{ _('VIP Package') }}","template":"{{ _('Template') }}","token":"{{ _('Token Package') }}","service":"{{ _('Service') }}","plugin":"{{ _('Plugin') }}","cloud_service":"{{ _('Cloud Service') }}"};
+      var cfg=p.product_config||{};
+      var specs=cfg.specs||{};
+      h+='<div class="prod-card" onclick="location.href=\'/shop/'+p.id+'\'">';
+      if(p.thumbnail) h+='<img class="thumb" src="'+esc(p.thumbnail)+'" alt="'+esc(p.title)+'" onerror="this.style.display=\'none\'">';
+      else h+='<div class="thumb">☁️</div>';
+      h+='<div class="body"><div class="title">'+esc(p.title)+'</div>';
+      if(p.subtitle) h+='<div class="subtitle">'+esc(p.subtitle)+'</div>';
+      h+='<div class="tags"><span class="tag">'+(types[p.product_type]||p.product_type)+'</span>';
+      if(specs.cpu) h+='<span class="tag">⚡'+specs.cpu+'{{ _('Cores') }} '+specs.memory_gb+'G</span>';
+      if(p.category) p.category.split(',').forEach(function(c){h+='<span class="tag">'+esc(c.trim())+'</span>'});
+      h+='</div><div class="price-row"><span class="price">¥'+p.price+'</span>';
+      if(p.original_price>p.price) h+='<span class="orig-price">¥'+p.original_price+'</span>';
+      h+='<span class="sales">{{ _('Monthly') }}</span></div></div></div>';
+    });
+    document.getElementById("productList").innerHTML=h;
+  });
+}
+
+function filterProducts(cat){
+  document.querySelectorAll(".cat-btn").forEach(function(b){b.classList.toggle("active",b.dataset.cat===cat)});
+  loadProducts(cat);
+}
+
+function esc(s){if(!s)return'';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+
+// tsParticles
+if(typeof tsParticles!=='undefined'){
+  tsParticles.load('particles-bg',{
+    fullScreen:{enable:false,zIndex:0},fpsLimit:40,
+    particles:{number:{value:40,density:{enable:true,area:800}},
+    color:{value:['#00f5ff','#a020f0','#6366f1','#00ff9f']},
+    shape:{type:'circle'},opacity:{value:.2,random:true},
+    size:{value:{min:1,max:3},random:true},
+    links:{enable:true,distance:150,color:'#6366f1',opacity:.08,width:1},
+    move:{enable:true,speed:.5,direction:'none',random:true,outModes:{default:'bounce'}}},
+    interactivity:{detectsOn:'canvas',events:{onHover:{enable:true,mode:'grab'},resize:true},
+    modes:{grab:{distance:150,links:{opacity:.2,color:'#00f5ff'}}}},
+    background:{color:'transparent'}
+  });
+}
+loadProducts('');
+</script>
+</body>
+</html>

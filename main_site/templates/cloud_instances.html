@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+
+<html lang="{{ lang }}">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width,initial-scale=1.0" name="viewport"/>
+<title>{{ _('My Cloud Services') }} — {{ brand.site_name_cn if brand else '' }}</title>
+<link href="{{ brand.favicon_url if brand and brand.favicon_url else '/static/favicon-32x32.png' }}" rel="icon" sizes="32x32" type="image/png"/>
+<link href="/static/css/fonts.css" rel="stylesheet"/>
+<link href="/static/css/landing.css" rel="stylesheet"/>
+<style>
+body{background:var(--bg);color:var(--text);font-family:var(--font-cn)}
+.cloud-hero{text-align:center;padding:120px 32px 24px}
+.cloud-hero h1{font-size:clamp(1.5em,3vw,2em);font-weight:800;color:var(--text-high)}
+.cloud-wrap{max-width:800px;margin:0 auto;padding:0 24px 80px}
+.instance-card{background:var(--bg-glass);backdrop-filter:blur(16px);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:10px;transition:all .2s}
+.instance-card:hover{border-color:var(--border-accent)}
+.ic-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.ic-title{font-size:14px;font-weight:600}
+.ic-status{padding:3px 10px;border-radius:10px;font-size:11px;font-weight:600}
+.st-pending{background:rgba(240,192,64,.12);color:#f0c040}
+.st-provisioning{background:rgba(0,128,255,.12);color:#0080ff}
+.st-running{background:rgba(0,255,159,.1);color:var(--accent3)}
+.st-failed{background:rgba(248,81,73,.1);color:#f85149}
+.st-terminated{background:rgba(255,255,255,.04);color:var(--dim)}
+.ic-details{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
+.ic-detail{background:rgba(255,255,255,.03);padding:4px 10px;border-radius:6px;font-size:11px;color:var(--dim)}
+.ic-detail strong{color:var(--text)}
+.ic-bottom{display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}
+.ic-connect{font-size:10px;font-family:monospace;color:var(--accent);word-break:break-all}
+.ic-time{font-size:11px;color:var(--dim)}
+.empty-state{text-align:center;padding:120px 32px;color:var(--dim)}
+.empty-state .icon{font-size:48px;margin-bottom:12px}
+.empty-state a{color:var(--accent);text-decoration:none}
+.toast{position:fixed;top:20px;right:20px;z-index:9999;padding:12px 20px;border-radius:10px;font-size:13px;animation:slideIn .3s}
+.toast.success{background:rgba(0,255,159,.15);border:1px solid var(--accent3);color:var(--accent3)}
+.toast.error{background:rgba(248,81,73,.15);border:1px solid #f85149;color:#f85149}
+@keyframes slideIn{from{opacity:0;transform:translateX(20px)}}
+</style>
+</head>
+<body>
+<div id="particles-bg"></div>
+{% include '_header.html' ignore missing %}
+<div class="cloud-hero"><h1>{{ _('☁️ My Cloud Services') }}</h1></div>
+<div class="cloud-wrap" id="cloudContent">
+<div style="text-align:center;padding:120px;color:var(--dim)"><div class="s"></div></div>
+</div>
+
+<script>
+var T = '{{ token or "" }}';
+
+function loadInstances(){
+  if(!T){document.getElementById("cloudContent").innerHTML='<div class="empty-state"><div class="icon">🔒</div><div>{{ _('Please') }} <a href="/login?redirect=/shop/cloud">{{ _('Log In') }}</a></div></div>';return}
+  fetch("/cloud/instances",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success)return;
+    var instances=d.data||[], h="";
+    if(!instances.length){
+      h='<div class="empty-state"><div class="icon">📭</div><div>{{ _('No cloud instances yet') }}</div><a href="/shop" style="color:var(--accent);margin-top:12px;display:inline-block">→ {{ translations['Go Buy Cloud Services'] }}</a></div>';
+    }else{
+      var stLabels={pending:'{{ translations['Pending Activation'] }}',provisioning:'{{ translations['Provisioning'] }}',running:'{{ translations['Running'] }}',stopped:'{{ translations['Stopped'] }}',terminated:'{{ translations['Terminated'] }}',failed:'{{ translations['Provision Failed'] }}'};
+      instances.forEach(function(inst){
+        var ci=inst.connect_info||{};
+        var connectStr='';
+        if(ci.ip){
+          connectStr='SSH: root@'+ci.ip;
+          if(ci.ssh_port) connectStr+=' -p '+ci.ssh_port;
+        }
+        var specs=inst.specs||{};
+        h+='<div class="instance-card">';
+        h+='<div class="ic-top"><span class="ic-title">☁️ '+esc(inst.product_title||('{{ translations['Service'] }} #'+inst.id))+'</span>';
+        h+='<span class="ic-status st-'+inst.status+'">'+(stLabels[inst.status]||inst.status)+'</span></div>';
+        h+='<div class="ic-details">';
+        if(specs.cpu) h+='<span class="ic-detail">CPU: <strong>'+specs.cpu+'{{ translations['Cores'] }}</strong></span>';
+        if(specs.memory_gb) h+='<span class="ic-detail">{{ _('Memory:') }} <strong>'+specs.memory_gb+'G</strong></span>';
+        if(specs.disk_gb) h+='<span class="ic-detail">{{ _('Disk:') }} <strong>'+specs.disk_gb+'G</strong></span>';
+        h+='<span class="ic-detail">{{ _('Type:') }} <strong>'+inst.service_type+'</strong></span>';
+        h+='</div>';
+        h+='<div class="ic-bottom">';
+        h+='<div><div class="ic-connect">'+esc(connectStr)+'</div>';
+        if(inst.resource_id) h+='<div style="font-size:10px;color:var(--dim);margin-top:2px">{{ translations['Resource'] }}: '+esc(inst.resource_id)+'</div>';
+        h+='</div>';
+        h+='<div style="text-align:right"><div class="ic-time">'+inst.created_at.slice(0,16)+'</div>';
+        h+='<button class="btn bs" style="font-size:10px;padding:2px 8px;margin-top:4px" onclick="cloudDetail('+inst.id+')">📋 {{ translations['Details'] }}</button>';
+        if(inst.status==='running'){
+          h+='<button class="btn bs" style="font-size:10px;padding:2px 8px;margin-top:4px;margin-left:4px;color:#f85149" onclick="cloudTerminate('+inst.id+')">🗑️ {{ translations['Destroy'] }}</button>';
+        }
+        h+='</div></div></div>';
+      });
+    }
+    document.getElementById("cloudContent").innerHTML=h;
+  });
+}
+
+function cloudDetail(iid){
+  fetch("/cloud/instances/"+iid,{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success){alert("{{ translations['Load failed'] }}");return}
+    var inst=d.data;
+    var logs=inst.logs||[];
+    var ci=inst.connect_info||{};
+    var h='<div style="position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center" onclick="if(event.target===this)this.remove()">';
+    h+='<div style="background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:24px;max-width:600px;width:90%;max-height:80vh;overflow-y:auto">';
+    h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">';
+    h+='<h2 style="margin:0;font-size:18px">☁️ '+esc(inst.product_title)+'</h2>';
+    h+='<span class="ic-status st-'+inst.status+'">'+(inst.status)+'</span></div>';
+    if(ci.ip){
+      h+='<div style="background:rgba(0,255,159,.04);border:1px solid rgba(0,255,159,.1);border-radius:8px;padding:12px;margin-bottom:12px">';
+      h+='<div style="font-size:12px;color:var(--accent3);margin-bottom:6px">🔗 <strong>{{ _('Connection Info') }}</strong></div>';
+      h+='<code style="font-size:11px">ssh root@'+esc(ci.ip)+' -p '+(ci.ssh_port||'22')+'</code><br>';
+      h+='<code style="font-size:11px">{{ translations['Password:'] }} '+(ci.password||'******')+'</code>';
+      h+='</div>';
+    }
+    h+='<div style="font-size:12px;color:var(--dim);margin-bottom:8px">{{ _('Provisioning Log') }}</div>';
+    logs.forEach(function(l){
+      var color=l.status==='success'?'var(--accent3)':l.status==='failed'?'#f85149':'var(--muted)';
+      h+='<div style="padding:6px 8px;margin:4px 0;background:rgba(255,255,255,.02);border-left:2px solid '+color+';font-size:11px">';
+      h+='<span style="color:'+color+'">['+esc(l.step)+']</span> '+esc(l.message)+'</div>';
+    });
+    h+='<button class="btn bo" style="margin-top:16px" onclick="this.closest(\'[style*=\\\\'fixed\\\']\').remove()">{{ _('Close') }}</button>';
+    h+='</div></div>';
+    document.body.insertAdjacentHTML("beforeend",h);
+  }).catch(function(){alert("{{ translations['Load failed'] }}")});
+}
+
+function cloudTerminate(iid){
+  if(!confirm("{{ translations['Confirm destroy this cloud service instance? This action cannot be undone!'] }}"))return;
+  fetch("/cloud/instances/"+iid+"/terminate",{method:"POST",headers:{"Authorization":"Bearer "+T}})
+    .then(function(r){return r.json()}).then(function(d){showToast(d.message||"{{ translations['Executed'] }}","info");loadInstances()})
+    .catch(function(){alert("{{ translations['Operation failed'] }}")});
+}
+
+function showToast(msg,type){
+  var el=document.createElement("div");el.className="toast "+type;el.textContent=msg;
+  document.body.appendChild(el);setTimeout(function(){el.remove()},3000);
+}
+
+function esc(s){if(!s)return '';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+loadInstances();
+</script>
+{% include '_footer.html' ignore missing %}
+</body>
+</html>

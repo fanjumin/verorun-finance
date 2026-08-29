@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Restore — VeroRun Vault</title>
+    <link rel="stylesheet" href="/admin/static/css/themes.css">
+    <link rel="stylesheet" href="/admin/vault/static/vault.css">
+</head>
+<body>
+
+<div class="vault-dashboard">
+
+    {% include 'vault_nav.html' %}
+
+    <div class="vault-page-header">
+        <h2>{{ _('Restore Backup') }}</h2>
+    </div>
+
+    <!-- Step indicator -->
+    <div class="restore-steps" id="restoreSteps">
+        <div class="step active" data-step="1">
+            <span class="step-num">1</span>
+            <span class="step-label">{{ _('Select Backup') }}</span>
+        </div>
+        <div class="step-connector"></div>
+        <div class="step" data-step="2">
+            <span class="step-num">2</span>
+            <span class="step-label">{{ _('Choose Scope') }}</span>
+        </div>
+        <div class="step-connector"></div>
+        <div class="step" data-step="3">
+            <span class="step-num">3</span>
+            <span class="step-label">{{ _('Confirm & Restore') }}</span>
+        </div>
+    </div>
+
+    <!-- Step 1: Select backup -->
+    <div class="restore-panel" id="panelStep1">
+        <div class="card">
+            <div class="card-header">
+                <h3>{{ _('Select a backup to restore') }}</h3>
+            </div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th></th>
+                            <th>{{ _('Label') }}</th>
+                            <th>{{ _('Type') }}</th>
+                            <th>{{ _('Size') }}</th>
+                            <th>{{ _('Created') }}</th>
+                        </tr>
+                    </thead>
+                    <tbody id="restoreBackupList">
+                        <tr><td colspan="5" class="empty-state">{{ _('Loading...') }}</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="panel-actions">
+                <button class="btn btn-primary" id="btnNextStep" disabled>{{ _('Next: Choose Scope') }}</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Step 2: Choose scope -->
+    <div class="restore-panel hidden" id="panelStep2">
+        <div class="card">
+            <div class="card-header">
+                <h3>{{ _('Choose restore scope') }}</h3>
+            </div>
+            <div class="restore-scope-options">
+                <label class="scope-check">
+                    <input type="checkbox" id="scopeDb" checked>
+                    <span class="scope-body">
+                        <strong>{{ _('Database') }}</strong>
+                        <span class="scope-desc">{{ _('Restore PostgreSQL database from SQL dump') }}</span>
+                    </span>
+                </label>
+                <label class="scope-check">
+                    <input type="checkbox" id="scopeFiles" checked>
+                    <span class="scope-body">
+                        <strong>{{ _('Files') }}</strong>
+                        <span class="scope-desc">{{ _('Restore static files, plugins data, and uploads') }}</span>
+                    </span>
+                </label>
+                <label class="scope-check">
+                    <input type="checkbox" id="scopeDryRun">
+                    <span class="scope-body">
+                        <strong>{{ _('Preview Only') }}</strong>
+                        <span class="scope-desc">{{ _('Preview backup contents without actually restoring') }}</span>
+                    </span>
+                </label>
+            </div>
+
+            <!-- Preview area -->
+            <div id="restorePreview" class="hidden">
+                <h4>{{ _('Backup Contents Preview') }}</h4>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr><th>{{ _('Name') }}</th><th>{{ _('Type') }}</th><th>{{ _('Size') }}</th></tr>
+                        </thead>
+                        <tbody id="restorePreviewBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="panel-actions">
+                <button class="btn btn-outline" id="btnPrevStep2">{{ _('Back') }}</button>
+                <button class="btn btn-outline" id="btnPreview">{{ _('Preview Contents') }}</button>
+                <button class="btn btn-primary" id="btnConfirmRestore">{{ _('Next: Confirm') }}</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Step 3: Confirm -->
+    <div class="restore-panel hidden" id="panelStep3">
+        <div class="card">
+            <div class="card-header">
+                <h3>{{ _('Confirm restore operation') }}</h3>
+            </div>
+            <div class="restore-confirm-info" id="restoreConfirmInfo"></div>
+            <div class="callout warn">
+                <p>{{ _('Warning: Restoring will overwrite current data. This action cannot be undone.') }}</p>
+            </div>
+            <div class="panel-actions">
+                <button class="btn btn-outline" id="btnPrevStep3">{{ _('Back') }}</button>
+                <button class="btn btn-primary" id="btnExecuteRestore">{{ _('Execute Restore') }}</button>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script src="/admin/vault/static/vault.js"></script>
+</body>
+</html>

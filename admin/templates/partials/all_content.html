@@ -1,0 +1,103 @@
+﻿// l_all_content - 统一内容管理（manual/factory/agent 来源）
+window.l_all_content=function(){
+  document.getElementById("pt").textContent="{{ _('All Content') }}";
+  document.getElementById("mc").innerHTML='<div id="acContent"></div>';
+  acRender();
+};
+
+var acSourceFilter='all';
+var acStatusFilter='all';
+var acPosts=[];
+
+function acRender(){
+  var h='';
+  h+='<div style="margin-bottom:12px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">';
+  h+='<span style="font-size:11px;color:var(--dim);margin-right:4px">📥 {{ _("Source") }}:</span>';
+  h+='<button class="btn '+(acSourceFilter==='all'?'bp':'bo')+'" onclick="acSetSource(\'all\')">{{ _("All") }}</button>';
+  h+='<button class="btn '+(acSourceFilter==='manual'?'bp':'bo')+'" onclick="acSetSource(\'manual\')">✍️ {{ _("Manual") }}</button>';
+  h+='<button class="btn '+(acSourceFilter==='factory'?'bp':'bo')+'" onclick="acSetSource(\'factory\')">🏭 {{ _("Content Factory") }}</button>';
+  h+='<button class="btn '+(acSourceFilter==='agent'?'bp':'bo')+'" onclick="acSetSource(\'agent\')">🤖 Agent</button>';
+  h+='<button class="btn '+(acSourceFilter==='api'?'bp':'bo')+'" onclick="acSetSource(\'api\')">🔌 API</button>';
+  h+='<span style="width:18px"></span>';
+  h+='<span style="font-size:11px;color:var(--dim);margin-right:4px">📤 {{ _("Status") }}:</span>';
+  h+='<button class="btn '+(acStatusFilter==='all'?'bp':'bo')+'" onclick="acSetStatus(\'all\')">{{ _("All") }}</button>';
+  h+='<button class="btn '+(acStatusFilter==='draft'?'bp':'bo')+'" onclick="acSetStatus(\'draft\')">📝 {{ _("Drafts") }}</button>';
+  h+='<button class="btn '+(acStatusFilter==='published'?'bp':'bo')+'" onclick="acSetStatus(\'published\')">✅ {{ _("Published") }}</button>';
+  h+='<span style="flex:1"></span>';
+  h+='<button class="btn bp" onclick="l_cms()">+ {{ _("New Article") }}</button>';
+  h+='</div>';
+  h+='<div class="cd"><div class="st">📋 {{ _("Content List") }} (<span id="acCount">0</span>)</div><table><tr>';
+  h+='<th style="width:30px">📥</th>';
+  h+='<th>ID</th><th>{{ _("Title") }}</th><th>{{ _("Column") }}</th><th>{{ _("Author") }}</th>';
+  h+='<th>{{ _("Status") }}</th><th>👀</th><th>{{ _("Time") }}</th><th>{{ _("Actions") }}</th>';
+  h+='</tr><tbody id="acPostBody"><tr><td colspan="9" class="em">{{ _("Loading...") }}</td></tr></tbody></table></div>';
+  document.getElementById("acContent").innerHTML=h;
+  acLoadPosts();
+}
+
+function acSetSource(s){acSourceFilter=s;acRender()}
+function acSetStatus(s){acStatusFilter=s;acRender()}
+
+var _SOURCE_BADGE={manual:'✍️ {{ _("Manual") }}',factory:'🏭 {{ _("Factory") }}',agent:'🤖 Agent',api:'🔌 API'};
+
+function acLoadPosts(){
+  var url="/admin/cms/posts?limit=200";
+  if(acSourceFilter&&acSourceFilter!=='all')url+="&source="+acSourceFilter;
+  if(acStatusFilter&&acStatusFilter!=='all')url+="&status="+acStatusFilter;
+  fetch(url,{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    var _body=document.getElementById("acPostBody");
+    if(!_body)return;  // 容器已卸载（快速切换 tab），放弃本次渲染
+    var _cnt=document.getElementById("acCount");
+    if(!d.success||!d.data){
+      _body.innerHTML='<tr><td colspan="9" class="em">{{ _("None") }}</td></tr>';
+      if(_cnt)_cnt.textContent='0';
+      return;
+    }
+    acPosts=d.data;
+    var count=acPosts.length;
+    if(_cnt)_cnt.textContent=count;
+    if(!count){
+      _body.innerHTML='<tr><td colspan="9" class="em">{{ _("No Content") }}</td></tr>';
+      return;
+    }
+    var h='';
+    acPosts.forEach(function(p){
+      var st=p.is_published?'<span class="bdg on">{{ _("Published") }}</span>':'<span class="bdg pd">{{ _("Draft") }}</span>';
+      var src=p.source||'manual';
+      var badge=_SOURCE_BADGE[src]||src;
+      var titleClick=' onclick="acEditPost('+p.id+')"';
+      h+='<tr>';
+      h+='<td style="font-size:12px">'+badge+'</td>';
+      h+='<td style="font-size:10px;color:var(--dim)">'+p.id+'</td>';
+      h+='<td style="font-weight:600;cursor:pointer;color:var(--accent)"'+titleClick+'>'+esc(p.title||'-')+'</td>';
+      h+='<td style="font-size:11px">'+esc(p.category||'-')+'</td>';
+      h+='<td style="font-size:11px">'+esc(p.author||'-')+'</td>';
+      h+='<td>'+st+'</td>';
+      h+='<td style="font-size:10px;color:var(--dim)">'+(p.views||0)+'</td>';
+      h+='<td style="font-size:10px">'+(p.created_at||'').slice(0,10)+'</td>';
+      h+='<td style="white-space:nowrap">';
+      h+='<button class="btn bo bs" onclick="acEditPost('+p.id+')">{{ _("Edit") }}</button> ';
+      if(p.slug)h+='<button class="btn bo bs" onclick="window.open(\'/preview/'+p.slug+'\',\'_blank\')">👁</button> ';
+      h+='<button class="btn bo bs" onclick="acDelPost('+p.id+')">🗑️</button>';
+      h+='</td></tr>';
+    });
+    _body.innerHTML=h;
+  }).catch(function(){
+    var _body=document.getElementById("acPostBody");
+    if(_body)_body.innerHTML='<tr><td colspan="9" class="em">{{ _("Request Failed") }}</td></tr>';
+  });
+}
+
+function acEditPost(id){
+  // 复用 cms 编辑器，并预先筛选
+  l_cms();
+  setTimeout(function(){cmsEditPost(id)},300);
+}
+
+function acDelPost(id){
+  if(!confirm('{{ _("Confirm Delete Article") }} #'+id+'？'))return;
+  fetch("/admin/cms/posts/"+id,{method:"DELETE",headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){showToast('{{ _("Deleted") }}','success');acLoadPosts()}
+    else{showToast(d.error||'{{ _("Delete failed") }}','error')}
+  }).catch(function(){showToast('{{ _("Request Failed") }}','error')});
+}

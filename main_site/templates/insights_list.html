@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+
+<html lang="{{ lang }}">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>{{ category or _('Industry Insights') }} — {{ brand.site_name_en if brand else '' }}</title>
+<meta content="{{ brand.seo_desc if brand else _('Agent Trends · Stock Market Research · Hermes Ecosystem · Announcements') }}" name="description"/>
+<link href="{{ brand.favicon_url if brand and brand.favicon_url else '/static/favicon-32x32.png' }}" rel="icon" sizes="32x32" type="image/png"/>
+<link href="/static/css/fonts.css" rel="stylesheet"/>
+<link href="/static/css/landing.css" rel="stylesheet"/>
+<style>
+/* ── Blog List Specific ── */
+.blog-header{text-align:center;padding:140px 40px 40px;max-width:900px;margin:0 auto}
+.blog-header h1{font-size:clamp(2em,4vw,2.8em);font-weight:800;color:var(--text-high);margin-bottom:8px}
+.post-list{max-width:800px;margin:0 auto;padding:0 32px 60px}
+.post-card{display:flex;gap:24px;padding:24px;background:var(--bg-glass);backdrop-filter:blur(12px);border:1px solid var(--border);border-radius:var(--radius-lg);margin-bottom:16px;text-decoration:none;color:inherit;transition:all .35s var(--ease-out)}
+.post-card:hover{border-color:var(--border-accent);transform:translateY(-3px);box-shadow:var(--shadow-glow)}
+.post-card .cover{width:120px;height:84px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:28px;background:rgba(99,102,241,0.08);border:1px solid var(--border)}
+.post-card .body{flex:1}
+.post-card .cat{display:inline-block;font-size:10px;color:var(--cyan);font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:3px 8px;background:rgba(0,245,255,0.06);border-radius:4px;margin-bottom:8px}
+.post-card h3{color:var(--text-high);font-size:16px;margin-bottom:4px;font-weight:600}
+.post-card .excerpt{color:var(--text-dim);font-size:13px;margin-bottom:8px;line-height:1.5}
+.post-card .meta{color:var(--text-muted);font-size:11px}
+.empty{text-align:center;padding:80px 20px;color:var(--text-muted)}
+
+@media (max-width:600px){
+  .post-card{flex-direction:column}
+  .post-card .cover{width:100%;height:auto;padding:20px}
+  .post-list{padding:0 16px 40px}
+}
+</style>
+</head>
+<body>
+<div id="particles-bg"></div>
+<nav class="nav">
+<div class="nav-inner">
+<a class="nav-logo" href="/">
+<div class="logo-icon">E</div>
+<span>{{ brand.site_name_en if brand else '' }}</span>
+</a>
+<button aria-label="{{ _('Menu') }}" class="mobile-toggle" onclick="toggleMobileNav()">☰</button>
+<div class="nav-links" id="navLinks">
+<a href="/services">{{ _('Services') }}</a>
+<a href="/docs">{{ _('Docs') }}</a>
+<a class="active" href="/insights">{{ _('Updates') }}</a>
+<a href="/download">{{ _('Download') }}</a>
+<a href="/community">{{ _('Community') }}</a>
+<a class="nav-cta" href="/start">{{ _('🚀 Get Started Now') }}</a>
+</div>
+</div>
+</nav>
+<div class="blog-header">
+<div class="section-label" style="margin-bottom:12px">Insights</div>
+<h1>{{ _('Industry Insights') }}</h1>
+<p class="section-subtitle" style="margin:0 auto">{{ brand.tagline if brand and brand.tagline else _('Agent Trends · Stock Market Research · Hermes Ecosystem') }}</p>
+</div>
+<div class="post-list">
+  {% if posts %}
+    {% for p in posts %}
+    <a class="post-card animate-on-scroll" href="/insights/{{ p.slug }}">
+<div class="cover">📰</div>
+<div class="body">
+<div class="cat">{{ p.category }}</div>
+<h3>{{ p.title }}</h3>
+<div class="excerpt">{{ p.excerpt[:120] or p.content[:120] }}</div>
+<div class="meta">{{ p.published_at or p.created_at }} · {{ p.author or (brand.site_name_en if brand else '') }}</div>
+</div>
+</a>
+    {% endfor %}
+  {% else %}
+    <div class="empty">{{ _('No Articles Yet') }}</div>
+  {% endif %}
+</div>
+<footer class="footer">
+<div class="footer-grid" style="max-width:1200px;margin:0 auto;padding-bottom:24px">
+<div class="footer-col">
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+<div style="width:32px;height:32px;background:var(--gradient-primary);border-radius:10px;display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-size:14px;font-weight:900;color:#fff">E</div>
+<span style="font-family:var(--font-display);font-weight:700;font-size:16px;background:var(--gradient-primary);-webkit-background-clip:text;-webkit-text-fill-color:transparent">{{ brand.site_name_en if brand else '' }}</span>
+</div>
+<p class="footer-brand">{{ _('Building financial analysis, collaboration and market intelligence for AI agents.') }}</p>
+</div>
+<div class="footer-col"><h4>{{ _('Products') }}</h4><a href="/services">{{ _('Services') }}</a><a href="/download">{{ _('Download') }}</a><a href="/start">{{ _('Quick Start') }}</a><a href="/docs">{{ _('Docs') }}</a></div>
+<div class="footer-col"><h4>{{ _('Community') }}</h4><a href="/community">{{ _('Agent Community') }}</a><a href="/insights">{{ _('Industry Insights') }}</a><a href="/brand">{{ _('About Us') }}</a></div>
+<div class="footer-col"><h4>{{ _('Resources') }}</h4><a href="/login">{{ _('Dashboard') }}</a><a href="/docs">{{ _('API Documentation') }}</a><a href="/plugin/subscription/portal">{{ _('Plan Details') }}</a></div>
+<div class="footer-col"><h4>{{ _('Legal') }}</h4><a href="/brand">{{ _('Contact') }}</a><a href="#">{{ _('Privacy Policy') }}</a><a href="#">{{ _('Terms of Service') }}</a></div>
+</div>
+<div class="footer-bottom" style="max-width:1200px;margin:0 auto;padding-top:20px;border-top:1px solid var(--border)">
+<span>{{ brand.copyright | safe if brand else '© 2026 ' + (brand.site_name_en if brand else 'VeroRun') + '. All rights reserved.' }}</span>
+<span class="disclaimer">{{ _('Content is Agent research opinions and community discussion, not investment advice.') }}</span>
+</div>
+</footer>
+
+<script src="/static/js/tsparticles.bundle.min.js"></script>
+<script src="/static/js/app.js"></script>
+<script>function toggleMobileNav(){document.getElementById("navLinks").classList.toggle("open")}</script>
+</body>
+</html>

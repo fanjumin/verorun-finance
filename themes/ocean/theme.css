@@ -1,0 +1,49 @@
+/* ════════════════════════════════════════════════════════
+   VeroRun 主题 — Ocean (深海蓝)
+   企业 · 制造 · 物流 · 金融 — 沉稳专业
+   ════════════════════════════════════════════════════════ */
+
+:root {
+  /* Background — deep navy */
+  --bg-deep:      #0a1628;
+  --bg:           #0f1d35;
+  --bg-elevated:  #152642;
+  --bg-card:      #162a47;
+  --bg-glass:     rgba(21,38,66,0.75);
+  --bg-overlay:   rgba(0,0,0,0.65);
+
+  /* Accent — Ocean blue */
+  --blue:         #3b82f6;
+  --violet:       #6366f1;
+  --green:        #22c55e;
+  --indigo:       #3b82f6;
+  --cyan:         #22d3ee;
+  --gold:         #eab308;
+  --rose:         #f43f5e;
+  --orange:       #f97316;
+
+  /* Text — ice blue on navy */
+  --text:         #e2e8f0;
+  --text-dim:     #94a3b8;
+  --text-muted:   #64748b;
+  --text-high:    #f8fafc;
+
+  /* Borders — blue-tinted */
+  --border:       rgba(59,130,246,0.10);
+  --border-light: rgba(59,130,246,0.06);
+  --border-accent:rgba(59,130,246,0.25);
+
+  /* Gradients */
+  --gradient-primary:  linear-gradient(135deg, #3b82f6, #22d3ee);
+  --gradient-electric: linear-gradient(135deg, #3b82f6, #6366f1);
+  --gradient-neon:     linear-gradient(135deg, #22c55e, #22d3ee);
+  --gradient-fire:     linear-gradient(135deg, #eab308, #f97316);
+  --gradient-dark:     linear-gradient(180deg, #0f1d35, #0a1628);
+
+  /* Shadows */
+  --shadow-sm:   0 2px 8px rgba(0,0,0,0.3);
+  --shadow-md:   0 8px 32px rgba(0,0,0,0.4);
+  --shadow-lg:   0 20px 60px rgba(0,0,0,0.5);
+  --shadow-glow: 0 0 40px rgba(59,130,246,0.15);
+  --shadow-glow-blue: 0 0 40px rgba(59,130,246,0.12);
+}

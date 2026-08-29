@@ -1,0 +1,49 @@
+/* ════════════════════════════════════════════════════════
+   VeroRun 主题 — Nature (自然绿)
+   餐饮 · 健康 · 农业 — 清新有机
+   ════════════════════════════════════════════════════════ */
+
+:root {
+  /* Background — soft green */
+  --bg-deep:      #ecfdf5;
+  --bg:           #f0faf5;
+  --bg-elevated:  #dcfce7;
+  --bg-card:      #ffffff;
+  --bg-glass:     rgba(255,255,255,0.82);
+  --bg-overlay:   rgba(0,0,0,0.35);
+
+  /* Accent — Forest green */
+  --blue:         #0d9488;
+  --violet:       #6d28d9;
+  --green:        #059669;
+  --indigo:       #2d6a4f;
+  --cyan:         #14b8a6;
+  --gold:         #ca8a04;
+  --rose:         #be123c;
+  --orange:       #c2410c;
+
+  /* Text — deep green-black */
+  --text:         #1a2e1a;
+  --text-dim:     #4a7c59;
+  --text-muted:   #6b9b7a;
+  --text-high:    #0f1f0f;
+
+  /* Borders — subtle green */
+  --border:       rgba(45,106,79,0.10);
+  --border-light: rgba(45,106,79,0.06);
+  --border-accent:rgba(45,106,79,0.20);
+
+  /* Gradients */
+  --gradient-primary:  linear-gradient(135deg, #2d6a4f, #14b8a6);
+  --gradient-electric: linear-gradient(135deg, #059669, #6d28d9);
+  --gradient-neon:     linear-gradient(135deg, #10b981, #0d9488);
+  --gradient-fire:     linear-gradient(135deg, #ca8a04, #c2410c);
+  --gradient-dark:     linear-gradient(180deg, #f0faf5, #ecfdf5);
+
+  /* Shadows */
+  --shadow-sm:   0 2px 8px rgba(0,0,0,0.05);
+  --shadow-md:   0 8px 32px rgba(0,0,0,0.07);
+  --shadow-lg:   0 20px 60px rgba(0,0,0,0.09);
+  --shadow-glow: 0 0 40px rgba(45,106,79,0.10);
+  --shadow-glow-blue: 0 0 40px rgba(14,165,136,0.08);
+}

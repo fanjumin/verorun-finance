@@ -1,0 +1,271 @@
+<style>
+/* Analytics fragment — 仅补充系统未提供的图表/表格辅助小件样式，颜色全部引用系统变量 */
+.chart-container{position:relative;width:100%}
+.chart-container canvas{width:100%!important;height:300px!important}
+#chinaMapChart{width:100%;height:420px}
+.label{font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;font-weight:600}
+.empty-state{text-align:center;padding:30px 20px;color:var(--text-dim);font-size:12px}
+.empty-state .icon{font-size:28px;margin-bottom:8px}
+.empty-state .text{margin-top:4px}
+table.data-table{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px}
+table.data-table th{background:var(--bg);color:var(--text-dim);padding:6px 8px;text-align:left;border-bottom:2px solid var(--border);font-weight:500;white-space:nowrap}
+table.data-table td{padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text-muted)}
+table.data-table tr:hover td{background:var(--hover-bg)}
+.rank-num{font-family:monospace;color:var(--text-dim)}
+.pct-bar{display:inline-block;height:8px;width:0;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:4px;vertical-align:middle;margin-right:6px}
+.color-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:middle}
+.online-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent3);margin-right:6px;animation:pulse-dot 1.6s infinite}
+@keyframes pulse-dot{0%,100%{opacity:1}50%{opacity:.35}}
+.progress-wrap{background:var(--bg);border:1px solid var(--border);border-radius:4px;overflow:hidden;height:14px}
+.progress-bar-inner{background:linear-gradient(90deg,var(--accent),var(--accent2));height:100%;border-radius:4px}
+.progress-bar-wrap{position:relative;height:4px;background:var(--bg);border-radius:2px;overflow:hidden;margin:6px 0}
+.progress-bar-wrap .progress-bar-inner{width:100%}
+/* 面板显隐控制：系统 .ai-tab-content 为单容器设计（无 display 规则），多面板须由本类控制 */
+.analytics-tab-pane{display:none}
+.analytics-tab-pane.active{display:block}
+.map-back-btn{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:2px 10px;color:var(--accent);font-size:11px;cursor:pointer;display:none}
+.sub-card{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:12px}
+.form-row{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+.form-row label{font-size:12px;color:var(--text);min-width:120px}
+</style>
+
+<!-- 顶部工具条 -->
+<div class="sbar" style="justify-content:space-between;align-items:center;flex-wrap:wrap">
+  <div style="display:flex;align-items:center;gap:14px">
+    <span class="bdg on" style="padding:4px 10px"><span class="online-dot"></span><span id="onlineCount">--</span> {{ _('Online') }}</span>
+    <span style="font-size:12px;color:var(--text-dim)"><span id="liveTime">--:--:--</span></span>
+  </div>
+  <button class="btn bp bs" onclick="refreshAll()">⟳ {{ _('Refresh') }}</button>
+</div>
+
+<!-- 统计卡片 -->
+<div class="gr" id="statCards">
+  <div class="cd"><div class="l">{{ _('Today Page Views (PV)') }}</div><div class="v" id="todayPV">--</div></div>
+  <div class="cd"><div class="l">{{ _('Unique Visitors (UV)') }}</div><div class="v" id="todayUV">--</div></div>
+  <div class="cd"><div class="l">{{ _('Total Sessions') }}</div><div class="v" id="todaySessions">--</div></div>
+  <div class="cd"><div class="l">{{ _('Avg Response') }}</div><div class="v" id="todayAvgResp">-- ms</div></div>
+</div>
+
+<!-- 标签栏 -->
+<div class="ai-tab-bar" style="margin-top:4px">
+  <button class="ai-tab active" data-tab="overview">{{ _('Trend') }}</button>
+  <button class="ai-tab" data-tab="pages">{{ _('Page') }}</button>
+  <button class="ai-tab" data-tab="sources">{{ _('Source') }}</button>
+  <button class="ai-tab" data-tab="geo">{{ _('Region') }}</button>
+  <button class="ai-tab" data-tab="devices">{{ _('Devices') }}</button>
+  <button class="ai-tab" data-tab="events">{{ _('Event') }}</button>
+  <button class="ai-tab" data-tab="alerts">{{ _('Alerts') }}</button>
+  <button class="ai-tab" data-tab="settings">{{ _('Settings') }}</button>
+</div>
+
+<div class="ai-tab-content analytics-tab-pane active" id="tab-overview">
+  <div class="g2">
+    <div class="cd">
+      <div class="label">{{ _('Traffic Trend') }}</div>
+      <div class="chart-container"><canvas id="trendChart"></canvas></div>
+    </div>
+    <div class="cd">
+      <div class="label">{{ _('Hourly Distribution (Today)') }}</div>
+      <div class="chart-container"><canvas id="hourlyChart"></canvas></div>
+    </div>
+  </div>
+  <div class="cd" style="margin-top:16px">
+    <div class="label">{{ _('Details') }}</div>
+    <div id="trendTable"><div class="lo" style="padding:8px 0"><div class="s"></div></div></div>
+  </div>
+</div>
+
+<div class="ai-tab-content analytics-tab-pane" id="tab-pages">
+  <div class="cd">
+    <div class="label">{{ _('Top Pages (30d)') }}</div>
+    <div id="pagesContent"><div class="lo" style="padding:8px 0"><div class="s"></div></div></div>
+  </div>
+</div>
+
+<div class="ai-tab-content analytics-tab-pane" id="tab-sources">
+  <div class="g2">
+    <div class="cd">
+      <div class="label">{{ _('Source Distribution') }}</div>
+      <div class="chart-container"><canvas id="sourcesChart"></canvas></div>
+    </div>
+    <div class="cd">
+      <div class="label">{{ _('Source Details') }}</div>
+      <div id="sourcesContent"><div class="lo" style="padding:8px 0"><div class="s"></div></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="ai-tab-content analytics-tab-pane" id="tab-geo">
+  <div class="cd" style="margin-bottom:16px">
+    <div class="label" style="display:flex;align-items:center;gap:10px;text-transform:none;font-size:12px">
+      <span id="mapTitle">{{ _('World Access Map') }}</span>
+      <button onclick="resetWorldZoom()" id="mapBackBtn" class="map-back-btn">↩ {{ _('Back to World') }}</button>
+    </div>
+    <div id="chinaMapChart"></div>
+  </div>
+  <div class="g2" style="margin-bottom:16px">
+    <div class="cd">
+      <div class="label" id="rankingLabel">{{ _('Province Ranking') }}</div>
+      <div id="chinaProvinceContent"><div class="lo" style="padding:8px 0"><div class="s"></div></div></div>
+    </div>
+    <div class="cd">
+      <div class="label">{{ _('City Details') }}</div>
+      <div id="chinaCityContent"><div class="lo" style="padding:8px 0"><div class="s"></div></div></div>
+    </div>
+  </div>
+  <div class="cd">
+    <div class="label" style="cursor:pointer;user-select:none;margin-bottom:0;text-transform:none;font-size:12px" onclick="toggleCountrySection()">
+      <span id="countryToggleIcon">▶</span> {{ _('Country/Region Distribution') }}
+    </div>
+    <div id="countrySection" style="display:none;margin-top:12px">
+      <div class="g2">
+        <div class="cd">
+          <div class="chart-container"><canvas id="geoChart"></canvas></div>
+        </div>
+        <div class="cd">
+          <div id="geoContent"><div class="lo" style="padding:8px 0"><div class="s"></div></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="ai-tab-content analytics-tab-pane" id="tab-devices">
+  <div class="g2">
+    <div class="cd">
+      <div class="label">{{ _('Device Type') }}</div>
+      <div class="chart-container"><canvas id="deviceChart"></canvas></div>
+    </div>
+    <div class="cd">
+      <div class="label">{{ _('Browser & OS') }}</div>
+      <div id="deviceContent"><div class="lo" style="padding:8px 0"><div class="s"></div></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="ai-tab-content analytics-tab-pane" id="tab-events">
+  <div class="cd">
+    <div class="label">{{ _('Custom Events (30d)') }}</div>
+    <div id="eventsContent"><div class="lo" style="padding:8px 0"><div class="s"></div></div></div>
+  </div>
+</div>
+
+<div class="ai-tab-content analytics-tab-pane" id="tab-alerts">
+  <div class="cd" style="margin-bottom:16px">
+    <div class="label">{{ _('Alert Rules') }}</div>
+    <div id="alertsList"><div class="lo" style="padding:8px 0"><div class="s"></div></div></div>
+  </div>
+  <div class="cd">
+    <div class="label">{{ _('Add Alert Rule') }}</div>
+    <form id="alertForm" class="form-row">
+      <input class="in" name="name" placeholder="{{ _('Name') }}" style="flex:1;min-width:130px">
+      <select class="sl" name="metric">
+        <option value="uv">{{ _('UV (Unique Visitors)') }}</option>
+        <option value="pv">{{ _('PV (Page Views)') }}</option>
+        <option value="bounce_rate">{{ _('Bounce Rate (%)') }}</option>
+        <option value="error_rate">{{ _('Error Rate (%)') }}</option>
+        <option value="avg_response_time">{{ _('Avg Response Time (ms)') }}</option>
+      </select>
+      <select class="sl" name="operator">
+        <option value="gt">&gt; {{ _('(Greater Than)') }}</option>
+        <option value="lt">&lt; {{ _('(Less Than)') }}</option>
+        <option value="gte">&ge; {{ _('(Greater or Equal)') }}</option>
+        <option value="lte">&le; {{ _('(Less or Equal)') }}</option>
+      </select>
+      <input class="in" name="threshold" type="number" step="0.1" placeholder="{{ _('Threshold') }}" style="width:90px">
+      <select class="sl" name="time_window">
+        <option value="1h">{{ _('1 Hour') }}</option>
+        <option value="24h">{{ _('24 Hours') }}</option>
+        <option value="7d">{{ _('7 Days') }}</option>
+      </select>
+      <button type="submit" class="btn bp">➕ {{ _('Add') }}</button>
+    </form>
+  </div>
+</div>
+
+<div class="ai-tab-content analytics-tab-pane" id="tab-settings">
+  <div class="cd" style="margin-bottom:16px">
+    <div class="label">{{ _('Plugin Settings') }}</div>
+    <div id="settingsStatus" style="margin-bottom:10px"></div>
+    <form id="pluginSettingsForm">
+      <div class="form-row">
+        <label for="cfgSampleRate">{{ _('Sampling Rate') }}</label>
+        <input class="in" id="cfgSampleRate" type="number" step="0.1" min="0" max="1" value="1.0" style="width:90px">
+        <span style="font-size:11px;color:var(--text-dim)">0.0 ~ 1.0 (1.0 = {{ _('all requests') }})</span>
+      </div>
+      <div class="form-row">
+        <label for="cfgGeoipEnabled">{{ _('GeoIP Enabled') }}</label>
+        <select class="sl" id="cfgGeoipEnabled" style="width:110px">
+          <option value="true">{{ _('Enabled') }}</option>
+          <option value="false">{{ _('Disabled') }}</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label for="cfgServiceName">{{ _('Service Name') }}</label>
+        <input class="in" id="cfgServiceName" type="text" value="admin" style="width:180px">
+        <span style="font-size:11px;color:var(--text-dim)">{{ _('Label for analytics logs') }}</span>
+      </div>
+      <button type="submit" class="btn bp" id="settingsSaveBtn">{{ _('Save Settings') }}</button>
+    </form>
+  </div>
+
+  <div class="cd">
+    <div class="label">{{ _('GeoIP Database Setup') }}</div>
+    <div style="font-size:12px;color:var(--text-dim);margin-bottom:14px">{{ _('GeoIP databases are required to show geographic distribution on the Region tab. Choose the one that matches your user base.') }}</div>
+
+    <!-- ip2region -->
+    <div class="sub-card">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <span style="font-size:18px">📍</span>
+        <span style="font-weight:600;color:var(--text)">{{ _('ip2region') }} — {{ _('Chinese IPs') }}</span>
+        <span class="bdg" style="color:var(--accent)">{{ _('Free · No Registration · Open Source') }}</span>
+      </div>
+      <div style="font-size:11px;color:var(--text-dim);margin-bottom:10px">
+        {{ _('Source') }}: <a href="https://github.com/lionsoul2014/ip2region" target="_blank" style="color:var(--accent)">github.com/lionsoul2014/ip2region</a>
+      </div>
+      <div id="ip2regionStatus" style="margin-bottom:10px"><div class="lo" style="padding:4px 0"><div class="s"></div></div></div>
+      <button class="btn bo bs" onclick="downloadIp2region()" id="ip2regionBtn">{{ _('Download ip2region Database') }}</button>
+      <button class="btn bp bs" type="button" id="ip2regionUploadBtn">{{ _('Upload .xdb') }}</button>
+      <input type="file" id="ip2regionFileInput" accept=".xdb" style="display:none">
+      <div id="ip2regionDownloadStatus" style="margin-top:6px;font-size:12px;min-height:18px"></div>
+      <div style="font-size:11px;color:var(--text-dim);margin-top:6px">{{ _('Chinese users can also upload an ip2region .xdb database locally (offline, no GitHub/Gitee access required).') }}</div>
+    </div>
+
+    <!-- MaxMind -->
+    <div class="sub-card" style="margin-bottom:0">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <span style="font-size:18px">🌍</span>
+        <span style="font-weight:600;color:var(--text)">MaxMind GeoLite2 — {{ _('International IPs') }}</span>
+        <span class="bdg" style="color:var(--accent2)">{{ _('Free Registration Required') }}</span>
+      </div>
+      <div style="font-size:11px;color:var(--text-dim);margin-bottom:10px">
+        {{ _('Register at') }} <a href="https://www.maxmind.com/en/geolite2/signup" target="_blank" style="color:var(--accent)">maxmind.com/en/geolite2/signup</a> — {{ _('no credit card required. After registration, copy your Account ID and generate a license key, then paste both below.') }}
+      </div>
+      <div id="geolite2Status" style="margin-bottom:10px"><div class="lo" style="padding:4px 0"><div class="s"></div></div></div>
+      <form id="geoipForm" class="form-row">
+        <div>
+          <label style="display:block;font-size:11px;color:var(--text-dim);margin-bottom:2px">{{ _('Edition') }}</label>
+          <select class="sl" name="edition" style="font-family:monospace">
+            <option value="GeoLite2-City">{{ _('GeoLite2-City (Free)') }}</option>
+            <option value="GeoIP2-City">{{ _('GeoIP2-City (Paid)') }}</option>
+          </select>
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;color:var(--text-dim);margin-bottom:2px">Account ID</label>
+          <input class="in" name="account_id" type="text" placeholder="MaxMind Account ID" style="font-family:monospace;width:150px">
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;color:var(--text-dim);margin-bottom:2px">License Key</label>
+          <input class="in" name="license_key" type="text" placeholder="MaxMind License Key" style="font-family:monospace;width:190px">
+        </div>
+        <button type="button" class="btn bo bs" id="geoipSaveBtn">{{ _('Save') }}</button>
+        <button type="button" class="btn bp bs" id="geoipDownloadBtn">{{ _('Download Database') }}</button>
+        <button type="button" class="btn bo bs" id="geoipUploadBtn">{{ _('Upload .mmdb') }}</button>
+        <button type="button" class="btn bs" style="background:transparent;border:1px solid var(--accent3);color:var(--accent3)" id="geoipCdnBtn">{{ _('CDN Download') }}</button>
+        <input type="file" id="geoipFileInput" accept=".mmdb" style="display:none">
+      </form>
+      <div id="geoipDownloadStatus" style="margin-top:8px;font-size:12px;min-height:18px"></div>
+      <div style="font-size:11px;color:var(--text-dim);margin-top:6px">{{ _('If auto-download fails (e.g. HTTP 451), download the .mmdb file manually from your MaxMind account and use the Upload button.') }}</div>
+    </div>
+  </div>
+</div>

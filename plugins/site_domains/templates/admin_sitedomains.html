@@ -1,0 +1,212 @@
+window.l_site_domains=function(){
+  document.getElementById("pt").textContent="{{ _('Site Domains') }}";
+  var mc=document.getElementById("mc");
+  mc.innerHTML='<div class="lo"><div class="s"></div>{{ _('Loading...') }}...</div>';
+  loadDomains();
+
+  function loadDomains(){
+    fetch("/admin/api/domains",{headers:{"Authorization":"Bearer "+T}})
+      .then(function(r){return r.json()})
+      .then(function(d){
+        if(!d.success){mc.innerHTML='<div class="em">{{ _('Load failed') }}</div>';return;}
+        renderDomains(d.data,d.quota);
+      }).catch(function(){mc.innerHTML='<div class="em">{{ _('Connection Failed') }}</div>';});
+  }
+
+  function renderDomains(items,quota){
+    var h='';
+    // Quota bar
+    var pct=quota.limit>0?Math.round(quota.used/quota.limit*100):0;
+    var barColor=pct>=100?'#f85149':(pct>=80?'#f0c040':'var(--accent)');
+    h+='<div class="cd" style="margin-bottom:16px"><div class="st">{{ _('Domain Quota') }}</div>';
+    h+='<div style="display:flex;align-items:center;gap:12px;margin-top:8px">';
+    h+='<span style="font-size:24px;font-weight:700;color:'+barColor+'">'+quota.used+'</span>';
+    h+='<span style="color:var(--dim)">/ '+quota.limit+' {{ _('Used') }}</span>';
+    h+='<div style="flex:1;height:6px;background:var(--bg);border-radius:3px;overflow:hidden">';
+    h+='<div style="width:'+Math.min(pct,100)+'%;height:100%;background:'+barColor+';border-radius:3px;transition:width .3s"></div></div>';
+    if(quota.can_add){h+='<button class="btn bp" onclick="showAddDomain()">+ {{ _('Add Domain') }}</button>';}
+    else{h+='<span style="font-size:11px;color:#f85149">{{ _('Quota Full') }}</span>';}
+    h+='</div></div>';
+
+    // Domain list table
+    h+='<div class="cd"><table><tr><th>{{ _('Subdomain') }}</th><th>{{ _('Full Domain') }}</th><th>{{ _('Type') }}</th><th>{{ _('Port') }}</th><th>{{ _('Display Name') }}</th><th>{{ _('Status') }}</th><th>{{ _('Actions') }}</th></tr>';
+    if(!items.length){h+='<tr><td colspan="7" class="em">{{ _('No Domains') }}</td></tr>';}
+    else{items.forEach(function(m){
+      var statusHtml=m.is_published?'<span class="bdg on">{{ _('Active') }}</span>':'<span class="bdg off">{{ _('Disabled') }}</span>';
+      var isService=m.service_port?true:false;
+      var typeHtml=isService?'<span style="color:var(--accent);font-size:11px">{{ _('Independent Service') }}</span>':'<span style="color:var(--dim);font-size:11px">{{ _('Content Site') }}</span>';
+      var portHtml=isService?'<code style="color:var(--accent);font-size:12px">:'+m.service_port+'</code>':'<span style="color:var(--dim);font-size:11px">&mdash;</span>';
+      var actions='<div style="display:flex;gap:4px">';
+      actions+='<button class="btn bo bs" onclick="editDomain('+m.id+')">{{ _('Edit') }}</button>';
+      if(isService){actions+='<button class="btn bo bs" style="color:#58a6ff" onclick="viewNginxConfig('+m.id+',\''+escAttr(m.full_domain)+'\')">{{ _('Config') }}</button>';}
+      actions+='<button class="btn bo bs" style="color:#f85149" onclick="deleteDomain('+m.id+',\''+escAttr(m.full_domain)+'\')">{{ _('Delete') }}</button>';
+      actions+='</div>';
+      h+='<tr id="dm-row-'+m.id+'">';
+      h+='<td><code style="color:var(--accent);font-size:12px">'+esc(m.subdomain)+'</code></td>';
+      h+='<td style="color:var(--text)">'+esc(m.full_domain)+'</td>';
+      h+='<td>'+typeHtml+'</td>';
+      h+='<td>'+portHtml+'</td>';
+      h+='<td>'+esc(m.display_name||'-')+'</td>';
+      h+='<td>'+statusHtml+'</td>';
+      h+='<td>'+actions+'</td></tr>';
+    })}
+    h+='</table></div>';
+    mc.innerHTML=h;
+  }
+};
+
+function showAddDomain(){
+  var deployDomain=document.getElementById("dd")?document.getElementById("dd").textContent:'localhost';
+  var h='<div class="modal" id="dmModal" onclick="if(event.target===this)closeModal()"><div class="modal-c">';
+  h+='<h3 style="margin-bottom:16px">+ {{ _('Add Subdomain') }}</h3>';
+  h+='<div style="margin-bottom:12px"><label style="display:block;font-size:12px;color:var(--dim);margin-bottom:4px">{{ _('Subdomain Prefix') }}</label>';
+  h+='<div style="display:flex;align-items:center;gap:4px"><input class="in" id="dmSubdomain" placeholder="shop" style="flex:1;font-family:monospace" onkeydown="if(event.key===\'Enter\')confirmAddDomain()">';
+  h+='<span style="color:var(--dim);font-size:12px">.'+esc(deployDomain)+'</span></div></div>';
+  h+='<div style="margin-bottom:12px"><label style="display:block;font-size:12px;color:var(--dim);margin-bottom:4px">{{ _('Display Name') }}</label>';
+  h+='<input class="in" id="dmDisplayName" placeholder="{{ _('e.g.') }} {{ _('Online Store') }}" style="width:100%" onkeydown="if(event.key===\'Enter\')confirmAddDomain()"></div>';
+  h+='<div style="margin-bottom:12px"><label style="display:block;font-size:12px;color:var(--dim);margin-bottom:4px">{{ _('Type') }}</label>';
+  h+='<select class="sl" id="dmType" style="width:100%" onchange="togglePortField()">';
+  h+='<option value="content">{{ _('Content Site (serve by site app, no Nginx config needed)') }}</option>';
+  h+='<option value="service">{{ _('Independent Service (separate backend, Nginx config generated)') }}</option>';
+  h+='</select></div>';
+  h+='<div id="dmPortRow" style="margin-bottom:12px;display:none"><label style="display:block;font-size:12px;color:var(--dim);margin-bottom:4px">{{ _('Service Port') }}</label>';
+  h+='<input class="in" id="dmServicePort" type="number" min="1024" max="65535" placeholder="8090" style="width:100%" onkeydown="if(event.key===\'Enter\')confirmAddDomain()"></div>';
+  h+='<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px">';
+  h+='<button class="btn bo" onclick="closeModal()">{{ _('Cancel') }}</button>';
+  h+='<button class="btn bp" onclick="confirmAddDomain()">{{ _('Create') }}</button></div></div></div>';
+  document.body.insertAdjacentHTML('beforeend',h);
+  setTimeout(function(){var e=document.getElementById("dmSubdomain");if(e)e.focus();},100);
+}
+
+function togglePortField(){
+  var el=document.getElementById("dmPortRow");
+  var type=document.getElementById("dmType").value;
+  el.style.display=type==='service'?'block':'none';
+  if(type==='service'){setTimeout(function(){var e=document.getElementById("dmServicePort");if(e)e.focus();},100);}
+}
+
+function confirmAddDomain(){
+  var sub=document.getElementById("dmSubdomain").value.trim();
+  var name=document.getElementById("dmDisplayName").value.trim();
+  var type=document.getElementById("dmType").value;
+  var port=null;
+  if(type==='service'){
+    var pp=document.getElementById("dmServicePort").value.trim();
+    if(!pp||isNaN(parseInt(pp))||parseInt(pp)<1){showToast("{{ _('Please enter a valid port number') }}","error");return;}
+    port=parseInt(pp);
+  }
+  if(!sub||!name){showToast("{{ _('Please fill in all fields') }}","error");return;}
+  var body={subdomain:sub,display_name:name};
+  if(port){body.service_port=port;}
+  fetch("/admin/api/domains",{
+    method:"POST",
+    headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},
+    body:JSON.stringify(body)
+  }).then(function(r){return r.json()}).then(function(d){
+    if(d.success){closeModal();showToast(d.message,"success");go("site_domains")}
+    else{showToast(d.error||"{{ _('Create Failed') }}","error")}
+  }).catch(function(){showToast("{{ _('Create Failed') }}","error")});
+}
+
+function editDomain(id){
+  fetch("/admin/api/domains",{headers:{"Authorization":"Bearer "+T}})
+    .then(function(r){return r.json()})
+    .then(function(d){
+      if(!d.success)return;
+      var item=null;
+      d.data.forEach(function(m){if(m.id===id)item=m;});
+      if(!item)return;
+      var isService=item.service_port?true:false;
+      var h='<div class="modal" id="dmModal" onclick="if(event.target===this)closeModal()"><div class="modal-c">';
+      h+='<h3 style="margin-bottom:16px">{{ _('Edit Domain') }}: <code style="color:var(--accent)">'+esc(item.full_domain)+'</code></h3>';
+      h+='<div style="margin-bottom:12px"><label style="display:block;font-size:12px;color:var(--dim);margin-bottom:4px">{{ _('Display Name') }}</label>';
+      h+='<input class="in" id="dmEditName" value="'+escAttr(item.display_name||'')+'" style="width:100%"></div>';
+      h+='<div style="margin-bottom:12px"><label style="display:block;font-size:12px;color:var(--dim);margin-bottom:4px">{{ _('Type') }}</label>';
+      h+='<select class="sl" id="dmEditType" style="width:100%" onchange="toggleEditPortField()">';
+      h+='<option value="content"'+(isService?'':' selected')+'>{{ _('Content Site') }}</option>';
+      h+='<option value="service"'+(isService?' selected':'')+'>{{ _('Independent Service') }}</option>';
+      h+='</select></div>';
+      h+='<div id="dmEditPortRow" style="margin-bottom:12px;display:'+(isService?'block':'none')+'"><label style="display:block;font-size:12px;color:var(--dim);margin-bottom:4px">{{ _('Service Port') }}</label>';
+      h+='<input class="in" id="dmEditPort" type="number" value="'+(item.service_port||'')+'" min="1024" max="65535" style="width:100%"></div>';
+      h+='<div style="margin-bottom:12px"><label style="display:block;font-size:12px;color:var(--dim);margin-bottom:4px">{{ _('Status') }}</label>';
+      h+='<select class="sl" id="dmEditStatus" style="width:100%">';
+      h+='<option value="1"'+(item.is_published?' selected':'')+'>> {{ _('Active') }}</option>';
+      h+='<option value="0"'+(item.is_published?'':' selected')+'>> {{ _('Disabled') }}</option>';
+      h+='</select></div>';
+      h+='<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px">';
+      h+='<button class="btn bo" onclick="closeModal()">{{ _('Cancel') }}</button>';
+      h+='<button class="btn bp" onclick="confirmEditDomain('+id+')">{{ _('Save') }}</button></div></div></div>';
+      document.body.insertAdjacentHTML('beforeend',h);
+    });
+}
+
+function toggleEditPortField(){
+  var el=document.getElementById("dmEditPortRow");
+  var type=document.getElementById("dmEditType").value;
+  el.style.display=type==='service'?'block':'none';
+}
+
+function confirmEditDomain(id){
+  var name=document.getElementById("dmEditName").value.trim();
+  var status=parseInt(document.getElementById("dmEditStatus").value);
+  var type=document.getElementById("dmEditType").value;
+  if(!name){showToast("{{ _('Display name cannot be empty') }}","error");return;}
+  var body={display_name:name,is_published:status};
+  if(type==='service'){
+    var pp=document.getElementById("dmEditPort").value.trim();
+    if(!pp||isNaN(parseInt(pp))||parseInt(pp)<1){showToast("{{ _('Please enter a valid port number') }}","error");return;}
+    body.service_port=parseInt(pp);
+  }else{
+    body.service_port=null;
+  }
+  fetch("/admin/api/domains/"+id,{
+    method:"PUT",
+    headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},
+    body:JSON.stringify(body)
+  }).then(function(r){return r.json()}).then(function(d){
+    if(d.success){closeModal();showToast(d.message,"success");go("site_domains")}
+    else{showToast(d.error||"{{ _('Save Failed') }}","error")}
+  }).catch(function(){showToast("{{ _('Save Failed') }}","error")});
+}
+
+function deleteDomain(id,name){
+  if(!confirm("{{ _('Delete') }} "+esc(name)+"？{{ _('This action cannot be undone') }}"))return;
+  fetch("/admin/api/domains/"+id,{
+    method:"DELETE",
+    headers:{"Authorization":"Bearer "+T}
+  }).then(function(r){return r.json()}).then(function(d){
+    if(d.success){showToast(d.message,"success");go("site_domains")}
+    else{showToast(d.error||"{{ _('Delete Failed') }}","error")}
+  }).catch(function(){showToast("{{ _('Delete Failed') }}","error")});
+}
+
+function viewNginxConfig(id,domain){
+  fetch("/admin/api/domains/"+id+"/nginx-config",{headers:{"Authorization":"Bearer "+T}})
+    .then(function(r){return r.json()})
+    .then(function(d){
+      if(!d.success){showToast(d.error||"{{ _('Load Failed') }}","error");return;}
+      var cfg=d.data;
+      var h='<div class="modal" id="dmModal" onclick="if(event.target===this)closeModal()"><div class="modal-c" style="max-width:640px">';
+      h+='<h3 style="margin-bottom:8px">{{ _('Nginx Config') }}: <code style="color:var(--accent)">'+esc(cfg.full_domain)+'</code></h3>';
+      h+='<p style="font-size:11px;color:var(--dim);margin-bottom:12px">{{ _('Server path') }}: <code>'+esc(cfg.server_path)+'</code></p>';
+      h+='<textarea readonly style="width:100%;height:340px;font-family:monospace;font-size:11px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:12px;resize:vertical;tab-size:2;white-space:pre">'+esc(cfg.config_text)+'</textarea>';
+      h+='<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">';
+      h+='<button class="btn bo" onclick="copyNginxConfig()">{{ _('Copy') }}</button>';
+      h+='<button class="btn bp" onclick="closeModal()">{{ _('Close') }}</button></div></div></div>';
+      document.body.insertAdjacentHTML('beforeend',h);
+    }).catch(function(){showToast("{{ _('Load Failed') }}","error")});
+}
+
+function copyNginxConfig(){
+  var ta=document.querySelector('#dmModal textarea');
+  if(!ta)return;
+  ta.select();
+  document.execCommand('copy');
+  closeModal();
+  showToast("{{ _('Config copied to clipboard') }}","success");
+}
+
+function closeModal(){
+  var el=document.getElementById("dmModal");
+  if(el){el.remove();}
+}

@@ -1,0 +1,161 @@
+﻿window.l_headernav=function(){
+  document.getElementById("pt").textContent="{{ _('Sub-site Navigation') }}";
+  var mc=document.getElementById("mc");
+  var currentSite='platform';
+  renderHeaderNav(mc,currentSite);
+};
+
+function renderHeaderNav(mc,site){
+  fetch("/admin/header-nav?site="+site,{headers:{"Authorization":"Bearer "+T}})
+    .then(function(r){return r.json()})
+    .then(function(d){
+      if(!d.success){mc.innerHTML='<div class="em">{{ _('Load failed') }}: '+esc(d.error||'')+'</div>';return}
+      var items=d.data||[];
+      var h='';
+      // {{ _('Switch Site') }}
+      h+='<div style="display:flex;gap:8px;margin-bottom:20px">';
+      h+='<button class="btn '+(site==='platform'?'bp':'')+'" onclick="headerNavSwitch(\'platform\')">🌐 {{ _('Portal') }}</button>';
+      h+='</div>';
+      // {{ _('Add Button') }}
+      h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">';
+      h+={{ _('<span style="font-size:13px;color:var(--text-muted)">Total ') | tojson }}+items.length+' {{ _('Links') }}</span>';
+      h+='<button class="btn bp" onclick="headerNavAdd(\''+site+'\')">+ {{ _('Add Link') }}</button>';
+      h+='</div>';
+      // {{ _('List') }}
+      if(items.length===0){
+        h+='<div class="empty-state">{{ _('No Nav Links') }}<br><br><button class="btn bp" onclick="headerNavAdd(\''+site+'\')">{{ _('Add First Links') }}</button></div>';
+      } else {
+        h+='<table style="width:100%;font-size:13px">';
+        h+='<tr><th style="text-align:left;padding:8px 12px;color:var(--text-muted);border-bottom:1px solid var(--border)">{{ _('Title') }}</th><th style="text-align:left;padding:8px 12px;color:var(--text-muted);border-bottom:1px solid var(--border)">URL</th><th style="text-align:center;padding:8px 12px;color:var(--text-muted);border-bottom:1px solid var(--border)">{{ _('Sort') }}</th><th style="text-align:center;padding:8px 12px;color:var(--text-muted);border-bottom:1px solid var(--border)">{{ _('Status') }}</th><th style="text-align:center;padding:8px 12px;color:var(--text-muted);border-bottom:1px solid var(--border)">{{ _('Actions') }}</th></tr>';
+        items.forEach(function(item,i){
+          var statusBg=item.is_enabled?'var(--green)':'var(--rose)';
+          var statusText=item.is_enabled?'{{ _('Enabled') }}':'{{ _('Disable') }}';
+          h+='<tr>';
+          h+='<td style="padding:10px 12px;border-bottom:1px solid var(--border)">'+esc(item.title)+'</td>';
+          h+='<td style="padding:10px 12px;border-bottom:1px solid var(--border);color:var(--text-dim);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(item.url)+'</td>';
+          h+='<td style="padding:10px 12px;border-bottom:1px solid var(--border);text-align:center;color:var(--text-muted);font-size:11px">'+(item.sort_order||0)+'</td>';
+          h+='<td style="padding:10px 12px;border-bottom:1px solid var(--border);text-align:center"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+statusBg+'" title="'+statusText+'"></span></td>';
+          h+='<td style="padding:10px 12px;border-bottom:1px solid var(--border);text-align:center">';
+          h+='<button class="btn" style="padding:4px 10px;font-size:11px;margin-right:4px" onclick="headerNavEdit('+item.id+',\''+escAttr(item.title)+'\',\''+escAttr(item.url)+'\','+item.is_enabled+',\''+site+'\')">{{ _('Edit') }}</button>';
+          h+='<button class="btn" style="padding:4px 10px;font-size:11px;color:var(--rose)" onclick="headerNavDelete('+item.id+',\''+escAttr(item.title)+'\',\''+site+'\')">{{ _('Delete') }}</button>';
+          h+='</td></tr>';
+        });
+        h+='</table>';
+        // {{ _('Sort Button') }}
+        h+='<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">';
+        items.forEach(function(item,i){
+          if(i>0)h+='<button class="btn" style="padding:4px 8px;font-size:11px" onclick="headerNavMoveUp('+item.id+','+(item.sort_order||0)+',\''+site+'\')">↑ '+esc(item.title)+'</button>';
+        });
+        h+='</div>';
+      }
+      h+='<div id="headerNavForm" style="margin-top:20px"></div>';
+      mc.innerHTML=h;
+    }).catch(function(){mc.innerHTML='<div class="em">{{ _('Load failed') }}</div>'});
+}
+
+function headerNavSwitch(site){
+  var mc=document.getElementById("mc");
+  renderHeaderNav(mc,site);
+}
+
+function headerNavAdd(site){
+  var f=document.getElementById("headerNavForm");
+  f.innerHTML='<div class="cd"><div class="st">{{ _('Add Nav Link') }} — '+esc(site)+'</div>'+
+    '<div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">'+
+    '<input class="in" id="hnTitle" placeholder="' + {{ _('Link Title') | tojson }} + ' (e.g. ' + {{ _('Plaza') | tojson }} + ')">'+
+    '<input class="in" id="hnUrl" placeholder="' + {{ _('Link') | tojson }} + ' URL (e.g. /plaza)">'+
+    '</div>'+
+    '<div style="margin-top:12px;display:flex;gap:8px">'+
+    '<button class="btn bp" onclick="headerNavDoAdd(\''+site+'\')">{{ _('Save') }}</button>'+
+    '<button class="btn bo" onclick="document.getElementById(\"headerNavForm\").innerHTML=\'\'">{{ _('Cancel') }}</button>'+
+    '</div></div>';
+}
+
+function headerNavDoAdd(site){
+  var title=document.getElementById("hnTitle").value.trim();
+  var url=document.getElementById("hnUrl").value.trim();
+  if(!title||!url){showToast("{{ _('Title and URL are required') }}","error");return}
+  fetch("/admin/header-nav",{
+    method:"POST",
+    headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},
+    body:JSON.stringify({site:site,title:title,url:url,is_enabled:true})
+  }).then(function(r){return r.json()})
+    .then(function(d){
+      if(d.success){showToast("{{ _('Added') }}","success");document.getElementById("headerNavForm").innerHTML='';renderHeaderNav(document.getElementById("mc"),site)}
+      else{showToast(d.error||"{{ _('Add Failed') }}","error")}
+    }).catch(function(){showToast("{{ _('Network error') }}","error")});
+}
+
+function headerNavEdit(id,title,url,enabled,site){
+  var f=document.getElementById("headerNavForm");
+  f.innerHTML='<div class="cd"><div class="st">{{ _('Edit Nav Link') }}</div>'+
+    '<div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">'+
+    '<input class="in" id="hnTitle" value="'+escAttr(title)+'" placeholder="{{ _('Link Title') }}">'+
+    '<input class="in" id="hnUrl" value="'+escAttr(url)+'" placeholder="{{ _('Link') }} URL">'+
+    '<label><input type="checkbox" id="hnEnabled"'+(enabled?' checked':'')+'> {{ _('Enabled') }}</label>'+
+    '</div>'+
+    '<div style="margin-top:12px;display:flex;gap:8px">'+
+    '<button class="btn bp" onclick="headerNavDoSave('+id+',\''+site+'\')">{{ _('Save') }}</button>'+
+    '<button class="btn bo" onclick="document.getElementById(\"headerNavForm\").innerHTML=\'\'">{{ _('Cancel') }}</button>'+
+    '</div></div>';
+}
+
+function headerNavDoSave(id,site){
+  var title=document.getElementById("hnTitle").value.trim();
+  var url=document.getElementById("hnUrl").value.trim();
+  var enabled=document.getElementById("hnEnabled").checked;
+  if(!title||!url){showToast("{{ _('Title and URL are required') }}","error");return}
+  fetch("/admin/header-nav/"+id,{
+    method:"PUT",
+    headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},
+    body:JSON.stringify({title:title,url:url,is_enabled:enabled})
+  }).then(function(r){return r.json()})
+    .then(function(d){
+      if(d.success){showToast("{{ _('Updated') }}","success");document.getElementById("headerNavForm").innerHTML='';renderHeaderNav(document.getElementById("mc"),site)}
+      else{showToast(d.error||"{{ _('Update Failed') }}","error")}
+    }).catch(function(){showToast("{{ _('Network error') }}","error")});
+}
+
+function headerNavDelete(id,title,site){
+  if(!confirm("{{ _('Confirm Delete') }}「"+title+"」？"))return;
+  fetch("/admin/header-nav/"+id,{
+    method:"DELETE",
+    headers:{"Authorization":"Bearer "+T}
+  }).then(function(r){return r.json()})
+    .then(function(d){
+      if(d.success){showToast("{{ _('Deleted') }}","success");renderHeaderNav(document.getElementById("mc"),site)}
+      else{showToast(d.error||"{{ _('Delete failed') }}","error")}
+    }).catch(function(){showToast("{{ _('Network error') }}","error")});
+}
+
+function headerNavMoveUp(id,sortOrder,site){
+  fetch("/admin/header-nav",{headers:{"Authorization":"Bearer "+T}})
+    .then(function(r){return r.json()})
+    .then(function(d){
+      if(!d.success)return;
+      var items=d.data||[];
+      items.sort(function(a,b){return (a.sort_order||0)-(b.sort_order||0)});
+      var idx=-1;
+      for(var i=0;i<items.length;i++){if(items[i].id===id){idx=i;break}}
+      if(idx<=0)return;
+      var prev=items[idx-1];
+      fetch("/admin/header-nav/reorder",{
+        method:"POST",
+        headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},
+        body:JSON.stringify({items:[
+          {id:id,sort_order:prev.sort_order||0},
+          {id:prev.id,sort_order:items[idx].sort_order||0}
+        ].concat(items.filter(function(x){return x.id!==id&&x.id!==prev.id}).map(function(x,i){return {id:x.id,sort_order:i+2}}))})
+      }).then(function(r){return r.json()})
+        .then(function(dd){
+          if(dd.success){renderHeaderNav(document.getElementById("mc"),site)}
+          else{showToast(dd.error||"{{ _('Sort failed') }}","error")}
+        });
+    });
+}
+
+function escAttr(s){if(!s)return'';return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;').replace(/'/g,'&#39;').replace(/\\/g,'\\\\')}
+
+// =============================================
+// {{ _('Brand Settings') }} — {{ _('Entire Site') }} Logo / {{ _('Name') }} / Slogan / SEO
+// =============================================

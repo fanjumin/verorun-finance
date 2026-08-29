@@ -1,0 +1,226 @@
+{
+  "name": "CogEvolution",
+  "name_i18n_key": "plugin.name",
+  "identifier": "memory_engine",
+  "python_dependencies": {
+    "required": [],
+    "optional": {}
+  },
+  "version": "1.5.0",
+  "description": "Hierarchical agent memory with vector retrieval, Reflexion-based self-evolution and prompt metrics.",
+  "author": "VeroRun",
+  "min_app_version": "0.10.0",
+  "category": "system",
+  "icon": "database",
+  "icon_url": "",
+  "tags": [
+    "memory",
+    "agent",
+    "ai",
+    "reflexion"
+  ],
+  "screenshots": [],
+  "readme_url": "",
+  "dependencies": {},
+  "config": {
+    "embedding_model": "",
+    "embedding_dim": 1536,
+    "top_k": 5,
+    "max_memory_block_len": 1200,
+    "enable_auto_extract": true,
+    "enable_reflexion": true,
+    "reflexion_min_confidence": 0.4,
+    "reflexion_failure_only": true,
+    "retention_days": 365,
+    "max_memories_per_owner": 500,
+    "allow_global_memory": false,
+    "memory_opt_in_default": true,
+    "prompt_evolution_enabled": false,
+    "daily_extract_budget": 200,
+    "enable_sedimentation": true,
+    "sedimentation_fact_min_confidence": 0.9,
+    "sedimentation_lesson_min_rating": 4,
+    "sedimentation_min_quality_score": 0.7,
+    "sedimentation_daily_budget": 50
+  },
+  "permissions": [
+    "api:read",
+    "api:write",
+    "user:profile",
+    "admin:access"
+  ],
+  "hooks": {
+    "provides": [
+      "before_prompt_resolve"
+    ],
+    "listens": [
+      "agent.task.completed"
+    ]
+  },
+  "agent_role": "athena",
+  "capabilities": [
+    "memory.extract",
+    "memory.reflexion",
+    "memory.sedimentation"
+  ],
+  "dashboard": {
+    "stats": [
+      {
+        "key": "memories_total",
+        "title": "Total Memories",
+        "type": "counter"
+      },
+      {
+        "key": "reflexions_total",
+        "title": "Reflexions",
+        "type": "counter"
+      },
+      {
+        "key": "injections_today",
+        "title": "Injections Today",
+        "type": "gauge"
+      },
+      {
+        "key": "evolution_suggestions",
+        "title": "Suggestions",
+        "type": "counter"
+      }
+    ]
+  },
+  "menu": {
+    "group": "System",
+    "items": [
+      {
+        "key": "memory_admin",
+        "icon": "database",
+        "label": "CogEvolution",
+        "label_i18n_key": "menu.memory_admin"
+      }
+    ]
+  },
+  "admin_url": "",
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "embedding_model": {
+        "title": "Embedding Model",
+        "type": "string",
+        "description": "Model identifier with embedding capability in provider_models. Empty = auto-detect."
+      },
+      "embedding_dim": {
+        "title": "Embedding Dimension",
+        "type": "integer",
+        "default": 1536,
+        "minimum": 64
+      },
+      "top_k": {
+        "title": "Top-K Memories",
+        "type": "integer",
+        "default": 5,
+        "minimum": 1,
+        "maximum": 20
+      },
+      "max_memory_block_len": {
+        "title": "Max Memory Block Chars",
+        "type": "integer",
+        "default": 1200,
+        "minimum": 200,
+        "maximum": 8000
+      },
+      "enable_auto_extract": {
+        "title": "Enable Auto Extraction",
+        "type": "boolean",
+        "default": true
+      },
+      "enable_reflexion": {
+        "title": "Enable Reflexion",
+        "type": "boolean",
+        "default": true
+      },
+      "reflexion_min_confidence": {
+        "title": "Reflexion Min Confidence",
+        "type": "number",
+        "default": 0.4,
+        "minimum": 0,
+        "maximum": 1
+      },
+      "reflexion_failure_only": {
+        "title": "Reflexion on Failure Only",
+        "type": "boolean",
+        "default": true
+      },
+      "retention_days": {
+        "title": "Retention Days",
+        "type": "integer",
+        "default": 365,
+        "minimum": 30
+      },
+      "max_memories_per_owner": {
+        "title": "Max Memories Per Owner",
+        "type": "integer",
+        "default": 500,
+        "minimum": 10
+      },
+      "allow_global_memory": {
+        "title": "Allow Global (Cross-User) Memory",
+        "type": "boolean",
+        "default": false,
+        "description": "Enable admin-curated global memory shared by all users."
+      },
+      "memory_opt_in_default": {
+        "title": "Memory Opt-In Default",
+        "type": "boolean",
+        "default": true,
+        "description": "Whether memory collection is enabled by default for new users."
+      },
+      "prompt_evolution_enabled": {
+        "title": "Enable Prompt Evolution Suggestions",
+        "type": "boolean",
+        "default": false
+      },
+      "daily_extract_budget": {
+        "title": "Daily Extraction Budget",
+        "type": "integer",
+        "default": 200,
+        "minimum": 0
+      },
+      "enable_sedimentation": {
+        "title": "Enable Knowledge Sedimentation",
+        "type": "boolean",
+        "default": true,
+        "description": "Promote high-value memories into the shared knowledge base after admin review."
+      },
+      "sedimentation_fact_min_confidence": {
+        "title": "Fact Min Confidence",
+        "type": "number",
+        "default": 0.9,
+        "minimum": 0,
+        "maximum": 1,
+        "description": "Minimum confidence for fact memories to be sedimented."
+      },
+      "sedimentation_lesson_min_rating": {
+        "title": "Lesson Min Reflexion Rating",
+        "type": "integer",
+        "default": 4,
+        "minimum": 1,
+        "maximum": 5,
+        "description": "Minimum reflexion rating (1-5) for lesson memories to be sedimented."
+      },
+      "sedimentation_min_quality_score": {
+        "title": "Min Quality Score",
+        "type": "number",
+        "default": 0.7,
+        "minimum": 0,
+        "maximum": 1,
+        "description": "Minimum memory quality score for sedimentation."
+      },
+      "sedimentation_daily_budget": {
+        "title": "Daily Sedimentation Budget",
+        "type": "integer",
+        "default": 50,
+        "minimum": 0,
+        "description": "Max candidates scanned per daily sedimentation run."
+      }
+    }
+  }
+}

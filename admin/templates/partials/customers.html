@@ -1,0 +1,54 @@
+﻿window.l_customers=function(){
+  document.getElementById("pt").innerHTML="{{ _('All Customers') }}";
+  var url="/admin/customers?limit=100";
+  fetch(url,{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success||!d.data)return;
+    var ds=d.data;
+    var h='<div class="cd">';
+    h+='<div class="st" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">';
+    h+='<span style="font-size:12px">{{ _('Customer List') }} ('+ds.total+')</span>';
+    h+='<input type="text" id="cSearch" placeholder="{{ _('Search...') }}" onchange="l_customers()" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:3px 6px;font-size:11px;width:150px">';
+    h+='<select id="cType" onchange="l_customers()" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:3px 6px;font-size:11px"><option value="">{{ _('All Types') }}</option><option value="enterprise">{{ _('Enterprise') }}</option><option value="individual">{{ _('Individual') }}</option></select>';
+    h+='<select id="cVerify" onchange="l_customers()" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:3px 6px;font-size:11px"><option value="">{{ _('All Verification Status') }}</option><option value="verified">{{ _('Verified') }}</option><option value="unverified">{{ _('Unverified') }}</option></select>';
+    h+='</div>';
+    h+='<table><tr><th>ID</th><th>{{ _('Nickname') }}</th><th>{{ _('Phone') }}</th><th>{{ _('Email') }}</th><th>{{ _('Certification') }}</th><th>{{ _('Company Name') }}</th><th>{{ _('Plan') }}</th><th>{{ _('Status') }}</th><th>{{ _('Registered') }}</th></tr>';
+    (ds.customers||[]).forEach(function(c){
+      var st=c.active?'<span class="bdg on">{{ _('Active') }}</span>':'<span class="bdg off">{{ _('Disabled') }}</span>';
+      var badge='<span class="bdg '+(c.cert_status==='enterprise'?'on':c.cert_status==='individual'?'bp':'dim')+'">'+esc(c.cert_badge)+'</span>';
+      h+='<tr class="c" onclick="showCustomerDetail('+c.id+')"><td>'+c.id+'</td><td>'+esc(c.nickname||'-')+'</td><td>'+(c.phone||'-')+'</td><td>'+(c.email||'-')+'</td><td>'+badge+'</td><td>'+(c.enterprise_name?'<span class="t" title="'+esc(c.enterprise_name)+'">'+esc(c.enterprise_name.substring(0,12))+'…</span>':'-')+'</td><td>'+(c.plan_key||'free')+'</td><td>'+st+'</td><td style="font-size:11px">'+(c.created_at||'')+'</td></tr>';
+    });
+    h+="</table></div>";
+    document.getElementById("mc").innerHTML=h;
+  }).catch(function(){document.getElementById("mc").innerHTML='<div class="em">{{ _('Load failed') }}，{{ _('Please try again later') }}</div>'})
+}
+
+function showCustomerDetail(uid){
+  fetch("/admin/users/"+uid,{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success||!d.data)return;
+    var u=d.data;
+    var h='<div class="cd">';
+    h+='<div class="st" style="display:flex;justify-content:space-between"><span>{{ _('Customer Details') }}</span> <span class="btn bo bs" style="padding:2px 8px;font-size:11px" onclick="l_customers()">← {{ _('Back') }}</span></div>';
+    h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;font-size:12px">';
+    h+='<div><b>{{ _('User ID') }}:</b> '+u.id+'</div>';
+    h+='<div><b>{{ _('Nickname') }}:</b> '+(u.nickname||'-')+'</div>';
+    h+='<div><b>{{ _('Phone') }}:</b> '+(u.phone||'-')+'</div>';
+    h+='<div><b>{{ _('Email') }}:</b> '+(u.email||'-')+'</div>';
+    h+='<div><b>{{ _('Verification Status') }}:</b> '+(u.verified_by?'<span class="bdg on">'+esc(u.verified_by)+'</span>':'<span class="bdg dim">{{ _('Unverified') }}</span>')+'</div>';
+    h+='<div><b>{{ _('Created') }}:</b> '+(u.created_at||'')+'</div>';
+    if(u.enterprise_name){
+      h+='<div style="grid-column:1/-1;border-top:1px solid var(--border);padding-top:8px;margin-top:8px"><b>{{ _('Enterprise Info') }}</b></div>';
+      h+='<div><b>{{ _('Company Name') }}:</b> '+esc(u.enterprise_name)+'</div>';
+      h+='<div><b>{{ _('Tax ID') }}:</b> '+esc(u.enterprise_tax_id||'-')+'</div>';
+      h+='<div style="grid-column:1/-1">';
+      if(u.enterprise_verified){
+        h+='<span class="bdg on">{{ _('Enterprise Verified') }}</span>';
+      }else{
+        h+='<span class="bdg dim">{{ _('Enterprise Verification Pending') }}</span>';
+      }
+      h+='</div>';
+    }
+    h+='</div></div>';
+    document.getElementById("mc").innerHTML=h;
+  }).catch(function(){document.getElementById("mc").innerHTML='<div class="em">{{ _('Load failed') }}，{{ _('Please try again later') }}</div>'})
+}
+

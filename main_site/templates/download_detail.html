@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+
+<html lang="{{ lang }}">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>{{ _('{name} v{version} — Download — VeroRun', name=item.name, version=item.version) }}</title>
+<meta content="{{ _('{desc} — {version}. Supports {platforms}.', desc=(item.tagline or item.name), version=item.version, platforms=(item.platforms|join(', ') if item.platforms else _('Multiple Platforms'))) }}" name="description"/>
+<link href="{{ brand.favicon_url if brand and brand.favicon_url else '/static/favicon-32x32.png' }}" rel="icon" sizes="32x32" type="image/png"/>
+<link href="/static/css/fonts.css" rel="stylesheet"/>
+<link href="/static/css/landing.css" rel="stylesheet"/>
+{% if theme_css_url %}<link href="{{ theme_css_url }}" rel="stylesheet"/>{% endif %}
+
+<style>
+
+.detail-section{padding:60px 0}
+.detail-inner{max-width:900px;margin:0 auto;padding:0 20px}
+
+/* ── Header Card ── */
+.detail-header{
+  display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap;
+  padding:32px;border-radius:16px;
+  background:var(--bg-card);border:1px solid var(--border);
+}
+.detail-header .dh-icon{font-size:48px;line-height:1;flex-shrink:0}
+.detail-header .dh-info{flex:1;min-width:0}
+.detail-header h1{font-size:24px;font-weight:800;color:var(--text-high);margin:0 0 8px}
+.detail-header .dh-tagline{font-size:15px;color:var(--text-dim);margin:0 0 12px;line-height:1.6}
+.detail-header .dh-meta{display:flex;gap:16px;flex-wrap:wrap;align-items:center;font-size:13px;color:var(--text-muted)}
+.detail-header .dh-version{font-family:'Orbitron',monospace;font-weight:700;color:var(--cyan);font-size:15px}
+.detail-tags{display:flex;gap:4px;flex-wrap:wrap}
+.d-tag{
+  display:inline-block;padding:2px 10px;border-radius:100px;
+  font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;
+  border:1px solid;line-height:1.5;
+}
+.d-tag.stable{color:var(--green);border-color:rgba(34,197,94,0.35);background:rgba(34,197,94,0.08)}
+.d-tag.beta{color:var(--orange);border-color:rgba(245,158,11,0.35);background:rgba(245,158,11,0.08)}
+.d-tag.official{color:var(--cyan);border-color:rgba(0,245,255,0.35);background:rgba(0,245,255,0.08)}
+.d-tag.new{color:var(--purple);border-color:rgba(160,32,240,0.35);background:rgba(160,32,240,0.08)}
+
+/* ── Download Buttons Row ── */
+.dl-buttons{display:flex;gap:12px;flex-wrap:wrap;margin-top:24px}
+.dl-big-btn{
+  display:inline-flex;align-items:center;gap:8px;padding:14px 28px;
+  border-radius:12px;font-size:14px;font-weight:700;text-decoration:none;
+  transition:all .25s;white-space:nowrap;
+}
+.dl-big-btn.primary{background:var(--cyan);color:#000}
+.dl-big-btn.primary:hover{background:#33f7ff;transform:translateY(-1px)}
+.dl-big-btn.secondary{border:2px solid var(--border);color:var(--text-high)}
+.dl-big-btn.secondary:hover{border-color:rgba(255,255,255,0.25)}
+.dl-big-btn .btn-os{font-size:11px;opacity:.7;font-weight:500}
+
+/* ── Info Grid ── */
+.info-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;margin-top:32px}
+.info-item{
+  padding:16px;border-radius:12px;
+  background:rgba(255,255,255,0.02);border:1px solid var(--border);
+}
+.info-item .ii-label{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:4px;font-weight:700}
+.info-item .ii-value{font-size:14px;color:var(--text-high);word-break:break-all;font-family:monospace;font-size:12px}
+.info-item .ii-value a{color:var(--cyan);text-decoration:none}
+.info-item .ii-value a:hover{text-decoration:underline}
+
+/* ── Description ── */
+.dl-description{margin-top:32px;font-size:15px;color:var(--text-dim);line-height:1.9}
+.dl-description h3{color:var(--text-high);margin:24px 0 12px;font-size:18px}
+
+/* ── Legal Notice ── */
+.legal-notice{
+  margin-top:32px;padding:20px 24px;border-radius:12px;
+  background:rgba(245,158,11,0.04);border:1px solid rgba(245,158,11,0.15);
+  font-size:12px;color:var(--text-muted);line-height:1.7
+}
+.legal-notice strong{color:var(--orange)}
+
+/* ── Back Link ── */
+.dl-back{margin-top:40px;text-align:center}
+.dl-back a{color:var(--text-dim);text-decoration:none;font-size:13px;transition:color .25s}
+.dl-back a:hover{color:var(--cyan)}
+
+/* ── Install Code ── */
+.install-code{
+  margin-top:20px;padding:14px 18px;border-radius:8px;
+  background:rgba(0,0,0,0.4);border:1px solid var(--border);
+  font-family:monospace;font-size:13px;color:var(--green);
+  word-break:break-all;line-height:1.6;
+  position:relative;
+}
+.install-code .copy-btn{
+  position:absolute;top:8px;right:12px;padding:4px 10px;border-radius:4px;
+  background:rgba(255,255,255,0.06);border:1px solid var(--border);
+  color:var(--text-dim);font-size:11px;cursor:pointer;
+  transition:all .2s;
+}
+.install-code .copy-btn:hover{color:var(--text-high);border-color:rgba(255,255,255,0.2)}
+
+@media(max-width:600px){
+  .detail-header{flex-direction:column;align-items:flex-start}
+  .dl-big-btn{flex:1;justify-content:center}
+  .info-grid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div id="particles-bg"></div>
+<nav class="nav" role="navigation">
+<div class="nav-inner">
+<a class="nav-logo" href="/">
+<div class="logo-icon">E</div>
+<span>{{ brand.site_name_en if brand else '' }}</span>
+</a>
+<button aria-label="{{ _('Menu') }}" class="mobile-toggle" onclick="toggleMobileNav()">☰</button>
+<div class="nav-links" id="navLinks">
+<a href="/">{{ _('Home') }}</a>
+      {% for nav in header_nav %}
+      <a class="nav-item-dyn" data-url="{{ nav.url }}" href="{{ nav.url }}">{{ nav.title }}</a>
+      {% endfor %}
+      <span id="nav-auth-area">
+<a href="/login">{{ _('Register | Login') }}</a>
+</span>
+</div>
+</div>
+</nav>
+<!-- ═══ Detail Section ═══ -->
+<section class="detail-section">
+<div class="detail-inner">
+<!-- Back -->
+<div style="margin-bottom:20px">
+<a href="/download" onmouseout="this.style.color='var(--text-dim)'" onmouseover="this.style.color='var(--cyan)'" style="color:var(--text-dim);text-decoration:none;font-size:13px;transition:color .25s">{{ _('← Back to Downloads') }}</a>
+</div>
+<!-- Header Card -->
+<div class="detail-header animate-on-scroll">
+<div class="dh-icon">{{ item.icon or '📦' }}</div>
+<div class="dh-info">
+<div class="detail-tags" style="margin-bottom:8px">
+          {% for t in item.tags or [] %}
+          <span class="d-tag {{ t|lower }}">{{ t }}</span>
+          {% endfor %}
+        </div>
+<h1>{{ item.name }}</h1>
+<p class="dh-tagline">{{ item.tagline or '' }}</p>
+<div class="dh-meta">
+<span class="dh-version">{{ item.version }}</span>
+          {% if item.release_date %}
+          <span>{{ _('Published {{ item.release_date }}') }}</span>
+          {% endif %}
+          {% if item.file_size %}
+          <span>{{ item.file_size }}</span>
+          {% endif %}
+        </div>
+<!-- Download Buttons -->
+        {% if item.download_url or item.platforms %}
+        <div class="dl-buttons">
+          {% if item.download_url %}
+          <a class="dl-big-btn primary" href="{{ item.download_url }}" rel="noopener" target="_blank">{{ _('⬇ Direct Download') }}<span class="btn-os">{{ item.file_size or '' }}</span>
+</a>
+          {% endif %}
+          {% if item.repo_url %}
+          <a class="dl-big-btn secondary" href="{{ item.repo_url }}" rel="noopener" target="_blank">
+            ⭐ GitHub →
+          </a>
+          {% endif %}
+          {% if item.docs_url %}
+          <a class="dl-big-btn secondary" href="{{ item.docs_url }}" rel="noopener" target="_blank">{{ _('Docs →') }}</a>
+          {% endif %}
+          {% if item.changelog_url %}
+          <a class="dl-big-btn secondary" href="{{ item.changelog_url }}" rel="noopener" target="_blank">
+            Release Notes →
+          </a>
+          {% endif %}
+        </div>
+        {% endif %}
+
+        <!-- Install Command (for skills / core type) -->
+        {% if item.category in ('core', 'skills') and not item.description %}
+        <div class="install-code" id="installCmd">
+          {% if item.category == 'core' %}pip install hermes-agent{% else %}hermes skill install {{ item.slug }}{% endif %}
+          <button class="copy-btn" onclick="copyInstall()">{{ _('Copy') }}</button>
+</div>
+        {% elif item.category in ('core', 'skills') and item.description and 'pip' in item.description %}
+        <div class="install-code" id="installCmd">
+          pip install hermes-agent
+          <button class="copy-btn" onclick="copyInstall()">{{ _('Copy') }}</button>
+</div>
+        {% endif %}
+      </div>
+</div>
+<!-- Info Grid -->
+<div class="info-grid">
+      {% if item.category %}
+      <div class="info-item">
+<div class="ii-label">{{ _('Categories') }}</div>
+<div class="ii-value">{{ {'core':_('Core Framework'),'skills':'Skills','sdk':'SDK','plugin':_('Plugin'),'model':_('Model')}.get(item.category, item.category) }}</div>
+</div>
+      {% endif %}
+      {% if item.platforms %}
+      <div class="info-item">
+<div class="ii-label">{{ _('Supported Platforms') }}</div>
+<div class="ii-value">{{ item.platforms|join(' · ') }}</div>
+</div>
+      {% endif %}
+      {% if item.license %}
+      <div class="info-item">
+<div class="ii-label">{{ _('License') }}</div>
+<div class="ii-value">{{ item.license }}</div>
+</div>
+      {% endif %}
+      {% if item.file_size %}
+      <div class="info-item">
+<div class="ii-label">{{ _('File Size') }}</div>
+<div class="ii-value">{{ item.file_size }}</div>
+</div>
+      {% endif %}
+      {% if item.checksum_sha256 %}
+      <div class="info-item">
+<div class="ii-label">SHA256</div>
+<div class="ii-value" style="font-size:10px;line-height:1.4">{{ item.checksum_sha256 }}</div>
+</div>
+      {% endif %}
+      {% if item.requirements %}
+      <div class="info-item">
+<div class="ii-label">{{ _('System Requirements') }}</div>
+<div class="ii-value">{{ item.requirements }}</div>
+</div>
+      {% endif %}
+      {% if item.repo_url %}
+      <div class="info-item">
+<div class="ii-label">{{ _('Source Repository') }}</div>
+<div class="ii-value"><a href="{{ item.repo_url }}" rel="noopener" target="_blank">{{ item.repo_url }}</a></div>
+</div>
+      {% endif %}
+    </div>
+<!-- Description -->
+    {% if item.description %}
+    <div class="dl-description">
+      {% autoescape false %}{{ item.description | replace('\n', '<br>') }}{% endautoescape %}
+    </div>
+    {% endif %}
+
+    <!-- Legal Notice -->
+<div class="legal-notice">
+<strong>{{ _('⚠ Usage Statement:') }}</strong>{{ _('Software is provided as-is. VeroRun is not liable for trading decisions, data loss, or system failures. By downloading you agree:') }}<a href="/legal/terms" style="color:var(--cyan)">{{ _('Terms of Service') }}</a>{{ _('and') }}<a href="/legal/privacy" style="color:var(--cyan)">{{ _('Privacy Policy') }}</a>{{ _('.') }}{% if item.checksum_sha256 %}{{ _('For checksum verification, run') }} <code style="background:rgba(255,255,255,0.06);padding:1px 4px;border-radius:3px">sha256sum</code>{{ _('.') }}{% endif %}</div>
+<!-- Back -->
+<div class="dl-back">
+<a href="/download">{{ _('← Back to Downloads') }}</a>
+</div>
+</div>
+</section>
+
+{% include '_footer.html' %}
+
+<script src="/static/js/tsparticles.bundle.min.js"></script>
+<script src="/static/js/app.js"></script>
+<script>
+(function(){
+  var currentPath = window.location.pathname;
+  document.querySelectorAll('.nav-item-dyn').forEach(function(a){
+    var navUrl = a.getAttribute('data-url') || '';
+    if (navUrl.startsWith('/download')) a.classList.add('active');
+  });
+  try {
+    var token = localStorage.getItem('hermes_token') || localStorage.getItem('token') || '';
+    if (token && token.split('.').length === 3) {
+      var area = document.getElementById('nav-auth-area');
+      if (area) area.innerHTML = '<a href="{{ deploy.url('platform') }}" class="nav-cta">{{ _('Console') }}</a>';
+    }
+  } catch(e) {}
+})();
+
+function toggleMobileNav(){
+  var nav = document.getElementById("navLinks");
+  if (nav) nav.classList.toggle("open");
+}
+document.addEventListener("click", function(e){
+  var nav = document.getElementById("navLinks");
+  if (nav && nav.classList.contains("open") && e.target.closest("a")) nav.classList.remove("open");
+});
+
+function copyInstall(){
+  var el = document.getElementById('installCmd');
+  if (!el) return;
+  var text = el.textContent.replace("{{ translations['Copy'] }}",'').trim();
+  if (navigator.clipboard){
+    navigator.clipboard.writeText(text).then(function(){
+      var btn = el.querySelector('.copy-btn');
+      if(btn){btn.textContent="{{ translations['Copied'] }}";setTimeout(function(){btn.textContent="{{ translations['Copy'] }}"},1500)}
+    });
+  }
+}
+</script>
+
+</body>
+</html>

@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "verorun-cli"
+# 版本复用系统主版本号（仓库根 VERSION 文件），由 setup.py 动态读取，
+# 单一真相源，避免打包 metadata 与运行时版本割裂。
+dynamic = ["version"]
+description = "VeroRun AI 命令行客户端（薄客户端，仅调用现有 REST 端点）"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "click>=8.1",
+    "requests>=2.31",
+    "PyYAML>=6.0",
+    "PyJWT>=2.8",
+    "rich>=13.0",
+]
+
+[project.scripts]
+verorun = "verorun_cli.cli:main"
+
+[project.optional-dependencies]
+test = ["pytest>=7.0"]
+
+[tool.setuptools]
+packages = ["verorun_cli", "verorun_cli.commands"]
+

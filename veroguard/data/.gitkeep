@@ -1,0 +1,2 @@
+# 此目录存放签名版完整性基准清单（manifest.json + manifest.json.sig，随发版提交）
+# 由 veroguard/tools/build_manifest.py 在发版打包时生成，服务器端禁止本地重生成

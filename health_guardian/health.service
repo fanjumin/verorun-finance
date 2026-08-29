@@ -1,0 +1,15 @@
+[Unit]
+Description=Health Check Service (8085)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=~/verorun
+EnvironmentFile=-/etc/default/health-guardian
+# 使用 runner.py 启动（手动控制 sys.path，避免 platform/ 目录 shadow 标准库）
+ExecStart=/usr/bin/python3 %h/verorun/health_service/runner.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

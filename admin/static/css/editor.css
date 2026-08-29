@@ -1,0 +1,526 @@
+/* ════════════════════════════════════════════════════════════
+   Editor UI Styles — Preview-as-Editor
+   ════════════════════════════════════════════════════════════ */
+
+/* ── Floating Toolbar ────────────────────────────────── */
+.editor-toolbar {
+  position: fixed; top: 0; left: 0; right: 0;
+  z-index: 10000;
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 16px;
+  background: #1e293b; color: #e2e8f0;
+  font-size: 13px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+  transform: translateY(-100%);
+  transition: transform 0.25s ease;
+}
+.editor-toolbar.visible { transform: translateY(0); }
+
+/* Make room for toolbar when visible */
+.editor-toolbar.visible ~ .device-wrapper .device-frame { margin-top: 42px; }
+
+.editor-toolbar .toolbar-left { display: flex; align-items: center; gap: 8px; margin-right: auto; }
+.editor-toolbar .toolbar-right { display: flex; align-items: center; gap: 6px; }
+
+.editor-toolbar .tb-brand {
+  font-weight: 700; font-size: 14px;
+  color: #c084fc; margin-right: 12px;
+}
+.editor-toolbar .tb-sep {
+  width: 1px; height: 20px;
+  background: #475569; margin: 0 4px;
+}
+.editor-toolbar button, .editor-toolbar .tb-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 5px 12px;
+  border: 1px solid transparent; border-radius: 6px;
+  background: transparent; color: #cbd5e1;
+  font-size: 12px; font-weight: 500; cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+.editor-toolbar button:hover, .editor-toolbar .tb-btn:hover {
+  background: #334155; color: #f1f5f9;
+}
+.editor-toolbar button:active { background: #475569; }
+.editor-toolbar button.active {
+  background: #374151; color: #c084fc; border-color: #6b21a8;
+}
+.editor-toolbar button.tb-save {
+  background: #6366f1; color: #fff; font-weight: 600;
+}
+.editor-toolbar button.tb-save:hover { background: #4f46e5; }
+.editor-toolbar button.tb-save:disabled {
+  background: #334155; color: #64748b; cursor: not-allowed;
+}
+.editor-toolbar button.tb-publish {
+  background: #10b981; color: #fff; font-weight: 600;
+}
+.editor-toolbar button.tb-publish:hover { background: #059669; }
+
+.editor-toolbar .tb-count {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 20px; height: 20px; padding: 0 6px;
+  background: #ef4444; color: #fff;
+  border-radius: 10px; font-size: 11px; font-weight: 700;
+}
+
+/* ── Editor Panels (color, spacing) ──────────────────── */
+.editor-panel {
+  display: none;
+  position: fixed; top: 44px; left: 50%; transform: translateX(-50%);
+  z-index: 9999;
+  background: #1e293b; color: #e2e8f0;
+  border: 1px solid #334155; border-radius: 12px;
+  padding: 16px 20px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 13px;
+  min-width: 320px; max-width: 480px;
+}
+.editor-panel.visible { display: block; }
+
+.editor-panel h3 {
+  font-size: 14px; font-weight: 600;
+  margin-bottom: 12px; color: #f1f5f9;
+}
+
+/* Color palette grid */
+.color-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+}
+.color-item {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 8px; border-radius: 6px;
+  background: #0f172a; cursor: pointer;
+  transition: background 0.15s;
+}
+.color-item:hover { background: #334155; }
+.color-swatch {
+  width: 24px; height: 24px; border-radius: 4px;
+  border: 1px solid #475569; flex-shrink: 0;
+}
+.color-label { font-size: 11px; color: #94a3b8; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.color-value { font-size: 11px; color: #64748b; font-family: monospace; }
+
+/* Preset themes row */
+.preset-row {
+  display: flex; gap: 6px; margin-top: 12px; padding-top: 12px;
+  border-top: 1px solid #334155;
+}
+.preset-row .preset-label { font-size: 11px; color: #64748b; margin-right: 4px; align-self: center; }
+.preset-btn {
+  padding: 4px 10px; border-radius: 6px;
+  border: 1px solid #475569; background: transparent;
+  color: #cbd5e1; font-size: 11px; cursor: pointer;
+  transition: all 0.15s;
+}
+.preset-btn:hover { background: #334155; border-color: #6b21a8; color: #c084fc; }
+
+/* Spacing sliders */
+.spacing-list { display: flex; flex-direction: column; gap: 12px; }
+.spacing-item { display: flex; flex-direction: column; gap: 4px; }
+.spacing-item label {
+  display: flex; justify-content: space-between;
+  font-size: 12px; color: #94a3b8;
+}
+.spacing-item input[type="range"] {
+  width: 100%; height: 4px;
+  -webkit-appearance: none; appearance: none;
+  background: #334155; border-radius: 2px; outline: none;
+}
+.spacing-item input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 16px; height: 16px;
+  border-radius: 50%; background: #6366f1;
+  border: 2px solid #1e293b; cursor: pointer;
+}
+
+/* ── Section Hover Actions ──────────────────────────── */
+.editor-section-actions {
+  display: none;
+  position: absolute; top: -32px; left: 0; right: 0;
+  height: 0; z-index: 500;
+}
+[data-editable="section"] {
+  position: relative;
+  transition: outline 0.15s ease;
+}
+[data-editable="section"]:hover { outline: 1px dashed var(--color-primary, #6366f1); }
+[data-editable="section"]:hover > .editor-section-actions,
+[data-editable="section"] .editor-section-actions:hover { display: flex; }
+
+.editor-section-actions .action-bar {
+  display: inline-flex; align-items: center; gap: 2px;
+  padding: 3px 6px;
+  background: #1e293b; border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  margin-left: 8px;
+}
+.editor-section-actions .action-bar button {
+  padding: 3px 8px; border: none; border-radius: 4px;
+  background: transparent; color: #cbd5e1;
+  font-size: 12px; cursor: pointer;
+  transition: all 0.15s;
+}
+.editor-section-actions .action-bar button:hover { background: #334155; color: #f1f5f9; }
+.editor-section-actions .action-bar button.danger:hover { background: #7f1d1d; color: #fca5a5; }
+
+/* ── Drag & Drop States ─────────────────────────────── */
+.dragging {
+  opacity: 0.5;
+  outline: 2px dashed var(--color-primary, #6366f1) !important;
+}
+.drag-over {
+  outline: 2px solid var(--color-primary, #6366f1) !important;
+  background: rgba(99, 102, 241, 0.08) !important;
+}
+.drag-placeholder {
+  height: 4px; border-radius: 2px;
+  background: var(--color-primary, #6366f1);
+  margin: 8px 0; transition: height 0.2s ease;
+}
+
+/* Draggable cursor */
+[data-editable="section"], [data-editable="card"] {
+  cursor: default;
+}
+[data-editable="section"].editor-draggable,
+[data-editable="card"].editor-draggable {
+  cursor: grab;
+}
+[data-editable="section"].editor-draggable:active,
+[data-editable="card"].editor-draggable:active {
+  cursor: grabbing;
+}
+
+/* ── Inline Edit Mode ───────────────────────────────── */
+[data-editable="text"].editor-editing {
+  outline: 2px solid var(--color-primary, #6366f1);
+  background: rgba(99, 102, 241, 0.04);
+  border-radius: 2px;
+  caret-color: var(--color-primary, #6366f1);
+}
+[data-editable="text"]:hover:not(.editor-editing) {
+  outline: 1px dashed var(--color-primary, #6366f1);
+  border-radius: 2px;
+  cursor: text;
+}
+
+/* Saving state */
+.editor-saving {
+  opacity: 0.6;
+  pointer-events: none;
+  animation: editor-pulse 0.8s ease-in-out infinite;
+}
+@keyframes editor-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 0.3; }
+}
+
+/* Save success flash */
+.editor-saved {
+  animation: editor-flash-green 0.6s ease;
+}
+@keyframes editor-flash-green {
+  0%   { outline-color: var(--color-success, #10b981); outline-width: 2px; outline-style: solid; }
+  50%  { outline-color: var(--color-success, #10b981); outline-width: 3px; }
+  100% { outline-color: transparent; outline-width: 0; }
+}
+
+/* Save error flash */
+.editor-error {
+  animation: editor-flash-red 0.6s ease;
+}
+@keyframes editor-flash-red {
+  0%   { outline-color: var(--color-error, #ef4444); outline-width: 2px; outline-style: solid; }
+  50%  { outline-color: var(--color-error, #ef4444); outline-width: 3px; }
+  100% { outline-color: transparent; outline-width: 0; }
+}
+
+/* ── Hidden Block (soft delete) ─────────────────────── */
+.editor-hidden {
+  opacity: 0.3;
+  outline: 1px dashed #ef4444 !important;
+  position: relative;
+}
+.editor-hidden::after {
+  content: 'Hidden';
+  position: absolute; top: 4px; right: 8px;
+  font-size: 10px; color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+  padding: 1px 6px; border-radius: 4px;
+}
+
+/* ── Toast Notification ─────────────────────────────── */
+.editor-toast {
+  position: fixed; top: 60px; right: 20px;
+  z-index: 99999;
+  padding: 10px 18px; border-radius: 8px;
+  font-size: 13px; font-weight: 500;
+  color: #fff; box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+  transform: translateX(120%); opacity: 0;
+  transition: all 0.3s ease;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  pointer-events: none;
+}
+.editor-toast.visible {
+  transform: translateX(0); opacity: 1;
+}
+.editor-toast.success { background: #10b981; }
+.editor-toast.error { background: #ef4444; }
+.editor-toast.info { background: #6366f1; }
+
+/* ── Block Add Panel (drag-to-add) ──────────────────── */
+.editor-add-panel {
+  position: fixed;
+  right: 16px; top: 50%; transform: translateY(-50%);
+  z-index: 9000;
+  background: #1e293b; color: #e2e8f0;
+  border: 1px solid #334155; border-radius: 12px;
+  padding: 12px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  min-width: 140px;
+}
+.editor-add-panel h4 {
+  font-size: 11px; font-weight: 600; color: #64748b;
+  text-transform: uppercase; letter-spacing: 0.05em;
+  margin-bottom: 8px; padding-bottom: 6px;
+  border-bottom: 1px solid #334155;
+}
+.editor-add-panel .add-block-item {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 8px; border-radius: 6px;
+  cursor: grab; font-size: 12px; color: #cbd5e1;
+  transition: background 0.15s;
+  user-select: none;
+}
+.editor-add-panel .add-block-item:hover { background: #334155; }
+.editor-add-panel .add-block-item:active { cursor: grabbing; background: #475569; }
+.editor-add-panel .add-block-item .abi-icon { font-size: 16px; }
+.editor-add-panel .add-block-item .abi-label { flex: 1; }
+
+/* Drop zone indicator during add-drag */
+.editor-drop-zone {
+  outline: 2px solid var(--color-primary, #6366f1);
+  background: rgba(99, 102, 241, 0.06);
+  min-height: 60px;
+  transition: all 0.15s ease;
+}
+.editor-drop-indicator {
+  height: 3px;
+  background: var(--color-primary, #6366f1);
+  border-radius: 2px;
+  margin: 4px 0;
+  animation: editor-drop-pulse 1s ease-in-out infinite;
+}
+@keyframes editor-drop-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+/* ── Button Edit Popover ────────────────────────────── */
+.editor-button-popover {
+  position: absolute; z-index: 5000;
+  background: #1e293b; color: #e2e8f0;
+  border: 1px solid #334155; border-radius: 8px;
+  padding: 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  min-width: 220px;
+}
+.editor-button-popover label {
+  display: block; font-size: 11px; color: #94a3b8;
+  margin-bottom: 3px; margin-top: 6px;
+}
+.editor-button-popover label:first-child { margin-top: 0; }
+.editor-button-popover input {
+  width: 100%; padding: 5px 8px; border-radius: 4px;
+  border: 1px solid #475569; background: #0f172a;
+  color: #f1f5f9; font-size: 12px; outline: none;
+}
+.editor-button-popover input:focus { border-color: #6366f1; }
+
+/* ── Nav Edit Inline ────────────────────────────────── */
+.editor-nav-popover {
+  position: absolute; z-index: 5000;
+  background: #1e293b; color: #e2e8f0;
+  border: 1px solid #334155; border-radius: 8px;
+  padding: 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  min-width: 200px;
+}
+.editor-nav-popover label {
+  display: block; font-size: 11px; color: #94a3b8;
+  margin-bottom: 3px; margin-top: 6px;
+}
+.editor-nav-popover label:first-child { margin-top: 0; }
+.editor-nav-popover input {
+  width: 100%; padding: 5px 8px; border-radius: 4px;
+  border: 1px solid #475569; background: #0f172a;
+  color: #f1f5f9; font-size: 12px; outline: none;
+}
+.editor-nav-popover input:focus { border-color: #6366f1; }
+.editor-nav-popover .nav-pop-actions {
+  display: flex; gap: 4px; margin-top: 8px;
+}
+.editor-nav-popover .nav-pop-actions button {
+  padding: 4px 10px; border-radius: 4px;
+  border: none; font-size: 11px; cursor: pointer;
+}
+.editor-nav-popover .nav-pop-actions .btn-del { background: #7f1d1d; color: #fca5a5; }
+.editor-nav-popover .nav-pop-actions .btn-del:hover { background: #991b1b; }
+
+/* ── Misc ───────────────────────────────────────────── */
+.editor-nav-add {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; border-radius: 50%;
+  background: var(--color-primary, #6366f1);
+  color: #fff !important; font-size: 16px; font-weight: 700;
+  text-decoration: none !important;
+  transition: transform 0.15s;
+}
+.editor-nav-add:hover { transform: scale(1.15); }
+
+/* Prevent accidental link clicks during editing */
+.editor-editing a { pointer-events: none; }
+
+/* ── Version History Panel ──────────────────────────────── */
+.version-panel {
+  right: 16px; left: auto; top: 52px;
+  transform: none;
+  min-width: 360px; max-width: 420px;
+  max-height: 70vh;
+  display: flex; flex-direction: column;
+}
+.version-panel.visible { display: flex; }
+
+.version-panel .panel-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 0; padding-bottom: 10px;
+  border-bottom: 1px solid #334155;
+}
+.version-panel .panel-header h3 {
+  margin: 0; font-size: 14px;
+}
+.version-panel .panel-close {
+  background: none; border: none; color: #94a3b8;
+  font-size: 20px; cursor: pointer; padding: 0 4px;
+  line-height: 1;
+}
+.version-panel .panel-close:hover { color: #f1f5f9; }
+
+.version-panel .panel-body {
+  flex: 1; overflow-y: auto;
+  padding-top: 10px;
+}
+
+.version-timeline {
+  display: flex; flex-direction: column;
+  gap: 2px;
+}
+
+.version-item {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px 8px;
+  border-radius: 8px;
+  position: relative;
+  border-left: 2px solid #334155;
+  margin-left: 6px;
+  transition: background 0.15s;
+}
+.version-item:hover { background: #0f172a; }
+.version-item.current {
+  border-left-color: #10b981;
+  background: rgba(16, 185, 129, 0.06);
+}
+
+.version-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #475569;
+  flex-shrink: 0;
+  margin-top: 5px;
+  margin-left: -13px;
+  border: 2px solid #1e293b;
+}
+.version-item.current .version-dot { background: #10b981; }
+
+.version-info {
+  flex: 1; display: flex; flex-direction: column;
+  gap: 2px; min-width: 0;
+}
+.version-label {
+  font-weight: 600; font-size: 13px; color: #f1f5f9;
+}
+.version-badge {
+  display: inline-block;
+  font-size: 10px; color: #10b981;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.version-time {
+  font-size: 11px; color: #64748b;
+}
+.version-actions {
+  display: flex; gap: 4px; flex-shrink: 0;
+}
+.version-actions button {
+  padding: 4px 8px; border-radius: 4px;
+  border: 1px solid #475569; background: transparent;
+  color: #cbd5e1; font-size: 11px; cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.version-actions button:hover { background: #334155; color: #f1f5f9; }
+.version-actions .version-preview-btn { border-color: #6366f1; color: #818cf8; }
+.version-actions .version-preview-btn:hover { background: #312e81; }
+.version-actions .version-restore-btn { border-color: #10b981; color: #34d399; }
+.version-actions .version-restore-btn:hover { background: #064e3b; }
+
+.version-loading { padding: 20px; text-align: center; color: #64748b; font-size: 13px; }
+.version-empty { padding: 20px; text-align: center; color: #64748b; font-size: 12px; }
+.version-error { padding: 16px; text-align: center; color: #fca5a5; font-size: 12px; }
+
+.version-back-btn {
+  display: block; width: 100%; padding: 6px 12px;
+  border: 1px solid #475569; border-radius: 6px;
+  background: transparent; color: #94a3b8;
+  font-size: 12px; cursor: pointer;
+  text-align: center; margin-bottom: 12px;
+  transition: all 0.15s;
+}
+.version-back-btn:hover { background: #334155; color: #f1f5f9; }
+
+.version-detail {
+  padding: 8px 0;
+}
+.version-detail h4 {
+  font-size: 14px; font-weight: 600; margin-bottom: 12px;
+  color: #f1f5f9;
+}
+.version-summary-table {
+  width: 100%; font-size: 12px;
+  border-collapse: collapse;
+  margin-bottom: 12px;
+}
+.version-summary-table tr td {
+  padding: 6px 8px;
+  border-bottom: 1px solid #334155;
+}
+.version-summary-table tr td:first-child {
+  color: #64748b; width: 100px;
+}
+.version-summary-table tr td:last-child {
+  color: #e2e8f0;
+}
+.version-detail-actions {
+  display: flex; gap: 6px; margin-top: 12px;
+}
+.version-detail-actions button {
+  padding: 6px 14px; border-radius: 6px;
+  border: 1px solid #10b981; background: transparent;
+  color: #34d399; font-size: 12px; cursor: pointer;
+  transition: all 0.15s;
+}
+.version-detail-actions button:hover { background: #064e3b; }

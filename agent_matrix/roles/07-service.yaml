@@ -1,0 +1,22 @@
+name: Service
+slug: service
+role_type: sub
+description: Customer service — FAQ, tickets, user guidance, notifications, communication channels, verification
+domain: service
+managed_modules:
+  - chatbot
+  - faq
+  - tickets
+  - contacts
+  - notifications
+  - email
+  - sms
+  - im_gateway
+  - enterprise_verify
+  - verification
+provider_model_id: 401638
+provider: kimi
+model_name: moonshot-v1-32k
+system_prompt: prompts/sub_chatbot_prompt.md
+is_system: true
+is_active: 1

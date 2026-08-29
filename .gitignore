@@ -29,12 +29,12 @@ _test_output.txt
 
 # Temp scripts & artifacts
 tmp/
-VeroRun*
+/VeroRun*
 !veroguard/systemd/verorun-guardian*
 do_git*
 git_output*.log
 verify*
-!deploy/scripts/verify-research-payload.sh
+!deploy/scripts/verify-edition-payload.sh
 deploy_paramiko.py
 check_index.py
 t_git.py
@@ -72,6 +72,8 @@ verify_*.py
 # DB backups
 backups/
 data/*.db
+data/*.db-shm
+data/*.db-wal
 **/data/*.mmdb
 
 # Runtime SQLite databases (plugins own DBs are created at runtime)

@@ -1,0 +1,103 @@
+{
+  "name": "Enterprise Verification",
+  "name_i18n_key": "plugin.name",
+  "identifier": "enterprise_verify",
+  "python_dependencies": {
+    "required": [],
+    "optional": {}
+  },
+  "version": "1.4.2",
+  "category": "system",
+  "tags": [
+    "verification",
+    "enterprise",
+    "ocr",
+    "kyc",
+    "audit"
+  ],
+  "icon": "enterprise_verify",
+  "icon_url": "",
+  "screenshots": [],
+  "readme_url": "",
+  "description": "Enterprise Verification — OCR business license recognition + AI auto-audit",
+  "author": "VeroRun",
+  "min_app_version": "0.10.0",
+  "dependencies": {},
+  "enabled": true,
+  "admin_url": "",
+  "admin_label": "Enterprise Verification Settings",
+  "config": {
+    "siliconflow_api_key": "",
+    "auto_approve": false,
+    "max_retry": 3
+  },
+  "permissions": [
+    "api:read",
+    "api:write",
+    "network:request"
+  ],
+  "admin_permissions": [
+    "admin:access"
+  ],
+  "agent_role": "service",
+  "capabilities": [
+    "enterprise.verify.ocr",
+    "enterprise.verify.audit"
+  ],
+  "dashboard": {
+    "stats": [
+      {
+        "key": "pending",
+        "title": "待审核",
+        "type": "counter"
+      },
+      {
+        "key": "approved",
+        "title": "已通过",
+        "type": "counter"
+      },
+      {
+        "key": "rejected",
+        "title": "已驳回",
+        "type": "counter"
+      }
+    ]
+  },
+  "hooks": {
+    "provides": [
+      "enterprise_verify/submit",
+      "enterprise_verify/audit",
+      "enterprise_verify/ocr_recognize"
+    ],
+    "listens": []
+  },
+  "menu": {
+    "group": "Users & Support",
+    "key": "enterprise_verify",
+    "icon": "enterprise_verify",
+    "label": "Enterprise Verification"
+  },
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "siliconflow_api_key": {
+        "type": "string",
+        "title": "SiliconFlow API Key",
+        "default": "",
+        "description": "API Key for DeepSeek-OCR + AI audit"
+      },
+      "auto_approve": {
+        "type": "boolean",
+        "title": "Auto Approve",
+        "default": false,
+        "description": "Auto-approve high-confidence OCR results"
+      },
+      "max_retry": {
+        "type": "integer",
+        "title": "Max Retry",
+        "default": 3,
+        "description": "Max OCR retry attempts"
+      }
+    }
+  }
+}

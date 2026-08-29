@@ -1,0 +1,16 @@
+{
+  "name": "纯净白",
+  "slug": "light",
+  "version": "1.0.0",
+  "author": "VeroRun",
+  "description": "纯净白色风格 — 适合教育、咨询、法律服务等专业行业。干净、通透、可信赖。",
+  "industry": "education",
+  "tags": ["light", "clean", "professional", "education", "consulting"],
+  "sites": ["main", "platform"],
+  "variables": {
+    "preset": "light",
+    "font_scale": 1.0,
+    "border_radius": 10
+  },
+  "builtin": false
+}

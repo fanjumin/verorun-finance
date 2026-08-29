@@ -1,0 +1,88 @@
+﻿window.l_sms=function(){
+  document.getElementById("pt").textContent="{{ _('SMS Management') }}";
+  var h='<div class="cd"><div class="st">📱 {{ _('SMS Template Management') }}</div><div style="margin-bottom:12px"><button class="btn bp" onclick="showSmsForm()">+ {{ _('Add Template') }}</button></div>';
+  h+='<div id="smsForm" style="display:none;margin-bottom:16px" class="cd"><div class="st" id="smsFormTitle">{{ _('Add Template') }}</div>';
+  h+='<div class="g2">';
+  h+='<div><div style="font-size:11px;color:var(--dim)">{{ _('Categories') }}</div><select class="sl" id="smsCat" style="width:100%"><option value="captcha">{{ _('Verification Code') }}</option><option value="notice">{{ _('SMS Notification') }}</option><option value="promo">{{ _('SMS Promotion') }}</option></select></div>';
+  h+='<div><div style="font-size:11px;color:var(--dim)">{{ _('Name') }}</div><input class="in" id="smsName" placeholder="如：{{ _('New User Registration') }}" style="width:100%"></div>';
+  h+='<div><div style="font-size:11px;color:var(--dim)">{{ _('Templates') }} CODE</div><input class="in" id="smsCode" placeholder="SMS_xxxxxxxxx" style="width:100%"></div>';
+  h+='<div><div style="font-size:11px;color:var(--dim)">{{ _('Notes') }}</div><input class="in" id="smsNote" placeholder="{{ _('Usage Description') }}" style="width:100%"></div>';
+  h+='</div>';
+  h+='<div style="margin-top:10px"><button class="btn bp" onclick="saveSmsTemplate()">{{ _('Save') }}</button> <button class="btn bo" onclick="document.getElementById(\'smsForm\').style.display=\'none\'">{{ _('Cancel') }}</button><input type="hidden" id="smsEditId" value=""></div></div>';
+  h+='<div id="smsTemplates"></div></div>';
+  document.getElementById("mc").innerHTML=h;
+  loadSmsTemplates();
+};
+
+function loadSmsTemplates(){
+  fetch("/admin/sms/templates",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success||!d.data){document.getElementById("smsTemplates").innerHTML='<div class="em">{{ _('Load failed') }}</div>';return}
+    var cats=d.data.categories;
+    var h="";
+    var order=["captcha","notice","promo"];
+    order.forEach(function(k){
+      var c=cats[k];
+      if(!c||!c.items||!c.items.length){return}
+      h+='<div class="cd" style="margin-bottom:12px"><div class="st">'+c.title+' ('+c.items.length+')</div><table><tr><th>{{ _('Name') }}</th><th>{{ _('Templates') }} CODE</th><th>{{ _('Notes') }}</th><th>{{ _('Actions') }}</th></tr>';
+      c.items.forEach(function(t){
+        h+='<tr><td>'+esc(t.name)+'</td><td style="font-family:monospace;color:var(--accent)">'+esc(t.template_code)+'</td><td style="color:var(--dim)">'+esc(t.note)+'</td>';
+        h+='<td><button class="btn bo bs" onclick="editSmsTemplate('+t.id+',\''+t.category+'\',\''+esc(t.name)+'\',\''+esc(t.template_code)+'\',\''+esc(t.note)+'\')">{{ _('Edit') }}</button> ';
+        h+='<button class="btn bo bs" onclick="deleteSmsTemplate('+t.id+')">{{ _('Delete') }}</button></td></tr>';
+      });
+      h+='</table></div>';
+    });
+    if(!h){h='<div class="em">{{ _('No Templates') }}，{{ _('Click Above') }}「{{ _('Add Template') }}」{{ _('Create') }}</div>'}
+    document.getElementById("smsTemplates").innerHTML=h;
+  }).catch(function(){document.getElementById("smsTemplates").innerHTML='<div class="em">{{ _('Load failed') }}</div>'})
+}
+
+function showSmsForm(){
+  document.getElementById("smsForm").style.display="block";
+  document.getElementById("smsFormTitle").textContent="{{ _('Add Template') }}";
+  document.getElementById("smsEditId").value="";
+  document.getElementById("smsCat").value="captcha";
+  document.getElementById("smsName").value="";
+  document.getElementById("smsCode").value="";
+  document.getElementById("smsNote").value="";
+}
+
+function saveSmsTemplate(){
+  var eid=document.getElementById("smsEditId").value;
+  var cat=document.getElementById("smsCat").value;
+  var name=document.getElementById("smsName").value.trim();
+  var code=document.getElementById("smsCode").value.trim();
+  var note=document.getElementById("smsNote").value.trim();
+  if(!name||!code){alert("{{ _('Name & Template') }} CODE {{ _('Required') }}");return}
+  var url="/admin/sms/templates";
+  var method="POST";
+  var body={category:cat,name:name,template_code:code,note:note};
+  if(eid){
+    url+="/"+eid;
+    method="PUT";
+    body={name:name,template_code:code,note:note};
+  }
+  fetch(url,{method:method,headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify(body)}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){document.getElementById("smsForm").style.display="none";loadSmsTemplates();showToast("{{ _('Saved') }}","success")}
+    else{alert(d.error||"{{ _('Save failed') }}")}
+  }).catch(function(){alert("{{ _('Save failed') }}")})
+}
+
+function editSmsTemplate(id,cat,name,code,note){
+  document.getElementById("smsForm").style.display="block";
+  document.getElementById("smsFormTitle").textContent="{{ _('Edit Template') }}";
+  document.getElementById("smsEditId").value=id;
+  document.getElementById("smsCat").value=cat;
+  document.getElementById("smsName").value=name;
+  document.getElementById("smsCode").value=code;
+  document.getElementById("smsNote").value=note;
+}
+
+function deleteSmsTemplate(id){
+  if(!confirm("{{ _('Delete this template?') }}"))return;
+  fetch("/admin/sms/templates/"+id,{method:"DELETE",headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){loadSmsTemplates();showToast("{{ _('Deleted') }}","success")}
+    else{alert(d.error||"{{ _('Delete failed') }}")}
+  }).catch(function(){alert("{{ _('Delete failed') }}")})
+}
+
+// ── {{ _('Omni-Media Creation') }}（{{ _('Posts Only') }}）──

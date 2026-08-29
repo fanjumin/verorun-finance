@@ -1,0 +1,191 @@
+/* ════════════════════════════════════════════════════════
+   VeroRun Admin — 三主题实时切换 (themes.css)
+   ├─ dark  赛博暗夜（默认，与现有样式完全一致）
+   ├─ light 云霁白（借鉴阿里云 / Google Cloud 控制台）
+   └─ slate 晨雾灰（中间色调）
+   切换机制：<html data-theme="dark|slate|light"> + localStorage
+   ════════════════════════════════════════════════════════ */
+
+/* ── 1. 赛博暗夜（默认主题，无需 data-theme 属性）── */
+:root {
+  /* 基础色板 */
+  --bg: #0a0a0a;
+  --card: #111118;
+  --border: rgba(255,255,255,0.06);
+  --text: #e0e0e0;
+  --muted: #8b8b8b;
+  --dim: #555;
+  /* 品牌强调色 */
+  --accent: #00f5ff;
+  --accent2: #a020f0;
+  --accent3: #00ff9f;
+  --radius: 8px;
+  /* 侧边栏 */
+  --sidebar-bg: rgba(13,13,24,0.88);
+  --sidebar-border: rgba(0,245,255,0.08);
+  --glow-accent: rgba(0,245,255,0.12);
+  /* 派生变量（原硬编码颜色变量化，保证三主题完整覆盖） */
+  --top-bg: rgba(10,10,10,0.6);
+  --hover-bg: rgba(255,255,255,0.03);
+  --ver-color: rgba(255,255,255,0.2);
+  --toast-bg: #1a1a2e;
+  --quill-bg: #1a1a2e;
+  --success-bg: rgba(0,212,170,0.12);
+  --danger-bg: rgba(248,81,73,0.1);
+  --warn-bg: rgba(240,192,64,0.12);
+  --success: #00d68f;
+  --danger: #f85149;
+  --warn: #f0c040;
+  --info: #58a6ff;
+
+  /* ── Design-System 兼容变量（workflow-editor 等组件使用，别名映射→三主题自动跟随）── */
+  --bg-deep: var(--bg);
+  --bg-elevated: var(--card);
+  --bg-card: var(--card);
+  --bg-glass: rgba(15,15,26,0.72);
+  --bg-overlay: rgba(0,0,0,0.7);
+  --text-dim: var(--muted);
+  --text-muted: var(--dim);
+  --text-high: var(--text);
+  --indigo: #6366f1;
+  --blue: var(--accent);
+  --violet: var(--accent2);
+  --green: var(--accent3);
+  --gold: var(--warn);
+  --rose: var(--danger);
+  --cyan: var(--info);
+  --orange: #f97316;
+  --radius-sm: 6px;
+  --radius-full: 9999px;
+  --shadow-sm: 0 2px 8px rgba(0,0,0,0.3);
+  --shadow-md: 0 8px 32px rgba(0,0,0,0.4);
+  --shadow-lg: 0 20px 60px rgba(0,0,0,0.5);
+  --shadow-glow: 0 0 40px rgba(99,102,241,0.15);
+  --font-cn: -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC",sans-serif;
+  --font-en: 'Inter',system-ui,-apple-system,sans-serif;
+}
+
+/* ── 2. 云霁白（浅色专业风）── */
+:root[data-theme="light"] {
+  --bg: #f5f7fa;
+  --card: #ffffff;
+  --border: rgba(15,23,42,0.08);
+  --text: #1f2329;
+  --muted: #5f6b7a;
+  --dim: #8a94a6;
+  --accent: #1677ff;
+  --accent2: #2f6bff;
+  --accent3: #00b578;
+  --radius: 8px;
+  --sidebar-bg: #ffffff;
+  --sidebar-border: rgba(15,23,42,0.06);
+  --glow-accent: rgba(22,119,255,0.08);
+  --top-bg: rgba(255,255,255,0.85);
+  --hover-bg: rgba(15,23,42,0.04);
+  --ver-color: rgba(15,23,42,0.35);
+  --toast-bg: #ffffff;
+  --quill-bg: #ffffff;
+  --success-bg: rgba(0,181,120,0.10);
+  --danger-bg: rgba(245,63,63,0.08);
+  --warn-bg: rgba(250,173,20,0.14);
+  --success: #00b578;
+  --danger: #f53f3f;
+  --warn: #faad14;
+  --info: #1677ff;
+  /* 插件兼容变量（health 等 iframe 页面使用） */
+  --card2: #f2f5f9;
+  --blue: #1677ff;
+  --green: #00b578;
+  --yellow: #faad14;
+  --red: #f53f3f;
+  --glass: rgba(255,255,255,0.85);
+
+  /* ── Design-System 兼容变量（workflow-editor 等组件使用，别名映射→三主题自动跟随）── */
+  --bg-deep: var(--bg);
+  --bg-elevated: var(--card);
+  --bg-card: var(--card);
+  --bg-glass: var(--glass);
+  --text-dim: var(--muted);
+  --text-muted: var(--dim);
+  --text-high: var(--text);
+  --indigo: var(--accent);
+  --violet: var(--accent2);
+  --gold: var(--warn);
+  --rose: var(--danger);
+  --cyan: var(--info);
+  --orange: #f97316;
+  --radius-sm: 6px;
+  --radius-full: 9999px;
+  --shadow-sm: 0 2px 8px rgba(15,23,42,0.08);
+  --shadow-md: 0 8px 24px rgba(15,23,42,0.12);
+  --shadow-lg: 0 16px 40px rgba(15,23,42,0.16);
+  --shadow-glow: 0 0 24px rgba(22,119,255,0.18);
+  --font-cn: -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC",sans-serif;
+  --font-en: 'Inter',system-ui,-apple-system,sans-serif;
+}
+
+/* ── 3. 晨雾灰（中间色调，介于深黑与亮白之间，高对比）── */
+:root[data-theme="slate"] {
+  --bg: #454c5c;
+  --card: #545c6e;
+  --border: rgba(255,255,255,0.16);
+  --text: #ffffff;
+  --muted: #c9d0db;
+  --dim: #a3aabd;
+  --accent: #00f5ff;
+  --accent2: #a020f0;
+  --accent3: #00ff9f;
+  --radius: 8px;
+  --sidebar-bg: rgba(58,65,80,0.92);
+  --sidebar-border: rgba(0,245,255,0.12);
+  --glow-accent: rgba(0,245,255,0.14);
+  --top-bg: rgba(69,76,92,0.75);
+  --hover-bg: rgba(255,255,255,0.10);
+  --ver-color: rgba(255,255,255,0.38);
+  --toast-bg: #545c6e;
+  --quill-bg: #545c6e;
+  --success-bg: rgba(0,214,143,0.16);
+  --danger-bg: rgba(248,81,73,0.14);
+  --warn-bg: rgba(240,192,64,0.16);
+  --success: #2ce8b3;
+  --danger: #ff6b66;
+  --warn: #ffcc66;
+  --info: #66b3ff;
+  /* 插件兼容变量（health 等 iframe 页面使用） */
+  --card2: #626b7e;
+  --blue: #00f5ff;
+  --green: #2ce8b3;
+  --yellow: #ffcc66;
+  --red: #ff6b66;
+  --glass: rgba(84,92,110,0.85);
+
+  /* ── Design-System 兼容变量（workflow-editor 等组件使用，别名映射→三主题自动跟随）── */
+  --bg-deep: var(--bg);
+  --bg-elevated: var(--card);
+  --bg-card: var(--card);
+  --bg-glass: var(--glass);
+  --text-dim: var(--muted);
+  --text-muted: var(--dim);
+  --text-high: var(--text);
+  --indigo: var(--accent);
+  --violet: var(--accent2);
+  --gold: var(--warn);
+  --rose: var(--danger);
+  --cyan: var(--info);
+  --orange: #f97316;
+  --radius-sm: 6px;
+  --radius-full: 9999px;
+  --shadow-sm: 0 2px 8px rgba(0,0,0,0.3);
+  --shadow-md: 0 8px 32px rgba(0,0,0,0.4);
+  --shadow-lg: 0 20px 60px rgba(0,0,0,0.5);
+  --shadow-glow: 0 0 40px rgba(0,245,255,0.12);
+  --font-cn: -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC",sans-serif;
+  --font-en: 'Inter',system-ui,-apple-system,sans-serif;
+}
+
+/* ── 主题切换器（顶栏并列 3 个图标按钮，直接点选）── */
+.theme-wrap{display:inline-flex;align-items:center;gap:6px}
+.ts-btn{display:flex;align-items:center;justify-content:center;background:transparent;border:1px solid var(--border);color:var(--dim);width:28px;height:28px;border-radius:6px;cursor:pointer;transition:all .2s}
+.ts-btn svg{width:15px;height:15px}
+.ts-btn:hover{border-color:var(--accent);color:var(--accent)}
+.ts-btn.active{border-color:var(--accent);color:var(--accent);box-shadow:0 0 8px var(--glow-accent)}

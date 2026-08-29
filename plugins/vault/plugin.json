@@ -1,0 +1,172 @@
+{
+  "name": "Vault",
+  "name_i18n_key": "plugin.name",
+  "identifier": "vault",
+  "version": "2.5.3",
+  "description": "Data vault — full/incremental backup, AES-256-GCM encryption, scheduled backups, audit logging, multi-target storage",
+  "author": "VeroRun",
+  "min_app_version": "0.10.0",
+  "agent_role": "ops",
+  "capabilities": [
+    "vault.create_backup",
+    "vault.list_backups",
+    "vault.restore",
+    "vault.audit"
+  ],
+  "category": "system",
+  "icon": "vault",
+  "tags": [
+    "backup",
+    "storage",
+    "system",
+    "encryption",
+    "scheduler"
+  ],
+  "python_dependencies": {
+    "required": [
+      "croniter",
+      "cryptography",
+      "paramiko",
+      "requests"
+    ],
+    "optional": {
+      "boto3": "S3 storage adapter",
+      "oss2": "Alibaba Cloud OSS adapter",
+      "azure-storage-blob": "Azure Blob Storage adapter",
+      "google-cloud-storage": "Google Cloud Storage adapter"
+    }
+  },
+  "dependencies": {},
+  "enabled": true,
+  "config": {
+    "backup_dir": "data/vault",
+    "keep_days": 30,
+    "include_files": true,
+    "include_config": true,
+    "encryption": {
+      "enabled": false,
+      "algorithm": "aes256-gcm",
+      "key_source": "env"
+    },
+    "compression": {
+      "algorithm": "gzip",
+      "level": 6
+    },
+    "storage": {
+      "type": "local",
+      "s3_bucket": "",
+      "s3_region": "",
+      "s3_access_key": "",
+      "s3_secret_key": "",
+      "oss_endpoint": "",
+      "oss_bucket": "",
+      "oss_access_key": "",
+      "oss_secret_key": ""
+    },
+    "schedule": {
+      "enabled": false,
+      "interval_hours": 24
+    },
+    "notifications": {
+      "email": {
+        "enabled": false,
+        "smtp_host": "",
+        "smtp_port": 465,
+        "smtp_user": "",
+        "smtp_password": "",
+        "recipients": []
+      },
+      "webhook": {
+        "enabled": false,
+        "url": "",
+        "headers": {}
+      },
+      "feishu": {
+        "enabled": false,
+        "webhook_url": ""
+      },
+      "dingtalk": {
+        "enabled": false,
+        "webhook_url": ""
+      }
+    }
+  },
+  "permissions": [
+    "vault.read",
+    "vault.write",
+    "vault.download",
+    "vault.admin"
+  ],
+  "hooks": {
+    "provides": [
+      "vault/create_backup",
+      "vault/list_backups",
+      "vault/delete_backup",
+      "vault/health_check",
+      "vault/audit_log"
+    ],
+    "listens": []
+  },
+  "menu": {
+    "group": "System",
+    "key": "vault",
+    "icon": "vault",
+    "label": "Vault"
+  },
+  "dashboard": {
+    "stats": [
+      {
+        "key": "total_backups",
+        "title": "备份总数",
+        "type": "counter"
+      },
+      {
+        "key": "success_backups",
+        "title": "成功备份",
+        "type": "counter"
+      },
+      {
+        "key": "total_schedules",
+        "title": "备份计划",
+        "type": "counter"
+      }
+    ]
+  },
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "backup_dir": {
+        "type": "string",
+        "default": "data/vault"
+      },
+      "keep_days": {
+        "type": "integer",
+        "default": 30,
+        "minimum": 1
+      },
+      "include_files": {
+        "type": "boolean",
+        "default": true
+      },
+      "include_config": {
+        "type": "boolean",
+        "default": true
+      },
+      "encryption": {
+        "type": "object"
+      },
+      "compression": {
+        "type": "object"
+      },
+      "storage": {
+        "type": "object"
+      },
+      "schedule": {
+        "type": "object"
+      },
+      "notifications": {
+        "type": "object"
+      }
+    }
+  }
+}

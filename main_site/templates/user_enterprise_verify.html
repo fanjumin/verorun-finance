@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ _('Enterprise Verification') }} — {{ site_name }}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f5f6fa;color:#1a1a2e;min-height:100vh}
+.header{background:#fff;border-bottom:1px solid #e2e8f0;padding:16px 24px;display:flex;align-items:center;gap:12px}
+.header h1{font-size:18px;font-weight:600}
+.header a{color:#667eea;text-decoration:none;font-size:13px}
+.container{max-width:680px;margin:40px auto;padding:0 16px}
+.card{background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.06);padding:32px;margin-bottom:24px}
+.card h2{font-size:16px;font-weight:600;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid #e2e8f0}
+.step{display:flex;gap:12px;margin-bottom:24px;align-items:flex-start}
+.step-num{width:28px;height:28px;background:#667eea;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex-shrink:0}
+.step-body{flex:1}
+.step-body h3{font-size:14px;font-weight:500;margin-bottom:6px}
+.step-body p{font-size:12px;color:#666;line-height:1.5}
+.upload-zone{border:2px dashed #cbd5e1;border-radius:10px;padding:32px;text-align:center;cursor:pointer;transition:all .2s;margin-bottom:16px}
+.upload-zone:hover{border-color:#667eea;background:#f8f9ff}
+.upload-zone.has-image{border-style:solid;border-color:#667eea;padding:12px}
+.upload-zone img{max-width:100%;max-height:300px;border-radius:6px;display:block;margin:0 auto}
+.upload-zone .upload-icon{font-size:36px;margin-bottom:8px;opacity:.5}
+.upload-zone .upload-text{font-size:13px;color:#888}
+.upload-zone input[type=file]{display:none}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:10px 24px;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer;border:none;transition:all .2s}
+.btn-primary{background:#667eea;color:#fff}
+.btn-primary:hover{background:#5a6fd6}
+.btn-primary:disabled{opacity:.5;cursor:not-allowed}
+.btn-outline{background:transparent;color:#667eea;border:1px solid #667eea}
+.btn-outline:hover{background:#f0f2ff}
+.btn-success{background:#10b981;color:#fff}
+.btn-success:hover{background:#059669}
+.result-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.result-item{padding:8px 12px;background:#f8f9ff;border-radius:6px;font-size:12px}
+.result-item .label{color:#888;font-size:11px;margin-bottom:2px}
+.result-item .value{font-weight:500;color:#1a1a2e;word-break:break-all}
+.result-item.full{grid-column:1/-1}
+.spinner{width:20px;height:20px;border:2px solid #e2e8f0;border-top-color:#667eea;border-radius:50%;animation:spin .6s linear infinite;display:inline-block;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+.toast{position:fixed;top:24px;right:24px;background:#1a1a2e;color:#fff;padding:12px 20px;border-radius:8px;font-size:13px;z-index:9999;opacity:0;transform:translateY(-10px);transition:all .3s;max-width:360px}
+.toast.show{opacity:1;transform:translateY(0)}
+.toast.success{background:#10b981}
+.toast.error{background:#ef4444}
+.badge{display:inline-block;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:500}
+.badge-success{background:#d1fae5;color:#065f46}
+.badge-pending{background:#fef3c7;color:#92400e}
+.badge-muted{background:#f1f5f9;color:#64748b}
+.status-bar{display:flex;align-items:center;gap:8px;padding:12px 16px;border-radius:8px;font-size:13px;margin-bottom:16px}
+.status-bar.verified{background:#d1fae5;color:#065f46}
+.status-bar.pending{background:#fef3c7;color:#92400e}
+.status-bar.none{background:#f1f5f9;color:#64748b}
+@media(max-width:480px){.result-grid{grid-template-columns:1fr}.container{margin:16px auto}.card{padding:20px}}
+</style>
+</head>
+<body>
+<div class="header">
+  <a href="/">&larr; {{ _('Back to Home') }}</a>
+  <h1>{{ _('Enterprise Verification') }}</h1>
+</div>
+<div class="container" id="app">
+  <!-- Status Card -->
+  <div class="card" id="statusCard">
+    <div id="statusBar" class="status-bar none"><span class="spinner"></span> {{ _('Loading...') }}</div>
+    <div id="statusContent">
+      <div id="alreadyVerified" style="display:none">
+        <div class="result-grid">
+          <div class="result-item full"><div class="label">{{ _('Company Name') }}</div><div class="value" id="svName"></div></div>
+          <div class="result-item"><div class="label">{{ _('Unified Social Credit Code') }}</div><div class="value" id="svTaxId"></div></div>
+          <div class="result-item"><div class="label">{{ _('Company Address') }}</div><div class="value" id="svAddr"></div></div>
+          <div class="result-item full"><div class="label">{{ _('Verified At') }}</div><div class="value" id="svAt"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Upload Card -->
+  <div class="card" id="uploadCard">
+    <h2>{{ _('Upload Business License') }}</h2>
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-body">
+        <h3>{{ _('Upload License Image') }}</h3>
+        <p>{{ _('Supports JPG/PNG, please take a clear photo') }}</p>
+      </div>
+    </div>
+    <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
+      <div id="uploadPlaceholder">
+        <div class="upload-icon">&#128196;</div>
+        <div class="upload-text">{{ _('Click to upload or drag image here') }}</div>
+      </div>
+      <img id="imagePreview" style="display:none">
+      <input type="file" id="fileInput" accept="image/*" onchange="onFileSelect(event)">
+    </div>
+
+    <div class="step" style="margin-top:16px">
+      <div class="step-num">2</div>
+      <div class="step-body">
+        <h3>{{ _('Recognize License') }}</h3>
+        <p>{{ _('AI will automatically extract business info') }}</p>
+      </div>
+    </div>
+    <button class="btn btn-primary" id="ocrBtn" onclick="startOCR()" disabled>
+      {{ _('Start OCR') }}
+    </button>
+  </div>
+
+  <!-- Result Card -->
+  <div class="card" id="resultCard" style="display:none">
+    <h2>{{ _('Review Recognition Result') }}</h2>
+    <p style="font-size:12px;color:#888;margin-bottom:16px">{{ _('Please review the recognized info before submitting') }}</p>
+    <div class="result-grid" id="ocrResult"></div>
+    <div style="margin-top:20px;display:flex;gap:10px">
+      <button class="btn btn-success" id="submitBtn" onclick="submitVerify()">{{ _('Confirm Submit') }}</button>
+      <button class="btn btn-outline" onclick="resetForm()">{{ _('Re-upload') }}</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const TOKEN = (function(){
+  var c = document.cookie.split('; ');
+  for(var i=0;i<c.length;i++){var p=c[i].split('=');if(p[0]==='sso_token'||p[0]==='tm_token')return p[1]}
+  return localStorage.getItem('sso_token')||localStorage.getItem('tm_token')||''
+})();
+
+var currentImageBase64 = '';
+var currentOcrData = {};
+
+function showToast(msg, type){
+  var t=document.createElement('div');t.className='toast '+(type||'')+' show';
+  t.textContent=msg;document.body.appendChild(t);
+  setTimeout(function(){t.classList.remove('show');setTimeout(function(){t.remove()},300)},3000);
+}
+
+function esc(s){if(!s)return'';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+
+function onFileSelect(e){
+  var file=e.target.files[0];
+  if(!file)return;
+  var reader=new FileReader();
+  reader.onload=function(ev){
+    currentImageBase64=ev.target.result;
+    document.getElementById('imagePreview').src=currentImageBase64;
+    document.getElementById('imagePreview').style.display='block';
+    document.getElementById('uploadPlaceholder').style.display='none';
+    document.getElementById('uploadZone').classList.add('has-image');
+    document.getElementById('ocrBtn').disabled=false;
+  };
+  reader.readAsDataURL(file);
+}
+
+function startOCR(){
+  if(!currentImageBase64){showToast('{{ _('Please upload the license image first') }}','error');return}
+  var btn=document.getElementById('ocrBtn');
+  btn.disabled=true;btn.innerHTML='<span class="spinner"></span> {{ _('Recognizing...') }}';
+  fetch('/user/enterprise/verify/ocr',{
+    method:'POST',headers:{"Authorization":"Bearer "+TOKEN,"Content-Type":"application/json"},
+    body:JSON.stringify({image:currentImageBase64})
+  }).then(function(r){return r.json()}).then(function(d){
+    btn.innerHTML='{{ _('Start OCR') }}';btn.disabled=false;
+    if(!d.success){showToast(d.error||'{{ _('Recognition Failed') }}','error');return}
+    currentOcrData=d.data;
+    showOcrResult(d.data);
+  }).catch(function(){
+    btn.innerHTML='{{ _('Start OCR') }}';btn.disabled=false;
+    showToast('{{ _('Network error, please retry') }}','error');
+  });
+}
+
+function showOcrResult(data){
+  var fields=[
+    ['company_name','{{ _('Company Name') }}'],
+    ['reg_num','{{ _('Unified Social Credit Code') }}'],
+    ['legal_person','{{ _('Legal Representative') }}'],
+    ['address','{{ _('Company Address') }}'],
+    ['registered_capital','{{ _('Registered Capital') }}'],
+    ['business_scope','{{ _('Business Scope') }}'],
+  ];
+  var h='';
+  fields.forEach(function(f){
+    var val=data[f[0]]||'';
+    h+='<div class="result-item'+(f[0]==='business_scope'?' full':'')+'">';
+    h+='<div class="label">'+f[1]+'</div>';
+    h+='<div class="value">'+(val?esc(val):'<span style="color:#ccc">-</span>')+'</div>';
+    h+='</div>';
+  });
+  document.getElementById('ocrResult').innerHTML=h;
+  document.getElementById('resultCard').style.display='block';
+  document.getElementById('resultCard').scrollIntoView({behavior:'smooth'});
+}
+
+function submitVerify(){
+  if(!currentOcrData.company_name||!currentOcrData.reg_num){
+    showToast('{{ _('Company name and credit code are required') }}','error');return;
+  }
+  var btn=document.getElementById('submitBtn');
+  btn.disabled=true;btn.innerHTML='<span class="spinner"></span> {{ _('Submitting...') }}';
+  fetch('/user/enterprise/verify/submit',{
+    method:'POST',headers:{"Authorization":"Bearer "+TOKEN,"Content-Type":"application/json"},
+    body:JSON.stringify(currentOcrData)
+  }).then(function(r){return r.json()}).then(function(d){
+    btn.innerHTML='{{ _('Confirm Submit') }}';btn.disabled=false;
+    if(!d.success){showToast(d.error||'{{ _('Submit Failed') }}','error');return}
+    showToast(d.message,'success');
+    if(d.data.status==='approve'){
+      document.getElementById('uploadCard').style.display='none';
+      document.getElementById('resultCard').style.display='none';
+    }
+    loadStatus();
+  }).catch(function(){
+    btn.innerHTML='{{ _('Confirm Submit') }}';btn.disabled=false;
+    showToast('{{ _('Network error, please retry') }}','error');
+  });
+}
+
+function resetForm(){
+  currentImageBase64='';currentOcrData={};
+  document.getElementById('fileInput').value='';
+  document.getElementById('imagePreview').style.display='none';
+  document.getElementById('uploadPlaceholder').style.display='block';
+  document.getElementById('uploadZone').classList.remove('has-image');
+  document.getElementById('ocrBtn').disabled=true;
+  document.getElementById('resultCard').style.display='none';
+}
+
+function loadStatus(){
+  fetch('/user/enterprise/verify/status',{headers:{"Authorization":"Bearer "+TOKEN}})
+    .then(function(r){return r.json()}).then(function(d){
+      if(!d.success||!d.data)return;
+      var dt=d.data;
+      var bar=document.getElementById('statusBar');
+      var vd=document.getElementById('alreadyVerified');
+      if(dt.verified){
+        bar.className='status-bar verified';
+        bar.innerHTML='&#10003; {{ _('Enterprise Verified') }}';
+        vd.style.display='block';
+        document.getElementById('svName').textContent=dt.enterprise_name||'-';
+        document.getElementById('svTaxId').textContent=dt.enterprise_tax_id||'-';
+        document.getElementById('svAddr').textContent=dt.enterprise_address||'-';
+        document.getElementById('svAt').textContent=dt.enterprise_verified_at||'-';
+        document.getElementById('uploadCard').style.display='none';
+        document.getElementById('resultCard').style.display='none';
+      }else if(dt.verification_status==='pending'){
+        bar.className='status-bar pending';
+        bar.innerHTML='&#8987; {{ _('Verification in progress, please wait') }}';
+        vd.style.display='none';
+      }else if(dt.verification_status==='rejected'){
+        bar.className='status-bar none';
+        bar.innerHTML='&#10060; {{ _('Enterprise Verification Failed:') }}'+(dt.review_notes||'{{ _('Please contact admin') }}');
+        vd.style.display='none';
+      }else{
+        bar.className='status-bar none';
+        bar.innerHTML='{{ _('No enterprise verification yet') }}';
+        vd.style.display='none';
+      }
+    }).catch(function(){});
+}
+
+// Init
+loadStatus();
+</script>
+</body>
+</html>

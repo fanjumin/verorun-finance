@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Schedules — VeroRun Vault</title>
+    <link rel="stylesheet" href="/admin/static/css/themes.css">
+    <link rel="stylesheet" href="/admin/vault/static/vault.css">
+</head>
+<body>
+
+<div class="vault-dashboard">
+
+    {% include 'vault_nav.html' %}
+
+    <div class="vault-page-header">
+        <h2>{{ _('Backup Schedules') }}</h2>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h3>{{ _('Schedule List') }}</h3>
+            <button class="btn btn-primary btn-sm" id="btnNewSchedule">+ {{ _('New Schedule') }}</button>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>{{ _('Name') }}</th>
+                        <th>{{ _('Cron') }}</th>
+                        <th>{{ _('Type') }}</th>
+                        <th>{{ _('Retention') }}</th>
+                        <th>{{ _('Status') }}</th>
+                        <th>{{ _('Next Run') }}</th>
+                        <th>{{ _('Actions') }}</th>
+                    </tr>
+                </thead>
+                <tbody id="scheduleTableBody">
+                    <tr><td colspan="7" class="empty-state">{{ _('Loading...') }}</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Schedule edit form (hidden by default) -->
+    <div class="card hidden" id="scheduleFormCard">
+        <div class="card-header">
+            <h3 id="scheduleFormTitle">{{ _('Create Schedule') }}</h3>
+        </div>
+        <form id="scheduleForm" class="vault-form">
+            <input type="hidden" id="schedId">
+
+            <div class="form-group">
+                <label for="schedName">{{ _('Schedule Name') }}</label>
+                <input type="text" id="schedName" class="form-input" required placeholder="{{ _('e.g. Daily Full Backup') }}">
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="schedCron">{{ _('Cron Expression') }}</label>
+                    <input type="text" id="schedCron" class="form-input" required placeholder="0 3 * * *">
+                    <span class="form-hint" id="cronPreview"></span>
+                </div>
+                <div class="form-group">
+                    <label for="schedType">{{ _('Backup Type') }}</label>
+                    <select id="schedType" class="form-input">
+                        <option value="full">{{ _('Full') }}</option>
+                        <option value="incremental">{{ _('Incremental') }}</option>
+                        <option value="differential">{{ _('Differential') }}</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="schedRetDays">{{ _('Retention Days') }}</label>
+                    <input type="number" id="schedRetDays" class="form-input" min="1" value="30">
+                </div>
+                <div class="form-group">
+                    <label for="schedRetCount">{{ _('Retention Count') }}</label>
+                    <input type="number" id="schedRetCount" class="form-input" min="1" placeholder="{{ _('keep newest N') }}">
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <button type="button" class="btn btn-outline" id="btnCancelSchedule">{{ _('Cancel') }}</button>
+                <button type="submit" class="btn btn-primary">{{ _('Save Schedule') }}</button>
+            </div>
+        </form>
+    </div>
+
+</div>
+
+<script src="/admin/vault/static/vault.js"></script>
+</body>
+</html>

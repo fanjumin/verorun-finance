@@ -1,0 +1,19 @@
+name: Builder
+slug: builder
+role_type: sub
+description: Site building expert — site creation, theme config, domain binding, page design
+domain: site_builder
+managed_modules:
+  - site_builder
+  - site_domains
+  - themes
+  - design_tokens
+  - site_blocks
+  - site_configs
+  - site_plans
+provider_model_id: 401638
+provider: siliconflow
+model_name: deepseek-ai/DeepSeek-V3
+system_prompt: prompts/sub_builder_prompt.md
+is_system: true
+is_active: 1

@@ -1,0 +1,155 @@
+﻿<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>{{ brand.site_name_cn if brand and brand.site_name_cn else brand.software_name if brand else '' }}</title>
+<link rel="icon" type="image/png" sizes="32x32" href="{{ brand.favicon_url if brand and brand.favicon_url else '/static/favicon-32x32.png' }}">
+<link href="/static/css/fonts.css" rel="stylesheet"/>
+<link rel="stylesheet" href="/static/css/landing.css">
+<link rel="stylesheet" href="/static/puzzle-captcha.css">
+<link rel="stylesheet" href="/static/css/login.css">
+</head>
+<body>
+<div class="login-page">
+
+<div class="login-bg"></div>
+<div class="login-bg-grid"></div>
+
+<div class="toast-wrap" id="toastWrap"></div>
+
+<div class="login-container">
+  <!-- Top header: Logo + name | slogan -->
+  <div class="login-header">
+    <div class="lh-left">
+      {% if brand and brand.logo_icon_url %}
+      <img src="{{ brand.logo_icon_url }}" alt="" class="lh-icon">
+      {% endif %}
+      <span class="lh-name">{{ brand.site_name_cn if brand and brand.site_name_cn else brand.software_name if brand else '' }}</span>
+    </div>
+    <div class="lh-right">{{ brand.slogan if brand and brand.slogan else brand.software_slogan if brand else '' }}</div>
+  </div>
+
+  <div class="login-split">
+
+    <!-- LEFT: Plans -->
+    <div class="login-left">
+      <div class="ll-plans">
+        {% if plans %}
+          {% for plan in plans[:4] %}
+          <div class="ll-plan-card">
+            <div class="ll-plan-icon">
+              {% if plan.icon %}
+              <img src="{{ plan.icon }}" alt="" class="ll-plan-icon-img">
+              {% else %}
+              <div class="ll-plan-icon-placeholder" style="background:var(--gradient-{{ loop.index % 4 }})">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.6)" stroke-width="1.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              </div>
+              {% endif %}
+            </div>
+            <div class="ll-plan-info">
+              <div class="ll-plan-name">{{ plan.name }}</div>
+              <div class="ll-plan-price">
+                <span class="ll-plan-price-num">&#165;{{ plan.price_month }}</span>
+                <span class="ll-plan-price-unit">{{ _('/month') }}</span>
+              </div>
+              <ul class="ll-plan-features">
+                {% for feat in plan.features[:3] %}
+                <li>
+                  <svg class="ll-feat-check" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>
+                  {{ feat }}
+                </li>
+                {% endfor %}
+                {% if plan.features|length > 3 %}
+                <li class="ll-plan-more">+{{ plan.features|length - 3 }}</li>
+                {% endif %}
+              </ul>
+            </div>
+          </div>
+          {% endfor %}
+        {% else %}
+          <div class="ll-plans-empty"></div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- RIGHT: Login Form (dynamic) -->
+    <div class="login-right">
+      <div class="login-card">
+
+        <!-- Dynamic Tabs — rendered by JS -->
+        <div class="login-tabs" id="loginTabs"></div>
+
+        <!-- Captcha (hidden by default) -->
+        <div class="lf-captcha" id="captchaWrap" style="display:none">
+          <div id="puzzle-captcha" data-api=""></div>
+        </div>
+
+        <!-- Dynamic Forms — rendered by JS -->
+        <div id="loginForms"></div>
+
+        <!-- Divider & Third-party (dynamic) -->
+        <div class="lf-divider" id="oauthDivider" style="display:none"><span>{{ _('Other login methods') }}</span></div>
+        <div class="lf-social-row" id="oauthProviders">
+        </div>
+
+        <!-- Dynamic Register link -->
+        <div class="lf-register" id="registerLink" style="display:none">
+          {{ _('No account?') }} <a href="/register">{{ _('Register Now') }}</a>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="login-footer">
+  {% if brand and brand.company_name %}<span class="lf-company">{{ brand.company_name }}</span>{% endif %}
+  <span>{{ brand.copyright | safe if brand and brand.copyright else '' }}</span>
+  {% if brand and brand.icp_number %}
+  <span class="lf-icp">{{ brand.icp_number | safe }}</span>
+  {% endif %}
+  {% if brand and brand.security_number %}
+  <span class="lf-security">{{ brand.security_number | safe }}</span>
+  {% endif %}
+</div>
+
+</div>
+
+<!-- i18n dictionary for JavaScript -->
+<script>
+window.__I18N__ = {
+  "Please enter 11-digit phone number": "{{ _('Please enter 11-digit phone number') }}",
+  "Verification code sent": "{{ _('Verification code sent') }}",
+  "Login successful, redirecting...": "{{ _('Login successful, redirecting...') }}",
+  "Network error, please retry": "{{ _('Network error, please retry') }}",
+  "Send failed": "{{ _('Send failed') }}",
+  "Login failed": "{{ _('Login failed') }}",
+  "Please enter verification code": "{{ _('Please enter verification code') }}",
+  "Please enter account and password": "{{ _('Please enter account and password') }}",
+  "Incorrect password": "{{ _('Incorrect password') }}",
+  "Account not found": "{{ _('Account not found') }}",
+  "No password set for this account, please use SMS login": "{{ _('No password set for this account, please use SMS login') }}",
+  "Too many login attempts, please retry in 15 minutes": "{{ _('Too many login attempts, please retry in 15 minutes') }}",
+  "Please complete the CAPTCHA challenge": "{{ _('Please complete the CAPTCHA challenge') }}",
+  "CAPTCHA expired or incomplete, please retry": "{{ _('CAPTCHA expired or incomplete, please retry') }}",
+  "Invalid or expired verification code": "{{ _('Invalid or expired verification code') }}",
+  "Get Code": "{{ _('Get Code') }}",
+  "Resend": "{{ _('Resend') }}",
+  "Use password to login": "{{ _('Use password to login') }}",
+  "By logging in you agree to": "{{ _('By logging in you agree to') }}",
+  "Service Agreement": "{{ _('Service Agreement') }}",
+  "and": "{{ _('and') }}",
+  "Privacy Policy": "{{ _('Privacy Policy') }}",
+  "Log In": "{{ _('Log In') }}",
+  "Log In / Register": "{{ _('Log In / Register') }}",
+  "Forgot password?": "{{ _('Forgot password?') }}"
+};
+function __(key) { return window.__I18N__[key] || key; }
+</script>
+
+<script src="/static/puzzle-captcha.js?v={{ version }}"></script>
+<script src="/static/js/login.js?v={{ version }}"></script>
+</body>
+</html>

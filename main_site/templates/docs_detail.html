@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+
+<html lang="{{ lang }}">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>{{ post.title }} — {{ brand.site_name_en if brand else '' }}</title>
+<meta content="{{ post.excerpt[:160] if post.excerpt else post.title }}" name="description"/>
+<link href="{{ brand.favicon_url if brand and brand.favicon_url else '/static/favicon-32x32.png' }}" rel="icon" sizes="32x32" type="image/png"/>
+<link href="/static/css/fonts.css" rel="stylesheet"/>
+<link href="/static/css/landing.css" rel="stylesheet"/>
+<style>
+.article-header{max-width:800px;margin:0 auto;padding:140px 32px 0}
+.article-header .back{color:var(--text-muted);text-decoration:none;font-size:13px;display:inline-flex;align-items:center;gap:6px;margin-bottom:20px;transition:color .25s}
+.article-header .back:hover{color:var(--text-high)}
+.article-header .cat-badge{display:inline-block;font-size:11px;padding:3px 10px;border-radius:10px;background:var(--bg-glass);color:var(--cyan);border:1px solid var(--border);margin-bottom:16px}
+.article-header h1{font-size:clamp(1.8em,3vw,2.4em);font-weight:800;color:var(--text-high);margin-bottom:12px;letter-spacing:-.01em;line-height:1.2}
+.article-header .meta{color:var(--text-muted);font-size:13px;margin-bottom:8px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.article-header .meta-divider{border-bottom:1px solid var(--border);margin:12px 0 0}
+.article-content{max-width:740px;margin:0 auto;padding:40px 32px 60px;font-size:15px;color:var(--text-dim);line-height:1.9}
+.article-content p{margin-bottom:16px}
+.article-content h2,.article-content h3{color:var(--text-high);margin:32px 0 12px;font-weight:600}
+.article-content h2{font-size:1.3em}
+.article-content h3{font-size:1.1em}
+.article-content ul,.article-content ol{margin:12px 0 12px 24px}
+.article-content li{margin-bottom:6px}
+.article-content a{color:var(--cyan);text-decoration:underline}
+.article-content blockquote{border-left:3px solid var(--indigo);padding:12px 20px;margin:16px 0;background:var(--bg-glass);border-radius:0 8px 8px 0;color:var(--text-dim)}
+.article-content code{background:var(--bg-elevated);padding:2px 6px;border-radius:4px;font-size:13px;color:var(--cyan)}
+.article-content img{max-width:100%;border-radius:var(--radius);margin:24px 0;border:1px solid var(--border)}
+.article-content pre{background:var(--bg-elevated);padding:16px;border-radius:8px;overflow-x:auto;font-size:13px;line-height:1.6;border:1px solid var(--border)}
+.article-content pre code{background:none;padding:0;color:var(--text-dim)}
+.article-footer{max-width:740px;margin:0 auto;padding:20px 32px 60px;border-top:1px solid var(--border)}
+.article-footer .tags{display:flex;gap:6px;flex-wrap:wrap}
+.article-footer .tag{font-size:11px;padding:3px 10px;border-radius:10px;background:var(--bg-glass);color:var(--text-muted);border:1px solid var(--border)}
+</style>
+</head>
+<body>
+<div id="particles-bg"></div>
+<nav class="nav">
+<div class="nav-inner">
+<a class="nav-logo" href="/">
+<div class="logo-icon">E</div>
+<span>{{ brand.site_name_en if brand else '' }}</span>
+</a>
+<button aria-label="{{ _('Menu') }}" class="mobile-toggle" onclick="toggleMobileNav()">☰</button>
+<div class="nav-links" id="navLinks">
+<a href="/services">{{ _('Services') }}</a>
+<a href="/docs">{{ _('Docs') }}</a>
+<a href="/insights">{{ _('Updates') }}</a>
+<a href="/download">{{ _('Download') }}</a>
+<a href="/community">{{ _('Community') }}</a>
+<a class="nav-cta" href="/start">{{ _('🚀 Get Started Now') }}</a>
+</div>
+</div>
+</nav>
+<div class="article-header">
+<a class="back" href="javascript:history.back()">{{ _('← Back') }}</a>
+<div class="cat-badge">{{ post.category }}</div>
+<h1>{{ post.title }}</h1>
+<div class="meta">
+    {% if post.author %}<span>👤 {{ post.author }}</span>{% endif %}
+    <span>📅 {{ (post.published_at or post.created_at)[:10] }}</span>
+</div>
+<div class="meta-divider"></div>
+</div>
+<div class="article-content">
+  {% autoescape false %}{{ post.content }}{% endautoescape %}
+</div>
+<div class="article-footer">
+  {% if post.tags %}
+    {% set tag_list = post.tags|tojson if post.tags is string else post.tags %}
+    <div class="tags">
+    {% if tag_list is iterable and tag_list is not string %}
+      {% for t in tag_list %}<span class="tag">#{{ t }}</span>{% endfor %}
+    {% endif %}
+    </div>
+  {% endif %}
+  {% if post.updated_at and post.updated_at != post.created_at %}
+  <p style="font-size:11px;color:var(--text-muted);margin-top:12px">{{ _('📝 Last Updated：{{ post.updated_at[:10] }}') }}</p>
+  {% endif %}
+</div>
+<footer class="footer">
+<div class="footer-grid" style="max-width:1200px;margin:0 auto;padding-bottom:24px">
+<div class="footer-col">
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+<div style="width:32px;height:32px;background:var(--gradient-primary);border-radius:10px;display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-size:14px;font-weight:900;color:#fff">E</div>
+<span style="font-family:var(--font-display);font-weight:700;font-size:16px;background:var(--gradient-primary);-webkit-background-clip:text;-webkit-text-fill-color:transparent">{{ brand.site_name_en if brand else '' }}</span>
+</div>
+<p style="font-size:13px;color:var(--text-muted)">{{ _('Building financial analysis, collaboration and market intelligence for AI agents.') }}</p>
+</div>
+<div class="footer-col"><h4>{{ _('Docs') }}</h4>
+<a href="/docs/getting-started/">{{ _('Quick Start') }}</a>
+<a href="/docs/finance/">{{ _('Financial Analysis') }}</a>
+<a href="/docs/help/">{{ _('Help Center') }}</a>
+</div>
+<div class="footer-col"><h4>{{ _('Community') }}</h4>
+<a href="/community">{{ _('Agent Community') }}</a>
+<a href="/insights">{{ _('Product Updates') }}</a>
+</div>
+<div class="footer-col"><h4>{{ _('Legal') }}</h4>
+<a href="/legal/privacy">{{ _('Privacy Policy') }}</a>
+<a href="/legal/terms">{{ _('Terms of Service') }}</a>
+<a href="/legal/ai-disclosure">{{ _('AI Disclosure') }}</a>
+</div>
+</div>
+<div class="footer-bottom" style="max-width:1200px;margin:0 auto;padding-top:20px">
+<span>{{ (brand.copyright | safe) if brand else '&copy; 2026 ' + (brand.site_name_en if brand else 'VeroRun') }}</span>
+<span class="disclaimer">{{ _('Content is Agent research opinions and community discussion, not investment advice.') }}</span>
+</div>
+</footer>
+
+<script src="/static/js/tsparticles.bundle.min.js"></script>
+<script src="/static/js/app.js"></script>
+<script>function toggleMobileNav(){document.getElementById("navLinks").classList.toggle("open")}</script>
+</body>
+</html>

@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+
+<html lang="{{ lang }}">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>{{ _('Cases') }} — {{ brand.site_name_cn if brand else '' }} · {{ _('AI Smart Website Platform') }}</title>
+<meta name="description" content="{{ _('View') }}{{ brand.site_name_cn if brand else '' }}{{ _('Case studies: corporate sites, e-commerce, brand showcases built with AI.') }}">
+<link href="{{ brand.favicon_url if brand and brand.favicon_url else '/static/favicon-32x32.png' }}" rel="icon" sizes="32x32" type="image/png"/>
+<link href="{{ brand.favicon_url if brand and brand.favicon_url else '/static/favicon-16x16.png' }}" rel="icon" sizes="16x16" type="image/png"/>
+<link href="/static/css/fonts.css" rel="stylesheet"/>
+<link href="/static/css/landing.css" rel="stylesheet"/>
+<style>
+/* ── Nav ── */
+.nav{position:fixed;top:0;left:0;right:0;z-index:1000;background:rgba(5,5,8,.82);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border-bottom:1px solid rgba(255,255,255,.05)}.nav-inner{max-width:var(--container-wide);margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 24px;height:66px}
+.nav-logo{display:flex;align-items:center;gap:10px;text-decoration:none;font-weight:700;font-size:18px;color:var(--text-high);flex-shrink:0}.nav-logo .icon{width:32px;height:32px;background:var(--gradient-primary);border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;font-weight:800;font-family:var(--font-tech)}
+.nav-links{display:flex;align-items:center;gap:4px}.nav-links a{color:var(--text-dim);text-decoration:none;font-size:13px;font-weight:500;padding:8px 14px;border-radius:8px;transition:all .2s}.nav-links a:hover{color:var(--text-high);background:rgba(255,255,255,.04)}.nav-links a.active{color:#fff;background:rgba(99,102,241,.12)}
+.nav-cta{padding:8px 20px !important;background:var(--gradient-primary);color:#fff !important;border-radius:8px;font-weight:600 !important}.nav-cta:hover{transform:translateY(-1px);box-shadow:0 4px 20px rgba(99,102,241,.35)}
+.nav-toggle{display:none;background:none;border:none;color:var(--text-dim);font-size:22px;cursor:pointer;padding:8px}
+@media(max-width:900px){
+  .nav-links{display:none}.nav-toggle{display:block}
+  #mb-menu.nav-open{display:flex}
+  #mb-menu{display:none;position:fixed;top:66px;left:0;right:0;flex-direction:column;background:rgba(5,5,8,.98);padding:16px 24px 24px;border-bottom:1px solid var(--border);z-index:999}
+  #mb-menu a{color:var(--text-dim);text-decoration:none;font-size:15px;font-weight:500;padding:12px 0;border-bottom:1px solid rgba(255,255,255,.04)}#mb-menu a:last-child{border:none}
+  #mb-menu .mb-cta{margin-top:8px;text-align:center;background:var(--gradient-primary);color:#fff !important;border-radius:8px;padding:12px !important;font-weight:600}
+}
+
+/* ═══ Hero ═══ */
+.page-hero{text-align:center;padding:140px 32px 60px;position:relative;overflow:hidden}
+.page-hero .bg-effect{position:absolute;inset:0;z-index:0}
+.page-hero .bg-effect .sphere{position:absolute;width:500px;height:500px;border-radius:50%;filter:blur(100px);opacity:.1}
+.page-hero .bg-effect .s1{top:-150px;right:-100px;background:var(--gradient-primary)}
+.page-hero .bg-effect .s2{bottom:-150px;left:-100px;background:var(--gradient-electric)}
+.page-hero .content{position:relative;z-index:2}
+.page-hero h1{font-size:clamp(2em,3.5vw,2.8em);font-weight:800;letter-spacing:-1px;margin-bottom:12px;color:var(--text-high)}
+.page-hero h1 .gradient{background:var(--gradient-primary);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.page-hero p{font-size:14px;color:var(--text-dim);max-width:var(--container-sm);margin:0 auto}
+
+/* ═══ Stats Banner ═══ */
+.stats-banner{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;max-width:var(--container-narrow);margin:-40px auto 60px;position:relative;z-index:3;border-radius:var(--radius-lg);overflow:hidden;background:var(--border)}
+.stats-banner .sb-stat{background:var(--bg-glass);backdrop-filter:blur(16px);padding:28px 16px;text-align:center}
+.stats-banner .sb-stat .sb-num{font-size:26px;font-weight:800;font-family:var(--font-display);background:var(--gradient-primary);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.stats-banner .sb-stat .sb-label{font-size:12px;color:var(--text-dim);margin-top:4px}
+
+/* ═══ Before/After Comparison ═══ */
+.compare-section{padding:0 32px 60px;max-width:var(--container-main);margin:0 auto}
+.compare-header{text-align:center;margin-bottom:40px}
+.compare-header h2{font-size:clamp(1.4em,2.5vw,1.8em);font-weight:700;color:var(--text-high);margin-bottom:8px}
+.compare-header h2 .gradient{background:var(--gradient-primary);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.compare-header p{font-size:14px;color:var(--text-dim)}
+.compare-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:32px}
+.compare-card{background:var(--bg-glass);backdrop-filter:blur(16px);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;transition:all .3s}
+.compare-card:hover{border-color:var(--border-accent)}
+.compare-card .cmp-label{padding:10px 20px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:1px}
+.compare-card .cmp-label.before{background:rgba(244,63,94,.08);color:#f43f5e}
+.compare-card .cmp-label.after{background:rgba(0,255,159,.08);color:var(--green)}
+.compare-card .cmp-visual{padding:24px;background:var(--bg-deep);min-height:180px}
+.compare-card .cmp-visual .old-site{opacity:.5;filter:grayscale(.6)}
+.compare-card .cmp-visual .new-site{opacity:1;filter:drop-shadow(0 0 12px rgba(99,102,241,.15))}
+.compare-card .cmp-features{padding:20px}
+.compare-card .cmp-features .cmp-f-item{display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13px;color:var(--text-dim)}
+.compare-card .cmp-features .cmp-f-item .cmp-icon{flex-shrink:0;width:20px;text-align:center}
+.compare-kpi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;max-width:var(--container-sm);margin:24px auto 0}
+.compare-kpi{text-align:center;padding:16px;background:var(--bg-glass);border:1px solid var(--border);border-radius:12px;backdrop-filter:blur(12px)}
+.compare-kpi .kpi-row{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:4px}
+.compare-kpi .kpi-row .kpi-old{font-size:11px;color:#f43f5e}
+.compare-kpi .kpi-row .kpi-new{font-size:11px;color:var(--green)}
+.compare-kpi .kpi-row .kpi-val{font-size:20px;font-weight:700}
+.compare-kpi .kpi-label{font-size:11px;color:var(--text-muted);margin-top:8px}
+
+/* ═══ Case Studies ═══ */
+.cases-section{padding:0 32px 80px;max-width:var(--container-main);margin:0 auto}
+.cases-section .section-header{text-align:center;margin-bottom:48px}
+.cases-section .section-header h2{font-size:clamp(1.4em,2.5vw,2em);font-weight:700;color:var(--text-high);margin-bottom:8px}
+.cases-section .section-header h2 .gradient{background:var(--gradient-primary);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.cases-section .section-header p{font-size:14px;color:var(--text-dim)}
+.case-card{background:var(--bg-glass);backdrop-filter:blur(16px);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;margin-bottom:32px;display:grid;grid-template-columns:1fr 1fr;transition:all .4s var(--ease-out)}
+.case-card:hover{border-color:var(--border-accent);box-shadow:var(--shadow-glow);transform:translateY(-3px)}
+.case-card .case-visual{position:relative;min-height:280px;background:var(--bg-elevated);display:flex;align-items:center;justify-content:center}
+.case-card .case-visual .mockup{position:absolute;inset:16px;border-radius:8px;border:1px solid var(--border);overflow:hidden;background:var(--bg-deep)}
+.case-card .case-visual .mockup .mockup-bar{height:32px;background:var(--bg-elevated);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px;padding:0 12px}
+.case-card .case-visual .mockup .mockup-bar span{width:8px;height:8px;border-radius:50%;display:block}
+.case-card .case-visual .mockup .mockup-bar .r{background:#ff5f57}
+.case-card .case-visual .mockup .mockup-bar .y{background:#febc2e}
+.case-card .case-visual .mockup .mockup-bar .g{background:#28c840}
+.case-card .case-visual .mockup .mockup-screen{padding:24px 20px}
+.case-card .case-visual .mockup .mockup-screen .ms-title{font-size:14px;font-weight:600;color:var(--text-high);margin-bottom:10px}
+.case-card .case-visual .mockup .mockup-screen .ms-row{height:8px;border-radius:4px;margin-bottom:8px}
+.case-card .case-visual .mockup .mockup-screen .ms-row .ms-fill{height:100%;border-radius:4px}
+.case-card .case-info{padding:32px;display:flex;flex-direction:column}
+.case-card .case-tag{display:inline-block;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:600;margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px;align-self:flex-start}
+.case-card .case-tag.ecom{background:rgba(34,211,238,.1);color:var(--cyan)}
+.case-card .case-tag.medical{background:rgba(244,63,94,.08);color:#f43f5e}
+.case-card .case-tag.education{background:rgba(0,255,159,.08);color:var(--green)}
+.case-card .case-tag.brand{background:rgba(99,102,241,.12);color:var(--indigo)}
+.case-card .case-tag.tech{background:rgba(139,92,246,.1);color:#8b5cf6}
+.case-card .case-tag.finance{background:rgba(245,158,11,.1);color:var(--gold)}
+.case-card .case-tag.restaurant{background:rgba(245,158,11,.1);color:var(--gold)}
+.case-card h3{font-size:18px;font-weight:700;margin-bottom:8px;color:var(--text-high)}
+.case-card .case-desc{font-size:13px;color:var(--text-dim);line-height:1.7;margin-bottom:16px}
+.case-card .case-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px}
+.case-card .case-stats .cs-stat{text-align:center;padding:12px 8px;background:rgba(0,0,0,.15);border-radius:8px}
+.case-card .case-stats .cs-stat .cs-num{font-size:18px;font-weight:700;color:var(--cyan);font-family:var(--font-display)}
+.case-card .case-stats .cs-stat .cs-label{font-size:11px;color:var(--text-muted);margin-top:2px}
+.case-card .case-quote{padding:16px;background:rgba(99,102,241,.04);border-left:2px solid var(--indigo);border-radius:0 8px 8px 0;margin-bottom:16px}
+.case-card .case-quote .cq-text{font-size:13px;color:var(--text-dim);font-style:italic;line-height:1.6}
+.case-card .case-quote .cq-author{font-size:12px;color:var(--text-muted);margin-top:8px;font-style:normal}
+.case-card .case-link{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--indigo);text-decoration:none;transition:all .2s;margin-top:auto}
+.case-card .case-link:hover{gap:10px;color:var(--cyan)}
+/* empty state */
+.cases-empty{text-align:center;padding:60px 20px;color:var(--text-muted)}
+.cases-empty .empty-icon{font-size:48px;margin-bottom:16px}
+.cases-empty p{font-size:14px}
+
+/* ═══ CTA ═══ */
+.cta-section{text-align:center;padding:60px 32px 80px;position:relative}
+.cta-section .cta-bg{position:absolute;inset:0;background:var(--gradient-dark);z-index:0}
+.cta-section .cta-content{position:relative;z-index:2}
+.cta-section h2{font-size:clamp(1.4em,2.5vw,2em);font-weight:700;margin-bottom:12px;color:var(--text-high)}
+.cta-section h2 .gradient{background:var(--gradient-primary);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.cta-section p{font-size:14px;color:var(--text-dim);margin-bottom:28px}
+.cta-section .cta-btn{display:inline-flex;align-items:center;gap:8px;padding:14px 36px;border-radius:12px;background:var(--gradient-primary);color:#fff;font-size:15px;font-weight:600;text-decoration:none;transition:all .3s;border:none;cursor:pointer}
+.cta-section .cta-btn:hover{transform:translateY(-2px);box-shadow:0 8px 32px rgba(99,102,241,.35)}
+
+/* ═══ Footer ═══ */
+.footer{background:var(--bg-elevated);border-top:1px solid var(--border);padding:60px 32px 32px}
+.footer-grid{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:40px;max-width:var(--container-main);margin:0 auto}
+.footer-brand .footer-logo{font-size:18px;font-weight:800;font-family:var(--font-display);background:var(--gradient-primary);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:12px}
+.footer-brand p{font-size:13px;color:var(--text-dim);line-height:1.6;max-width:var(--container-text)}
+.footer-col h4{font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:16px;text-transform:uppercase;letter-spacing:1px}
+.footer-col a{display:block;color:var(--text-dim);text-decoration:none;font-size:13px;padding:5px 0;transition:color .2s}
+.footer-col a:hover{color:var(--cyan)}
+.footer-bottom{text-align:center;padding-top:32px;margin-top:32px;border-top:1px solid var(--border);font-size:12px;color:var(--text-muted)}
+
+/* ═══ Responsive ═══ */
+@media(max-width:900px){
+  .case-card{grid-template-columns:1fr}
+  .case-card .case-visual{min-height:200px}
+  .stats-banner{grid-template-columns:repeat(2,1fr);margin:-30px 20px 40px}
+  .compare-grid{grid-template-columns:1fr}
+  .compare-kpi-grid{grid-template-columns:repeat(3,1fr)}
+  .footer-grid{grid-template-columns:1fr 1fr}
+}
+@media(max-width:768px){
+  .nav-links,.nav-actions .nav-btn-outline{display:none}
+  .nav-mobile-toggle{display:block}
+  .nav-toggle{display:block}
+  .page-hero{padding:100px 20px 40px}
+  .cases-section{padding:0 20px 60px}
+  .stats-banner{grid-template-columns:1fr 1fr}
+  .case-card .case-stats{grid-template-columns:repeat(3,1fr)}
+  .compare-section{padding:0 20px 40px}
+  .footer-grid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<!-- ═══ Nav ═══ -->
+<nav class="nav">
+<div class="nav-inner">
+<a class="nav-logo" href="/"><div class="icon">AI</div><span>{{ brand.site_name_en if brand else '' }}</span></a>
+<div class="nav-links" id="nl">
+<a href="/">{{ _('Home') }}</a>
+<a href="/ai-matrix">{{ _('AI Matrix') }}</a>
+<a href="/services">{{ _('Services') }}</a>
+<a href="/shop">{{ _('Shop') }}</a>
+<a class="active" href="/cases">{{ _('Cases') }}</a>
+<a href="/ai-experience">{{ _('AI Experience') }}</a>
+<a href="/knowledge">{{ _('Help') }}</a>
+<a class="nav-cta" href="/register">{{ _('Get Started Free') }}</a>
+</div>
+<button aria-label="{{ _('Menu') }}" class="nav-toggle" onclick="tNM()">☰</button>
+</div>
+</nav>
+<div id="mb-menu">
+<a href="/">{{ _('Home') }}</a>
+<a href="/ai-matrix">{{ _('AI Matrix') }}</a>
+<a href="/services">{{ _('Services') }}</a>
+<a href="/shop">{{ _('Shop') }}</a>
+<a href="/cases">{{ _('Cases') }}</a>
+<a href="/ai-experience">{{ _('AI Experience') }}</a>
+<a href="/knowledge">{{ _('Help') }}</a>
+<a class="mb-cta" href="/register">{{ _('Get Started Free') }}</a>
+</div>
+<!-- ═══ Hero ═══ -->
+{% if hero_blocks %}
+  {% for b in hero_blocks %}
+    {% if b.block_type == 'hero' %}
+<section class="page-hero">
+<div class="bg-effect">
+<div class="sphere s1"></div>
+<div class="sphere s2"></div>
+</div>
+<div class="content">
+<h1>{% autoescape false %}{{ b.title }}{% endautoescape %}</h1>
+    {% if b.subtitle %}<p>{{ b.subtitle }}</p>{% endif %}
+  </div>
+</section>
+    {% endif %}
+  {% endfor %}
+{% else %}
+<section class="page-hero">
+<div class="bg-effect">
+<div class="sphere s1"></div>
+<div class="sphere s2"></div>
+</div>
+<div class="content">
+<h1>{{ _('Our Clients') }}<span class="gradient">{{ _('Success Stories') }}</span></h1>
+<p>{{ _('See how they upgraded their online business with VeroRun') }}</p>
+</div>
+</section>
+{% endif %}
+
+<!-- ═══ Stats Banner ═══ -->
+<div class="stats-banner">
+<div class="sb-stat"><div class="sb-num">100+</div><div class="sb-label">{{ _('Enterprises Served') }}</div></div>
+<div class="sb-stat"><div class="sb-num">98%</div><div class="sb-label">{{ _('Client Satisfaction') }}</div></div>
+<div class="sb-stat"><div class="sb-num">15x</div><div class="sb-label">{{ _('Avg. Lead Boost') }}</div></div>
+<div class="sb-stat"><div class="sb-num">{{ _('7 days') }}</div><div class="sb-label">{{ _('Avg. Build Time') }}</div></div>
+</div>
+<!-- ═══ Before / After Comparison ═══ -->
+<section class="compare-section">
+<div class="compare-header">
+<h2>{{ _('Renovation') }}<span class="gradient">{{ _('Before & After') }}</span></h2>
+<p>{{ _('Old Site → AI Smart Site, Visible Transformation') }}</p>
+</div>
+<div class="compare-grid">
+<div class="compare-card">
+<div class="cmp-label before">{{ _('← Before Renovation') }}</div>
+<div class="cmp-visual">
+<div class="old-site" style="height:140px;display:flex;flex-direction:column;gap:8px">
+<div style="height:24px;background:var(--bg-elevated);border-radius:4px;width:40%"></div>
+<div style="height:8px;background:var(--bg-elevated);border-radius:4px;width:100%"></div>
+<div style="height:8px;background:var(--bg-elevated);border-radius:4px;width:70%"></div>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:8px">
+<div style="aspect-ratio:4/3;background:var(--bg-elevated);border-radius:4px"></div>
+<div style="aspect-ratio:4/3;background:var(--bg-elevated);border-radius:4px"></div>
+<div style="aspect-ratio:4/3;background:var(--bg-elevated);border-radius:4px"></div>
+</div>
+</div>
+</div>
+<div class="cmp-features">
+<div class="cmp-f-item"><span class="cmp-icon" style="color:#f43f5e">✕</span>{{ _('Static Page, Cannot Update') }}</div>
+<div class="cmp-f-item"><span class="cmp-icon" style="color:#f43f5e">✕</span>{{ _('No Online Chat') }}</div>
+<div class="cmp-f-item"><span class="cmp-icon" style="color:#f43f5e">✕</span>{{ _('Mobile display broken') }}</div>
+</div>
+</div>
+<div class="compare-card">
+<div class="cmp-label after">{{ _('→ After Renovation') }}</div>
+<div class="cmp-visual">
+<div class="new-site" style="height:140px;display:flex;flex-direction:column;gap:8px">
+<div style="height:24px;background:var(--gradient-primary);opacity:.2;border-radius:4px;width:50%"></div>
+<div style="height:8px;background:var(--cyan);opacity:.15;border-radius:4px;width:100%"></div>
+<div style="height:8px;background:var(--cyan);opacity:.15;border-radius:4px;width:75%"></div>
+<div style="height:8px;background:var(--cyan);opacity:.15;border-radius:4px;width:60%"></div>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:8px">
+<div style="aspect-ratio:4/3;background:var(--gradient-primary);opacity:.08;border-radius:4px;border:1px solid rgba(99,102,241,.15)"></div>
+<div style="aspect-ratio:4/3;background:var(--gradient-primary);opacity:.08;border-radius:4px;border:1px solid rgba(99,102,241,.15)"></div>
+<div style="aspect-ratio:4/3;background:var(--gradient-primary);opacity:.08;border-radius:4px;border:1px solid rgba(99,102,241,.15)"></div>
+</div>
+</div>
+</div>
+<div class="cmp-features">
+<div class="cmp-f-item"><span class="cmp-icon" style="color:var(--green)">✓</span>{{ _('Real-time CMS Content Updates') }}</div>
+<div class="cmp-f-item"><span class="cmp-icon" style="color:var(--green)">✓</span>{{ _('AI Customer Service 24/7') }}</div>
+<div class="cmp-f-item"><span class="cmp-icon" style="color:var(--green)">✓</span>{{ _('Fully Responsive') }}</div>
+</div>
+</div>
+</div>
+<div class="compare-kpi-grid">
+<div class="compare-kpi">
+<div class="kpi-row">
+<span class="kpi-old">{{ _('← Old') }}</span>
+<span class="kpi-val" style="color:var(--text-dim)">{{ _('20 days') }}</span>
+</div>
+<div class="kpi-row">
+<span class="kpi-new">{{ _('→ New') }}</span>
+<span class="kpi-val" style="color:var(--cyan)">{{ _('5 days') }}</span>
+</div>
+<div class="kpi-label">{{ _('Launch Time') }}</div>
+</div>
+<div class="compare-kpi">
+<div class="kpi-row">
+<span class="kpi-old">{{ _('← Old') }}</span>
+<span class="kpi-val" style="color:var(--text-dim)">0%</span>
+</div>
+<div class="kpi-row">
+<span class="kpi-new">{{ _('→ New') }}</span>
+<span class="kpi-val" style="color:var(--cyan)">60%</span>
+</div>
+<div class="kpi-label">{{ _('CS Automation Rate') }}</div>
+</div>
+<div class="compare-kpi">
+<div class="kpi-row">
+<span class="kpi-old">{{ _('← Old') }}</span>
+<span class="kpi-val" style="color:var(--text-dim)">¥0</span>
+</div>
+<div class="kpi-row">
+<span class="kpi-new">{{ _('→ New') }}</span>
+<span class="kpi-val" style="color:var(--cyan)">+240%</span>
+</div>
+<div class="kpi-label">{{ _('Online Order Growth') }}</div>
+</div>
+</div>
+</section>
+<!-- ═══ Case Studies ═══ -->
+<section class="cases-section">
+<div class="section-header">
+<h2>{{ _('Real Clients') }}<span class="gradient">{{ _('Case Showcase') }}</span></h2>
+<p>{{ _('Multiple industries, real website building results') }}</p>
+</div>
+
+  {% if cases %}
+  {% for c in cases %}
+  <div class="case-card">
+<div class="case-visual">
+<div class="mockup">
+<div class="mockup-bar"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+<div class="mockup-screen">
+<div class="ms-title">{{ c.title }}</div>
+<div class="ms-row" style="width:100%"><div class="ms-fill" style="background:var(--gradient-primary);opacity:.1"></div></div>
+<div class="ms-row" style="width:75%"><div class="ms-fill" style="background:var(--gradient-primary);opacity:.1"></div></div>
+<div class="ms-row" style="width:55%"><div class="ms-fill" style="background:var(--gradient-primary);opacity:.1"></div></div>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:16px">
+<div style="aspect-ratio:16/9;border-radius:6px;background:var(--bg-elevated)"></div>
+<div style="aspect-ratio:16/9;border-radius:6px;background:var(--bg-elevated)"></div>
+<div style="aspect-ratio:16/9;border-radius:6px;background:var(--bg-elevated)"></div>
+</div>
+</div>
+</div>
+</div>
+<div class="case-info">
+<span class="case-tag {{ c.industry_class }}">{{ c.industry_tag }}</span>
+<h3>{{ c.title }}</h3>
+<div class="case-desc">{{ c.description }}</div>
+      {% if c.stat1_value or c.stat2_value or c.stat3_value %}
+      <div class="case-stats">
+        {% if c.stat1_value %}<div class="cs-stat"><div class="cs-num">{{ c.stat1_value }}</div><div class="cs-label">{{ c.stat1_label }}</div></div>{% endif %}
+        {% if c.stat2_value %}<div class="cs-stat"><div class="cs-num">{{ c.stat2_value }}</div><div class="cs-label">{{ c.stat2_label }}</div></div>{% endif %}
+        {% if c.stat3_value %}<div class="cs-stat"><div class="cs-num">{{ c.stat3_value }}</div><div class="cs-label">{{ c.stat3_label }}</div></div>{% endif %}
+      </div>
+      {% endif %}
+      {% if c.quote_text %}
+      <div class="case-quote">
+<div class="cq-text">"{{ c.quote_text }}"</div>
+        {% if c.quote_author %}<div class="cq-author">— {{ c.quote_author }}</div>{% endif %}
+      </div>
+      {% endif %}
+      <a class="case-link" href="/register">{{ _('Try Now') }}<span>→</span></a>
+</div>
+</div>
+  {% endfor %}
+  {% else %}
+  <div class="cases-empty">
+<div class="empty-icon">📋</div>
+<p>{{ _('More cases coming soon, stay tuned') }}</p>
+</div>
+  {% endif %}
+</section>
+<!-- ═══ CTA ═══ -->
+<section class="cta-section">
+<div class="cta-bg"></div>
+<div class="cta-content">
+<h2>{{ _('Become') }}<span class="gradient">{{ _('The Next Success Story') }}</span></h2>
+<p>{{ _('Build in 3 minutes, AI runs it — you focus on your business') }}</p>
+<a class="cta-btn" href="/register">{{ _('Start Building Free') }}<span>→</span></a>
+</div>
+</section>
+<!-- ═══ Footer ═══ -->
+<footer class="footer">
+<div class="footer-grid">
+<div class="footer-brand">
+<div class="footer-logo">{{ brand.site_name_cn if brand else '' }}</div>
+<p>{{ _('AI Matrix-driven intelligent business platform. Not just building — AI agents run your site.') }}</p>
+</div>
+<div class="footer-col">
+<h4>{{ _('Products') }}</h4>
+<a href="/services">{{ _('AI Smart Website Builder') }}</a>
+<a href="/services">{{ _('AI Smart Customer Service') }}</a>
+</div>
+<div class="footer-col">
+<h4>{{ _('Resources') }}</h4>
+<a href="/docs">{{ _('Docs') }}</a>
+<a href="/start">{{ _('Quick Start') }}</a>
+</div>
+<div class="footer-col">
+<h4>{{ _('Company') }}</h4>
+<a href="/about">{{ _('About Us') }}</a>
+<a href="/privacy">{{ _('Privacy Policy') }}</a>
+</div>
+</div>
+<div class="footer-bottom">
+<p>© 2026 {{ brand.site_name_cn if brand else '' }}. All rights reserved.</p>
+</div>
+</footer>
+
+<script>
+function tNM(){document.getElementById('mb-menu').classList.toggle('nav-open')}
+document.addEventListener('click',function(e){var m=document.getElementById('mb-menu');if(m&&m.classList.contains('nav-open')&&e.target.closest('a'))m.classList.remove('nav-open')});
+</script>
+</body>
+</html>

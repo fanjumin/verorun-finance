@@ -1,0 +1,723 @@
+// ── Dashboard CSS injection ──
+(function(){var s=document.createElement('style');s.textContent=
+  '.g2{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}'+
+  '.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}'+
+  '.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}'+
+  '.g5{display:grid;grid-template-columns:repeat(5,1fr);gap:16px}'+
+  '.dash-card{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:14px;cursor:pointer;transition:border-color .2s,box-shadow .2s;position:relative}'+
+  '.dash-card:hover{border-color:var(--accent);box-shadow:0 0 12px rgba(0,245,255,0.08)}'+
+  '.dash-card .card-nav-icon{position:absolute;top:8px;right:10px;font-size:12px;color:var(--dim);opacity:0;transition:opacity .2s}'+
+  '.dash-card:hover .card-nav-icon{opacity:1}'+
+  '.dash-card .card-title{font-size:13px;color:var(--dim);margin-bottom:8px;display:flex;align-items:center;justify-content:space-between}'+
+  '.dash-card .card-title .refresh-badge{font-size:10px;color:var(--accent);opacity:0.6;cursor:pointer;padding:2px 6px;border-radius:3px;transition:opacity .2s}'+
+  '.dash-card .card-title .refresh-badge:hover{opacity:1}'+
+  '.chart-empty{display:flex;align-items:center;justify-content:center;height:240px;color:var(--dim);font-size:13px}'+
+  '.svc-dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex-shrink:0}'+
+  '.svc-dot.on{background:#52c41a;box-shadow:0 0 6px #52c41a}'+
+  '.svc-dot.off{background:#ef4444}'+
+  '.kpi-card{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:4px;cursor:pointer;transition:border-color .2s,box-shadow .2s;position:relative}'+
+  '.kpi-card:hover{border-color:var(--accent);box-shadow:0 0 12px rgba(0,245,255,0.08)}'+
+  '.kpi-card .kpi-label{font-size:12px;color:var(--dim)}'+
+  '.kpi-card .kpi-value{font-size:22px;font-weight:600}'+
+  '.kpi-card .kpi-value.c{color:var(--accent)}'+
+  '.kpi-card .kpi-value.g{color:var(--green)}'+
+  '.kpi-card .kpi-value.r{color:#ef4444}'+
+  '.kpi-card .kpi-sub{font-size:11px;color:var(--dim);margin-top:2px}'+
+  '@keyframes skeleton-pulse{0%{opacity:0.3}50%{opacity:0.6}100%{opacity:0.3}}'+
+  '.skeleton-block{background:var(--border);border-radius:4px;animation:skeleton-pulse 1.5s ease-in-out infinite}'+
+  '@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}'+
+  '@keyframes alert-pulse{0%,100%{border-color:transparent}50%{border-color:#ef4444}}'+
+  '.dash-card.alert{border-color:#ef4444;animation:alert-pulse 2s infinite}'+
+  '@media(max-width:1400px){.g5{grid-template-columns:repeat(3,1fr)}.g4{grid-template-columns:repeat(2,1fr)}}'+
+  '@media(max-width:900px){.g5,.g4,.g3{grid-template-columns:repeat(2,1fr)}}'+
+  '@media(max-width:600px){.g5,.g4,.g3,.g2{grid-template-columns:1fr}}'+
+  '@media(min-width:1920px){.dash-card{padding:18px}.card-title{font-size:14px}.kpi-card .kpi-value{font-size:28px}}';
+document.head.appendChild(s)})();
+
+function tf(n){
+  if(!n) return '0';
+  if(n>=1e6) return (n/1e6).toFixed(1)+'M';
+  if(n>=1e3) return (n/1e3).toFixed(1)+'K';
+  return n.toString();
+}
+
+// ── Navigation helpers ──
+function _nav(section){go(section);}
+function _navPlugin(key,url){goPlugin(key,url);}
+function _navStop(e){if(e)e.stopPropagation();}
+
+// ── Main render ──
+function _render_dashboard(ds){
+  document.getElementById("pt").textContent="{{ _('Overview') }}";
+  var h="";
+
+  // ════════════════════════════════════════════════════════════════
+  // Tier 1: Critical KPI Cards (5-column)
+  // ════════════════════════════════════════════════════════════════
+  h+='<div class="g5" style="margin-bottom:16px">';
+
+  // --- System Health ---
+  var allAlive=ds.services?ds.services.every(function(s){return s.alive}):false;
+  var anyDown=ds.services?ds.services.some(function(s){return !s.alive}):false;
+  h+='<div class="kpi-card" id="kpi-health" onclick="_navPlugin(\'health\',\'/admin/health/\')">';
+  h+='<div class="kpi-label">{{ _('System Health') }}<span class="refresh-badge" w="services" onclick="_navStop(event);_refreshWidget(\'services\',_updateServicesKPI)" title="{{ _('Refresh') }}" style="margin-left:6px">↻</span></div>';
+  if(ds.health_score!==undefined && ds.health_score!==null){
+    var hc=ds.health_score>=90?'g':(ds.health_score>=70?'c':'r');
+    h+='<div class="kpi-value '+hc+'">'+ds.health_score+'</div>';
+    h+='<div class="kpi-sub"><span class="svc-dot on" style="margin-right:4px"></span>'+ds.health_passed+'{{ _(' passed') }}</div>';
+  }else{
+    h+='<div class="kpi-value c">--</div>';
+    h+='<div class="kpi-sub">'+(allAlive?'{{ _('All services up') }}':'{{ _('Check services') }}')+'</div>';
+  }
+  h+='<div class="card-nav-icon">↗</div></div>';
+
+  // --- Revenue ---
+  h+='<div class="kpi-card" id="kpi-revenue" onclick="_navPlugin(\'subscription_admin\',\'/plugin/subscription/admin/\')">';
+  h+='<div class="kpi-label">{{ _('Monthly Revenue') }}<span class="refresh-badge" w="revenue" onclick="_navStop(event);_refreshWidget(\'revenue\',_updateRevenueKPI)" title="{{ _('Refresh') }}" style="margin-left:6px">↻</span></div>';
+  h+='<div class="kpi-value c">\u00a5'+tf(ds.monthly_revenue||0)+'</div>';
+  h+='<div class="kpi-sub">'+ds.active_subscriptions+' {{ _('active subs') }}</div>';
+  h+='<div class="card-nav-icon">↗</div></div>';
+
+  // --- Active Users ---
+  var tun=ds.today_new_users||0;
+  h+='<div class="kpi-card" id="kpi-users" onclick="_nav(\'customers\')">';
+  h+='<div class="kpi-label">{{ _('Users') }}<span class="refresh-badge" w="users" onclick="_navStop(event);_refreshWidget(\'users\',_updateUsersKPI)" title="{{ _('Refresh') }}" style="margin-left:6px">↻</span></div>';
+  h+='<div class="kpi-value c">'+tf(ds.total_users||0)+'</div>';
+  h+='<div class="kpi-sub">'+ds.active_users+' {{ _('active') }}'+(tun>0?' <span style="color:#52c41a">+'+tun+' {{ _('today') }}</span>':'')+'</div>';
+  h+='<div class="card-nav-icon">↗</div></div>';
+
+  // --- Online Now ---
+  h+='<div class="kpi-card" onclick="_navPlugin(\'analytics\',\'/admin/analytics/\')">';
+  h+='<div class="kpi-label">{{ _('Online Now') }}</div>';
+  if(ds.online_now!==undefined && ds.online_now!==null){
+    h+='<div class="kpi-value g">'+ds.online_now+'</div>';
+  }else{
+    h+='<div class="kpi-value c">--</div>';
+  }
+  h+='<div class="kpi-sub">'+(ds.today_pv||0)+' PV / '+(ds.today_uv||0)+' UV</div>';
+  h+='<div class="card-nav-icon">↗</div></div>';
+
+  // --- Pending Alerts ---
+  var alertTotal=(ds.pending_posts||0)+(ds.pending_reviews||0)+(ds.pending_contacts||0)+(ds.today_failed_tasks||0)+(ds.open_tickets||0)+(ds.urgent_tickets||0)+(ds.pending_feedback||0)+(ds.pending_shipments||0);
+  h+='<div class="kpi-card'+(alertTotal>0?'':'')+'" id="kpi-alerts" onclick="_nav(\'tickets\')">';
+  h+='<div class="kpi-label">{{ _('Pending Alerts') }}<span class="refresh-badge" w="pending" onclick="_navStop(event);_refreshWidget(\'pending\',_updatePendingKPI)" title="{{ _('Refresh') }}" style="margin-left:6px">↻</span></div>';
+  h+='<div class="kpi-value '+(alertTotal>0?'r':'g')+'">'+alertTotal+'</div>';
+  h+='<div class="kpi-sub">'+(alertTotal>0?((ds.open_tickets||0)+' {{ _('tickets') }}, '+(ds.pending_contacts||0)+' {{ _('msgs') }}'):'{{ _('All clear') }}')+'</div>';
+  h+='<div class="card-nav-icon">↗</div></div>';
+
+  h+='</div>'; // end Tier 1
+
+  // ════════════════════════════════════════════════════════════════
+  // Tier 2: Operational Charts
+  // ════════════════════════════════════════════════════════════════
+  h+='<div style="display:grid;grid-template-columns:1fr 380px;gap:16px;margin-bottom:16px">';
+
+  // --- Left: charts ---
+  h+='<div style="display:flex;flex-direction:column;gap:16px">';
+
+  // Row 2a: API & Agent + Token Spend (2-column)
+  h+='<div class="g2">';
+  h+='<div class="dash-card" onclick="_nav(\'ai_hub\')"><div class="card-title">{{ _('API & Agent Usage') }}<span class="refresh-badge" w="agents" onclick="_navStop(event);_refreshWidget(\'agents\',function(d){_updateChartData(\'agents\',d)})" title="{{ _('Refresh') }}">↻</span><span class="card-nav-icon">↗</span></div><div id="chartUsage" style="width:100%;height:240px"></div></div>';
+  h+='<div class="dash-card" onclick="_nav(\'token_monitoring\')"><div class="card-title">Token {{ _('Spend') }} <span style="font-size:10px;color:var(--dim)">'+tf(ds.today_tokens||0)+' {{ _('today') }}</span><span class="refresh-badge" w="agents" onclick="_navStop(event);_refreshWidget(\'agents\',function(d){_updateChartData(\'agents\',d)})" title="{{ _('Refresh') }}">↻</span><span class="card-nav-icon">↗</span></div><div id="chartTokens" style="width:100%;height:240px"></div></div>';
+  h+='</div>';
+
+  // Row 2b: Traffic Trend 7d
+  if(ds.trend_30d!==undefined && ds.trend_30d!==null){
+    h+='<div class="dash-card" onclick="_navPlugin(\'analytics\',\'/admin/analytics/\')"><div class="card-title">{{ _('Traffic Trend') }} <span style="font-size:10px;color:var(--dim)">7{{ _('d') }}</span><span class="card-nav-icon">↗</span></div><div id="trendChart" style="width:100%;height:240px"></div></div>';
+  }else{
+    h+='<div class="dash-card"><div class="card-title">{{ _('Traffic Trend') }}<span class="card-nav-icon">↗</span></div><div class="chart-empty" style="flex-direction:column;gap:8px"><div>{{ _('Analytics plugin not enabled') }}</div><a href="javascript:void(0)" onclick="_navStop(event);_nav(\'plugins\')" style="color:var(--accent);text-decoration:none;font-size:12px">{{ _('Enable Plugin') }}</a></div></div>';
+  }
+
+  // Row 2c: Content Pipeline
+  h+='<div class="dash-card" onclick="_nav(\'all_content\')"><div class="card-title">{{ _('Content Pipeline') }}<span class="refresh-badge" w="content" onclick="_navStop(event);_refreshWidget(\'content\',function(d){_updateChartData(\'content\',d)})" title="{{ _('Refresh') }}">↻</span><span class="card-nav-icon">↗</span></div><div id="chartContentPipeline" style="width:100%;height:200px"></div></div>';
+
+  h+='</div>'; // end Left
+
+  // --- Right: Quick Actions + Subscriptions ---
+  h+='<div style="display:flex;flex-direction:column;gap:16px">';
+
+  // Quick Actions (pending items summary)
+  h+='<div class="dash-card" style="flex:1" onclick="_nav(\'tickets\')"><div class="card-title">{{ _('Quick Actions') }}<span class="refresh-badge" w="pending" onclick="_navStop(event);_refreshWidget(\'pending\',_updatePendingKPI)" title="{{ _('Refresh') }}">↻</span><span class="card-nav-icon">↗</span></div>';
+  h+='<div style="display:flex;flex-direction:column;gap:8px;font-size:13px">';
+  var actions=[
+    {v:ds.pending_posts||0, label:'{{ _('Pending Posts') }}', nav:'posts', c:'#4a9eff'},
+    {v:ds.pending_reviews||0, label:'{{ _('Pending Reviews') }}', nav:'posts', c:'#a020f0'},
+    {v:ds.pending_contacts||0, label:'{{ _('Unread Messages') }}', nav:'tickets', c:'#f6c243'},
+    {v:ds.open_tickets||0, label:'{{ _('Open Tickets') }}', nav:'tickets', c:'#ff7a00'},
+    {v:ds.today_failed_tasks||0, label:'{{ _('Failed Tasks') }}', nav:'automation', c:'#ef4444'},
+    {v:ds.pending_shipments||0, label:'{{ _('Pending Shipments') }}', nav:'shop_orders', c:'#ff6b6b'}
+  ];
+  var hasActions=false;
+  for(var i=0;i<actions.length;i++){
+    var a=actions[i];
+    if(a.v>0){hasActions=true;}
+    h+='<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:6px;border:1px solid var(--border);cursor:pointer" onclick="_navStop(event);_nav(\''+a.nav+'\')">'+
+      '<span>'+a.label+'</span>'+
+      '<span style="font-weight:600;color:'+a.c+'">'+a.v+'</span></div>';
+  }
+  if(!hasActions){
+    h+='<div style="text-align:center;color:var(--dim);padding:20px">{{ _('All clear') }}</div>';
+  }
+  h+='</div></div>';
+
+  // Subscriptions
+  h+='<div class="dash-card" style="flex:1" onclick="_navPlugin(\'subscription_admin\',\'/plugin/subscription/admin/\')"><div class="card-title">{{ _('Subscriptions') }}<span class="refresh-badge" w="revenue" onclick="_navStop(event);_refreshWidget(\'revenue\',function(d){_updateChartData(\'revenue\',d)})" title="{{ _('Refresh') }}">↻</span><span class="card-nav-icon">↗</span></div><div id="chartSubs" style="width:100%;height:180px"></div></div>';
+
+  h+='</div>'; // end Right
+  h+='</div>'; // end Tier 2
+
+  // ════════════════════════════════════════════════════════════════
+  // Tier 3: Reference Data (4-column)
+  // ════════════════════════════════════════════════════════════════
+  h+='<div class="g4" style="margin-bottom:16px">';
+
+  // Revenue Trend 30d
+  if(ds.revenue_trend_30d && ds.revenue_trend_30d.length){
+    h+='<div class="dash-card" onclick="_navPlugin(\'subscription_admin\',\'/plugin/subscription/admin/\')"><div class="card-title">{{ _('Revenue Trend') }} <span style="font-size:10px;color:var(--dim)">30{{ _('d') }}</span><span class="card-nav-icon">↗</span></div><div id="revenueChart" style="width:100%;height:240px"></div></div>';
+  }else{
+    h+='<div class="dash-card" onclick="_navPlugin(\'subscription_admin\',\'/plugin/subscription/admin/\')"><div class="card-title">{{ _('Revenue Trend') }}<span class="card-nav-icon">↗</span></div><div class="chart-empty" style="height:240px">{{ _('No Data') }}</div></div>';
+  }
+
+  // Popular Pages
+  if(ds.top_pages && ds.top_pages.length){
+    h+='<div class="dash-card" onclick="_navPlugin(\'analytics\',\'/admin/analytics/\')"><div class="card-title">{{ _('Popular Pages') }}<span class="card-nav-icon">↗</span></div><div id="chartPages" style="width:100%;height:240px"></div></div>';
+  }else{
+    h+='<div class="dash-card"><div class="card-title">{{ _('Popular Pages') }}<span class="card-nav-icon">↗</span></div><div class="chart-empty" style="flex-direction:column;gap:8px;height:240px"><div>{{ _('No Data') }}</div><a href="javascript:void(0)" onclick="_navStop(event);_nav(\'plugins\')" style="color:var(--accent);text-decoration:none;font-size:12px">{{ _('Enable Analytics Plugin') }}</a></div></div>';
+  }
+
+  // Health Trend
+  if(ds.health_score!==undefined && ds.health_score!==null){
+    h+='<div class="dash-card" onclick="_navPlugin(\'health\',\'/admin/health/\')"><div class="card-title">{{ _('Health Trend') }} <span style="font-size:10px;color:var(--dim)">7{{ _('d') }}</span><span class="card-nav-icon">↗</span></div><div id="healthTrendChart" style="width:100%;height:200px"></div></div>';
+  }else{
+    h+='<div class="dash-card"><div class="card-title">{{ _('Health Trend') }}<span class="card-nav-icon">↗</span></div><div class="chart-empty" style="flex-direction:column;gap:8px;height:200px"><div>{{ _('Health Check plugin not enabled') }}</div><a href="javascript:void(0)" onclick="_navStop(event);_nav(\'plugins\')" style="color:var(--accent);text-decoration:none;font-size:12px">{{ _('Enable Plugin') }}</a></div></div>';
+  }
+
+  // Recent Registrations
+  h+='<div class="dash-card" onclick="_nav(\'customers\')"><div class="card-title">{{ _('Recent Registrations') }}<span class="card-nav-icon">↗</span></div>';
+  h+='<table style="font-size:12px;width:100%">';
+  h+='<tr><th style="text-align:left;padding:4px 6px;color:var(--dim);font-weight:400">ID</th><th style="text-align:left;padding:4px 6px;color:var(--dim);font-weight:400">{{ _('Name') }}</th><th style="text-align:right;padding:4px 6px;color:var(--dim);font-weight:400">{{ _('Time') }}</th></tr>';
+  if(ds.recent_users && ds.recent_users.length){
+    ds.recent_users.forEach(function(u){
+      h+='<tr><td style="padding:3px 6px">'+u.id+'</td><td style="padding:3px 6px">'+esc(u.nickname||'-')+'</td><td style="padding:3px 6px;text-align:right;font-size:11px;color:var(--dim)">'+(u.created_at||'').substr(5)+'</td></tr>';
+    });
+  }else{
+    h+='<tr><td colspan="3" style="text-align:center;color:var(--dim);padding:20px">{{ _('No data') }}</td></tr>';
+  }
+  h+='</table></div>';
+
+  h+='</div>'; // end Tier 3
+
+  // ════════════════════════════════════════════════════════════════
+  // Service Status + Recent Orders (Bottom 2-column)
+  // ════════════════════════════════════════════════════════════════
+  h+='<div class="g2" style="margin-bottom:16px">';
+
+  // Service Status
+  h+=_svcCard(ds.services);
+
+  // Recent Orders
+  h+='<div class="dash-card" onclick="_navPlugin(\'subscription_admin\',\'/plugin/subscription/admin/\')"><div class="card-title">{{ _('Recent Orders') }}<span class="card-nav-icon">↗</span></div>';
+  h+='<table style="font-size:12px;width:100%">';
+  h+='<tr><th style="text-align:left;padding:4px 6px;color:var(--dim);font-weight:400">ID</th><th style="text-align:left;padding:4px 6px;color:var(--dim);font-weight:400">{{ _('Plan') }}</th><th style="text-align:right;padding:4px 6px;color:var(--dim);font-weight:400">{{ _('Amount') }}</th><th style="text-align:right;padding:4px 6px;color:var(--dim);font-weight:400">{{ _('Status') }}</th></tr>';
+  if(ds.recent_orders && ds.recent_orders.length){
+    ds.recent_orders.forEach(function(o){
+      var st=o.status==='paid'?'<span class="bdg on">{{ _('Paid') }}</span>':(o.status==='pending'?'<span class="bdg off">{{ _('Unpaid') }}</span>':esc(o.status));
+      h+='<tr><td style="padding:3px 6px">'+o.id+'</td><td style="padding:3px 6px">'+esc(o.item_desc||'-')+'</td><td style="padding:3px 6px;text-align:right">\u00a5'+(o.amount||0)+'</td><td style="padding:3px 6px;text-align:right">'+st+'</td></tr>';
+    });
+  }else{
+    h+='<tr><td colspan="4" style="text-align:center;color:var(--dim);padding:20px">{{ _('No data') }}</td></tr>';
+  }
+  h+='</table></div>';
+
+  h+='</div>'; // end Bottom row
+
+  document.getElementById("mc").innerHTML=h;
+  _initCharts(ds);
+}
+
+function _svcCard(svcs){
+  var h='<div class="dash-card" onclick="_navPlugin(\'health\',\'/admin/health/\')"><div class="card-title">{{ _('Service Status') }}<span class="refresh-badge" w="services" onclick="_navStop(event);_refreshWidget(\'services\',_updateServicesKPI)" title="{{ _('Refresh') }}">↻</span><span class="card-nav-icon">↗</span></div>'+
+    '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:8px 0">';
+  if(svcs){
+    svcs.forEach(function(s){
+      var alive=s.alive;
+      h+='<div style="display:flex;align-items:center;gap:8px;padding:10px;border-radius:8px;border:1px solid '+(alive?'rgba(82,196,26,0.3)':'rgba(239,68,68,0.3)')+';background:var(--bg-card)">'+
+        '<span class="svc-dot '+(alive?'on':'off')+'" style="width:10px;height:10px;animation:'+(alive?'pulse 2s infinite':'none')+'"></span>'+
+        '<div style="display:flex;flex-direction:column">'+
+        '<span style="font-size:13px;font-weight:500">'+s.name+'</span>'+
+        '<span style="font-size:10px;color:var(--dim)">:'+s.port+'</span>'+
+        '</div></div>';
+    });
+  }
+  h+='</div></div>';
+  return h;
+}
+
+function _initCharts(ds){
+  if(typeof echarts==='undefined'){
+    setTimeout(function(){_initCharts(ds);},300);
+    return;
+  }
+
+  // ── API & Agent Usage bar ──
+  var el4=document.getElementById('chartUsage');
+  if(el4){
+    var c4=echarts.init(el4);
+    var tc=ds.today_calls||0, ttc=ds.total_calls||0, ag=ds.active_agents||0, tag=ds.total_agents||0;
+    if(tc+ttc+ag+tag===0){
+      c4.setOption({graphic:[{type:'text',left:'center',top:'center',style:{text:'{{ _('No Data') }}',fontSize:14,fill:'var(--dim)'}}]});
+    }else{
+      c4.setOption({
+        tooltip:{trigger:'axis',axisPointer:{type:'shadow'}},
+        legend:{data:['{{ _('Today') }} / {{ _('Active') }}','{{ _('Total') }}'],textStyle:{color:'var(--dim)',fontSize:10},top:0},
+        grid:{left:50,right:10,bottom:25,top:35},
+        xAxis:{type:'category',data:['API Calls','Agents'],axisLabel:{fontSize:11,color:'var(--dim)'}},
+        yAxis:{type:'value',splitLine:{lineStyle:{color:'var(--border)',type:'dashed'}},axisLabel:{fontSize:10}},
+        series:[
+          {name:'{{ _('Today') }} / {{ _('Active') }}',type:'bar',data:[tc,ag],itemStyle:{color:'#4a9eff',borderRadius:[3,3,0,0]},barMaxWidth:40},
+          {name:'{{ _('Total') }}',type:'bar',data:[ttc,tag],itemStyle:{color:'#a020f0',borderRadius:[3,3,0,0]},barMaxWidth:40}
+        ]
+      });
+    }
+    window.addEventListener('resize',function(){c4.resize()});
+  }
+
+  // ── Token Spend bar ──
+  var el5=document.getElementById('chartTokens');
+  if(el5){
+    var c5=echarts.init(el5);
+    var ta=ds.top_token_agents||[];
+    if(ta.length===0){
+      c5.setOption({graphic:[{type:'text',left:'center',top:'center',style:{text:'{{ _('No Data') }}',fontSize:14,fill:'var(--dim)'}}]});
+    }else{
+      var names=[],vals=[];
+      ta.slice().reverse().forEach(function(a){names.push(a.agent_name||'Agent#'+a.agent_id);vals.push(a.total||0)});
+      c5.setOption({
+        tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:function(p){return p[0].name+'<br/>'+tf(p[0].value)+' tokens'}},
+        grid:{left:90,right:20,bottom:20,top:10},
+        xAxis:{type:'value',splitLine:{lineStyle:{color:'var(--border)',type:'dashed'}},axisLabel:{fontSize:10,formatter:function(v){return tf(v)}}},
+        yAxis:{type:'category',data:names,axisLabel:{fontSize:10,color:'var(--dim)'},axisLine:{show:false},axisTick:{show:false}},
+        series:[{type:'bar',data:vals,itemStyle:{color:{type:'linear',x:0,y:0,x2:1,y2:0,colorStops:[{offset:0,color:'#008080'},{offset:1,color:'#00f5ff'}]},borderRadius:[0,4,4,0]},barMaxWidth:20}]
+      });
+    }
+    window.addEventListener('resize',function(){c5.resize()});
+  }
+
+  // ── Content Pipeline stacked bar ──
+  var elCp=document.getElementById('chartContentPipeline');
+  if(elCp){
+    var ccp=echarts.init(elCp);
+    var pp=ds.published_posts||0, dp=ds.draft_posts||0, pr=ds.pending_reviews||0, pc=ds.pending_comments||0;
+    if(pp+dp+pr+pc===0){
+      ccp.setOption({graphic:[{type:'text',left:'center',top:'center',style:{text:'{{ _('No Content Yet') }}',fontSize:14,fill:'var(--dim)'}}]});
+    }else{
+      ccp.setOption({
+        tooltip:{trigger:'axis',axisPointer:{type:'shadow'}},
+        legend:{data:['{{ _('Published') }}','{{ _('Draft') }}','{{ _('Review') }}','{{ _('Comments') }}'],textStyle:{color:'var(--dim)',fontSize:10},bottom:0},
+        grid:{left:40,right:10,bottom:35,top:10},
+        xAxis:{type:'category',data:['{{ _('Content') }}'],axisLabel:{fontSize:11,color:'var(--dim)'}},
+        yAxis:{type:'value',splitLine:{lineStyle:{color:'var(--border)',type:'dashed'}},axisLabel:{fontSize:10}},
+        series:[
+          {name:'{{ _('Published') }}',type:'bar',stack:'total',data:[pp],itemStyle:{color:'#52c41a'},barMaxWidth:60},
+          {name:'{{ _('Draft') }}',type:'bar',stack:'total',data:[dp],itemStyle:{color:'#4a9eff'},barMaxWidth:60},
+          {name:'{{ _('Review') }}',type:'bar',stack:'total',data:[pr],itemStyle:{color:'#a020f0'},barMaxWidth:60},
+          {name:'{{ _('Comments') }}',type:'bar',stack:'total',data:[pc],itemStyle:{color:'#f6c243'},barMaxWidth:60}
+        ]
+      });
+    }
+    window.addEventListener('resize',function(){ccp.resize()});
+  }
+
+  // ── Traffic Trend line ──
+  var trendEl=document.getElementById('trendChart');
+  if(trendEl){
+    var chart=echarts.init(trendEl);
+    var hasTrend=ds.trend_30d&&ds.trend_30d.length;
+    if(!hasTrend){
+      chart.setOption({graphic:[{type:'text',left:'center',top:'center',style:{text:'{{ _('No Data') }}',fontSize:14,fill:'var(--dim)'}}]});
+    }else{
+      var dates=ds.trend_30d.map(function(d){return d.date.substr(5)});
+      chart.setOption({
+        tooltip:{trigger:'axis'},
+        legend:{data:['PV','UV'],textStyle:{color:'var(--dim)'},top:0},
+        grid:{left:40,right:10,bottom:25,top:35},
+        xAxis:{type:'category',data:dates,axisLabel:{fontSize:10,color:'var(--dim)'}},
+        yAxis:{type:'value',splitLine:{lineStyle:{color:'var(--border)',type:'dashed'}},axisLabel:{fontSize:10}},
+        series:[
+          {name:'PV',type:'line',data:ds.trend_30d.map(function(d){return d.pv}),smooth:true,
+           lineStyle:{width:2},itemStyle:{color:'#4a9eff'},
+           areaStyle:{color:{type:'linear',x:0,y:0,x2:0,y2:1,colorStops:[{offset:0,color:'rgba(74,158,255,0.2)'},{offset:1,color:'rgba(74,158,255,0.02)'}]}}},
+          {name:'UV',type:'line',data:ds.trend_30d.map(function(d){return d.uv}),smooth:true,
+           lineStyle:{width:2},itemStyle:{color:'#52c41a'},
+           areaStyle:{color:{type:'linear',x:0,y:0,x2:0,y2:1,colorStops:[{offset:0,color:'rgba(82,196,26,0.15)'},{offset:1,color:'rgba(82,196,26,0.02)'}]}}}
+        ]
+      });
+    }
+    window.addEventListener('resize',function(){chart.resize()});
+  }
+
+  // ── Revenue Trend bar ──
+  var revEl=document.getElementById('revenueChart');
+  if(revEl){
+    var rchart=echarts.init(revEl);
+    var hasRev=ds.revenue_trend_30d&&ds.revenue_trend_30d.length;
+    if(!hasRev){
+      rchart.setOption({graphic:[{type:'text',left:'center',top:'center',style:{text:'{{ _('No Data') }}',fontSize:14,fill:'var(--dim)'}}]});
+    }else{
+      var rdates=ds.revenue_trend_30d.map(function(d){return d.date.substr(5)});
+      rchart.setOption({
+        tooltip:{trigger:'axis',formatter:function(p){return p[0].name+'<br/>\u00a5 '+p[0].value.toFixed(2)}},
+        grid:{left:50,right:10,bottom:25,top:10},
+        xAxis:{type:'category',data:rdates,axisLabel:{fontSize:10,color:'var(--dim)'}},
+        yAxis:{type:'value',splitLine:{lineStyle:{color:'var(--border)',type:'dashed'}},axisLabel:{fontSize:10,formatter:'\u00a5{value}'}},
+        series:[{
+          type:'bar',data:ds.revenue_trend_30d.map(function(d){return d.revenue}),
+          itemStyle:{color:{type:'linear',x:0,y:0,x2:0,y2:1,colorStops:[{offset:0,color:'#f6c243'},{offset:1,color:'rgba(246,194,67,0.3)'}]},borderRadius:[3,3,0,0]},
+          barMaxWidth:28
+        }]
+      });
+    }
+    window.addEventListener('resize',function(){rchart.resize()});
+  }
+
+  // ── Popular Pages bar ──
+  var el7=document.getElementById('chartPages');
+  if(el7){
+    var c7=echarts.init(el7);
+    var tp=ds.top_pages||[];
+    if(tp.length===0){
+      c7.setOption({graphic:[{type:'text',left:'center',top:'center',style:{text:'{{ _('No Data') }}',fontSize:14,fill:'var(--dim)'}}]});
+    }else{
+      var pnames=[],pvals=[];
+      tp.slice().reverse().forEach(function(p){pnames.push(p.path);pvals.push(p.pv||0)});
+      c7.setOption({
+        tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:function(p){return p[0].name+'<br/>PV: '+p[0].value}},
+        grid:{left:100,right:20,bottom:20,top:10},
+        xAxis:{type:'value',splitLine:{lineStyle:{color:'var(--border)',type:'dashed'}},axisLabel:{fontSize:10}},
+        yAxis:{type:'category',data:pnames,axisLabel:{fontSize:10,color:'var(--dim)'},axisLine:{show:false},axisTick:{show:false}},
+        series:[{type:'bar',data:pvals,itemStyle:{color:{type:'linear',x:0,y:0,x2:1,y2:0,colorStops:[{offset:0,color:'#4a9eff'},{offset:1,color:'#00f5ff'}]},borderRadius:[0,4,4,0]},barMaxWidth:20}]
+      });
+    }
+    window.addEventListener('resize',function(){c7.resize()});
+  }
+
+  // ── Subscription donut ──
+  var el3=document.getElementById('chartSubs');
+  if(el3){
+    var c3=echarts.init(el3);
+    var as=ds.active_subscriptions||0, to=ds.total_orders||0;
+    if(to===0 && as===0){
+      c3.setOption({graphic:[{type:'text',left:'center',top:'center',style:{text:'{{ _('No Data') }}',fontSize:14,fill:'var(--dim)'}}]});
+    }else{
+      c3.setOption({
+        tooltip:{trigger:'item',formatter:'{b}: {c} ({d}%)'},
+        legend:{bottom:0,textStyle:{color:'var(--dim)',fontSize:10},itemWidth:8,itemHeight:8},
+        series:[{
+          type:'pie',radius:['55%','75%'],center:['50%','45%'],avoidLabelOverlap:false,
+          label:{show:false},emphasis:{scale:false},
+          itemStyle:{borderColor:'var(--bg-card)',borderWidth:2},
+          data:[
+            {value:as,name:'{{ _('Active') }}',itemStyle:{color:'#00f5ff'}},
+            {value:Math.max(0,to-as),name:'{{ _('Other') }}',itemStyle:{color:'rgba(255,255,255,0.12)'}}
+          ]
+        }],
+        graphic:[
+          {type:'text',left:'center',top:'38%',style:{text:as.toString(),fontSize:18,fontWeight:'bold',fill:'var(--text)',textAlign:'center'}},
+          {type:'text',left:'center',top:'55%',style:{text:'{{ _('Active') }}',fontSize:10,fill:'var(--dim)',textAlign:'center'}}
+        ]
+      });
+    }
+    window.addEventListener('resize',function(){c3.resize()});
+  }
+
+  // ── Health Trend line ──
+  var htEl=document.getElementById('healthTrendChart');
+  if(htEl){
+    var htchart=echarts.init(htEl);
+    var htData=ds.health_trend_7d||[];
+    if(!htData.length){
+      htchart.setOption({graphic:[{type:'text',left:'center',top:'center',style:{text:'{{ _('No Data') }}',fontSize:14,fill:'var(--dim)'}}]});
+    }else{
+      var hdates=htData.map(function(d){return (d.date||'').substr(5)});
+      htchart.setOption({
+        tooltip:{trigger:'axis'},
+        grid:{left:35,right:10,bottom:20,top:10},
+        xAxis:{type:'category',data:hdates,axisLabel:{fontSize:10,color:'var(--dim)'}},
+        yAxis:{type:'value',min:0,max:100,splitLine:{lineStyle:{color:'var(--border)',type:'dashed'}},axisLabel:{fontSize:10,formatter:'{value}'}},
+        series:[{
+          type:'line',data:htData.map(function(d){return d.health_score}),
+          smooth:true,lineStyle:{width:2,color:'#00f5ff'},
+          areaStyle:{color:{type:'linear',x:0,y:0,x2:0,y2:1,colorStops:[{offset:0,color:'rgba(0,245,255,0.2)'},{offset:1,color:'rgba(0,245,255,0.02)'}]}},
+          markLine:{silent:true,data:[{yAxis:80,label:{formatter:'80',color:'var(--dim)',fontSize:9},lineStyle:{color:'rgba(82,196,26,0.4)',type:'dashed'}},{yAxis:50,label:{formatter:'50',color:'var(--dim)',fontSize:9},lineStyle:{color:'rgba(246,194,67,0.4)',type:'dashed'}}]}
+        }]
+      });
+    }
+    window.addEventListener('resize',function(){htchart.resize()});
+  }
+}
+
+// ── Big Screen Mode ──
+var _bigScreenTimer=null;
+var _bigScreenClockTimer=null;
+var _bigScreenActive=false;
+
+function _updateBigScreenClock(){
+  var el=document.getElementById('bigscreen-clock');
+  if(!el) return;
+  var now=new Date();
+  var h=now.getHours().toString().padStart(2,'0');
+  var m=now.getMinutes().toString().padStart(2,'0');
+  var s=now.getSeconds().toString().padStart(2,'0');
+  el.textContent=h+':'+m+':'+s;
+}
+
+function _refreshDashboardData(){
+  fetch("/admin/dashboard",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){
+      _render_dashboard(d.data);
+    }
+  }).catch(function(){});
+}
+
+// ── Single Widget Refresh ──
+function _refreshWidget(name, callback){
+  var badge = document.querySelector('.refresh-badge[w="'+name+'"]');
+  if(badge){badge.textContent='...';badge.style.opacity='0.4'}
+  fetch("/admin/dashboard/widget/"+name,{headers:{"Authorization":"Bearer "+T}})
+    .then(function(r){return r.json()})
+    .then(function(d){
+      if(d.success && callback){callback(d.data)}
+      if(badge){badge.textContent='↻';badge.style.opacity='0.6'}
+    }).catch(function(){
+      if(badge){badge.textContent='✗';badge.style.opacity='1';badge.style.color='#ef4444'}
+    });
+}
+
+// ── Widget update callbacks ──
+function _updateUsersKPI(data){
+  var el=document.getElementById('kpi-users');
+  if(!el)return;
+  var tun=data.today_new_users||0;
+  el.innerHTML=unescape('%3Cdiv class=%22kpi-label%22%3E{{ _('Users') }}%3C/div%3E%3Cdiv class=%22kpi-value c%22%3E'+tf(data.total_users||0)+'%3C/div%3E%3Cdiv class=%22kpi-sub%22%3E'+(data.active_users||0)+' {{ _('active') }}'+(tun>0?' %3Cspan style=%22color:#52c41a%22%3E+'+tun+' {{ _('today') }}%3C/span%3E':'')+'%3C/div%3E%3Cdiv class=%22card-nav-icon%22%3E↗%3C/div%3E');
+}
+function _updateRevenueKPI(data){
+  var el=document.getElementById('kpi-revenue');
+  if(!el)return;
+  el.innerHTML=unescape('%3Cdiv class=%22kpi-label%22%3E{{ _('Monthly Revenue') }}%3C/div%3E%3Cdiv class=%22kpi-value c%22%3E¥'+tf(data.monthly_revenue||0)+'%3C/div%3E%3Cdiv class=%22kpi-sub%22%3E'+(data.active_subscriptions||0)+' {{ _('active subs') }}%3C/div%3E%3Cdiv class=%22card-nav-icon%22%3E↗%3C/div%3E');
+}
+function _updatePendingKPI(data){
+  var el=document.getElementById('kpi-alerts');
+  if(!el)return;
+  var total=(data.pending_posts||0)+(data.pending_reviews||0)+(data.pending_contacts||0)+(data.today_failed_tasks||0)+(data.open_tickets||0)+(data.urgent_tickets||0)+(data.pending_feedback||0)+(data.pending_shipments||0);
+  el.innerHTML=unescape('%3Cdiv class=%22kpi-label%22%3E{{ _('Pending Alerts') }}%3C/div%3E%3Cdiv class=%22kpi-value '+(total>0?'r':'g')+'%22%3E'+total+'%3C/div%3E%3Cdiv class=%22kpi-sub%22%3E'+(total>0?((data.open_tickets||0)+' {{ _('tickets') }}, '+(data.pending_contacts||0)+' {{ _('msgs') }}'):'{{ _('All clear') }}')+'%3C/div%3E%3Cdiv class=%22card-nav-icon%22%3E↗%3C/div%3E');
+}
+function _updateServicesKPI(data){
+  var el=document.getElementById('kpi-health');
+  if(!el)return;
+  var svcs=data||[];
+  var allAlive=svcs.length>0&&svcs.every(function(s){return s.alive});
+  el.innerHTML=unescape('%3Cdiv class=%22kpi-label%22%3E{{ _('System Health') }}%3C/div%3E%3Cdiv class=%22kpi-value c%22%3E--%3C/div%3E%3Cdiv class=%22kpi-sub%22%3E'+(allAlive?'{{ _('All services up') }}':'{{ _('Check services') }}')+'%3C/div%3E%3Cdiv class=%22card-nav-icon%22%3E↗%3C/div%3E');
+}
+function _updateChartData(widgetName, data){
+  // Find chart instances and update their data
+  var map={'agents':['chartUsage','chartTokens'],'content':['chartContentPipeline'],'revenue':['chartSubs','revenueChart']};
+  var ids=map[widgetName]||[];
+  ids.forEach(function(id){
+    var el=document.getElementById(id);
+    if(!el||typeof echarts==='undefined')return;
+    var chart=echarts.getInstanceByDom(el);
+    if(!chart)return;
+    var opt=chart.getOption();
+    if(!opt||!opt.series)return;
+    // Update series data
+    if(id==='chartUsage'){
+      var tc=data.today_calls||0,ttc=data.total_calls||0,ag=data.active_agents||0,tag=data.total_agents||0;
+      if(tc+ttc+ag+tag===0){
+        chart.setOption({graphic:[{type:'text',left:'center',top:'center',style:{text:'{{ _('No Data') }}',fontSize:14,fill:'var(--dim)'}}]});
+      }else{
+        chart.setOption({series:[{data:[tc,ag]},{data:[ttc,tag]}]});
+      }
+    }else if(id==='chartTokens'){
+      var ta=data.top_token_agents||[];
+      if(ta.length===0){
+        chart.setOption({graphic:[{type:'text',left:'center',top:'center',style:{text:'{{ _('No Data') }}',fontSize:14,fill:'var(--dim)'}}]});
+      }else{
+        var names=[],vals=[];
+        ta.slice().reverse().forEach(function(a){names.push(a.agent_name||'Agent#'+a.agent_id);vals.push(a.total||0)});
+        chart.setOption({yAxis:{data:names},series:[{data:vals}]});
+      }
+    }else if(id==='chartContentPipeline'){
+      var pp=data.published_posts||0,dp=data.draft_posts||0,pr=data.pending_reviews||0,pc=data.pending_comments||0;
+      if(pp+dp+pr+pc===0){
+        chart.setOption({graphic:[{type:'text',left:'center',top:'center',style:{text:'{{ _('No Content Yet') }}',fontSize:14,fill:'var(--dim)'}}]});
+      }else{
+        chart.setOption({series:[{data:[pp]},{data:[dp]},{data:[pr]},{data:[pc]}]});
+      }
+    }else if(id==='chartSubs'){
+      var as=data.active_subscriptions||0,to2=data.total_orders||0;
+      if(to2===0&&as===0){
+        chart.setOption({graphic:[{type:'text',left:'center',top:'center',style:{text:'{{ _('No Data') }}',fontSize:14,fill:'var(--dim)'}}]});
+      }else{
+        chart.setOption({graphic:[{style:{text:as.toString()}}],series:[{data:[{value:as},{value:Math.max(0,to2-as)}]}]});
+      }
+    }
+  });
+}
+
+function _enterBigScreen(){
+  _bigScreenActive=true;
+  var btn=document.getElementById('btnBigscreen');
+  if(btn){btn.textContent='{{ _('Exit') }}'}
+  var clock=document.getElementById('bigscreen-clock');
+  if(clock){clock.style.display='inline'}
+  document.body.classList.add('bigscreen');
+  // Collapse sidebar nodes
+  document.querySelectorAll('.sidebar .ng-body').forEach(function(el){el.classList.add('collapsed')});
+  // Start clock
+  _updateBigScreenClock();
+  if(_bigScreenClockTimer) clearInterval(_bigScreenClockTimer);
+  _bigScreenClockTimer=setInterval(_updateBigScreenClock,1000);
+  // Start auto-refresh (10s cycle)
+  if(_bigScreenTimer) clearInterval(_bigScreenTimer);
+  _bigScreenTimer=setInterval(_refreshDashboardData,10000);
+  // Resize all charts after DOM settles
+  setTimeout(function(){
+    if(typeof echarts!=='undefined'){
+      document.querySelectorAll('#mc .dash-card [id^=chart],#mc .dash-card [id^=health]').forEach(function(el){
+        var instance=echarts.getInstanceByDom(el);
+        if(instance) instance.resize();
+      });
+    }
+  },500);
+}
+
+function _exitBigScreen(){
+  _bigScreenActive=false;
+  var btn=document.getElementById('btnBigscreen');
+  if(btn){btn.textContent='{{ _('Big Screen') }}'}
+  var clock=document.getElementById('bigscreen-clock');
+  if(clock){clock.style.display='none'}
+  document.body.classList.remove('bigscreen');
+  // Restore sidebar nodes
+  document.querySelectorAll('.sidebar .ng-body.collapsed').forEach(function(el){el.classList.remove('collapsed')});
+  // Stop auto-refresh
+  if(_bigScreenTimer){clearInterval(_bigScreenTimer);_bigScreenTimer=null;}
+  if(_bigScreenClockTimer){clearInterval(_bigScreenClockTimer);_bigScreenClockTimer=null;}
+  // Resize all charts after DOM settles
+  setTimeout(function(){
+    if(typeof echarts!=='undefined'){
+      document.querySelectorAll('#mc .dash-card [id^=chart],#mc .dash-card [id^=health]').forEach(function(el){
+        var instance=echarts.getInstanceByDom(el);
+        if(instance) instance.resize();
+      });
+    }
+  },500);
+}
+
+function toggleBigScreen(){
+  if(_bigScreenActive){
+    // Exit big screen
+    if(document.fullscreenElement){
+      document.exitFullscreen().catch(function(){});
+    }else{
+      _exitBigScreen();
+    }
+  }else{
+    // Enter big screen
+    var el=document.documentElement;
+    if(el.requestFullscreen){
+      el.requestFullscreen().catch(function(){
+        // Fallback: just apply CSS class if fullscreen API fails
+        _enterBigScreen();
+      });
+    }else if(el.webkitRequestFullscreen){
+      el.webkitRequestFullscreen();
+    }else if(el.msRequestFullscreen){
+      el.msRequestFullscreen();
+    }else{
+      // Browser doesn't support Fullscreen API
+      _enterBigScreen();
+    }
+  }
+}
+
+// Listen for fullscreen change events
+document.addEventListener('fullscreenchange',function(){
+  if(document.fullscreenElement){
+    _enterBigScreen();
+  }else{
+    _exitBigScreen();
+  }
+});
+document.addEventListener('webkitfullscreenchange',function(){
+  if(document.webkitFullscreenElement){
+    _enterBigScreen();
+  }else{
+    _exitBigScreen();
+  }
+});
+
+// ── Skeleton screen (mirrors real layout to avoid CLS) ──
+function _render_skeleton(){
+  document.getElementById("pt").textContent="{{ _('Overview') }}";
+  var h='';
+  var sk='<div class="skeleton-block" style="';
+
+  // Tier 1: 5 KPI cards
+  h+='<div class="g5" style="margin-bottom:16px">';
+  for(var i=0;i<5;i++){
+    h+='<div class="kpi-card">'+
+      sk+'height:14px;width:60%;margin-bottom:8px"></div>'+
+      sk+'height:28px;width:40%;margin-bottom:4px"></div>'+
+      sk+'height:14px;width:50%"></div>'+
+      '</div>';
+  }
+  h+='</div>';
+
+  // Tier 2: charts left + sidebar right
+  h+='<div style="display:grid;grid-template-columns:1fr 380px;gap:16px;margin-bottom:16px">';
+  h+='<div style="display:flex;flex-direction:column;gap:16px">';
+  h+='<div class="g2">';
+  for(var j=0;j<2;j++){
+    h+='<div class="dash-card">'+sk+'height:14px;width:50%;margin-bottom:8px"></div>'+sk+'height:200px;width:100%"></div></div>';
+  }
+  h+='</div>';
+  for(var k=0;k<2;k++){
+    h+='<div class="dash-card">'+sk+'height:14px;width:50%;margin-bottom:8px"></div>'+sk+'height:200px;width:100%"></div></div>';
+  }
+  h+='</div>';
+  h+='<div style="display:flex;flex-direction:column;gap:16px">';
+  for(var m=0;m<2;m++){
+    h+='<div class="dash-card" style="flex:1">'+sk+'height:14px;width:50%;margin-bottom:8px"></div>'+sk+'height:180px;width:100%"></div></div>';
+  }
+  h+='</div></div>';
+
+  // Tier 3: 4 cards
+  h+='<div class="g4" style="margin-bottom:16px">';
+  for(var n=0;n<4;n++){
+    h+='<div class="dash-card">'+sk+'height:14px;width:50%;margin-bottom:8px"></div>'+sk+'height:200px;width:100%"></div></div>';
+  }
+  h+='</div>';
+
+  // Bottom: 2 cards
+  h+='<div class="g2" style="margin-bottom:16px">';
+  for(var p=0;p<2;p++){
+    h+='<div class="dash-card">'+sk+'height:14px;width:50%;margin-bottom:8px"></div>'+sk+'height:200px;width:100%"></div></div>';
+  }
+  h+='</div>';
+
+  document.getElementById("mc").innerHTML=h;
+}
+
+// ── Dashboard loader ──
+window.l_dashboard=function(){
+  document.getElementById("pt").textContent="{{ _('Overview') }}";
+  _render_skeleton();
+  fetch("/admin/dashboard",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success){
+      document.getElementById("mc").innerHTML='<div class="em">{{ _('Load failed') }}: '+(d.error||'{{ _('Unknown error') }}')+' <button class="btn bp" onclick="go(\'dashboard\')">{{ _('Retry') }}</button></div>';
+      return;
+    }
+    _render_dashboard(d.data);
+  }).catch(function(){document.getElementById("mc").innerHTML='<div class="em">{{ _('Load failed') }}</div>'})
+}

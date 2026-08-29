@@ -1,0 +1,106 @@
+{
+  "name": "Ad Management",
+  "name_i18n_key": "plugin.name",
+  "identifier": "ads",
+  "python_dependencies": {
+    "required": [],
+    "optional": {}
+  },
+  "version": "1.5.2",
+  "category": "content",
+  "tags": [
+    "advertising",
+    "banner",
+    "placement",
+    "analytics",
+    "ai-ready"
+  ],
+  "icon": "ads",
+  "description": "Ad Management — Ad placements, zones, impressions/clicks stats, and AI-ready APIs",
+  "author": "VeroRun",
+  "min_app_version": "0.10.0",
+  "dependencies": {},
+  "enabled": true,
+  "admin_url": "",
+  "admin_label": "Ad Settings",
+  "config": {
+    "default_width": 320,
+    "default_height": 0,
+    "max_placements": 50
+  },
+  "permissions": [
+    "api:read",
+    "api:write",
+    "admin:access"
+  ],
+  "hooks": {
+    "provides": [
+      "ads/get_placements",
+      "ads/render_ad",
+      "ads/get_stats",
+      "ads/record_impression",
+      "ads/record_click"
+    ],
+    "listens": []
+  },
+  "agent_role": "content",
+  "capabilities": [
+    "ads.list",
+    "ads.create",
+    "ads.update",
+    "ads.delete",
+    "ads.stats",
+    "ads.analyze",
+    "ads.snippet"
+  ],
+  "dashboard": {
+    "stats": [
+      {
+        "key": "total_placements",
+        "title": "Total Placements",
+        "type": "counter"
+      },
+      {
+        "key": "total_impressions",
+        "title": "Total Impressions",
+        "type": "counter"
+      },
+      {
+        "key": "total_clicks",
+        "title": "Total Clicks",
+        "type": "counter"
+      },
+      {
+        "key": "active_placements",
+        "title": "Active Placements",
+        "type": "gauge"
+      }
+    ]
+  },
+  "menu": {
+    "group": "AI & Content",
+    "key": "ads",
+    "icon": "ads",
+    "label": "Ad Management"
+  },
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "default_width": {
+        "type": "integer",
+        "default": 320,
+        "description": "Default ad width"
+      },
+      "default_height": {
+        "type": "integer",
+        "default": 0,
+        "description": "Default ad height (0 = auto)"
+      },
+      "max_placements": {
+        "type": "integer",
+        "default": 50,
+        "description": "Maximum placement count"
+      }
+    }
+  }
+}

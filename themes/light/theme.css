@@ -1,0 +1,49 @@
+/* ════════════════════════════════════════════════════════
+   VeroRun 主题 — Light (纯净白)
+   教育 · 咨询 · 法律 — 干净通透
+   ════════════════════════════════════════════════════════ */
+
+:root {
+  /* Background — pure white with warm undertone */
+  --bg-deep:      #f8f9fa;
+  --bg:           #ffffff;
+  --bg-elevated:  #f1f3f5;
+  --bg-card:      #ffffff;
+  --bg-glass:     rgba(255,255,255,0.85);
+  --bg-overlay:   rgba(0,0,0,0.4);
+
+  /* Accent — Indigo */
+  --blue:         #4f46e5;
+  --violet:       #7c3aed;
+  --green:        #059669;
+  --indigo:       #4f46e5;
+  --cyan:         #06b6d4;
+  --gold:         #d97706;
+  --rose:         #e11d48;
+  --orange:       #ea580c;
+
+  /* Text — dark gray on white */
+  --text:         #1e293b;
+  --text-dim:     #64748b;
+  --text-muted:   #94a3b8;
+  --text-high:    #0f172a;
+
+  /* Borders — subtle gray */
+  --border:       rgba(0,0,0,0.08);
+  --border-light: rgba(0,0,0,0.04);
+  --border-accent:rgba(79,70,229,0.15);
+
+  /* Gradients */
+  --gradient-primary:  linear-gradient(135deg, #4f46e5, #06b6d4);
+  --gradient-electric: linear-gradient(135deg, #4f46e5, #7c3aed);
+  --gradient-neon:     linear-gradient(135deg, #059669, #06b6d4);
+  --gradient-fire:     linear-gradient(135deg, #d97706, #ea580c);
+  --gradient-dark:     linear-gradient(180deg, #ffffff, #f8f9fa);
+
+  /* Shadows — softer for light mode */
+  --shadow-sm:   0 2px 8px rgba(0,0,0,0.06);
+  --shadow-md:   0 8px 32px rgba(0,0,0,0.08);
+  --shadow-lg:   0 20px 60px rgba(0,0,0,0.1);
+  --shadow-glow: 0 0 40px rgba(79,70,229,0.1);
+  --shadow-glow-blue: 0 0 40px rgba(79,70,229,0.08);
+}

@@ -1,0 +1,135 @@
+﻿window.l_nav_settings=function(){
+  document.getElementById("pt").textContent="{{ _('Navigation Settings') }}";
+  var mc=document.getElementById("mc");
+  var currentTab='main';
+  renderNavSettings(mc,currentTab);
+};
+function renderNavSettings(mc,tab){
+  var tabs=[
+    {key:'main',label:'{{ _('Main Nav') }}'},
+    {key:'platform',label:'{{ _('Sub-Site') }} · {{ _('Portal') }}'}
+  ];
+  var h='<div style="display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap">';
+  tabs.forEach(function(t){
+    h+='<button class="btn '+(tab===t.key?'bp':'')+'" onclick="navSettingsSwitch(\''+t.key+'\')">'+t.label+'</button>';
+  });
+  h+='</div><div id="ns-content" style="min-height:200px"><div class="lo"><div class="s"></div>{{ _('Loading...') }}...</div></div>';
+  mc.innerHTML=h;
+  if(tab==='main'){
+    loadMainNavInto('ns-content');
+  } else {
+    var c=document.getElementById('ns-content');
+    c.innerHTML='<div class="lo"><div class="s"></div>{{ _('Loading...') }}...</div>';
+    renderHeaderNav(c,tab);
+  }
+}
+function navSettingsSwitch(tab){
+  renderNavSettings(document.getElementById('mc'),tab);
+}
+function loadMainNavInto(targetId){
+  var el=document.getElementById(targetId);
+  if(!el)return;
+  fetch("/admin/footer-nav",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success){el.innerHTML='<div class="em">{{ _('Load failed') }}</div>';return}
+    var h='<div class="cd"><div class="st" style="display:flex;justify-content:space-between;align-items:center">{{ _('Main Nav Management') }}';
+    h+='<button class="btn bs bp" onclick="hnShowAddForm()" style="font-size:11px">+ {{ _('Add Nav') }}</button></div>';
+    h+='<div id="hn-list"><table><tr><th style="width:50px">{{ _('Sort') }}</th><th>{{ _('Title') }}</th><th style="width:240px">URL</th><th style="width:50px">{{ _('Status') }}</th><th style="width:100px">{{ _('Actions') }}</th></tr>';
+    if(!d.data.length){h+='<tr><td colspan="5" class="em">{{ _('No Nav Items') }}</td></tr>'}
+    else{d.data.forEach(function(m,i){
+      h+='<tr data-hn-id="'+m.id+'" data-hn-title="'+escAttr(m.title)+'" data-hn-url="'+escAttr(m.url)+'" data-hn-enabled="'+(m.is_enabled?1:0)+'"><td style="display:flex;gap:2px;align-items:center;justify-content:center">';
+      if(i>0)h+='<button class="btn bo bs" style="padding:2px 4px;font-size:10px" onclick="hnMove('+m.id+',\'up\')">▲</button>';
+      else h+='<span style="width:22px"></span>';
+      if(i<d.data.length-1)h+='<button class="btn bo bs" style="padding:2px 4px;font-size:10px" onclick="hnMove('+m.id+',\'down\')">▼</button>';
+      else h+='<span style="width:22px"></span>';
+      h+='</td><td>'+esc(m.title)+'</td><td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(m.url)+'</td><td>'+(m.is_enabled?'✅':'⛔')+'</td><td style="display:flex;gap:4px"><button class="btn bo bs" onclick="hnEditForm('+m.id+')">{{ _('Edit') }}</button><button class="btn bo bs" style="color:#f85149" onclick="hnDelete('+m.id+',\''+escAttr(m.title)+'\')">{{ _('Delete') }}</button></td></tr>'
+    })}
+    h+='</table></div></div>';el.innerHTML=h;
+    loadFooterLinksConfigInto(targetId);
+  }).catch(function(){el.innerHTML='<div class="em">{{ _('Request Failed') }}</div>'})
+}
+function loadFooterLinksConfigInto(targetId){
+  var el=document.getElementById(targetId);
+  if(!el)return;
+  var ld=document.createElement('div');ld.id='fl-loader';ld.style.cssText='text-align:center;padding:12px;color:var(--dim)';ld.innerHTML='<div class="s" style="display:inline-block"></div>{{ _('Footer Loading') }}...';el.appendChild(ld);
+  fetch("/admin/footer-links",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    var loader=document.getElementById('fl-loader');if(loader)loader.remove();
+    if(!d.success){el.insertAdjacentHTML('beforeend','<div class="em">{{ _('Load failed') }}</div>');loadSocialMediaConfigInto(targetId);return}
+    var h='<div class="cd" style="margin-top:24px"><div class="st">{{ _('Footer Columns') }}</div>';
+    h+='<div style="margin-bottom:12px"><button class="btn bp" onclick="flShowAddForm()">+ {{ _('Add Link') }}</button></div>';
+    h+='<div id="fl-list"><table><tr><th style="width:80px">{{ _('Column') }}</th><th>{{ _('Title') }}</th><th style="width:200px">URL</th><th style="width:50px">{{ _('Status') }}</th><th style="width:60px">{{ _('Actions') }}</th></tr>';
+    if(!d.data.length){h+='<tr><td colspan="5" class="em">{{ _('No Records') }}</td></tr>'}
+    else{d.data.forEach(function(m){h+='<tr><td>'+esc(m.section)+'</td><td>'+esc(m.title)+'</td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(m.url)+'</td><td>'+(m.is_enabled?'✅':'⛔')+'</td><td style="display:flex;gap:4px"><button class="btn bo bs" onclick="flEditForm('+m.id+')">{{ _('Edit') }}</button><button class="btn bo bs" style="color:#f85149" onclick="flDelete('+m.id+',\''+escAttr(m.title)+'\')">{{ _('Delete') }}</button></td></tr>'})}
+    h+='</table></div></div>';el.insertAdjacentHTML('beforeend',h);
+    loadSocialMediaConfigInto(targetId);
+  }).catch(function(){el.insertAdjacentHTML('beforeend','<div class="em">{{ _('Request Failed') }}</div>');loadSocialMediaConfigInto(targetId)})
+}
+function loadSocialMediaConfigInto(targetId){
+  var el=document.getElementById(targetId);
+  if(!el)return;
+  var ld=document.createElement('div');ld.id='sm-loader';ld.style.cssText='text-align:center;padding:12px;color:var(--dim)';ld.innerHTML='<div class="s" style="display:inline-block"></div>{{ _('Social Media Loading') }}...';el.appendChild(ld);
+  fetch("/admin/social-media",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    var loader=document.getElementById('sm-loader');if(loader)loader.remove();
+    if(!d.success||!d.data){el.insertAdjacentHTML('beforeend','<div class="em">{{ _('Social Media Load Failed') }}</div>');loadPartnersConfigInto(targetId);return}
+    var items=d.data;
+    var h='<div class="cd" style="margin-top:24px"><div class="st">{{ _('Social Media Management') }}</div>';
+    h+='<div style="margin-bottom:12px"><button class="btn bp" onclick="smShowAddForm()">+ {{ _('Add Social Media') }}</button></div>';
+    h+='<div id="sm-list"><table id="sm-table"><tr><th style="width:30px">{{ _('#') }}</th><th style="width:80px">{{ _('Icon') }}</th><th>{{ _('Platform Name') }}</th><th style="width:200px">URL</th><th>Hover{{ _('Text') }}</th><th style="width:60px">{{ _('Enabled') }}</th><th style="width:80px">{{ _('Actions') }}</th></tr>';
+    if(!items.length){h+='<tr><td colspan="7" class="em">{{ _('No Records') }}</td></tr>'}
+    else{items.forEach(function(item,idx){
+      var enableIcon=item.is_enabled?'✓':'○';
+      var enableCls=item.is_enabled?'on':'off';
+      var iconHtml=smRenderIcon(item.icon_type,item.icon_value);
+      h+='<tr id="sm-row-'+item.id+'">';
+      h+='<td style="text-align:center;color:var(--dim)">'+item.display_order+'</td>';
+      h+='<td style="text-align:center">'+iconHtml+'</td>';
+      h+='<td>'+esc(item.platform_name)+'</td>';
+      h+='<td><span style="font-size:11px;color:var(--muted);word-break:break-all">'+esc(item.url)+'</span></td>';
+      h+='<td style="font-size:11px">'+esc(item.hover_text||'-')+'</td>';
+      h+='<td><span class="bdg '+enableCls+'">'+enableIcon+'</span></td>';
+      h+='<td style="display:flex;gap:4px"><button class="btn bo bs" onclick="smEditForm('+item.id+')">{{ _('Edit') }}</button><button class="btn bo bs" style="color:#f85149" onclick="smDelete('+item.id+',\''+escAttr(item.platform_name)+'\')">{{ _('Delete') }}</button></td>';
+      h+='</tr>'
+    })}
+    h+='</table></div></div>';el.insertAdjacentHTML('beforeend',h);
+    loadPartnersConfigInto(targetId);
+  }).catch(function(){el.insertAdjacentHTML('beforeend','<div class="em">{{ _('Social Media Request Failed') }}</div>');loadPartnersConfigInto(targetId)})
+}
+function loadPartnersConfigInto(targetId){
+  var el=document.getElementById(targetId);
+  if(!el)return;
+  var ld=document.createElement('div');ld.id='pt-loader';ld.style.cssText='text-align:center;padding:12px;color:var(--dim)';ld.innerHTML='<div class="s" style="display:inline-block"></div>{{ _('Partner Loading') }}...';el.appendChild(ld);
+  fetch("/admin/partners",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    var loader=document.getElementById('pt-loader');if(loader)loader.remove();
+    if(!d.success){el.insertAdjacentHTML('beforeend','<div class="em">{{ _('Load failed') }}</div>');return}
+    var h='<div class="cd" style="margin-top:24px"><div class="st">{{ _('Ecosystem Partners') }}</div>';
+    h+='<div style="margin-bottom:12px"><button class="btn bp" onclick="ptShowAddForm()">+ {{ _('Add Partner') }}</button></div>';
+    h+='<div id="pt-list"><table><tr><th>{{ _('Name') }}</th><th style="width:200px">URL</th><th style="width:50px">{{ _('Status') }}</th><th style="width:60px">{{ _('Actions') }}</th></tr>';
+    d.data.forEach(function(m){h+='<tr><td>'+esc(m.name)+'</td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(m.url)+'</td><td>'+(m.is_enabled?'✅':'⛔')+'</td><td style="display:flex;gap:4px"><button class="btn bo bs" onclick="ptEditForm('+m.id+')">{{ _('Edit') }}</button><button class="btn bo bs" style="color:#f85149" onclick="ptDelete('+m.id+',\''+escAttr(m.name)+'\')">{{ _('Delete') }}</button></td></tr>'})
+    h+='</table></div></div>';el.insertAdjacentHTML('beforeend',h);
+  }).catch(function(){el.insertAdjacentHTML('beforeend','<div class="em">{{ _('Request Failed') }}</div>')})
+}
+function scfg(k){
+  var v=document.getElementById("cf-"+k).value.trim();
+  if(!v)return;
+  fetch("/user/config",{method:"PUT",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify({key:k,value:v})}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){alert("{{ _('Saved') }}");loadConfigs()}else{alert(d.error||"{{ _('Save failed') }}")}
+  }).catch(function(){alert("{{ _('Save failed') }}")})
+}
+function seedConfig(){
+  if(!confirm("{{ _('Initialize all config items (existing kept)?') }}"))return;
+  fetch("/user/config/seed",{method:"POST",headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){alert(d.message);loadConfigs()}else{alert(d.error||"{{ _('Initialize Failed') }}")}
+  })
+}
+function uploadConfig(){
+  document.getElementById("csvFile").click();
+}
+function doUpload(){
+  var file=document.getElementById("csvFile").files[0];
+  if(!file)return;
+  var fd=new FormData();fd.append("file",file);
+  fetch("/user/config/upload",{method:"POST",headers:{"Authorization":"Bearer "+T},body:fd}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){alert(d.message+" ("+d.access_key_prefix+")");loadConfigs()}else{alert(d.error||"{{ _('Import Failed') }}")}
+  }).catch(function(){alert("{{ _('Upload failed') }}")});
+  document.getElementById("csvFile").value="";
+}
+

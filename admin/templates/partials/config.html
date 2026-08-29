@@ -1,0 +1,437 @@
+window.l_config=function(){
+  document.getElementById("pt").textContent="{{ _('Basic Settings') }}";
+  var h='<div class="cd">';
+  h+='<div id="config-tab-content"></div>';
+  h+='</div>';
+  document.getElementById("mc").innerHTML=h;
+  loadSystemConfig();
+}
+function loadSystemConfig(){
+  fetch("/user/config",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success){document.getElementById("config-tab-content").innerHTML='<div class="em">{{ _('Cannot Load') }}</div>';return}
+    var cats=d.categories||[{id:"other",title:"{{ _('System Settings') }}"}];
+    var data=d.data||[];
+    var schema=d.schema||{};
+    var c="";
+    cats.forEach(function(cat){
+      var items=data.filter(function(k){return k.category==cat.id});
+      if(!items.length)return;
+      var sid='cfg-cat-'+cat.id;
+      var collapsed=localStorage.getItem(sid)==='1';
+      c+='<div class="cd" style="margin-bottom:12px">';
+      c+='<div class="st" style="cursor:pointer;user-select:none" onclick="toggleCat(\''+cat.id+'\')">'
+        +'<span id="cfg-arr-'+cat.id+'" style="display:inline-block;width:14px;transition:transform .2s">'
+        +(collapsed?'▶':'▼')+'</span> '
+        +cat.title+'</div>';
+      c+='<div id="'+sid+'"'+(collapsed?' style="display:none"':'')+'>';
+      items.forEach(function(k){
+        var isSensitive=k.sensitive;
+        var displayVal=k.sensitive?k.masked_value:k.value;
+        var safeVal=(k.value||"").replace(/"/g,"&quot;");
+        var safeMasked=(k.masked_value||"").replace(/"/g,"&quot;");
+        var label=k.label||k.key;
+        var ph=k.placeholder||"";
+        c+='<div class="fl">';
+        c+='<div style="flex:1;min-width:0">';
+        c+='<div style="font-size:12px;font-weight:600">'+label+'</div>';
+        c+='<div style="font-size:10px;color:var(--dim)">'+(k.description||"")+'</div></div>';
+        if(isSensitive){
+          c+='<input class="in" id="cf-'+k.key+'" type="password" value="'+safeMasked+'" placeholder="'+ph+'" style="width:180px" onfocus="this.value=\'\'" onblur="if(!this.value)this.value=\''+safeMasked+'\'">';
+        }else{
+          c+='<input class="in" id="cf-'+k.key+'" value="'+safeVal+'" placeholder="'+ph+'" style="width:200px">';
+        }
+        c+='<button class="btn bp bs" onclick="scfg(\''+k.key+'\')">{{ _('Save') }}</button></div>';
+      });
+      c+='</div></div>';
+    });
+    var ct=document.getElementById("config-tab-content");if(ct)ct.innerHTML=c||'<div class="em">{{ _('No Config Item') }}</div>';
+  }).catch(function(){var ct=document.getElementById("config-tab-content");if(ct)ct.innerHTML='<div class="em">{{ _('Load failed') }}</div>'})
+}
+function toggleCat(catId){
+  var sec=document.getElementById('cfg-cat-'+catId);
+  var arr=document.getElementById('cfg-arr-'+catId);
+  if(!sec||!arr)return;
+  if(sec.style.display==='none'){
+    sec.style.display='';arr.textContent='▼';localStorage.setItem('cfg-cat-'+catId,'0');
+  }else{
+    sec.style.display='none';arr.textContent='▶';localStorage.setItem('cfg-cat-'+catId,'1');
+  }
+}
+// loadSmsTemplatesConfig() — 已迁移至 SmsPlugin 插件，由插件模板 admin_sms.html 管理
+function loadNavConfig(){
+  var ct=document.getElementById("config-tab-content");
+  ct.insertAdjacentHTML("beforeend",'<div id="hn-loader" style="text-align:center;padding:12px;color:var(--dim)"><div class="s" style="display:inline-block"></div>{{ _('Main Nav Loading') }}...</div>');
+  fetch("/admin/footer-nav",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    var loader=document.getElementById("hn-loader");if(loader)loader.remove();
+    if(!d.success){ct.insertAdjacentHTML("beforeend",'<div class="em">{{ _('Load failed') }}</div>');loadFooterLinksConfig();return}
+    var h='<div class="cd" style="margin-top:24px"><div class="st">{{ _('Main Nav Management') }}</div>';
+    h+='<div style="margin-bottom:12px"><button class="btn bp" onclick="hnShowAddForm()">+ {{ _('Add Nav') }}</button></div>';
+    h+='<div id="hn-list"><table><tr><th style="width:50px">{{ _('Sort') }}</th><th>{{ _('Title') }}</th><th style="width:240px">URL</th><th style="width:50px">{{ _('Status') }}</th><th style="width:100px">{{ _('Actions') }}</th></tr>';
+    if(!d.data.length){h+='<tr><td colspan="5" class="em">{{ _('No Nav Items') }}</td></tr>'}
+    else{d.data.forEach(function(m,i){
+      h+='<tr data-hn-id="'+m.id+'" data-hn-title="'+escJs(m.title)+'" data-hn-url="'+escJs(m.url)+'" data-hn-enabled="'+(m.is_enabled?1:0)+'"><td style="display:flex;gap:2px;align-items:center;justify-content:center">';
+      if(i>0)h+='<button class="btn bo bs" style="padding:2px 4px;font-size:10px" onclick="hnMove('+m.id+',\'up\')">▲</button>';
+      else h+='<span style="width:22px"></span>';
+      if(i<d.data.length-1)h+='<button class="btn bo bs" style="padding:2px 4px;font-size:10px" onclick="hnMove('+m.id+',\'down\')">▼</button>';
+      else h+='<span style="width:22px"></span>';
+      h+='</td><td>'+esc(m.title)+'</td><td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(m.url)+'</td><td>'+(m.is_enabled?'✅':'⛔')+'</td><td style="display:flex;gap:4px"><button class="btn bo bs" onclick="hnEditForm('+m.id+')">{{ _('Edit') }}</button><button class="btn bo bs" style="color:#f85149" onclick="hnDelete('+m.id+',\''+escJs(m.title)+'\')">{{ _('Delete') }}</button></td></tr>'
+    })}
+    h+='</table></div></div>';ct.insertAdjacentHTML("beforeend",h);
+    loadFooterLinksConfig();
+  }).catch(function(){ct.insertAdjacentHTML("beforeend",'<div class="em">{{ _('Request Failed') }}</div>');loadFooterLinksConfig()})
+}
+function hnShowAddForm(){
+  var ct=document.getElementById("hn-list");
+  var existing=document.getElementById("hn-add-row");if(existing)existing.remove();
+  var h='<tr id="hn-add-row" style="background:rgba(0,245,255,0.05)"><td colspan="5">';
+  h+='<div style="display:flex;gap:8px;align-items:center;padding:6px 0"><input class="in" id="hn-add-title" placeholder="{{ _('Title') }}" style="width:100px"><input class="in" id="hn-add-url" placeholder="URL" style="flex:1"><button class="btn bp" onclick="hnDoAdd()">{{ _('Add') }}</button><button class="btn bo" onclick="document.getElementById(\'hn-add-row\').remove()">{{ _('Cancel') }}</button></div>';
+  h+='</td></tr>';
+  ct.querySelector("table").insertAdjacentHTML("beforeend",h);
+}
+function hnDoAdd(){
+  var title=document.getElementById("hn-add-title").value.trim();
+  var url=document.getElementById("hn-add-url").value.trim();
+  if(!title||!url){showToast("{{ _('Title and URL required') }}","error");return}
+  fetch("/admin/footer-nav",{method:"POST",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify({title:title,url:url,is_enabled:true})}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){showToast("{{ _('Added') }}");loadConfigs()}
+    else{showToast(d.error||"{{ _('Add Failed') }}","error")}
+  }).catch(function(){showToast("{{ _('Request Failed') }}","error")})
+}
+function hnEditForm(id){
+  var row=document.querySelector("#hn-list tr[data-hn-id=\""+id+"\"]");
+  if(!row)return;
+  var title=row.getAttribute("data-hn-title");
+  var url=row.getAttribute("data-hn-url");
+  var enabled=row.getAttribute("data-hn-enabled")==="1";
+  row.outerHTML='<tr id="hn-edit-row" style="background:rgba(0,245,255,0.05)"><td colspan="5">'+
+    '<div style="display:flex;gap:8px;align-items:center;padding:6px 0">'+
+    '<input class="in" id="hn-edit-title" value="'+escJs(title)+'" style="width:100px">'+
+    '<input class="in" id="hn-edit-url" value="'+escJs(url)+'" style="flex:1">'+
+    '<label style="font-size:12px;display:flex;align-items:center;gap:4px;white-space:nowrap"><input type="checkbox" id="hn-edit-enabled"'+(enabled?' checked':'')+'>{{ _('Enabled') }}</label>'+
+    '<button class="btn bp" onclick="hnDoEdit('+id+')">{{ _('Save') }}</button>'+
+    '<button class="btn bo" onclick="loadConfigs()">{{ _('Cancel') }}</button></div></td></tr>';
+}
+function hnDoEdit(id){
+  var title=document.getElementById("hn-edit-title").value.trim();
+  var url=document.getElementById("hn-edit-url").value.trim();
+  var enabled=document.getElementById("hn-edit-enabled").checked;
+  if(!title||!url){showToast("{{ _('Title and URL required') }}","error");return}
+  fetch("/admin/footer-nav/"+id,{method:"PUT",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify({title:title,url:url,is_enabled:enabled})}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){showToast("{{ _('Saved') }}");loadConfigs()}
+    else{showToast(d.error||"{{ _('Save failed') }}","error")}
+  }).catch(function(){showToast("{{ _('Request Failed') }}","error")})
+}
+function hnDelete(id,title){
+  if(!confirm("{{ _('Confirm Deletion of Nav Item') }}「"+title+"」？"))return;
+  fetch("/admin/footer-nav/"+id,{method:"DELETE",headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){showToast("{{ _('Deleted') }}");loadConfigs()}
+    else{showToast(d.error||"{{ _('Delete failed') }}","error")}
+  }).catch(function(){showToast("{{ _('Request Failed') }}","error")})
+}
+function hnMove(id,direction){
+  fetch("/admin/footer-nav",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success||!d.data)return;
+    var items=d.data;
+    var idx=-1;
+    for(var i=0;i<items.length;i++){if(items[i].id===id){idx=i;break}}
+    if(idx<0)return;
+    var swapIdx=direction==="up"?idx-1:idx+1;
+    if(swapIdx<0||swapIdx>=items.length)return;
+    var a=items[idx],b=items[swapIdx];
+    Promise.all([
+      fetch("/admin/footer-nav/"+a.id,{method:"PUT",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify({title:a.title,url:a.url,is_enabled:a.is_enabled?true:false,sort_order:b.sort_order})}),
+      fetch("/admin/footer-nav/"+b.id,{method:"PUT",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify({title:b.title,url:b.url,is_enabled:b.is_enabled?true:false,sort_order:a.sort_order})})
+    ]).then(function(){loadConfigs()}).catch(function(){showToast("{{ _('Sort failed') }}","error")})
+  })
+}
+function loadFooterLinksConfig(){
+  var ct=document.getElementById("config-tab-content");
+  ct.insertAdjacentHTML("beforeend",'<div id="fl-loader" style="text-align:center;padding:12px;color:var(--dim)"><div class="s" style="display:inline-block"></div>{{ _('Footer Loading') }}...</div>');
+  fetch("/admin/footer-links",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    var loader=document.getElementById("fl-loader");if(loader)loader.remove();
+    if(!d.success){ct.insertAdjacentHTML("beforeend",'<div class="em">{{ _('Load failed') }}</div>');loadSocialMediaConfig();return}
+    var h='<div class="cd" style="margin-top:24px"><div class="st">{{ _('Footer Columns') }}</div>';
+    h+='<div style="margin-bottom:12px"><button class="btn bp" onclick="flShowAddForm()">+ {{ _('Add Link') }}</button></div>';
+    h+='<div id="fl-list"><table><tr><th style="width:80px">{{ _('Column') }}</th><th>{{ _('Title') }}</th><th style="width:200px">URL</th><th style="width:50px">{{ _('Status') }}</th><th style="width:60px">{{ _('Actions') }}</th></tr>';
+    if(!d.data.length){h+='<tr><td colspan="5" class="em">{{ _('No Records') }}</td></tr>'}
+    else{d.data.forEach(function(m){h+='<tr><td>'+esc(m.section)+'</td><td>'+esc(m.title)+'</td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(m.url)+'</td><td>'+(m.is_enabled?'✅':'⛔')+'</td><td style="display:flex;gap:4px"><button class="btn bo bs" onclick="flEditForm('+m.id+')">{{ _('Edit') }}</button><button class="btn bo bs" style="color:#f85149" onclick="flDelete('+m.id+',\''+escJs(m.title)+'\')">{{ _('Delete') }}</button></td></tr>'})}
+    h+='</table></div></div>';ct.insertAdjacentHTML("beforeend",h);
+    loadSocialMediaConfig();
+  }).catch(function(){ct.insertAdjacentHTML("beforeend",'<div class="em">{{ _('Request Failed') }}</div>');loadSocialMediaConfig()})
+}
+function loadSocialMediaConfig(){
+  var ct=document.getElementById("config-tab-content");
+  ct.insertAdjacentHTML("beforeend",'<div id="sm-loader" style="text-align:center;padding:12px;color:var(--dim)"><div class="s" style="display:inline-block"></div>{{ _('Social Media Loading') }}...</div>');
+  fetch("/admin/social-media",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    var loader=document.getElementById("sm-loader");if(loader)loader.remove();
+    if(!d.success||!d.data){ct.insertAdjacentHTML("beforeend",'<div class="em">{{ _('Social Media Load Failed') }}</div>');return}
+    var items=d.data;
+    var h='<div class="cd" style="margin-top:24px"><div class="st">{{ _('Social Media Management') }}</div>';
+    h+='<div style="margin-bottom:12px"><button class="btn bp" onclick="smShowAddForm()">+ {{ _('Add Social Media') }}</button></div>';
+    h+='<div id="sm-list"><div style="font-size:12px;color:var(--dim);margin-bottom:8px">{{ _('Social Media Links') }} ('+items.length+')</div>';
+    if(!items.length){
+      h+='<div class="em">{{ _('No Records') }}</div>';
+      ct.insertAdjacentHTML("beforeend",h);
+      return;
+    }
+    h+='<table id="sm-table"><tr><th style="width:30px">{{ _('#') }}</th><th style="width:80px">{{ _('Icon') }}</th><th>{{ _('Platform Name') }}</th><th style="width:200px">URL</th><th>Hover{{ _('Text') }}</th><th style="width:60px">{{ _('Enabled') }}</th><th style="width:80px">{{ _('Actions') }}</th></tr>';
+    items.forEach(function(item,idx){
+      var enableIcon=item.is_enabled?'✓':'○';
+      var enableCls=item.is_enabled?'on':'off';
+      var iconHtml=smRenderIcon(item.icon_type,item.icon_value);
+      h+='<tr id="sm-row-'+item.id+'" data-id="'+item.id+'" data-order="'+item.display_order+'"';
+      h+=' data-platform_name="'+escJs(item.platform_name)+'" data-icon_type="'+escJs(item.icon_type||'')+'"';
+      h+=' data-icon_value="'+escJs(item.icon_value||'')+'" data-url="'+escJs(item.url)+'"';
+      h+=' data-hover_text="'+escJs(item.hover_text||'')+'" data-is_enabled="'+item.is_enabled+'">';
+      h+='<td style="text-align:center;color:var(--dim)">'+item.display_order+'</td>';
+      h+='<td style="text-align:center">'+iconHtml+'</td>';
+      h+='<td>'+esc(item.platform_name)+'</td>';
+      h+='<td><span style="font-size:11px;color:var(--muted);word-break:break-all">'+esc(item.url)+'</span></td>';
+      h+='<td style="font-size:11px">'+esc(item.hover_text||'-')+'</td>';
+      h+='<td><span class="bdg '+enableCls+'">'+enableIcon+'</span></td>';
+      h+='<td style="display:flex;gap:4px"><button class="btn bo bs" onclick="smEditForm('+item.id+')">{{ _('Edit') }}</button><button class="btn bo bs" style="color:#f85149" onclick="smDelete('+item.id+',\''+escJs(item.platform_name)+'\')">{{ _('Delete') }}</button></td>';
+      h+='</tr>';
+    });
+    h+='</table></div>';
+    ct.insertAdjacentHTML("beforeend",h);
+    loadPartnersConfig();
+  }).catch(function(){ct.insertAdjacentHTML("beforeend",'<div class="em">{{ _('Social Media Request Failed') }}</div>');loadPartnersConfig()})
+}
+function loadPartnersConfig(){
+  var ct=document.getElementById("config-tab-content");
+  ct.insertAdjacentHTML("beforeend",'<div id="pt-loader" style="text-align:center;padding:12px;color:var(--dim)"><div class="s" style="display:inline-block"></div>{{ _('Partner Loading') }}...</div>');
+  fetch("/admin/partners",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    var loader=document.getElementById("pt-loader");if(loader)loader.remove();
+    if(!d.success){ct.insertAdjacentHTML("beforeend",'<div class="em">{{ _('Load failed') }}</div>');return}
+    var h='<div class="cd" style="margin-top:12px"><div class="st">{{ _('Ecosystem Partners') }}</div>';
+    h+='<div style="margin-bottom:12px"><button class="btn bp" onclick="ptShowAddForm()">+ {{ _('Add Partner') }}</button></div>';
+    h+='<div id="pt-list"><table><tr><th>{{ _('Name') }}</th><th style="width:200px">URL</th><th style="width:50px">{{ _('Status') }}</th><th style="width:60px">{{ _('Actions') }}</th></tr>';
+    if(!d.data.length){h+='<tr><td colspan="4" class="em">{{ _('No Records') }}</td></tr>'}
+    else{d.data.forEach(function(m){h+='<tr><td>'+esc(m.name)+'</td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(m.url)+'</td><td>'+(m.is_enabled?'✅':'⛔')+'</td><td style="display:flex;gap:4px"><button class="btn bo bs" onclick="ptEditForm('+m.id+')">{{ _('Edit') }}</button><button class="btn bo bs" style="color:#f85149" onclick="ptDelete('+m.id+',\''+escJs(m.name)+'\')">{{ _('Delete') }}</button></td></tr>'})}
+    h+='</table></div></div>';ct.insertAdjacentHTML("beforeend",h);
+  }).catch(function(){ct.insertAdjacentHTML("beforeend",'<div class="em">{{ _('Request Failed') }}</div>')})
+}
+// ── Page Footer CRUD Functions ──
+function escJs(s){if(!s)return'';return s.replace(/\\\\/g,'\\\\\\\\').replace(/'/g,"\\\\'").replace(/\\n/g,'\\\\n')}
+// {{ _('Internal Links') }} CRUD
+function flShowAddForm(){var h='<div class="cd" style="margin-top:12px" id="fl-form"><div class="st">{{ _('Add Internal Link') }}</div>';h+='<div style="display:flex;flex-direction:column;gap:8px">';h+='<input class="in" id="fl-section" placeholder="{{ _('Column Name') }} ({{ _('e.g.') }}: {{ _('Products') }})">';h+='<input class="in" id="fl-title" placeholder="{{ _('Link Title') }}">';h+='<input class="in" id="fl-url" placeholder="{{ _('Link') }} URL">';h+='</div><div style="margin-top:12px;display:flex;gap:8px"><button class="btn bp" onclick="flSubmitCreate()">{{ _('Create') }}</button><button class="btn bo" onclick="flCancelForm()">{{ _('Cancel') }}</button></div></div>';document.getElementById("fl-list").insertAdjacentHTML("beforebegin",h)}
+function flEditForm(id){fetch("/admin/footer-links",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){if(!d.success)return;var m=d.data.find(function(x){return x.id==id});if(!m)return;var h='<div class="cd" style="margin-top:12px" id="fl-form"><div class="st">{{ _('Edit Site Link') }}</div>';h+='<div style="display:flex;flex-direction:column;gap:8px">';h+='<input class="in" id="fl-section" value="'+escJs(m.section)+'" placeholder="{{ _('Column Name') }}">';h+='<input class="in" id="fl-title" value="'+escJs(m.title)+'" placeholder="{{ _('Link Title') }}">';h+='<input class="in" id="fl-url" value="'+escJs(m.url)+'" placeholder="{{ _('Link') }} URL">';h+='<label><input type="checkbox" id="fl-enabled"'+(m.is_enabled?' checked':'')+'> {{ _('Enabled') }}</label>';h+='</div><div style="margin-top:12px;display:flex;gap:8px"><button class="btn bp" onclick="flSubmitUpdate('+id+')">{{ _('Save') }}</button><button class="btn bo" onclick="flCancelForm()">{{ _('Cancel') }}</button></div></div>';document.getElementById("fl-list").insertAdjacentHTML("beforebegin",h)})}
+function flSubmitCreate(){var d={section:document.getElementById("fl-section").value.trim(),title:document.getElementById("fl-title").value.trim(),url:document.getElementById("fl-url").value.trim(),is_enabled:true};fetch("/admin/footer-links",{method:"POST",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify(d)}).then(function(r){return r.json()}).then(function(d){if(d.success){flCancelForm();flRefresh()}else{alert(d.error||"{{ _('Creation Failed') }}")}}).catch(function(){alert("{{ _('Request Failed') }}")})}
+function flSubmitUpdate(id){var d={section:document.getElementById("fl-section").value.trim(),title:document.getElementById("fl-title").value.trim(),url:document.getElementById("fl-url").value.trim(),is_enabled:document.getElementById("fl-enabled").checked};fetch("/admin/footer-links/"+id,{method:"PUT",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify(d)}).then(function(r){return r.json()}).then(function(d){if(d.success){flCancelForm();flRefresh()}else{alert(d.error||"{{ _('Update Failed') }}")}}).catch(function(){alert("{{ _('Request Failed') }}")})}
+function flDelete(id,name){if(!confirm("{{ _('Confirm Delete') }}「"+name+"」？"))return;fetch("/admin/footer-links/"+id,{method:"DELETE",headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){if(d.success){flRefresh()}else{alert(d.error||"{{ _('Delete failed') }}")}}).catch(function(){alert("{{ _('Request Failed') }}")})}
+function flCancelForm(){var f=document.getElementById("fl-form");if(f)f.remove()}
+function flRefresh(){flCancelForm();var el=document.getElementById("fl-list");el.innerHTML='<div style="text-align:center;padding:12px;color:var(--dim)"><div class="s" style="display:inline-block"></div></div>';fetch("/admin/footer-links",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){if(!d.success)return;var h='<table><tr><th style="width:80px">{{ _('Column') }}</th><th>{{ _('Title') }}</th><th style="width:200px">URL</th><th style="width:50px">{{ _('Status') }}</th><th style="width:60px">{{ _('Actions') }}</th></tr>';if(!d.data.length){h+='<tr><td colspan="5" class="em">{{ _('No Records') }}</td></tr>'}else{d.data.forEach(function(m){h+='<tr><td>'+esc(m.section)+'</td><td>'+esc(m.title)+'</td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(m.url)+'</td><td>'+(m.is_enabled?'✅':'⛔')+'</td><td style="display:flex;gap:4px"><button class="btn bo bs" onclick="flEditForm('+m.id+')">{{ _('Edit') }}</button><button class="btn bo bs" style="color:#f85149" onclick="flDelete('+m.id+',\''+escJs(m.title)+'\')">{{ _('Delete') }}</button></td></tr>'})}h+='</table>';el.innerHTML=h})}
+// {{ _('Site Navigation') }} CRUD
+function fnShowAddForm(){var h='<div class="cd" style="margin-top:12px" id="fn-form"><div class="st">{{ _('Add Site Nav') }}</div>';h+='<div style="display:flex;flex-direction:column;gap:8px">';h+='<input class="in" id="fn-title" placeholder="{{ _('Link Title') }}">';h+='<input class="in" id="fn-url" placeholder="{{ _('Link') }} URL">';h+='</div><div style="margin-top:12px;display:flex;gap:8px"><button class="btn bp" onclick="fnSubmitCreate()">{{ _('Create') }}</button><button class="btn bo" onclick="fnCancelForm()">{{ _('Cancel') }}</button></div></div>';document.getElementById("fn-list").insertAdjacentHTML("beforebegin",h)}
+function fnEditForm(id){fetch("/admin/footer-nav",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){if(!d.success)return;var m=d.data.find(function(x){return x.id==id});if(!m)return;var h='<div class="cd" style="margin-top:12px" id="fn-form"><div class="st">{{ _('Edit Site Navigation') }}</div>';h+='<div style="display:flex;flex-direction:column;gap:8px">';h+='<input class="in" id="fn-title" value="'+escJs(m.title)+'" placeholder="{{ _('Link Title') }}">';h+='<input class="in" id="fn-url" value="'+escJs(m.url)+'" placeholder="{{ _('Link') }} URL">';h+='<label><input type="checkbox" id="fn-enabled"'+(m.is_enabled?' checked':'')+'> {{ _('Enabled') }}</label>';h+='</div><div style="margin-top:12px;display:flex;gap:8px"><button class="btn bp" onclick="fnSubmitUpdate('+id+')">{{ _('Save') }}</button><button class="btn bo" onclick="fnCancelForm()">{{ _('Cancel') }}</button></div></div>';document.getElementById("fn-list").insertAdjacentHTML("beforebegin",h)})}
+function fnSubmitCreate(){var d={title:document.getElementById("fn-title").value.trim(),url:document.getElementById("fn-url").value.trim(),is_enabled:true};fetch("/admin/footer-nav",{method:"POST",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify(d)}).then(function(r){return r.json()}).then(function(d){if(d.success){fnCancelForm();fnRefresh()}else{alert(d.error||"{{ _('Creation Failed') }}")}}).catch(function(){alert("{{ _('Request Failed') }}")})}
+function fnSubmitUpdate(id){var d={title:document.getElementById("fn-title").value.trim(),url:document.getElementById("fn-url").value.trim(),is_enabled:document.getElementById("fn-enabled").checked};fetch("/admin/footer-nav/"+id,{method:"PUT",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify(d)}).then(function(r){return r.json()}).then(function(d){if(d.success){fnCancelForm();fnRefresh()}else{alert(d.error||"{{ _('Update Failed') }}")}}).catch(function(){alert("{{ _('Request Failed') }}")})}
+function fnDelete(id,name){if(!confirm("{{ _('Confirm Delete') }}「"+name+"」？"))return;fetch("/admin/footer-nav/"+id,{method:"DELETE",headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){if(d.success){fnRefresh()}else{alert(d.error||"{{ _('Delete failed') }}")}}).catch(function(){alert("{{ _('Request Failed') }}")})}
+function fnCancelForm(){var f=document.getElementById("fn-form");if(f)f.remove()}
+function fnRefresh(){fnCancelForm();var el=document.getElementById("fn-list");el.innerHTML='<div style="text-align:center;padding:12px;color:var(--dim)"><div class="s" style="display:inline-block"></div></div>';fetch("/admin/footer-nav",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){if(!d.success)return;var h='<table><tr><th>{{ _('Title') }}</th><th style="width:200px">URL</th><th style="width:50px">{{ _('Status') }}</th><th style="width:60px">{{ _('Actions') }}</th></tr>';if(!d.data.length){h+='<tr><td colspan="4" class="em">{{ _('No Records') }}</td></tr>'}else{d.data.forEach(function(m){h+='<tr><td>'+esc(m.title)+'</td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(m.url)+'</td><td>'+(m.is_enabled?'✅':'⛔')+'</td><td style="display:flex;gap:4px"><button class="btn bo bs" onclick="fnEditForm('+m.id+')">{{ _('Edit') }}</button><button class="btn bo bs" style="color:#f85149" onclick="fnDelete('+m.id+',\''+escJs(m.title)+'\')">{{ _('Delete') }}</button></td></tr>'})}h+='</table>';el.innerHTML=h})}
+// {{ _('Footer Articles') }} CRUD
+function faShowAddForm(){var h='<div class="cd" style="margin-top:12px" id="fa-form"><div class="st">{{ _('Add Footer Article') }}</div>';h+='<div style="display:flex;flex-direction:column;gap:8px">';h+='<input class="in" id="fa-title" placeholder="{{ _('Article Title') }}">';h+='<input class="in" id="fa-url" placeholder="{{ _('Article') }} URL">';h+='</div><div style="margin-top:12px;display:flex;gap:8px"><button class="btn bp" onclick="faSubmitCreate()">{{ _('Create') }}</button><button class="btn bo" onclick="faCancelForm()">{{ _('Cancel') }}</button></div></div>';document.getElementById("fa-list").insertAdjacentHTML("beforebegin",h)}
+function faEditForm(id){fetch("/admin/footer-articles",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){if(!d.success)return;var m=d.data.find(function(x){return x.id==id});if(!m)return;var h='<div class="cd" style="margin-top:12px" id="fa-form"><div class="st">{{ _('Edit Footer Article') }}</div>';h+='<div style="display:flex;flex-direction:column;gap:8px">';h+='<input class="in" id="fa-title" value="'+escJs(m.title)+'" placeholder="{{ _('Article Title') }}">';h+='<input class="in" id="fa-url" value="'+escJs(m.url)+'" placeholder="{{ _('Article') }} URL">';h+='<label><input type="checkbox" id="fa-enabled"'+(m.is_enabled?' checked':'')+'> {{ _('Enabled') }}</label>';h+='</div><div style="margin-top:12px;display:flex;gap:8px"><button class="btn bp" onclick="faSubmitUpdate('+id+')">{{ _('Save') }}</button><button class="btn bo" onclick="faCancelForm()">{{ _('Cancel') }}</button></div></div>';document.getElementById("fa-list").insertAdjacentHTML("beforebegin",h)})}
+function faSubmitCreate(){var d={title:document.getElementById("fa-title").value.trim(),url:document.getElementById("fa-url").value.trim(),is_enabled:true};fetch("/admin/footer-articles",{method:"POST",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify(d)}).then(function(r){return r.json()}).then(function(d){if(d.success){faCancelForm();faRefresh()}else{alert(d.error||"{{ _('Creation Failed') }}")}}).catch(function(){alert("{{ _('Request Failed') }}")})}
+function faSubmitUpdate(id){var d={title:document.getElementById("fa-title").value.trim(),url:document.getElementById("fa-url").value.trim(),is_enabled:document.getElementById("fa-enabled").checked};fetch("/admin/footer-articles/"+id,{method:"PUT",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify(d)}).then(function(r){return r.json()}).then(function(d){if(d.success){faCancelForm();faRefresh()}else{alert(d.error||"{{ _('Update Failed') }}")}}).catch(function(){alert("{{ _('Request Failed') }}")})}
+function faDelete(id,name){if(!confirm("{{ _('Confirm Delete') }}「"+name+"」？"))return;fetch("/admin/footer-articles/"+id,{method:"DELETE",headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){if(d.success){faRefresh()}else{alert(d.error||"{{ _('Delete failed') }}")}}).catch(function(){alert("{{ _('Request Failed') }}")})}
+function faCancelForm(){var f=document.getElementById("fa-form");if(f)f.remove()}
+function faRefresh(){faCancelForm();var el=document.getElementById("fa-list");el.innerHTML='<div style="text-align:center;padding:12px;color:var(--dim)"><div class="s" style="display:inline-block"></div></div>';fetch("/admin/footer-articles",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){if(!d.success)return;var h='<table><tr><th>{{ _('Title') }}</th><th style="width:200px">URL</th><th style="width:50px">{{ _('Status') }}</th><th style="width:60px">{{ _('Actions') }}</th></tr>';if(!d.data.length){h+='<tr><td colspan="4" class="em">{{ _('No Records') }}</td></tr>'}else{d.data.forEach(function(m){h+='<tr><td>'+esc(m.title)+'</td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(m.url)+'</td><td>'+(m.is_enabled?'✅':'⛔')+'</td><td style="display:flex;gap:4px"><button class="btn bo bs" onclick="faEditForm('+m.id+')">{{ _('Edit') }}</button><button class="btn bo bs" style="color:#f85149" onclick="faDelete('+m.id+',\''+escJs(m.title)+'\')">{{ _('Delete') }}</button></td></tr>'})}h+='</table>';el.innerHTML=h})}
+// {{ _('Ecosystem Partners') }} CRUD
+function ptShowAddForm(){var h='<div class="cd" style="margin-top:12px" id="pt-form"><div class="st">{{ _('Add Partner') }}</div>';h+='<div style="display:flex;flex-direction:column;gap:8px">';h+='<input class="in" id="pt-name" placeholder="{{ _('Partner Name') }}">';h+='<input class="in" id="pt-url" placeholder="{{ _('Partner') }} URL">';h+='<input class="in" id="pt-icon" placeholder="{{ _('Icon') }} URL ({{ _('Optional') }})">';h+='</div><div style="margin-top:12px;display:flex;gap:8px"><button class="btn bp" onclick="ptSubmitCreate()">{{ _('Create') }}</button><button class="btn bo" onclick="ptCancelForm()">{{ _('Cancel') }}</button></div></div>';document.getElementById("pt-list").insertAdjacentHTML("beforebegin",h)}
+function ptEditForm(id){fetch("/admin/partners",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){if(!d.success)return;var m=d.data.find(function(x){return x.id==id});if(!m)return;var h='<div class="cd" style="margin-top:12px" id="pt-form"><div class="st">{{ _('Edit Partner') }}</div>';h+='<div style="display:flex;flex-direction:column;gap:8px">';h+='<input class="in" id="pt-name" value="'+escJs(m.name)+'" placeholder="{{ _('Partner Name') }}">';h+='<input class="in" id="pt-url" value="'+escJs(m.url)+'" placeholder="{{ _('Partner') }} URL">';h+='<input class="in" id="pt-icon" value="'+escJs(m.icon_url||'')+'" placeholder="{{ _('Icon') }} URL ({{ _('Optional') }})">';h+='<label><input type="checkbox" id="pt-enabled"'+(m.is_enabled?' checked':'')+'> {{ _('Enabled') }}</label>';h+='</div><div style="margin-top:12px;display:flex;gap:8px"><button class="btn bp" onclick="ptSubmitUpdate('+id+')">{{ _('Save') }}</button><button class="btn bo" onclick="ptCancelForm()">{{ _('Cancel') }}</button></div></div>';document.getElementById("pt-list").insertAdjacentHTML("beforebegin",h)})}
+function ptSubmitCreate(){var d={name:document.getElementById("pt-name").value.trim(),url:document.getElementById("pt-url").value.trim(),icon_url:document.getElementById("pt-icon").value.trim(),is_enabled:true};fetch("/admin/partners",{method:"POST",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify(d)}).then(function(r){return r.json()}).then(function(d){if(d.success){ptCancelForm();ptRefresh()}else{alert(d.error||"{{ _('Creation Failed') }}")}}).catch(function(){alert("{{ _('Request Failed') }}")})}
+function ptSubmitUpdate(id){var d={name:document.getElementById("pt-name").value.trim(),url:document.getElementById("pt-url").value.trim(),icon_url:document.getElementById("pt-icon").value.trim(),is_enabled:document.getElementById("pt-enabled").checked};fetch("/admin/partners/"+id,{method:"PUT",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify(d)}).then(function(r){return r.json()}).then(function(d){if(d.success){ptCancelForm();ptRefresh()}else{alert(d.error||"{{ _('Update Failed') }}")}}).catch(function(){alert("{{ _('Request Failed') }}")})}
+function ptDelete(id,name){if(!confirm("{{ _('Confirm Delete') }}「"+name+"」？"))return;fetch("/admin/partners/"+id,{method:"DELETE",headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){if(d.success){ptRefresh()}else{alert(d.error||"{{ _('Delete failed') }}")}}).catch(function(){alert("{{ _('Request Failed') }}")})}
+function ptCancelForm(){var f=document.getElementById("pt-form");if(f)f.remove()}
+function ptRefresh(){ptCancelForm();var el=document.getElementById("pt-list");el.innerHTML='<div style="text-align:center;padding:12px;color:var(--dim)"><div class="s" style="display:inline-block"></div></div>';fetch("/admin/partners",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){if(!d.success)return;var h='<table><tr><th>{{ _('Name') }}</th><th style="width:200px">URL</th><th style="width:50px">{{ _('Status') }}</th><th style="width:60px">{{ _('Actions') }}</th></tr>';if(!d.data.length){h+='<tr><td colspan="4" class="em">{{ _('No Records') }}</td></tr>'}else{d.data.forEach(function(m){h+='<tr><td>'+esc(m.name)+'</td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(m.url)+'</td><td>'+(m.is_enabled?'✅':'⛔')+'</td><td style="display:flex;gap:4px"><button class="btn bo bs" onclick="ptEditForm('+m.id+')">{{ _('Edit') }}</button><button class="btn bo bs" style="color:#f85149" onclick="ptDelete('+m.id+',\''+escJs(m.name)+'\')">{{ _('Delete') }}</button></td></tr>'})}h+='</table>';el.innerHTML=h})}
+// ── Social Media Management CRUD Functions ──
+function smRenderIcon(icon_type,icon_value){
+  if(!icon_value)return '<span style="color:var(--dim)">?</span>';
+  if(icon_type==='svg')return '<span style="width:22px;height:22px;display:inline-flex;vertical-align:middle;color:var(--accent)">'+icon_value+'</span>';
+  if(icon_type==='url')return icon_value?'<img src="'+escJs(icon_value)+'" style="width:22px;height:22px;border-radius:3px;object-fit:contain">':'<span style="color:var(--dim)">?</span>';
+  return '<i class="'+escJs(icon_value)+'" style="font-size:18px;color:var(--accent)"></i>';
+}
+function smRefresh(){
+  var el=document.getElementById("sm-list");if(el)el.remove();
+  var fm=document.getElementById("sm-form");if(fm)fm.remove();
+  var ld=document.getElementById("sm-loader");if(ld)ld.remove();
+  var ct=document.getElementById("config-tab-content");
+  ct.insertAdjacentHTML("beforeend",'<div id="sm-loader" style="text-align:center;padding:12px;color:var(--dim)"><div class="s" style="display:inline-block"></div>{{ _('Refreshing') }}...</div>');
+  fetch("/admin/social-media",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    var loader=document.getElementById("sm-loader");if(loader)loader.remove();
+    if(!d.success||!d.data){return}
+    var items=d.data;
+    var h='';
+    if(!items.length){h='<div class="em">{{ _('No Records') }}</div>';ct.insertAdjacentHTML("beforeend",'<div id="sm-list">'+h+'</div>');return}
+    h+='<table id="sm-table"><tr><th style="width:30px">{{ _('#') }}</th><th style="width:80px">{{ _('Icon') }}</th><th>{{ _('Platform Name') }}</th><th style="width:200px">URL</th><th>Hover{{ _('Text') }}</th><th style="width:60px">{{ _('Enabled') }}</th><th style="width:80px">{{ _('Actions') }}</th></tr>';
+    items.forEach(function(item,idx){
+      var enableIcon=item.is_enabled?'✓':'○';
+      var enableCls=item.is_enabled?'on':'off';
+      var iconHtml=smRenderIcon(item.icon_type,item.icon_value);
+      h+='<tr id="sm-row-'+item.id+'" data-id="'+item.id+'" data-order="'+item.display_order+'"';
+      h+=' data-platform_name="'+escJs(item.platform_name)+'" data-icon_type="'+escJs(item.icon_type)+'"';
+      h+=' data-icon_value="'+escJs(item.icon_value)+'" data-url="'+escJs(item.url)+'"';
+      h+=' data-hover_text="'+escJs(item.hover_text||'')+'" data-is_enabled="'+item.is_enabled+'">';
+      h+='<td style="text-align:center;color:var(--dim)">'+item.display_order+'</td>';
+      h+='<td style="text-align:center">'+iconHtml+'</td>';
+      h+='<td>'+esc(item.platform_name)+'</td>';
+      h+='<td><span style="font-size:11px;color:var(--muted);word-break:break-all">'+esc(item.url)+'</span></td>';
+      h+='<td style="font-size:11px">'+esc(item.hover_text||'-')+'</td>';
+      h+='<td><span class="bdg '+enableCls+'">'+enableIcon+'</span></td>';
+      h+='<td style="display:flex;gap:4px"><button class="btn bo bs" onclick="smEditForm('+item.id+')">{{ _('Edit') }}</button><button class="btn bo bs" style="color:#f85149" onclick="smDelete('+item.id+',\''+escJs(item.platform_name)+'\')">{{ _('Delete') }}</button></td>';
+      h+='</tr>';
+    });
+    h+='</table>';
+    ct.insertAdjacentHTML("beforeend",'<div id="sm-list">'+h+'</div>');
+  }).catch(function(){var ld=document.getElementById("sm-loader");if(ld)ld.remove()});
+}
+function smShowAddForm(){
+  var fm=document.getElementById("sm-form");if(fm)fm.remove();
+  var h='<div id="sm-form" class="cd" style="margin-top:12px;padding:16px;background:var(--bg2);border-radius:8px;border:1px solid var(--accent)">';
+  h+='<div class="st" style="margin-bottom:12px">{{ _('Add Social Media') }}</div>';
+  h+='<div class="fl"><span style="width:80px;font-size:12px">{{ _('Platform Name') }}</span><input class="in" id="sf-platform_name" style="width:200px" placeholder="如：{{ _('WeChat') }}"></div>';
+  h+='<div class="fl"><span style="width:80px;font-size:12px">{{ _('Icon Type') }}</span><select class="in" id="sf-icon_type" style="width:200px" onchange="smToggleIconInput()"><option value="svg">SVG</option><option value="url">URL{{ _('Image') }}</option></select></div>';
+  h+='<div class="fl"><span style="width:80px;font-size:12px">{{ _('Icon Content') }}</span><input class="in" id="sf-icon_value" style="width:400px" placeholder="SVG{{ _('Code or Image') }}URL"></div>';
+  h+='<div class="fl"><span style="width:80px;font-size:12px">{{ _('Link') }} URL</span><input class="in" id="sf-url" style="width:400px" placeholder="https://"></div>';
+  h+='<div class="fl"><span style="width:80px;font-size:12px">Hover {{ _('Text') }}</span><input class="in" id="sf-hover_text" style="width:200px" placeholder="{{ _('Tooltip') }}"></div>';
+  h+='<div class="fl"><span style="width:80px;font-size:12px">{{ _('Enabled') }}</span><label style="font-size:12px"><input type="checkbox" id="sf-is_enabled" checked> {{ _('Enabled') }}</label></div>';
+  h+='<div style="margin-top:12px;display:flex;gap:8px"><button class="btn bp" onclick="smSubmitCreate()">{{ _('Create') }}</button><button class="btn bo" onclick="smCancelForm()">{{ _('Cancel') }}</button></div>';
+  h+='</div>';
+  var ref=document.getElementById("sm-list")||document.getElementById("sm-loader");
+  if(ref){ref.insertAdjacentHTML("beforebegin",h)}else{var ct=document.getElementById("config-tab-content");ct.insertAdjacentHTML("beforeend",h)}
+}
+function smEditForm(id){
+  var row=document.getElementById("sm-row-"+id);if(!row)return;
+  var fm=document.getElementById("sm-form");if(fm)fm.remove();
+  var d=row.dataset;
+  var h='<div id="sm-form" class="cd" style="margin-top:12px;padding:16px;background:var(--bg2);border-radius:8px;border:1px solid var(--accent)">';
+  h+='<div class="st" style="margin-bottom:12px">{{ _('Edit') }} '+esc(d.platform_name)+'</div>';
+  h+='<input type="hidden" id="sf-edit-id" value="'+id+'">';
+  h+='<div class="fl"><span style="width:80px;font-size:12px">{{ _('Platform Name') }}</span><input class="in" id="sf-platform_name" style="width:200px" value="'+escJs(d.platform_name)+'"></div>';
+  h+='<div class="fl"><span style="width:80px;font-size:12px">{{ _('Icon Type') }}</span><select class="in" id="sf-icon_type" style="width:200px" onchange="smToggleIconInput()"><option value="svg"'+(d.icon_type==='svg'?' selected':'')+'>SVG</option><option value="url"'+(d.icon_type==='url'?' selected':'')+'>URL{{ _('Image') }}</option></select></div>';
+  h+='<div class="fl"><span style="width:80px;font-size:12px">{{ _('Icon Content') }}</span><input class="in" id="sf-icon_value" style="width:400px" value="'+escJs(d.icon_value)+'"></div>';
+  h+='<div class="fl"><span style="width:80px;font-size:12px">{{ _('Link') }} URL</span><input class="in" id="sf-url" style="width:400px" value="'+escJs(d.url)+'"></div>';
+  h+='<div class="fl"><span style="width:80px;font-size:12px">Hover {{ _('Text') }}</span><input class="in" id="sf-hover_text" style="width:200px" value="'+escJs(d.hover_text)+'"></div>';
+  h+='<div class="fl"><span style="width:80px;font-size:12px">{{ _('Enabled') }}</span><label style="font-size:12px"><input type="checkbox" id="sf-is_enabled"'+(d.is_enabled==='1'?' checked':'')+'> {{ _('Enabled') }}</label></div>';
+  h+='<div style="margin-top:12px;display:flex;gap:8px"><button class="btn bp" onclick="smSubmitUpdate('+id+')">{{ _('Save') }}</button><button class="btn bo" onclick="smCancelForm()">{{ _('Cancel') }}</button></div>';
+  h+='</div>';
+  var ref=document.getElementById("sm-list");
+  if(ref){ref.insertAdjacentHTML("beforebegin",h)}else{var ct=document.getElementById("config-tab-content");ct.insertAdjacentHTML("beforeend",h)}
+}
+function smToggleIconInput(){
+  var sel=document.getElementById("sf-icon_type");if(!sel)return;
+  var inp=document.getElementById("sf-icon_value");if(!inp)return;
+  if(sel.value==='url'){inp.placeholder='{{ _('Image URL (e.g., https://...)') }}'}else{inp.placeholder='{{ _('SVG Code') }}'}
+}
+function smCancelForm(){var fm=document.getElementById("sm-form");if(fm)fm.remove()}
+function smSubmitCreate(){
+  var d={platform_name:document.getElementById("sf-platform_name").value.trim(),icon_type:document.getElementById("sf-icon_type").value,icon_value:document.getElementById("sf-icon_value").value.trim(),url:document.getElementById("sf-url").value.trim(),hover_text:document.getElementById("sf-hover_text").value.trim(),is_enabled:document.getElementById("sf-is_enabled").checked};
+  if(!d.platform_name||!d.icon_value||!d.url){alert("{{ _('Platform Name') }}、{{ _('Icon and Link are Required') }}");return}
+  fetch("/admin/social-media",{method:"POST",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify(d)})
+  .then(function(r){return r.json()}).then(function(d){if(d.success){smCancelForm();smRefresh()}else{alert(d.error||"{{ _('Creation Failed') }}")}})
+  .catch(function(){alert("{{ _('Request Failed') }}")});
+}
+function smSubmitUpdate(id){
+  var d={platform_name:document.getElementById("sf-platform_name").value.trim(),icon_type:document.getElementById("sf-icon_type").value,icon_value:document.getElementById("sf-icon_value").value.trim(),url:document.getElementById("sf-url").value.trim(),hover_text:document.getElementById("sf-hover_text").value.trim(),is_enabled:document.getElementById("sf-is_enabled").checked};
+  if(!d.platform_name||!d.icon_value||!d.url){alert("{{ _('Platform Name') }}、{{ _('Icon and Link are Required') }}");return}
+  fetch("/admin/social-media/"+id,{method:"PUT",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify(d)})
+  .then(function(r){return r.json()}).then(function(d){if(d.success){smCancelForm();smRefresh()}else{alert(d.error||"{{ _('Update Failed') }}")}})
+  .catch(function(){alert("{{ _('Request Failed') }}")});
+}
+function smDelete(id,name){
+  if(!confirm("{{ _('Confirm Delete') }}「"+name+"」？"))return;
+  fetch("/admin/social-media/"+id,{method:"DELETE",headers:{"Authorization":"Bearer "+T}})
+  .then(function(r){return r.json()}).then(function(d){if(d.success){smRefresh()}else{alert(d.error||"{{ _('Delete failed') }}")}})
+  .catch(function(){alert("{{ _('Request Failed') }}")});
+}
+// ── Social Media Icons (platform-based) ──
+var PLATFORMS={
+  wechat:{label:'{{ _('WeChat') }}',svg:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><circle cx="9" cy="10" r="1" fill="currentColor"/><circle cx="15" cy="10" r="1" fill="currentColor"/></svg>'},
+  weibo:{label:'{{ _('Weibo') }}',svg:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M8 10c1-1 3-1 4 0M7 14c1 2 3 3 5 3s4-1 5-3M15 5c2 .5 3 2 3 2"/></svg>'},
+  douyin:{label:'{{ _('Douyin') }}',svg:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18V5l12-1v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>'},
+  github:{label:'GitHub',svg:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2C6.48 2 2 6.48 2 12c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.73c-2.78.6-3.37-1.34-3.37-1.34-.45-1.15-1.1-1.46-1.1-1.46-.9-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.9 1.52 2.34 1.08 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.56-1.11-4.56-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.64 0 0 .84-.27 2.75 1.02.8-.22 1.65-.33 2.5-.33s1.7.11 2.5.33c1.91-1.29 2.75-1.02 2.75-1.02.55 1.37.2 2.39.1 2.64.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.69-4.57 4.94.36.31.68.92.68 1.85v2.74c0 .27.16.59.67.5C19.14 20.16 22 16.42 22 12A10 10 0 0 0 12 2z"/></svg>'},
+  x:{label:'X / Twitter',svg:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4l16 16M20 4L4 20"/></svg>'},
+  telegram:{label:'Telegram',svg:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>'},
+  bilibili:{label:'{{ _('Bilibili') }}',svg:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 4l-2 3M15 4l2 3"/><circle cx="12" cy="12" r="2"/><path d="M12 14v2"/></svg>'},
+  zhihu:{label:'{{ _('Zhihu') }}',svg:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 16v.01"/><path d="M9 10a3 3 0 1 1 3 3v1"/></svg>'},
+  xiaohongshu:{label:'{{ _('Xiaohongshu') }}',svg:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 8l9 6 9-6"/></svg>'},
+  linkedin:{label:'{{ _('LinkedIn') }}',svg:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="2" width="20" height="20" rx="2"/><path d="M6 9v7M6 6v.01M10 16v-5"/><path d="M14 16v-3a2 2 0 0 1 4 0v3M10 11v5"/></svg>'}
+};
+
+function loadSocLinks(){
+  fetch("/admin/social-links",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success||!d.data)return;
+    var el=document.getElementById("cl");
+    var items=d.data||[];
+    var added={};
+    items.forEach(function(s){if(s.platform)added[s.platform]=true});
+    var h='<div class="cd" style="margin-top:12px"><div class="st">{{ _('Social Media Management') }}</div>';
+    h+='<div style="margin-bottom:10px"><div style="font-size:11px;color:var(--dim);margin-bottom:6px">{{ _('Click to Add') }}</div>';
+    h+='<div style="display:flex;flex-wrap:wrap;gap:6px">';
+    for(var pk in PLATFORMS){
+      if(added[pk])continue;
+      var p=PLATFORMS[pk];
+      h+='<div data-pk="'+escJs(pk)+'" onclick="socAddPlatform(this)" style="cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-elevated);width:56px" onmouseover="this.style.borderColor=\'var(--accent)\'" onmouseout="this.style.borderColor=\'var(--border)\'">'
+        +'<span style="width:22px;height:22px;color:var(--dim)">'+p.svg+'</span>'
+        +'<span style="font-size:9px;color:var(--dim)">'+p.label+'</span></div>';
+    }
+    h+='</div></div>';
+    h+='<div id="socList">';
+    items.forEach(function(s){
+      var pk=s.platform||'';
+      var pkg=pk&&PLATFORMS[pk]?PLATFORMS[pk]:null;
+      var iconHtml=pkg
+        ?'<span style="width:20px;height:20px;display:inline-block;vertical-align:middle;color:var(--text)">'+pkg.svg+'</span>'
+        :(s.icon_url
+          ?'<img src="'+escJs(s.icon_url)+'" style="width:20px;height:20px;border-radius:3px" onerror="this.style.display=\'none\'">'
+          :'<span style="width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;font-size:10px;color:var(--dim);border-radius:3px;background:var(--bg-elevated)">?</span>');
+      h+='<div class="socRow" style="display:flex;align-items:center;gap:8px;padding:6px 8px;margin-bottom:4px;border-radius:6px;border:1px solid var(--border)">';
+      h+=iconHtml;
+      h+='<span style="font-size:12px;min-width:50px;color:var(--text)">'+(pkg?pkg.label:esc(s.name))+'</span>';
+      h+='<input class="in" id="socUrl-'+s.id+'" value="'+escJs(s.url)+'" placeholder="{{ _('Link') }} URL" style="flex:1;min-width:100px;font-size:11px">';
+      h+='<label style="font-size:11px;color:var(--dim);white-space:nowrap"><input type="checkbox" id="socAct-'+s.id+'" '+(s.is_active?'checked':'')+' onchange="socToggle('+s.id+')"> {{ _('Show') }}</label>';
+      h+='<button class="btn bo bs" data-id="'+s.id+'" data-label="'+escJs(pkg?pkg.label:s.name)+'" onclick="socDelete(this)" style="font-size:10px;padding:2px 6px;color:#f85149">{{ _('Delete') }}</button>';
+      h+='</div>';
+    });
+    h+='</div></div>';
+    el.innerHTML+=h;
+    items.forEach(function(s){
+      var inp=document.getElementById("socUrl-"+s.id);
+      if(inp)inp.onblur=function(){socSaveUrl(s.id)};
+    });
+  }).catch(function(){})
+}
+function socAddPlatform(el){
+  var pk=el.getAttribute("data-pk");
+  var p=PLATFORMS[pk];if(!p)return;
+  fetch("/admin/social-links",{method:"POST",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},
+    body:JSON.stringify({name:p.label,url:"#",icon_url:"",platform:pk})}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){loadSocLinks()}else{alert(d.error||"{{ _('Add Failed') }}")}
+  })
+}
+function socSaveUrl(id){
+  var url=document.getElementById("socUrl-"+id).value.trim()||"#";
+  fetch("/admin/social-links/"+id,{method:"PUT",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},
+    body:JSON.stringify({url:url})}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success)alert(d.error||"{{ _('Save failed') }}")
+  })
+}
+function socToggle(id){
+  var act=document.getElementById("socAct-"+id).checked?1:0;
+  fetch("/admin/social-links/"+id,{method:"PUT",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},
+    body:JSON.stringify({is_active:act})}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success)alert(d.error||"{{ _('Save failed') }}")
+  })
+}
+function socDelete(el){
+  var id=parseInt(el.getAttribute("data-id"));
+  var label=el.getAttribute("data-label");
+  if(!confirm("{{ _('Delete') }} "+label+"？"))return;
+  fetch("/admin/social-links/"+id,{method:"DELETE",headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){loadSocLinks()}else{alert(d.error||"{{ _('Delete failed') }}")}
+  })
+}
+// ════════════════════════════════════════════════════════
+// {{ _('Navigation Settings') }} — {{ _('Main Nav') }} + {{ _('Sub-site Navigation') }} {{ _('Unified Management') }}
+// ════════════════════════════════════════════════════════

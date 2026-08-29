@@ -1,0 +1,8 @@
+[Unit]
+Description=Daily VeroGuard Guardian Snapshot
+
+[Service]
+Type=oneshot
+User=verorun
+WorkingDirectory=/opt/verorun
+ExecStart=/usr/bin/python3 /opt/verorun/veroguard/guardian.py --snapshot

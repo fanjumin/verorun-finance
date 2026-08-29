@@ -1,0 +1,1234 @@
+﻿<!DOCTYPE html>
+
+<html lang="{{ lang }}">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width,initial-scale=1.0" name="viewport"/>
+<title>{{ _('Sign Up') }} — {{ brand.site_name_en if brand else '' }}</title>
+<link href="{{ brand.favicon_url if brand and brand.favicon_url else '/static/favicon-32x32.png' }}" rel="icon" sizes="32x32" type="image/png"/>
+<link href="/static/css/landing.css" rel="stylesheet"/>
+<link href="/static/puzzle-captcha.css" rel="stylesheet"/>
+<style>
+/* ── Register Page Specific ── */
+.reg-page{min-height:100vh;display:flex;flex-direction:column;background:var(--bg-deep)}
+.reg-bg{position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:radial-gradient(ellipse 80% 60% at 50% 0%,rgba(0,245,255,0.06) 0%,transparent 70%),
+             radial-gradient(ellipse 60% 50% at 80% 80%,rgba(99,102,241,0.04) 0%,transparent 60%);}
+.reg-bg-grid{position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:linear-gradient(rgba(0,245,255,0.03) 1px,transparent 1px),
+                   linear-gradient(90deg,rgba(0,245,255,0.03) 1px,transparent 1px);
+  background-size:60px 60px;}
+.reg-container{flex:1;display:flex;align-items:center;justify-content:center;padding:40px 20px;position:relative;z-index:1}
+.reg-card{width:100%;max-width:460px;background:var(--bg-glass);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
+  border:1px solid var(--border);border-radius:20px;padding:36px 32px 32px;
+  box-shadow:0 0 0 1px rgba(99,102,241,0.04),0 8px 48px rgba(0,0,0,0.5);
+  animation:card-in .5s var(--ease-out)}
+@keyframes card-in{from{opacity:0;transform:translateY(24px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+@keyframes slideUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
+
+.reg-brand{text-align:center;margin-bottom:24px}
+.reg-brand .rb-logo{display:inline-flex;align-items:center;justify-content:center;width:52px;height:52px;
+  background:var(--gradient-primary);border-radius:14px;margin-bottom:12px;
+  box-shadow:0 0 28px rgba(99,102,241,0.35);font-family:var(--font-display);
+  font-size:22px;font-weight:900;color:#fff}
+.reg-brand h1{font-size:22px;font-weight:700;letter-spacing:-.3px;color:var(--text-high);margin-bottom:4px}
+.reg-brand p{font-size:13px;color:var(--text-muted)}
+
+/* ── Progress Indicator ── */
+.reg-progress{display:flex;align-items:center;justify-content:center;margin-bottom:28px;padding:0 16px}
+.reg-pstep{display:flex;flex-direction:column;align-items:center;position:relative;flex-shrink:0}
+.reg-pcircle{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-size:13px;font-weight:700;font-family:var(--font-display);
+  border:2px solid var(--border);background:var(--bg-elevated);color:var(--text-muted);
+  transition:all .4s var(--ease-out);position:relative;z-index:1}
+.reg-pstep.active .reg-pcircle{background:var(--gradient-primary);border-color:transparent;color:#fff;
+  box-shadow:0 0 20px rgba(99,102,241,0.3)}
+.reg-pstep.done .reg-pcircle{background:var(--green);border-color:transparent;color:#050508;
+  box-shadow:0 0 16px rgba(0,255,159,0.25)}
+.reg-plabel{font-size:10px;color:var(--text-muted);margin-top:6px;font-weight:500;white-space:nowrap;
+  transition:color .3s}
+.reg-pstep.active .reg-plabel{color:var(--cyan)}
+.reg-pstep.done .reg-plabel{color:var(--green)}
+.reg-pline{flex:1;height:2px;background:var(--border);margin:0 8px;position:relative;top:-16px;
+  transition:background .4s var(--ease-out);border-radius:2px;min-width:30px}
+.reg-pline.done{background:var(--green)}
+
+/* ── Method Tabs (Email/Phone switcher) ── */
+.reg-method-tabs{display:flex;gap:8px;background:rgba(11,17,32,0.5);border:1px solid var(--border);border-radius:var(--radius-sm);padding:4px}
+.reg-method-tab{flex:1;padding:10px 14px;background:transparent;border:none;border-radius:8px;color:var(--text-muted);font-size:13px;font-weight:600;cursor:pointer;transition:all .25s;font-family:var(--font-cn)}
+.reg-method-tab:hover{color:var(--text)}
+.reg-method-tab.active{background:var(--gradient-primary);color:#fff;box-shadow:0 4px 16px rgba(99,102,241,0.25)}
+
+/* ── Captcha Section ── */
+.reg-captcha-wrap{margin-bottom:16px}
+.reg-captcha-hint{font-size:11px;color:var(--text-muted);margin:-6px 0 20px;text-align:center}
+
+/* ── Step Content ── */
+.reg-step{display:none;animation:slideUp .45s var(--ease-out)}
+.reg-step.active{display:block}
+
+.reg-step-header{text-align:center;margin-bottom:20px}
+.reg-step-header h2{font-size:18px;font-weight:700;color:var(--text-high);margin-bottom:4px}
+.reg-step-header p{font-size:12.5px;color:var(--text-muted)}
+
+/* ── Form Fields (reuse login page patterns) ── */
+.rf{margin-bottom:16px}
+.rf-label{display:block;font-size:12px;font-weight:500;color:var(--text-muted);margin-bottom:6px;letter-spacing:.3px}
+.rf-row{display:flex;gap:8px}
+.rf-wrap{position:relative;flex:1}
+.rf-icon{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:14px;pointer-events:none}
+.rf-in{width:100%;padding:12px 14px 12px 42px;background:rgba(11,17,32,0.5);border:1.5px solid var(--border);
+  border-radius:var(--radius-sm);color:var(--text);font-size:14px;transition:all .25s;font-family:var(--font-cn)}
+.rf-in::placeholder{color:var(--text-muted)}
+.rf-in:focus{outline:none;border-color:rgba(99,102,241,0.4);box-shadow:0 0 0 3px rgba(99,102,241,0.1)}
+.rf-in:disabled{opacity:0.4;cursor:not-allowed}
+.rf-in.no-icon{padding-left:14px}
+
+.rf-btn-send{padding:12px 18px;background:rgba(99,102,241,0.08);border:1.5px solid rgba(99,102,241,0.2);
+  border-radius:var(--radius-sm);color:var(--cyan);font-size:13px;font-weight:600;cursor:pointer;
+  white-space:nowrap;transition:all .25s;font-family:var(--font-cn);min-width:100px;text-align:center}
+.rf-btn-send:hover{background:rgba(99,102,241,0.15);border-color:rgba(99,102,241,0.4)}
+.rf-btn-send:disabled{opacity:0.3;cursor:not-allowed}
+.rf-btn-send.countdown{color:var(--text-muted)}
+
+.rf-msg{font-size:12px;margin-top:8px;padding:9px 12px;border-radius:8px;display:none;align-items:center;gap:8px}
+.rf-msg.error{display:flex;background:rgba(244,63,94,0.08);border:1px solid rgba(244,63,94,0.2);color:var(--rose)}
+.rf-msg.success{display:flex;background:rgba(0,255,159,0.08);border:1px solid rgba(0,255,159,0.2);color:var(--green)}
+
+/* ── Safety Notice ── */
+.reg-notice{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;
+  background:rgba(0,245,255,0.04);border:1px solid rgba(0,245,255,0.08);
+  border-radius:var(--radius-sm);margin:4px 0 20px;font-size:11.5px;line-height:1.5;color:var(--text-dim)}
+.reg-notice .rn-icon{flex-shrink:0;font-size:14px;margin-top:1px}
+.reg-notice strong{color:var(--cyan)}
+
+/* ── Password Strength Meter ── */
+.reg-strength{margin:4px 0 12px;padding:0 2px}
+.reg-strength-bar{height:4px;border-radius:4px;background:rgba(255,255,255,0.06);overflow:hidden;position:relative}
+.reg-strength-fill{height:100%;width:0%;border-radius:4px;transition:all .4s var(--ease-out);position:relative}
+.reg-strength-fill::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.15));border-radius:4px}
+.reg-strength-fill.level-0{width:0%;background:var(--border)}
+.reg-strength-fill.level-1{width:20%;background:var(--rose)}
+.reg-strength-fill.level-2{width:40%;background:var(--orange)}
+.reg-strength-fill.level-3{width:60%;background:var(--gold)}
+.reg-strength-fill.level-4{width:80%;background:var(--green)}
+.reg-strength-fill.level-5{width:100%;background:var(--green);box-shadow:0 0 12px rgba(0,255,159,0.3)}
+.reg-strength-label{font-size:10.5px;color:var(--text-muted);margin-top:5px;font-weight:500;display:flex;justify-content:space-between}
+.reg-strength-label .rs-score{transition:color .3s}
+.reg-strength-label .rs-score.s-weak{color:var(--rose)}
+.reg-strength-label .rs-score.s-fair{color:var(--orange)}
+.reg-strength-label .rs-score.s-good{color:var(--gold)}
+.reg-strength-label .rs-score.s-strong{color:var(--green)}
+.reg-strength-label .rs-score.s-perfect{color:var(--green)}
+
+/* ── Password Requirements Checklist ── */
+.reg-checklist{margin:4px 0 12px}
+.reg-checklist .rc-item{font-size:11px;color:var(--text-muted);padding:3px 0;display:flex;align-items:center;gap:8px;transition:color .3s}
+.reg-checklist .rc-item .rc-dot{width:5px;height:5px;border-radius:50%;background:var(--text-muted);flex-shrink:0;transition:all .3s}
+.reg-checklist .rc-item.met{color:var(--green)}
+.reg-checklist .rc-item.met .rc-dot{background:var(--green);box-shadow:0 0 6px rgba(0,255,159,0.3)}
+
+/* ── Password eye toggle ── */
+.rf-pwd-row{display:flex;align-items:stretch}
+.rf-pwd-row .rf-in{flex:1;border-top-right-radius:0;border-bottom-right-radius:0}
+.rf-pwd-eye{width:40px;border:1.5px solid var(--border);border-left:none;background:rgba(11,17,32,0.6);
+  border-radius:0 var(--radius-sm) var(--radius-sm) 0;color:var(--text-muted);cursor:pointer;
+  font-size:16px;display:flex;align-items:center;justify-content:center;transition:color .15s}
+.rf-pwd-eye:hover{color:var(--text)}
+
+/* ── Username Check ── */
+.rf-username-row{position:relative}
+.rf-username-row .rf-in{padding-right:80px}
+.rf-username-status{position:absolute;right:14px;top:50%;transform:translateY(-50%);font-size:12px;font-weight:600;pointer-events:none}
+.rf-username-status.available{color:var(--green)}
+.rf-username-status.taken{color:var(--rose)}
+.rf-username-status.checking{color:var(--gold)}
+.rf-username-hint{font-size:11px;color:var(--text-muted);margin-top:4px}
+
+/* ── Action Buttons ── */
+.reg-actions{display:flex;gap:10px;margin-top:24px}
+.reg-actions .rf-btn-primary{flex:1;padding:13px;background:var(--gradient-primary);border:none;border-radius:var(--radius-sm);
+  color:#fff;font-size:15px;font-weight:600;cursor:pointer;position:relative;overflow:hidden;
+  transition:all .25s;font-family:var(--font-cn);box-shadow:0 4px 20px rgba(99,102,241,0.25)}
+.reg-actions .rf-btn-primary:hover{box-shadow:0 6px 28px rgba(99,102,241,0.4);transform:translateY(-1px)}
+.reg-actions .rf-btn-primary:active{transform:scale(.98)}
+.reg-actions .rf-btn-primary:disabled{opacity:0.4;cursor:not-allowed;transform:none}
+.reg-actions .rf-btn-primary .rf-spinner{display:none;width:20px;height:20px;border:2px solid rgba(255,255,255,.2);
+  border-top-color:#fff;border-radius:50%;animation:sp-reg .7s linear infinite;margin:0 auto}
+.reg-actions .rf-btn-primary.loading .rf-btn-text{visibility:hidden}
+.reg-actions .rf-btn-primary.loading .rf-spinner{display:block}
+@keyframes sp-reg{to{transform:rotate(360deg)}}
+
+.reg-actions .rf-btn-back{padding:13px 20px;background:rgba(255,255,255,0.04);border:1.5px solid var(--border);
+  border-radius:var(--radius-sm);color:var(--text-dim);font-size:14px;font-weight:500;cursor:pointer;
+  transition:all .25s;font-family:var(--font-cn);min-width:80px;text-align:center}
+.reg-actions .rf-btn-back:hover{background:rgba(255,255,255,0.08);color:var(--text);border-color:var(--border-light)}
+
+/* ── Footer / Toggle ── */
+.reg-toggle{margin-top:18px;text-align:center}
+.reg-toggle a,.reg-toggle button{background:none;border:none;color:var(--text-muted);font-size:12.5px;cursor:pointer;transition:color .25s;font-family:var(--font-cn);text-decoration:none}
+.reg-toggle a:hover,.reg-toggle button:hover{color:var(--cyan)}
+
+/* ── Toast ── */
+.toast-wrap{position:fixed;top:24px;right:24px;z-index:999;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+.toast-el{padding:12px 20px;border-radius:10px;background:var(--bg-glass);backdrop-filter:blur(12px);
+  border:1px solid var(--border);color:var(--text);font-size:13px;
+  box-shadow:0 8px 32px rgba(0,0,0,0.5);display:flex;align-items:center;gap:10px;
+  animation:slide-in .3s var(--ease-out);pointer-events:auto;max-width:380px}
+.toast-el.success{border-color:rgba(0,255,159,0.3)}
+.toast-el.error{border-color:rgba(244,63,94,0.3)}
+.toast-el.leave{animation:slide-out .25s ease-in forwards}
+@keyframes slide-in{from{opacity:0;transform:translateX(60px)}to{opacity:1;transform:translateX(0)}}
+@keyframes slide-out{from{opacity:1;transform:translateX(0)}to{opacity:0;transform:translateX(60px)}}
+
+/* ── Footer ── */
+.reg-footer{text-align:center;padding:20px;color:var(--text-muted);font-size:11px;position:relative;z-index:1;border-top:1px solid rgba(99,102,241,0.06)}
+
+/* ── Responsive ── */
+@media(max-width:520px){
+  .reg-card{padding:28px 20px 24px;border-radius:16px}
+  .toast-wrap{left:16px;right:16px;top:16px}
+  .toast-el{max-width:100%}
+  .rf-row{flex-direction:column;gap:8px}
+  .rf-btn-send{width:100%}
+  .reg-actions{flex-direction:column}
+  .reg-pline{min-width:20px;margin:0 4px}
+  .reg-pcircle{width:32px;height:32px;font-size:11px}
+}
+</style>
+<link href="/static/css/cookie-consent.css" rel="stylesheet"/>
+</head>
+<body>
+<div class="reg-page">
+<div class="reg-bg"></div>
+<div class="reg-bg-grid"></div>
+<div class="toast-wrap" id="toastWrap"></div>
+<div class="reg-container">
+<div class="reg-card">
+<!-- Brand -->
+<div class="reg-brand">
+<div class="rb-logo">E</div>
+<h1>{{ _('Create Account') }}</h1>
+<p>{% if brand and brand.site_name_en %}{{ _('Register %(site)s Smart Finance Platform', site=brand.site_name_en) }}{% else %}{{ _('Register Smart Finance Platform') }}{% endif %}</p>
+</div>
+<!-- Method Selector (only shown when SMS plugin also enabled) -->
+<div class="reg-method-tabs" id="methodTabs" style="display:none;margin-bottom:20px">
+  <button type="button" class="reg-method-tab active" data-method="email" onclick="switchRegMethod('email')">{{ _('Email Register') }}</button>
+  <button type="button" class="reg-method-tab" data-method="sms" onclick="switchRegMethod('sms')">{{ _('Phone Register') }}</button>
+</div>
+<!-- ==================== EMAIL REGISTER FORM ==================== -->
+<div class="reg-step active" id="emailRegPhase">
+  <div class="reg-step-header">
+    <h2>{{ _('📧 Email Registration') }}</h2>
+    <p>{{ _('Register with email and verification code') }}</p>
+  </div>
+  <div class="reg-notice">
+    <span class="rn-icon">🔐</span>
+    <div>{{ _('Verification code is valid for') }}<strong>{{ _('10 minutes') }}</strong>. {{ _('If not received, check spam folder or contact support.') }}</div>
+  </div>
+  <div class="rf">
+    <label class="rf-label" for="regEmail">{{ _('Email') }}</label>
+    <div class="rf-row">
+      <div class="rf-wrap">
+        <span class="rf-icon">📧</span>
+        <input autocomplete="email" class="rf-in" id="regEmail" maxlength="64" placeholder="{{ _('Enter email') }}" type="email"/>
+      </div>
+      <button class="rf-btn-send" id="emailSendBtn" onclick="sendEmailCode()" type="button">{{ _('Get Code') }}</button>
+    </div>
+    <div class="rf-msg" id="regEmailMsg"></div>
+  </div>
+  <div class="rf">
+    <label class="rf-label" for="regEmailCode">{{ _('Verification Code') }}</label>
+    <div class="rf-wrap">
+      <span class="rf-icon">🔑</span>
+      <input autocomplete="one-time-code" class="rf-in" id="regEmailCode" inputmode="numeric" maxlength="6" oninput="this.value=this.value.replace(/\D/g,'')" placeholder="{{ _('Enter 6-digit code') }}" type="text"/>
+    </div>
+    <div class="rf-msg" id="regEmailCodeMsg"></div>
+  </div>
+  <div class="rf">
+    <label class="rf-label" for="regEmailPwd">{{ _('Password') }}</label>
+    <div class="rf-pwd-row">
+      <input autocomplete="new-password" class="rf-in" id="regEmailPwd" oninput="evalEmailPwdStrength(this.value)" placeholder="{{ _('Enter password') }}" style="border-top-right-radius:0;border-bottom-right-radius:0;padding-left:14px" type="password"/>
+      <button class="rf-pwd-eye" id="regEmailPwdEye" onclick="toggleRegEmailPwd()" title="{{ _('Show/Hide Password') }}" type="button">👁</button>
+    </div>
+    <div class="rf-msg" id="regEmailPwdMsg"></div>
+    <div class="reg-strength" id="emailStrengthMeter">
+      <div class="reg-strength-bar"><div class="reg-strength-fill" id="emailStrengthFill"></div></div>
+      <div class="reg-strength-label"><span class="rs-score" id="emailStrengthScore">{{ _('Password Strength') }}</span><span id="emailStrengthTips">{{ _('At least 8 characters') }}</span></div>
+    </div>
+    <div class="reg-checklist" id="emailPwdChecklist">
+      <div class="rc-item" data-check="len"><span class="rc-dot"></span>{{ _('At least 8 characters') }}</div>
+      <div class="rc-item" data-check="upper"><span class="rc-dot"></span>{{ _('Contains uppercase letter') }}</div>
+      <div class="rc-item" data-check="lower"><span class="rc-dot"></span>{{ _('Contains lowercase letter') }}</div>
+      <div class="rc-item" data-check="digit"><span class="rc-dot"></span>{{ _('Contains digit') }}</div>
+      <div class="rc-item" data-check="special"><span class="rc-dot"></span>{{ _('Include special characters (!@#$%^&* etc.)') }}</div>
+    </div>
+  </div>
+  <div class="rf">
+    <label class="rf-label" for="regEmailUsername">{{ _('Username') }}</label>
+    <div class="rf-wrap">
+      <span class="rf-icon">@</span>
+      <input autocomplete="off" class="rf-in" id="regEmailUsername" maxlength="20" oninput="checkEmailUsername(this.value)" placeholder="{{ _('your_username') }}" type="text"/>
+    </div>
+    <span class="rf-username-status" id="emailUsernameStatus"></span>
+    <div class="rf-username-hint" id="emailUsernameHint">{{ _('4-20 characters, letters, numbers and underscores allowed') }}</div>
+    <div class="rf-msg" id="regEmailUsernameMsg"></div>
+  </div>
+  <div class="reg-actions" style="justify-content:center">
+    <button class="rf-btn-primary" id="emailRegSubmitBtn" onclick="submitEmailRegistration()" type="button">
+      <span class="rf-btn-text">{{ _('Sign Up') }}</span><div class="rf-spinner"></div>
+    </button>
+  </div>
+  <div class="reg-toggle"><a href="/login">{{ _('Already have an account? Log In') }}</a></div>
+</div>
+<!-- SMS flow wrapper: contains progress + captcha + step1/2/3. Hidden by default if email is default. -->
+<div id="smsFlowWrap" style="display:none">
+<!-- Progress Indicator -->
+<div class="reg-progress" id="progressBar">
+<div class="reg-pstep active" data-step="1">
+<div class="reg-pcircle">1</div>
+<span class="reg-plabel">{{ _('Phone Verification') }}</span>
+</div>
+<div class="reg-pline" data-line="1"></div>
+<div class="reg-pstep" data-step="2">
+<div class="reg-pcircle">2</div>
+<span class="reg-plabel">{{ _('Set Password') }}</span>
+</div>
+<div class="reg-pline" data-line="2"></div>
+<div class="reg-pstep" data-step="3">
+<div class="reg-pcircle">3</div>
+<span class="reg-plabel">{{ _('Complete Profile') }}</span>
+</div>
+</div>
+<!-- ==================== CAPTCHA ==================== -->
+<div class="reg-step active" id="captchaPhase">
+<div class="reg-step-header">
+<h2>{{ _('🔒 Security Verification') }}</h2>
+<p>{{ _('Complete the puzzle verification to start registration') }}</p>
+</div>
+<div class="reg-captcha-wrap">
+<div id="puzzle-captcha"></div>
+</div>
+<div class="reg-captcha-hint">{{ _('Captcha verification ensures platform security and prevents automated registrations') }}</div>
+<div class="reg-notice">
+<span class="rn-icon">🛡️</span>
+<div>{% if brand and brand.site_name_en %}{{ brand.site_name_en }}{% endif %} {{ _('Certified by') }}<strong>{{ _('Level 3 National Info Security Certification') }}</strong> — {{ _('your personal info is strictly protected and will not be shared.') }}</div>
+</div>
+<div class="reg-actions" style="justify-content:center">
+<button class="rf-btn-primary" disabled="" id="captchaNextBtn" onclick="captchaNext()" type="button">
+<span class="rf-btn-text">{{ _('Next') }}</span><div class="rf-spinner"></div>
+</button>
+</div>
+<div class="reg-toggle"><a href="/login">{{ _('Already have an account? Log In') }}</a></div>
+</div>
+<!-- ==================== STEP 1: Phone + Code ==================== -->
+<div class="reg-step" id="step1">
+<div class="reg-step-header">
+<h2>{{ _('📱 Verify Phone Number') }}</h2>
+<p>{{ _('Enter your phone number and complete SMS verification') }}</p>
+</div>
+<div class="reg-notice">
+<span class="rn-icon">🔐</span>
+<div>{{ _('Verification code will') }}<strong>{{ _('10 minutes') }}</strong>{{ _('valid within. Max per phone per hour:') }}<strong>{{ _('3 times') }}</strong>{{ _('Verification code sent. If not received, check signal or contact support.') }}</div>
+</div>
+<div class="rf">
+<label class="rf-label" for="regPhone">{{ _('Phone Number') }}</label>
+<div class="rf-row">
+<div class="rf-wrap">
+<span class="rf-icon">📱</span>
+<input autocomplete="tel" class="rf-in" id="regPhone" maxlength="13" oninput="fmtPhone(this)" placeholder="{{ _('Enter phone number') }}" type="tel"/>
+</div>
+<button class="rf-btn-send" id="regSendBtn" onclick="sendRegCode()" type="button">{{ _('Get Code') }}</button>
+</div>
+<div class="rf-msg" id="regPhoneMsg"></div>
+</div>
+<div class="rf">
+<label class="rf-label" for="regCode">{{ _('Verification Code') }}</label>
+<div class="rf-wrap">
+<span class="rf-icon">🔐</span>
+<input autocomplete="one-time-code" class="rf-in" id="regCode" inputmode="numeric" maxlength="6" oninput="this.value=this.value.replace(/\D/g,'')" placeholder="{{ _('Enter 6-digit code') }}" type="text"/>
+</div>
+<div class="rf-msg" id="regCodeMsg"></div>
+</div>
+<div class="reg-actions">
+<button class="rf-btn-back" onclick="goStep('captcha',0)" type="button">{{ _('Back') }}</button>
+<button class="rf-btn-primary" id="step1NextBtn" onclick="goStep('step2',2)" type="button">
+<span class="rf-btn-text">{{ _('Next') }}</span><div class="rf-spinner"></div>
+</button>
+</div>
+<div class="reg-toggle"><a href="/login">{{ _('Already have an account? Log In') }}</a></div>
+</div>
+<!-- ==================== STEP 2: Password + Strength ==================== -->
+<div class="reg-step" id="step2">
+<div class="reg-step-header">
+<h2>{{ _('🔑 Set Password') }}</h2>
+<p>{{ _('Create a strong password to protect your account') }}</p>
+</div>
+<div class="reg-notice">
+<span class="rn-icon">🛡️</span>
+<div>{{ _('Password must') }}<strong>{{ _('At least 10 characters') }}</strong>{{ _('must include uppercase, lowercase, number, and special char:') }}<strong>{{ _('At least 3 types') }}</strong>。</div>
+</div>
+<div class="rf">
+<label class="rf-label" for="regPwd">{{ _('Set Password') }}</label>
+<div class="rf-pwd-row">
+<input autocomplete="new-password" class="rf-in" id="regPwd" oninput="evalPwdStrength(this.value)" placeholder="{{ _('Enter password') }}" style="border-top-right-radius:0;border-bottom-right-radius:0;padding-left:14px" type="password"/>
+<button class="rf-pwd-eye" id="regPwdEye" onclick="toggleRegPwd()" title="{{ _('Show/Hide Password') }}" type="button">👁</button>
+</div>
+<div class="rf-msg" id="regPwdMsg"></div>
+</div>
+<!-- Strength Meter -->
+<div class="reg-strength" id="strengthMeter">
+<div class="reg-strength-bar">
+<div class="reg-strength-fill" id="strengthFill"></div>
+</div>
+<div class="reg-strength-label">
+<span class="rs-score" id="strengthScore">{{ _('Password Strength') }}</span>
+<span id="strengthTips">{{ _('At least 8 characters') }}</span>
+</div>
+</div>
+<!-- Checklist -->
+<div class="reg-checklist" id="pwdChecklist">
+<div class="rc-item" data-check="length"><span class="rc-dot"></span>{{ _('At least 10 characters') }}</div>
+<div class="rc-item" data-check="lower"><span class="rc-dot"></span>{{ _('Include lowercase (a-z)') }}</div>
+<div class="rc-item" data-check="upper"><span class="rc-dot"></span>{{ _('Include uppercase (A-Z)') }}</div>
+<div class="rc-item" data-check="digit"><span class="rc-dot"></span>{{ _('Include numbers (0-9)') }}</div>
+<div class="rc-item" data-check="special"><span class="rc-dot"></span>{{ _('Include special characters (!@#$%^&* etc.)') }}</div>
+</div>
+<div class="rf">
+<label class="rf-label" for="regPwdConfirm">{{ _('Confirm Password') }}</label>
+<div class="rf-pwd-row">
+<input autocomplete="new-password" class="rf-in" id="regPwdConfirm" oninput="checkPwdMatch()" placeholder="{{ _('Re-enter password') }}" style="border-top-right-radius:0;border-bottom-right-radius:0;padding-left:14px" type="password"/>
+<button class="rf-pwd-eye" id="regPwdConfirmEye" onclick="toggleRegPwdConfirm()" title="{{ _('Show/Hide Password') }}" type="button">👁</button>
+</div>
+<div class="rf-msg" id="regPwdConfirmMsg"></div>
+</div>
+<div class="reg-actions">
+<button class="rf-btn-back" onclick="goStep('step1',1)" type="button">{{ _('Back') }}</button>
+<button class="rf-btn-primary" id="step2NextBtn" onclick="goStep('step3',3)" type="button">
+<span class="rf-btn-text">{{ _('Next') }}</span><div class="rf-spinner"></div>
+</button>
+</div>
+<div class="reg-toggle"><a href="/login">{{ _('Already have an account? Log In') }}</a></div>
+</div>
+<!-- ==================== STEP 3: Username + Display Name ==================== -->
+<div class="reg-step" id="step3">
+<div class="reg-step-header">
+<h2>{{ _('👤 Complete Profile') }}</h2>
+<p>{{ _('Set your username and display name') }}</p>
+</div>
+<div class="reg-notice">
+<span class="rn-icon">📋</span>
+<div>{{ _('Username') }}<strong>{{ _('Only letters, numbers, and underscores') }}</strong>{{ _('4-20 chars, after creation') }}<strong>{{ _('Modifiable Once per Month') }}</strong>{{ _('Display name can be changed in profile settings.') }}</div>
+</div>
+<div class="rf">
+<label class="rf-label" for="regUsername">{{ _('Username') }}</label>
+<div class="rf-wrap rf-username-row">
+<span class="rf-icon">@</span>
+<input autocomplete="off" class="rf-in" id="regUsername" maxlength="20" oninput="checkUsername(this.value)" placeholder="{{ _('your_username') }}" type="text"/>
+<span class="rf-username-status" id="usernameStatus"></span>
+</div>
+<div class="rf-username-hint" id="usernameHint">{{ _('4-20 characters, letters, numbers and underscores allowed') }}</div>
+<div class="rf-msg" id="regUsernameMsg"></div>
+</div>
+<div class="rf">
+<label class="rf-label" for="regDisplayName">{{ _('Display Name') }}</label>
+<div class="rf-wrap">
+<span class="rf-icon">👤</span>
+<input autocomplete="off" class="rf-in" id="regDisplayName" maxlength="30" placeholder="{{ _('Your display name') }}" type="text"/>
+</div>
+<div class="rf-msg" id="regDisplayNameMsg"></div>
+</div>
+<div class="reg-actions">
+<button class="rf-btn-back" onclick="goStep('step2',2)" type="button">{{ _('Back') }}</button>
+<button class="rf-btn-primary" id="regSubmitBtn" onclick="submitRegistration()" type="button">
+<span class="rf-btn-text">{{ _('Complete Registration') }}</span><div class="rf-spinner"></div>
+</button>
+</div>
+<div class="reg-toggle"><a href="/login">{{ _('Already have an account? Log In') }}</a></div>
+</div>
+</div><!-- /smsFlowWrap -->
+</div>
+</div>
+<div class="reg-footer">
+  {{ (brand.copyright | safe) if brand else 'VeroRun &copy; 2026' }}
+  {% if brand and brand.icp_number %} · <a href="https://beian.miit.gov.cn/">{{ brand.icp_number | safe }}</a>{% endif %}
+</div>
+</div><!-- /reg-page -->
+
+<script src="/static/js/vue.global.prod.js"></script>
+<script src="/static/puzzle-captcha.js"></script>
+<script>
+/* ════════════════════════════════════════════════════════════
+   VeroRun Registration Wizard
+   ════════════════════════════════════════════════════════════ */
+
+/* ── i18n Dictionary ── */
+window.__I18N__ = {
+  "Sign Up": "{{ _('Sign Up') }}",
+  "Please enter 11-digit phone number": "{{ _('Please enter 11-digit phone number') }}",
+  "Please fill in phone number": "{{ _('Please fill in phone number') }}",
+  "Please enter verification code": "{{ _('Please enter verification code') }}",
+  "Please complete captcha first": "{{ _('Please complete captcha first') }}",
+  "Please set a valid password": "{{ _('Please set a valid password') }}",
+  "Passwords do not match": "{{ _('Passwords do not match') }}",
+  "Please complete phone verification first": "{{ _('Please complete phone verification first') }}",
+  "Please complete SMS verification first": "{{ _('Please complete SMS verification first') }}",
+  "Please set a valid password in previous step": "{{ _('Please set a valid password in previous step') }}",
+  "Username at least 4 characters": "{{ _('Username at least 4 characters') }}",
+  "Username only letters, numbers, underscores": "{{ _('Username only letters, numbers, underscores') }}",
+  "Please confirm username availability": "{{ _('Please confirm username availability') }}",
+  "Please enter display name": "{{ _('Please enter display name') }}",
+  "Display name max 30 chars": "{{ _('Display name max 30 chars') }}",
+  "Code sent to your phone": "{{ _('Code sent to your phone') }}",
+  "Failed to send, please retry": "{{ _('Failed to send, please retry') }}",
+  "Network error, please retry": "{{ _('Network error, please retry') }}",
+  "Network error, please check connection": "{{ _('Network error, please check connection') }}",
+  "Registration successful! Redirecting...": "{{ _('Registration successful! Redirecting...') }}",
+  "Registration failed, please retry": "{{ _('Registration failed, please retry') }}",
+  "Verification code expired, please get a new one": "{{ _('Verification code expired, please get a new one') }}",
+  "No registration method available, please contact administrator": "{{ _('No registration method available, please contact administrator') }}",
+  "Please enter a valid email": "{{ _('Please enter a valid email') }}",
+  "Please enter verification code": "{{ _('Please enter verification code') }}",
+  "Please set a valid password": "{{ _('Please set a valid password') }}",
+  "Please enter username": "{{ _('Please enter username') }}",
+  "Code sent to your email": "{{ _('Code sent to your email') }}",
+  "Email registration successful! Redirecting...": "{{ _('Email registration successful! Redirecting...') }}",
+  "Email registration failed, please retry": "{{ _('Email registration failed, please retry') }}",
+  "Please wait, sending code...": "{{ _('Please wait, sending code...') }}",
+  "Resend in %s s": "{{ _('Resend in %s s') }}"
+};
+if (typeof _ === 'undefined') {
+  function _(key) { return window.__I18N__[key] || key; }
+}
+
+/* ── State ── */
+let capToken = '';
+let capSolved = false;
+let currentStep = 0; // 0=captcha,1=phone,2=pwd,3=profile
+let cd = 0, cdTimer = null;
+let usernameCheckTimer = null;
+let usernameAvailable = false;
+
+/* ── Email Registration State ── */
+let emailCd = 0, emailCdTimer = null;
+let emailUsernameCheckTimer = null;
+let emailUsernameAvailable = false;
+let currentRegMethod = 'email'; // 'email' | 'sms'
+
+/* ── Switch registration method (Email/Phone) ── */
+function switchRegMethod(m) {
+  currentRegMethod = m;
+  document.querySelectorAll('.reg-method-tab').forEach(b => {
+    b.classList.toggle('active', b.dataset.method === m);
+  });
+  const emailPhase = document.getElementById('emailRegPhase');
+  const smsWrap = document.getElementById('smsFlowWrap');
+  if (m === 'email') {
+    emailPhase.style.display = '';
+    smsWrap.style.display = 'none';
+  } else {
+    emailPhase.style.display = 'none';
+    smsWrap.style.display = '';
+  }
+}
+
+/* ── Email: send verification code ── */
+async function sendEmailCode() {
+  const email = (document.getElementById('regEmail').value || '').trim();
+  const msgEl = document.getElementById('regEmailMsg');
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    showMsg(msgEl, 'error', _('Please enter a valid email'));
+    return;
+  }
+  const btn = document.getElementById('emailSendBtn');
+  btn.disabled = true;
+  btn.textContent = _('Please wait, sending code...');
+  try {
+    const r = await fetch('/auth/email/send', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({email: email, purpose: 'register'})
+    });
+    const d = await r.json();
+    if (d.success) {
+      showMsg(msgEl, 'success', _('Code sent to your email'));
+      emailCd = 60;
+      emailCdTimer = setInterval(() => {
+        emailCd--;
+        if (emailCd <= 0) {
+          clearInterval(emailCdTimer);
+          btn.disabled = false;
+          btn.textContent = "{{ _('Get Code') }}";
+        } else {
+          btn.textContent = _('Resend in %s s').replace('%s', emailCd);
+        }
+      }, 1000);
+    } else {
+      showMsg(msgEl, 'error', d.error || _('Failed to send, please retry'));
+      btn.disabled = false;
+      btn.textContent = "{{ _('Get Code') }}";
+    }
+  } catch (e) {
+    showMsg(msgEl, 'error', _('Network error, please retry'));
+    btn.disabled = false;
+    btn.textContent = "{{ _('Get Code') }}";
+  }
+}
+
+/* ── Email: toggle password visibility ── */
+function toggleRegEmailPwd() {
+  const el = document.getElementById('regEmailPwd');
+  el.type = el.type === 'password' ? 'text' : 'password';
+}
+
+/* ── Email: password strength meter (reuse evalPwdStrength with email-prefixed IDs) ── */
+function evalEmailPwdStrength(pw) {
+  // Mirror of evalPwdStrength but targeting email-prefixed element IDs
+  const fill = document.getElementById('emailStrengthFill');
+  const score = document.getElementById('emailStrengthScore');
+  const tips = document.getElementById('emailStrengthTips');
+  const checklist = document.getElementById('emailPwdChecklist');
+  if (!fill) return;
+  let level = 0;
+  if (pw && pw.length >= 8) level++;
+  if (pw && /[A-Z]/.test(pw)) level++;
+  if (pw && /[a-z]/.test(pw)) level++;
+  if (pw && /\d/.test(pw)) level++;
+  if (pw && /[!@#$%^&*(),.?":{}|<>_+\-=\[\]~`\/;\\]/.test(pw)) level++;
+  fill.className = 'reg-strength-fill level-' + level;
+  const labels = ['{{ _("Password Strength") }}', '{{ _("Weak") }}', '{{ _("Fair") }}', '{{ _("Good") }}', '{{ _("Strong") }}', '{{ _("Perfect") }}'];
+  const cls = ['', 's-weak', 's-weak', 's-fair', 's-good', 's-strong'];
+  score.textContent = labels[level];
+  score.className = 'rs-score ' + cls[level];
+  tips.textContent = level >= 5 ? '{{ _("All requirements met") }}' : '{{ _("At least 8 characters") }}';
+  if (checklist) {
+    checklist.querySelectorAll('.rc-item').forEach(item => {
+      const c = item.dataset.check;
+      let met = false;
+      if (c === 'len') met = pw && pw.length >= 8;
+      else if (c === 'upper') met = pw && /[A-Z]/.test(pw);
+      else if (c === 'lower') met = pw && /[a-z]/.test(pw);
+      else if (c === 'digit') met = pw && /\d/.test(pw);
+      else if (c === 'special') met = pw && /[!@#$%^&*(),.?":{}|<>_+\-=\[\]~`\/;\\]/.test(pw);
+      item.classList.toggle('met', !!met);
+    });
+  }
+}
+
+/* ── Email: username availability check ── */
+function checkEmailUsername(v) {
+  v = (v || '').trim();
+  const statusEl = document.getElementById('emailUsernameStatus');
+  const msgEl = document.getElementById('regEmailUsernameMsg');
+  emailUsernameAvailable = false;
+  clearTimeout(emailUsernameCheckTimer);
+  if (!v) { statusEl.textContent = ''; return; }
+  if (v.length < 3 || v.length > 20 || !/^[a-zA-Z][a-zA-Z0-9_-]+$/.test(v)) {
+    statusEl.textContent = '✕';
+    statusEl.style.color = 'var(--rose)';
+    return;
+  }
+  emailUsernameCheckTimer = setTimeout(async () => {
+    try {
+      const r = await fetch('/auth/username/check', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({username: v})
+      });
+      const d = await r.json();
+      if (d.success && d.data && d.data.available) {
+        statusEl.textContent = '✓';
+        statusEl.style.color = 'var(--green)';
+        emailUsernameAvailable = true;
+      } else {
+        statusEl.textContent = '✕';
+        statusEl.style.color = 'var(--rose)';
+      }
+    } catch (e) {
+      statusEl.textContent = '';
+    }
+  }, 400);
+}
+
+/* ── Email: submit registration ── */
+async function submitEmailRegistration() {
+  const email = (document.getElementById('regEmail').value || '').trim();
+  const code = (document.getElementById('regEmailCode').value || '').trim();
+  const pw = document.getElementById('regEmailPwd').value || '';
+  const username = (document.getElementById('regEmailUsername').value || '').trim();
+  const btn = document.getElementById('emailRegSubmitBtn');
+
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    showToast('error', _('Please enter a valid email'));
+    return;
+  }
+  if (!code) { showToast('error', _('Please enter verification code')); return; }
+  if (!pw || pw.length < 8) { showToast('error', _('Please set a valid password')); return; }
+  if (!username) { showToast('error', _('Please enter username')); return; }
+  if (!emailUsernameAvailable) {
+    showToast('error', _('Please confirm username availability'));
+    return;
+  }
+
+  btn.disabled = true;
+  btn.classList.add('loading');
+  try {
+    const r = await fetch('/auth/email/register', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({email, code, password: pw, username})
+    });
+    const d = await r.json();
+    if (d.success) {
+      showToast('success', _('Email registration successful! Redirecting...'));
+      // Persist token (same as SMS register)
+      if (d.data && d.data.token) {
+        const cd_val = ('.' + location.hostname.split('.').slice(-2).join('.'));
+        document.cookie = 'sso_token=' + d.data.token + ';path=/;max-age=604800;samesite=Lax;secure=true';
+      }
+      setTimeout(() => {
+        const params = new URLSearchParams(location.search);
+        const redirect = params.get('redirect');
+        window.location.href = redirect || '/';
+      }, 1000);
+    } else {
+      showToast('error', d.error || _('Email registration failed, please retry'));
+    }
+  } catch (e) {
+    showToast('error', _('Network error, please retry'));
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove('loading');
+  }
+}
+
+/* ── Captcha Events ── */
+document.addEventListener('captcha-success', e => {
+  capToken = e.detail.token;
+  capSolved = true;
+  const el = document.getElementById('puzzle-captcha');
+  if (el) { el.dataset.token = e.detail.token; el.dataset.solved = '1'; }
+  document.getElementById('captchaNextBtn').disabled = false;
+});
+
+(function(){
+  const el = document.getElementById('puzzle-captcha');
+  if (el) {
+    el.addEventListener('captcha-success', function(e){
+      capToken = e.detail.token;
+      capSolved = true;
+      el.dataset.token = e.detail.token;
+      el.dataset.solved = '1';
+      document.getElementById('captchaNextBtn').disabled = false;
+    });
+  }
+})();
+
+/* ── Navigation ── */
+function captchaNext() {
+  if (!capSolved) { return; }
+  goStep('step1', 1);
+}
+
+function goStep(sid, stepNum) {
+  // Validate current step before leaving
+  if (currentStep === 1 && stepNum !== 1) {
+    const p = rawPhone();
+    if (!p || p.length < 11) { showMsg('regPhoneMsg', _('Please fill in phone number'), 'error'); return; }
+    const c = document.getElementById('regCode').value.replace(/\D/g, '');
+    if (!c || c.length < 6) { showMsg('regCodeMsg', _('Please enter verification code'), 'error'); return; }
+    // Don't require verification to be done by backend here, just require user to have filled
+  }
+  if (currentStep === 2 && stepNum !== 2) {
+    const pw = document.getElementById('regPwd').value;
+    const cp = document.getElementById('regPwdConfirm').value;
+    if (!pw || !validatePwdStrength(pw)) {
+      showMsg('regPwdMsg', _('Please set a valid password'), 'error');
+      document.getElementById('regPwd').focus();
+      return;
+    }
+    if (pw !== cp) {
+      showMsg('regPwdConfirmMsg', _('Passwords do not match'), 'error');
+      document.getElementById('regPwdConfirm').focus();
+      return;
+    }
+  }
+
+  // Hide all steps
+  document.querySelectorAll('.reg-step').forEach(el => el.classList.remove('active'));
+  // Show target step
+  const target = document.getElementById(sid);
+  if (target) target.classList.add('active');
+
+  // Update progress bar
+  document.querySelectorAll('.reg-pstep').forEach(el => {
+    el.classList.remove('active', 'done');
+    const s = parseInt(el.dataset.step);
+    if (s < stepNum) el.classList.add('done');
+    else if (s === stepNum) el.classList.add('active');
+  });
+  document.querySelectorAll('.reg-pline').forEach(el => {
+    el.classList.remove('done');
+    const ln = parseInt(el.dataset.line);
+    if (ln < stepNum) el.classList.add('done');
+  });
+
+  currentStep = stepNum;
+
+  // Focus first input
+  setTimeout(() => {
+    const firstInput = target.querySelector('input');
+    if (firstInput) firstInput.focus();
+  }, 200);
+
+  // Clear transient messages
+  hideMsg('regPhoneMsg');
+  hideMsg('regCodeMsg');
+  hideMsg('regPwdMsg');
+  hideMsg('regPwdConfirmMsg');
+  hideMsg('regUsernameMsg');
+  hideMsg('regDisplayNameMsg');
+}
+
+/* ── Phone Formatting ── */
+function fmtPhone(i) {
+  let v = i.value.replace(/\D/g, '').slice(0, 11);
+  if (v.length > 7) v = v.slice(0, 3) + ' ' + v.slice(3, 7) + ' ' + v.slice(7);
+  else if (v.length > 3) v = v.slice(0, 3) + ' ' + v.slice(3);
+  i.value = v;
+}
+function rawPhone() {
+  return document.getElementById('regPhone').value.replace(/\D/g, '');
+}
+
+/* ── Send SMS Code ── */
+async function sendRegCode() {
+  const p = rawPhone();
+  if (p.length < 11) { showMsg('regPhoneMsg', _('Please enter 11-digit phone number'), 'error'); return; }
+  if (!capSolved) { showMsg('regPhoneMsg', _('Please complete captcha first'), 'error'); return; }
+  hideMsg('regPhoneMsg');
+
+  const btn = document.getElementById('regSendBtn');
+  btn.disabled = true;
+  btn.classList.add('countdown');
+
+  try {
+    const r = await fetch('/auth/sms/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: p, purpose: 'register', captcha_id: capToken })
+    });
+    const d = await r.json();
+    if (d.success) {
+      localStorage.setItem('tm_phone', p);
+      toast(_('Code sent to your phone'), 'success');
+      startCd(60);
+      capSolved = false;
+      capToken = '';
+      setTimeout(() => document.getElementById('regCode').focus(), 100);
+    } else {
+      showMsg('regPhoneMsg', d.error || _('Failed to send, please retry'), 'error');
+      btn.disabled = false;
+      btn.classList.remove('countdown');
+      if (d.error && d.error.includes(_('Verification Code'))) { capSolved = false; capToken = ''; }
+    }
+  } catch (e) {
+    showMsg('regPhoneMsg', _('Network error, please retry'), 'error');
+    btn.disabled = false;
+    btn.classList.remove('countdown');
+  }
+}
+
+function startCd(s) {
+  cd = s;
+  const btn = document.getElementById('regSendBtn');
+  const tick = () => {
+    cd--;
+    btn.textContent = cd + 's';
+    if (cd <= 0) {
+      clearInterval(cdTimer);
+      btn.textContent = _('Resend');
+      btn.disabled = false;
+      btn.classList.remove('countdown');
+    }
+  };
+  tick();
+  clearInterval(cdTimer);
+  cdTimer = setInterval(tick, 1000);
+}
+
+/* ── Password Strength ── */
+function evalPwdStrength(pw) {
+  const fill = document.getElementById('strengthFill');
+  const scoreEl = document.getElementById('strengthScore');
+  const tipsEl = document.getElementById('strengthTips');
+
+  // Reset class
+  fill.className = 'reg-strength-fill';
+
+  if (!pw) {
+    fill.style.width = '0%';
+    scoreEl.textContent = _('Password Strength');
+    scoreEl.className = 'rs-score';
+    tipsEl.textContent = _('At least 10 chars');
+    updateChecklist(pw);
+    return;
+  }
+
+  let score = 0;
+  const checks = {
+    length: pw.length >= 10,
+    lower: /[a-z]/.test(pw),
+    upper: /[A-Z]/.test(pw),
+    digit: /[0-9]/.test(pw),
+    special: /[!@#$%^&*(),.?":{}|<>_+\-=\[\]~`\/;\\]/.test(pw)
+  };
+
+  // Base score
+  if (checks.length) score += 10;
+  if (checks.lower) score += 15;
+  if (checks.upper) score += 15;
+  if (checks.digit) score += 15;
+  if (checks.special) score += 15;
+
+  // Bonus for length
+  if (pw.length >= 12) score += 10;
+  if (pw.length >= 16) score += 10;
+
+  // Bonus for variety
+  const types = [checks.lower, checks.upper, checks.digit, checks.special].filter(Boolean).length;
+  if (types >= 3) score += 5;
+  if (types >= 4) score += 5;
+
+  // Map to level
+  let level = 0;
+  if (pw.length < 10) level = 1;
+  else if (score < 30) level = 1;
+  else if (score < 50) level = 2;
+  else if (score < 70) level = 3;
+  else if (score < 85) level = 4;
+  else level = 5;
+
+  fill.classList.add('level-' + level);
+
+  // Score text
+  const labels = ['', _('Weak - Too Short'), _('Weak'), _('Fair'), _('Strong'), _('Very Strong')];
+  const classes = ['', 's-weak', 's-weak', 's-fair', 's-good', 's-strong'];
+  scoreEl.textContent = labels[level];
+  scoreEl.className = 'rs-score ' + (classes[level] || 's-perfect');
+
+  if (level >= 5) scoreEl.className = 'rs-score s-perfect';
+
+  // Tips based on missing requirements
+  const missing = [];
+  if (!checks.length) missing.push(_('At least 10 chars'));
+  if (!checks.lower) missing.push(_('Needs lowercase'));
+  if (!checks.upper) missing.push(_('Needs uppercase'));
+  if (!checks.digit) missing.push(_('Needs digit'));
+  if (!checks.special && pw.length >= 8) missing.push(_('Needs special char'));
+  tipsEl.textContent = missing.length ? missing.join(' · ') : _('✓ Strength OK');
+
+  updateChecklist(pw);
+}
+
+function updateChecklist(pw) {
+  const items = {
+    length: pw && pw.length >= 8,
+    lower: /[a-z]/.test(pw || ''),
+    upper: /[A-Z]/.test(pw || ''),
+    digit: /[0-9]/.test(pw || ''),
+    special: /[!@#$%^&*(),.?":{}|<>_+\-=\[\]~`\/;\\]/.test(pw || '')
+  };
+  document.querySelectorAll('#pwdChecklist .rc-item').forEach(el => {
+    const check = el.dataset.check;
+    if (items[check]) el.classList.add('met');
+    else el.classList.remove('met');
+  });
+}
+
+function validatePwdStrength(pw) {
+  if (!pw || pw.length < 8) return false;
+  if (!/[a-z]/.test(pw)) return false;
+  if (!/[A-Z]/.test(pw)) return false;
+  if (!/[0-9]/.test(pw)) return false;
+  if (!/[!@#$%^&*(),.?":{}|<>_+\-=\[\]~`\/;\\]/.test(pw)) return false;
+  return true;
+}
+
+function checkPwdMatch() {
+  const pw = document.getElementById('regPwd').value;
+  const cp = document.getElementById('regPwdConfirm').value;
+  const msgEl = document.getElementById('regPwdConfirmMsg');
+  if (!cp) { hideMsg('regPwdConfirmMsg'); return; }
+  if (pw !== cp) {
+    showMsg('regPwdConfirmMsg', _('Passwords do not match'), 'error');
+  } else {
+    hideMsg('regPwdConfirmMsg');
+  }
+}
+
+function toggleRegPwd() {
+  const el = document.getElementById('regPwd');
+  const eye = document.getElementById('regPwdEye');
+  if (el.type === 'password') { el.type = 'text'; eye.textContent = '🙈'; }
+  else { el.type = 'password'; eye.textContent = '👁'; }
+}
+function toggleRegPwdConfirm() {
+  const el = document.getElementById('regPwdConfirm');
+  const eye = document.getElementById('regPwdConfirmEye');
+  if (el.type === 'password') { el.type = 'text'; eye.textContent = '🙈'; }
+  else { el.type = 'password'; eye.textContent = '👁'; }
+}
+
+/* ── Username Check ── */
+async function checkUsername(val) {
+  const status = document.getElementById('usernameStatus');
+  const hint = document.getElementById('usernameHint');
+  const msg = document.getElementById('regUsernameMsg');
+
+  hideMsg('regUsernameMsg');
+
+  if (!val) {
+    status.textContent = '';
+    status.className = 'rf-username-status';
+    usernameAvailable = false;
+    hint.textContent = _('4-20 chars, letters, numbers and underscores allowed');
+    hint.style.color = '';
+    return;
+  }
+
+  // Validate format
+  if (!/^[a-zA-Z0-9_]+$/.test(val)) {
+    status.textContent = '✕';
+    status.className = 'rf-username-status taken';
+    usernameAvailable = false;
+    hint.textContent = _('Only letters, numbers, underscores allowed');
+    hint.style.color = 'var(--rose)';
+    return;
+  }
+  if (val.length < 4) {
+    status.textContent = '';
+    status.className = 'rf-username-status';
+    usernameAvailable = false;
+    hint.textContent = _('At least 4 chars (currently ') + val.length + _(')');
+    hint.style.color = 'var(--text-muted)';
+    return;
+  }
+  if (val.length > 20) {
+    status.textContent = '✕';
+    status.className = 'rf-username-status taken';
+    usernameAvailable = false;
+    hint.textContent = _('Max 20 chars');
+    hint.style.color = 'var(--rose)';
+    return;
+  }
+
+  // Checking...
+  status.textContent = _('Checking...');
+  status.className = 'rf-username-status checking';
+  hint.textContent = _('Checking availability...');
+  hint.style.color = 'var(--text-muted)';
+
+  if (usernameCheckTimer) clearTimeout(usernameCheckTimer);
+  usernameCheckTimer = setTimeout(async () => {
+    try {
+      const r = await fetch('/auth/username/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: val })
+      });
+      const d = await r.json();
+      if (d.available === true || d.success === true) {
+        status.textContent = _('✓ Available');
+        status.className = 'rf-username-status available';
+        usernameAvailable = true;
+        hint.textContent = _('Username available');
+        hint.style.color = 'var(--green)';
+      } else {
+        status.textContent = _('✕ Taken');
+        status.className = 'rf-username-status taken';
+        usernameAvailable = false;
+        hint.textContent = d.error || _('Username already taken');
+        hint.style.color = 'var(--rose)';
+      }
+    } catch (e) {
+      status.textContent = '';
+      status.className = 'rf-username-status';
+      usernameAvailable = false;
+      hint.textContent = _('Check failed, please retry later');
+      hint.style.color = 'var(--text-muted)';
+    }
+  }, 500);
+}
+
+/* ── Submit Registration ── */
+async function submitRegistration() {
+  const phone = rawPhone();
+  const code = document.getElementById('regCode').value.replace(/\D/g, '');
+  const password = document.getElementById('regPwd').value;
+  const username = document.getElementById('regUsername').value.trim();
+  const displayName = document.getElementById('regDisplayName').value.trim();
+
+  // Validate all fields
+  if (!phone || phone.length < 11) { showMsg('regUsernameMsg', _('Please complete phone verification first'), 'error'); return; }
+  if (!code || code.length < 6) { showMsg('regUsernameMsg', _('Please complete SMS verification first'), 'error'); return; }
+  if (!password || !validatePwdStrength(password)) { showMsg('regUsernameMsg', _('Please set a valid password in previous step'), 'error'); return; }
+  if (password !== document.getElementById('regPwdConfirm').value) { showMsg('regUsernameMsg', _('Passwords do not match'), 'error'); return; }
+
+  if (!username || username.length < 4) {
+    showMsg('regUsernameMsg', _('Username at least 4 characters'), 'error');
+    document.getElementById('regUsername').focus();
+    return;
+  }
+  if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+    showMsg('regUsernameMsg', _('Username only letters, numbers, underscores'), 'error');
+    document.getElementById('regUsername').focus();
+    return;
+  }
+  if (!usernameAvailable) {
+    showMsg('regUsernameMsg', _('Please confirm username availability'), 'error');
+    document.getElementById('regUsername').focus();
+    return;
+  }
+  if (!displayName) {
+    showMsg('regDisplayNameMsg', _('Please enter display name'), 'error');
+    document.getElementById('regDisplayName').focus();
+    return;
+  }
+  if (displayName.length > 30) {
+    showMsg('regDisplayNameMsg', _('Display name max 30 chars'), 'error');
+    document.getElementById('regDisplayName').focus();
+    return;
+  }
+
+  const btn = document.getElementById('regSubmitBtn');
+  btn.disabled = true;
+  btn.classList.add('loading');
+
+  try {
+    const r = await fetch('/auth/sms/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        phone: phone,
+        code: code,
+        password: password,
+        username: username,
+        display_name: displayName
+      })
+    });
+    const d = await r.json();
+    if (d.success) {
+      const token = d.data && d.data.token ? d.data.token : d.token;
+      localStorage.setItem('tm_token', token);
+      if (d.data && d.data.user) localStorage.setItem('tm_user', JSON.stringify(d.data.user));
+      toast(_('Registration successful! Redirecting...'), 'success');
+      setTimeout(() => {
+        window.location.href = '/?token=' + token;
+      }, 800);
+    } else {
+      showMsg('regUsernameMsg', d.error || _('Registration failed, please retry'), 'error');
+      btn.disabled = false;
+      btn.classList.remove('loading');
+      if (d.error && d.error.includes(_('Verification Code'))) {
+        toast(_('Verification code expired, please get a new one'), 'error');
+        goStep('step1', 1);
+      }
+    }
+  } catch (e) {
+    showMsg('regUsernameMsg', _('Network error, please check connection'), 'error');
+    btn.disabled = false;
+    btn.classList.remove('loading');
+  }
+}
+
+/* ── Utilities ── */
+function showMsg(id, msg, t) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.className = 'rf-msg ' + t;
+  el.innerHTML = '<span>' + (t === 'error' ? '✕' : '✓') + '</span>' + msg;
+}
+function hideMsg(id) {
+  const el = document.getElementById(id);
+  if (el) el.className = 'rf-msg';
+}
+
+function toast(msg, t) {
+  const c = document.getElementById('toastWrap');
+  const el = document.createElement('div');
+  el.className = 'toast-el ' + t;
+  el.innerHTML = '<span>' + (t === 'success' ? '✓' : '✕') + '</span><span>' + msg + '</span>';
+  c.appendChild(el);
+  setTimeout(() => { el.classList.add('leave'); setTimeout(() => el.remove(), 250); }, 3000);
+}
+
+/* ── Keyboard Navigation ── */
+document.addEventListener('DOMContentLoaded', () => {
+  // Check available registration methods via /auth/login-methods
+  // Email is the default; SMS tab appears only if SMS plugin registered 'sms' method
+  fetch('/auth/login-methods')
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.success && d.data && d.data.register_methods) {
+        const methods = d.data.register_methods;
+        if (methods.length === 0) {
+          // No registration method available — redirect to login
+          setTimeout(function() { window.location.href = '/login'; }, 100);
+          return;
+        }
+        // If SMS method is registered, show the Email/Phone switcher
+        const hasSms = methods.some(m => m.type === 'sms');
+        if (hasSms) {
+          document.getElementById('methodTabs').style.display = '';
+        }
+      }
+    })
+    .catch(function() {
+      // Fallback: email registration is always available (hardcoded in auth.py)
+    });
+
+  // Enter key on phone field → send code
+  document.getElementById('regPhone').addEventListener('keydown', e => {
+    if (e.key === 'Enter') sendRegCode();
+  });
+  // Enter key on code field → go to step 2
+  document.getElementById('regCode').addEventListener('keydown', e => {
+    if (e.key === 'Enter') goStep('step2', 2);
+  });
+  // Enter key on password confirm → go to step 3
+  document.getElementById('regPwdConfirm').addEventListener('keydown', e => {
+    if (e.key === 'Enter') goStep('step3', 3);
+  });
+  // Enter key on display name → submit
+  document.getElementById('regDisplayName').addEventListener('keydown', e => {
+    if (e.key === 'Enter') submitRegistration();
+  });
+  // Enter key on username → submit
+  document.getElementById('regUsername').addEventListener('keydown', e => {
+    if (e.key === 'Enter') submitRegistration();
+  });
+
+  // Email form: Enter on email → send code; Enter on username → submit
+  document.getElementById('regEmail').addEventListener('keydown', e => {
+    if (e.key === 'Enter') sendEmailCode();
+  });
+  document.getElementById('regEmailUsername').addEventListener('keydown', e => {
+    if (e.key === 'Enter') submitEmailRegistration();
+  });
+
+  // Restore phone from localStorage
+  const p = localStorage.getItem('tm_phone');
+  if (p) {
+    const el = document.getElementById('regPhone');
+    if (p.length > 7) el.value = p.slice(0,3) + ' ' + p.slice(3,7) + ' ' + p.slice(7);
+    else if (p.length > 3) el.value = p.slice(0,3) + ' ' + p.slice(3);
+    else el.value = p;
+  }
+});
+</script>
+<script src="/static/js/cookie-consent.js"></script>
+</body>
+</html>

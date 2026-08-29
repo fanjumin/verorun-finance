@@ -1,0 +1,121 @@
+# Content Factory Plugin — English Translation
+plugin.name: Content Factory
+Content Factory: Content Factory
+Source Management: Source Management
+Raw Content: Raw Content
+Raw Content List: Raw Content List
+Process Content: Process Content
+Process Content List: Process Content List
+Process Content Items: Process Content Items
+Add Source: Add Source
+Collection Source: Collection Source
+Collection Interval: Collection Interval
+Manual: Manual
+Max Per Round: Max Per Round
+Keywords Filter: Keywords Filter
+Platform ID: Platform ID
+Optional: Optional
+Interval: Interval
+Last Collected: Last Collected
+Crawl: Crawl
+Collecting...: Collecting...
+Collection Complete: Collection Complete
+Collect Failed: Collect Failed
+Add: Add
+Skip: Skip
+No Source: No Source
+No Content: No Content
+No Process Content: No Process Content
+No Title: No Title
+No Body: No Body
+All: All
+Pending Process: Pending
+Processed: Processed
+Failed: Failed
+Processing: Processing...
+Processing complete: Processing complete
+Process Failed: Process Failed
+AI Processing...: AI Processing...
+Batch: Batch
+Process: Process
+Batch Delete: Batch Delete
+Search Title: Search Title
+Draft: Draft
+Reviewing: Reviewing
+Approved: Approved
+Rejected: Rejected
+Reject: Reject
+Danger: Danger
+Medium: Medium
+View: View
+Submit for Review: Submit for Review
+Approve: Approve
+Revert to Draft: Revert to Draft
+Publish: Publish
+Publish to This Site: Publish to CMS
+Push to Social Media: Push to Social
+Social Media: Social
+Multi-Publish: Multi-Publish
+Push to Knowledge Base: Push to Knowledge Base
+Push: Push
+Push Success: Push Success
+Push Failed: Push Failed
+Pushing...: Pushing...
+Pushed to Knowledge Base: Pushed to Knowledge Base
+Edit Content: Edit Content
+Edit: Edit
+Edit Source: Edit Source
+Close: Close
+Saved: Saved
+Deleted: Deleted
+Publish to local CMS?: Publish to local CMS?
+Published Successfully: Published Successfully
+Publish Failed: Publish Failed
+Publish to CMS + Social Media?: Publish to CMS + Social Media?
+Published: Published
+Save: Save
+Save failed: Save failed
+Cancel: Cancel
+Delete: Delete
+Delete this source?: Delete this source?
+Delete failed: Delete failed
+Confirm Delete: Confirm Delete
+Cannot Be Recovered: Cannot Be Recovered
+Deleting...: Deleting...
+Delete One by One: Delete One by One
+No Batch Delete: No Batch Delete
+One by One: One by One
+Including Pushed: Including Pushed
+Skill: Skill
+Please select content first: Please select content first
+Not found: Not found
+Name and URL are required: Name and URL are required
+Body cannot be empty: Body cannot be empty
+Discard changes?: Discard changes?
+Direct Publish to WeChat: Direct Publish to WeChat
+Push Platform: Push Platform
+Comma Separated: Comma Separated
+Push Target: Push Target
+Go: Go
+In Progress: In Progress
+Success: Success
+Operation Failed: Operation Failed
+Push this content to knowledge base?: Push this content to knowledge base?
+Pushing to knowledge base...: Pushing to knowledge base...
+Request Failed: Request Failed
+Load failed: Load failed
+Name: Name
+Type: Type
+Status: Status
+Actions: Actions
+Time: Time
+Title: Title
+Summary: Summary
+Keywords: Keywords
+Risk: Risk
+Body: Body
+Auto Schedule: Auto Schedule
+Enabled: Enabled
+Disable: Disable
+Web Page: Web Page
+Loading: Loading...

@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<!-- ali_api admin page - follows admin dark theme -->
+<html lang="zh-CN">
+<head>
+<link rel="stylesheet" href="/admin/static/css/design-system.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>{{ _('Alibaba API Management') }}</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC",sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+/* layout */
+.pa{padding:16px 20px}
+/* tabs */
+.tb{display:flex;gap:2px;border-bottom:1px solid var(--border);margin-bottom:16px;flex-wrap:wrap}
+.tb .tb-i{padding:8px 14px;font-size:12px;color:var(--muted);cursor:pointer;border:none;background:none;border-bottom:2px solid transparent;transition:all .15s}
+.tb .tb-i:hover{color:var(--text)}
+.tb .tb-i.act{color:var(--accent);border-bottom-color:var(--accent)}
+/* cards */
+.cd{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:12px}
+.cd .h{font-size:13px;font-weight:600;padding-bottom:6px;border-bottom:1px solid var(--border);margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.cd .l{font-size:10px;color:var(--dim);text-transform:uppercase}
+.cd .v{font-size:18px;font-weight:700;margin-top:2px}
+.cd .v.s1{color:var(--accent)}
+.cd .v.s2{color:#58a6ff}
+.cd .v.s3{color:#f0c040}
+.cd .v.s4{color:#00ff9f}
+/* stat grid */
+.sg{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:16px}
+.sg .cd{text-align:left;margin-bottom:0}
+/* tables */
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{background:var(--bg);color:var(--dim);padding:6px 8px;text-align:left;border-bottom:2px solid var(--border);font-weight:500}
+td{padding:6px 8px;border-bottom:1px solid var(--border);color:var(--muted)}
+table .tc{text-align:center}
+/* buttons */
+.btn{padding:5px 12px;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;border:none;display:inline-flex;align-items:center;gap:4px;font-family:inherit}
+.bp{background:var(--accent);color:#000}
+.bs{background:transparent;color:var(--text);border:1px solid var(--border);padding:3px 8px;font-size:10px}
+.br{background:#f85149;color:#fff}
+.bg{background:#238636;color:#fff}
+.by{background:#d29922;color:#fff}
+.bi{background:#1f6feb;color:#fff}
+.bn{background:transparent;color:var(--text);border:1px solid var(--border)}
+.bo{background:transparent;color:var(--text);border:1px solid var(--border)}
+/* inputs */
+.in{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:4px;font-size:12px;outline:none;font-family:inherit;width:100%}
+.in:focus{border-color:var(--accent)}
+.sl{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:5px;border-radius:4px;font-size:12px;outline:none;font-family:inherit}
+.sl:focus{border-color:var(--accent)}
+label{display:block;font-size:12px;color:var(--muted);margin-bottom:3px}
+.fh{font-size:11px;color:var(--dim);margin-top:2px}
+/* badges */
+.bdg{display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:600}
+.bdg.g{background:rgba(0,212,170,.12);color:var(--accent)}
+.bdg.r{background:rgba(248,81,73,.1);color:#f85149}
+.bdg.y{background:rgba(240,192,64,.12);color:#f0c040}
+.bdg.b{background:rgba(88,166,255,.12);color:#58a6ff}
+.bdg.gy{background:rgba(139,139,139,.12);color:var(--muted)}
+/* status badge */
+.stbd{padding:2px 8px;border-radius:10px;font-size:11px;display:inline-block}
+.stbd.on{background:rgba(0,212,170,.1);color:var(--accent)}
+.stbd.off{background:rgba(248,81,73,.1);color:#f85149}
+/* alerts */
+.msg{padding:8px 12px;border-radius:6px;font-size:12px;margin-top:8px}
+.msg.err{background:rgba(248,81,73,.1);color:#f85149;border:1px solid rgba(248,81,73,.2)}
+.msg.ok{background:rgba(0,212,170,.1);color:var(--accent);border:1px solid rgba(0,212,170,.2)}
+.msg.info{background:rgba(88,166,255,.1);color:#58a6ff;border:1px solid rgba(88,166,255,.2)}
+.msg.warn{background:rgba(240,192,64,.1);color:#f0c040;border:1px solid rgba(240,192,64,.2)}
+/* loader */
+.lo{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:9999;justify-content:center;align-items:center}
+.lo.show{display:flex}
+.lo .sp{width:24px;height:24px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+/* modal */
+.mo{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.7);z-index:9998;align-items:center;justify-content:center}
+.mo.show{display:flex}
+.mo .mb{background:var(--card);border:1px solid var(--border);border-radius:12px;max-height:80vh;overflow-y:auto;width:90%}
+.mo .mb.sm{max-width:500px}
+.mo .mb.lg{max-width:900px}
+.mo .mb.xl{max-width:1140px}
+.mo .mb .mt{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;font-size:14px;font-weight:600}
+.mo .mb .mt .cl{width:24px;height:24px;display:flex;align-items:center;justify-content:center;cursor:pointer;border-radius:4px;color:var(--muted);font-size:16px}
+.mo .mb .mt .cl:hover{background:var(--bg);color:var(--text)}
+.mo .mb .mbd{padding:14px 18px}
+.mo .mb .mf{padding:10px 18px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end}
+/* upload zone */
+.uz{border:2px dashed var(--border);border-radius:var(--radius);padding:20px;text-align:center;cursor:pointer;background:var(--bg);transition:border-color .2s}
+.uz:hover{border-color:var(--accent)}
+.uz .uz-ic{font-size:24px;opacity:.5}
+.uz .uz-t{font-size:13px;margin-top:6px}
+.uz .uz-st{font-size:11px;color:var(--dim);margin-top:2px}
+/* flex / grid rows */
+.r{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.c{flex:1;min-width:0}
+.c-6{flex:0 0 calc(50% - 6px)}
+.c-4{flex:0 0 calc(33.33% - 8px)}
+.c-3{flex:0 0 calc(25% - 9px)}
+@media(max-width:768px){.c-6,.c-4,.c-3{flex:0 0 100%}}
+/* search bar */
+.sb{display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap}
+/* pagination */
+.pg{display:flex;justify-content:center;align-items:center;gap:2px;margin-top:12px}
+.pg a{padding:4px 10px;font-size:12px;color:var(--muted);cursor:pointer;border-radius:4px;text-decoration:none;border:1px solid transparent}
+.pg a:hover{color:var(--text);border-color:var(--border)}
+.pg a.act{background:var(--accent);color:#000;font-weight:600}
+.pg a.dis{opacity:.4;pointer-events:none;color:var(--dim)}
+/* img preview */
+.pr-img{width:80px;height:80px;object-fit:cover;border-radius:4px}
+.pr-img.no{border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--dim);width:80px;height:80px}
+/* two col */
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:768px){.g2{grid-template-columns:1fr}}
+/* three col */
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+@media(max-width:768px){.g3{grid-template-columns:1fr}}
+/* dl */
+.dl{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;font-size:12px}
+.dl dt{color:var(--dim)}
+.dl dd{color:var(--muted)}
+/* dim text */
+.dim{color:var(--dim)}
+.mu{color:var(--muted)}
+.dg{color:#f85149}
+/* inline helpers */
+.gap{gap:6px;display:inline-flex;align-items:center}
+.mt{margin-top:8px}
+.mb{margin-bottom:8px}
+.mr{margin-right:4px}
+.ac{text-align:center}
+/* img gallery grid */
+.igg{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
+.igg .ig-item .ig-img{width:100%;height:160px;object-fit:cover;border-radius:8px 8px 0 0}
+.igg .ig-item .ig-ft{padding:6px 8px;display:flex;justify-content:space-between;align-items:center;background:var(--bg);border-radius:0 0 8px 8px;font-size:11px}
+/* title option cards */
+.to{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:6px;cursor:pointer;transition:border-color .2s}
+.to:hover{border-color:var(--accent)}
+.to.sel{border-color:var(--accent);border-width:2px}
+.to .to-badges{display:flex;gap:4px;margin-bottom:4px}
+/* grid image */
+.gg{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px}
+.gg .gi img{width:100%;height:160px;object-fit:cover;border-radius:6px}
+</style>
+</head>
+<body>
+<div id="lo" class="lo"><div class="sp"></div></div>
+
+<div class="pa">
+  <!-- tab navigation -->
+  <div class="tb" id="main-tabs">
+    <button class="tb-i act" data-page="dashboard">{{ _('Dashboard') }}</button>
+    <button class="tb-i" data-page="products">{{ _('Product management') }}</button>
+    <button class="tb-i" data-page="collect">{{ _('Product collection') }}</button>
+    <button class="tb-i" data-page="supplier">{{ _('Drop Shipping Orders') }}</button>
+    <button class="tb-i" data-page="logs">{{ _('API Logs') }}</button>
+    <button class="tb-i" data-page="cache">{{ _('Cache Management') }}</button>
+    <button class="tb-i" data-page="config">{{ _('Configuration Info') }}</button>
+  </div>
+
+  <!-- dashboard -->
+  <div id="dashboard-page" class="page">
+    <div class="sg">
+      <div class="cd"><div class="l">{{ _('Total number of products') }}</div><div class="v s1" id="total-items">0</div><div class="dim" style="font-size:11px;margin-top:2px">{{ _('Active') }}: <span id="active-items">0</span></div></div>
+      <div class="cd"><div class="l">{{ _('API Call') }}</div><div class="v s2" id="total-calls">0</div><div class="dim" style="font-size:11px;margin-top:2px">{{ _('Today: ') }}<span id="today-calls">0</span></div></div>
+      <div class="cd"><div class="l">{{ _('User Statistics') }}</div><div class="v s3" id="total-users">0</div><div class="dim" style="font-size:11px;margin-top:2px">{{ _('API User Count') }}</div></div>
+    </div>
+    <div class="g2">
+      <div class="cd"><div class="h">{{ _('Risk Control Status') }}</div><div class="g2" id="rate-limit-stats"><div class="dim" style="font-size:12px">{{ _('Loading...') }}</div></div></div>
+      <div class="cd"><div class="h">{{ _('Cache Status') }}</div><div class="g2" id="cache-stats"><div class="dim" style="font-size:12px">{{ _('Loading...') }}</div></div></div>
+    </div>
+  </div>
+
+  <!-- products -->
+  <div id="products-page" class="page" style="display:none">
+    <div class="sb">
+      <input class="in" id="product-search" placeholder={{ _('Search product title, ID...') | tojson }} style="max-width:300px">
+      <select class="sl" id="status-filter">
+        <option value="active">{{ _('Active Products') }}</option>
+        <option value="all">{{ _('All Products') }}</option>
+        <option value="inactive">{{ _('Inactive product') }}</option>
+      </select>
+      <button class="btn bp" id="search-btn">{{ _('Search') }}</button>
+    </div>
+    <div class="cd" style="padding:0;overflow-x:auto">
+      <table>
+        <thead><tr>
+          <th>ID</th><th>{{ _('Picture') }}</th><th>{{ _('Product title') }}</th><th>{{ _('Price') }}</th><th>{{ _('Category') }}</th><th>{{ _('Status') }}</th><th>{{ _('Last updated') }}</th><th>{{ _('Action') }}</th>
+        </tr></thead>
+        <tbody id="products-table"><tr><td colspan="8" class="tc dim" style="padding:20px">{{ _('Loading...') }}</td></tr></tbody>
+      </table>
+    </div>
+    <div class="pg" id="products-pagination"></div>
+  </div>
+
+  <!-- collect -->
+  <div id="collect-page" class="page" style="display:none">
+    <div class="g2">
+      <div class="cd">
+        <div class="h">{{ _('Scrape Single Product') }}</div>
+        <label for="product-id">{{ _('Alibaba Product ID') }}</label>
+        <input class="in" id="product-id" placeholder={{ _('Example: 1234567890') | tojson }}>
+        <div class="fh">{{ _('You can find the product ID in the Alibaba product detail page URL') }}</div>
+        <button class="btn bp mt" id="collect-single-btn">{{ _('Start collecting') }}</button>
+        <div id="collect-result"></div>
+      </div>
+      <div class="cd">
+        <div class="h">{{ _('Search and Collect') }}</div>
+        <label for="search-keywords">{{ _('Search Keywords') }}</label>
+        <input class="in" id="search-keywords" placeholder={{ _('Example: Smartphone') | tojson }}>
+        <div class="r" style="margin-top:8px">
+          <div style="flex:1"><label for="search-page">{{ _('Page Number') }}</label><input class="in" type="number" id="search-page" value="1" min="1"></div>
+          <div style="flex:1"><label for="search-size">{{ _('Items per Page') }}</label><input class="in" type="number" id="search-size" value="20" min="1" max="50"></div>
+        </div>
+        <button class="btn bp" id="search-collect-btn">{{ _('Search and Collect') }}</button>
+        <div id="search-result"></div>
+      </div>
+    </div>
+    <div class="cd">
+      <div class="h">{{ _('AI Content Optimization') }}</div>
+      <div class="msg info"><div>{{ _('Use AI to optimize product titles and descriptions to improve marketing effectiveness. AI service must be available.') }}</div></div>
+      <div style="max-width:400px"><label for="ai-product-id">{{ _('Product ID') }}</label><input class="in" id="ai-product-id" placeholder={{ _('Enter the product ID to optimize') | tojson }}></div>
+      <button class="btn bp mt" id="ai-optimize-btn">{{ _('AI Optimization') }}</button>
+      <div id="ai-result"></div>
+    </div>
+  </div>
+
+  <!-- supplier -->
+  <div id="supplier-page" class="page" style="display:none">
+    <div class="sb">
+      <div class="h">{{ _('Manage Drop Shipping Orders') }}</div>
+      <div class="dim" style="font-size:12px">{{ _('An procurement order is automatically created after payment. The admin confirms and places the order on 1688, and logistics information is automatically filled back.') }}</div>
+    </div>
+    <div class="sb">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <select class="sl" id="po-status-filter" style="width:auto;min-width:120px">
+          <option value="all">{{ _('All Statuses') }}</option>
+          <option value="pending">{{ _('Pending procurement') }}</option>
+          <option value="ordered">{{ _('Purchased') }}</option>
+          <option value="shipped">{{ _('Shipped') }}</option>
+          <option value="received">{{ _('Completed') }}</option>
+          <option value="cancelled">{{ _('Cancelled') }}</option>
+        </select>
+        <button class="btn bp" id="refresh-po-btn">{{ _('Refresh') }}</button>
+      </div>
+    </div>
+    <table class="tl" id="po-table">
+      <thead><tr>
+        <th>{{ _('Purchase Order ID') }}</th>
+        <th>{{ _('Local order') }}</th>
+        <th>{{ _('Product information') }}</th>
+        <th>{{ _('Client') }}</th>
+        <th>{{ _('1688 Products') }}</th>
+        <th>{{ _('Purchase Status') }}</th>
+        <th>{{ _('Logistics') }}</th>
+        <th>{{ _('Action') }}</th>
+      </tr></thead>
+      <tbody id="po-tbody"><tr><td colspan="8" class="tc dim" style="padding:20px">{{ _('Loading...') }}</td></tr></tbody>
+    </table>
+    <div class="pg" id="po-pagination"></div>
+  </div>
+
+  <!-- logs -->
+  <div id="logs-page" class="page" style="display:none">
+    <div class="sb">
+      <input class="in" id="log-endpoint" placeholder={{ _('API Endpoint Filter') | tojson }} style="max-width:300px">
+      <select class="sl" id="log-success">
+        <option value="">{{ _('All Statuses') }}</option>
+        <option value="true">{{ _('Success') }}</option>
+        <option value="false">{{ _('Failed"') }}</option>
+      </select>
+      <button class="btn bp" id="filter-logs-btn">{{ _('Filter') }}</button>
+    </div>
+    <div class="cd" style="padding:0;overflow-x:auto">
+      <table>
+        <thead><tr>
+          <th>ID</th><th>{{ _('User') }}</th><th>{{ _('API Endpoint') }}</th><th>{{ _('Parameters') }}</th><th>{{ _('Response code') }}</th><th>{{ _('Time (ms)') }}</th><th>{{ _('Status') }}</th><th>{{ _('Time') }}</th>
+        </tr></thead>
+        <tbody id="logs-table"><tr><td colspan="8" class="tc dim" style="padding:20px">{{ _('Loading...') }}</td></tr></tbody>
+      </table>
+    </div>
+    <div class="pg" id="logs-pagination"></div>
+  </div>
+
+  <!-- cache -->
+  <div id="cache-page" class="page" style="display:none">
+    <div class="g2">
+      <div class="cd">
+        <div class="h">{{ _('Cache Statistics') }}</div>
+        <div id="cache-details"><div class="dim" style="font-size:12px">{{ _('Loading...') }}</div></div>
+        <button class="btn bn mt" id="refresh-cache-stats">{{ _('Refresh Statistics') }}</button>
+      </div>
+      <div class="cd">
+        <div class="h">{{ _('Cache Cleanup') }}</div>
+        <div class="msg warn"><div>{{ _('Clearing cache will delete cached data, which may increase API calls.') }}</div></div>
+        <label for="cache-type">{{ _('Cleanup Type') }}</label>
+        <select class="sl" id="cache-type" style="width:100%">
+          <option value="all">{{ _('All Caches') }}</option>
+          <option value="product">{{ _('Product cache') }}</option>
+          <option value="api">{{ _('API Response Cache') }}</option>
+        </select>
+        <div id="product-id-container" style="display:none;margin-top:8px">
+          <label for="cache-product-id">{{ _('Product ID') }}</label>
+          <input class="in" id="cache-product-id" placeholder={{ _('Leave empty to clear all product cache') | tojson }}>
+        </div>
+        <button class="btn br mt" id="clear-cache-btn">{{ _('Clear Cache') }}</button>
+        <div id="clear-result"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- config -->
+  <div id="config-page" class="page" style="display:none">
+    <div class="g2">
+      <div class="cd">
+        <div class="h">{{ _('Alibaba Configuration') }}</div>
+        <div class="fl" style="border:none;padding:0">
+          <form onsubmit="return false;" id="ali-config-form">
+            <div class="r"><div class="c"><label>{{ _('API Gateway') }}</label><input class="in" id="cfg-api-gateway" placeholder="https://gw.open.1688.com/openapi"></div></div>
+            <div class="r"><div class="c"><label>{{ _('API Version') }}</label><input class="in" id="cfg-api-version" readonly></div></div>
+            <div class="r"><div class="c"><label>{{ _('Signature Method') }}</label><input class="in" id="cfg-sign-method" readonly></div></div>
+            <hr style="border:none;border-top:1px solid var(--border);margin:10px 0">
+            <div class="r"><div class="c"><label>AppKey <span style="color:#f85149">*</span></label><input class="in" id="cfg-app-key" placeholder="输入 1688 AppKey"></div></div>
+            <div class="r"><div class="c"><label>AppSecret <span style="color:#f85149">*</span></label><input class="in" type="password" id="cfg-app-secret" placeholder="输入 1688 AppSecret"></div></div>
+            <button class="btn bp" id="save-config-btn" onclick="saveConfig()">{{ _('Save configuration') }}</button>
+            <span id="config-save-result" class="mu" style="font-size:11px;margin-left:6px"></span>
+          </form>
+        </div>
+      </div>
+      <div class="cd">
+        <div class="h">{{ _('Risk control configuration') }}</div>
+        <dl class="dl" id="rate-limit-config">
+          <dt>{{ _('User Daily Limit') }}</dt><dd>{{ _('Loading...') }}</dd>
+          <dt>{{ _('User Hourly Limit') }}</dt><dd>{{ _('Loading...') }}</dd>
+          <dt>{{ _('Global Concurrency Limit') }}</dt><dd>{{ _('Loading...') }}</dd>
+          <dt>{{ _('Global QPS Limit') }}</dt><dd>{{ _('Loading...') }}</dd>
+          <dt>{{ _('Circuit Breaker Threshold') }}</dt><dd>{{ _('Loading...') }}</dd>
+        </dl>
+      </div>
+      <div class="cd">
+        <div class="h">{{ _('Cache Configuration') }}</div>
+        <dl class="dl" id="cache-config">
+          <dt>{{ _('Redis Configuration') }}</dt><dd><span class="stbd off">{{ _('Not configured') }}</span></dd>
+          <dt>{{ _('Memory Cache Size') }}</dt><dd>{{ _('Loading...') }}</dd>
+          <dt>{{ _('Product cache TTL') }}</dt><dd>{{ _('Loading...') }}</dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- AI title modal -->
+<div class="mo" id="ai-title-modal">
+  <div class="mb sm">
+    <div class="mt"><span>{{ _('AI Title Options') }}</span><span class="cl" onclick="closeModal('ai-title-modal')">&times;</span></div>
+    <div class="mbd">
+      <div class="dim" style="font-size:12px;margin-bottom:10px">AI 生成了 3 个不同风格的标题，请选择最合适的。</div>
+      <div id="ai-title-options"><div class="ac dim" style="padding:12px;font-size:12px">{{ _('Loading...') }}</div></div>
+    </div>
+    <div class="mf">
+      <button class="btn bn" onclick="closeModal('ai-title-modal')">{{ _('Cancel') }}</button>
+      <button class="btn bp" id="confirm-title-btn">{{ _('Confirm Selection') }}</button>
+    </div>
+  </div>
+</div>
+
+<!-- image gallery modal -->
+<div class="mo" id="image-gallery-modal">
+  <div class="mb xl">
+    <div class="mt"><span>{{ _('Product image management') }}</span><span class="cl" onclick="closeModal('image-gallery-modal')">&times;</span></div>
+    <div class="mbd">
+      <div class="uz" id="upload-zone">
+        <div class="uz-ic">&#x2601;</div>
+        <div class="uz-t">{{ _('Drag image here or click to upload') }}</div>
+        <div class="uz-st">{{ _('Supports JPG/PNG/WebP/GIF, up to 5MB per file') }}</div>
+        <input type="file" id="image-upload-input" accept="image/png,image/jpeg,image/jpg,image/gif,image/webp" style="display:none" multiple>
+      </div>
+      <div id="image-gallery-container"><div class="ac dim" style="padding:20px;font-size:12px">请选择商品以查看图片</div></div>
+    </div>
+    <div class="mf">
+      <span id="image-count" class="dim" style="font-size:12px;margin-right:auto">{{ _('No Images') }}</span>
+      <button class="btn bn" onclick="closeModal('image-gallery-modal')">{{ _('Close') }}</button>
+    </div>
+  </div>
+</div>
+
+<script src="/admin/ali-api/static/axios.min.js"></script>
+<script>window._ALI_LANG="{{ lang }}";window._ALI_I18N={{ translations|tojson }};window.__=function(k){return (window._ALI_LANG==='zh-CN'&&window._ALI_I18N[k])||k};window.api=function(url,method,data){var p=method==='POST'?axios.post(url,data):axios.get(url);return p.then(function(r){return r.data})};</script>
+<script src="/admin/ali-api/static/ali_console.js"></script>
+</body>
+</html>

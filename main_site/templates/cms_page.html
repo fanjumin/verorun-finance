@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+
+<html lang="{{ lang }}">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>{{ page_title or (brand.seo_title if brand else '') }}</title>
+<meta content="{{ brand.seo_desc if brand else '' }}" name="description"/>
+<link href="{{ brand.favicon_url if brand and brand.favicon_url else '/static/favicon-32x32.png' }}" rel="icon" sizes="32x32" type="image/png"/>
+<!-- Fonts -->
+<link href="/static/css/fonts.css" rel="stylesheet"/>
+<!-- Design System CSS -->
+<link href="/static/css/landing.css" rel="stylesheet"/>
+{% if theme_css_url %}<link href="{{ theme_css_url }}" rel="stylesheet"/>{% endif %}
+
+<style>
+/* ── Additional Page-Specific Overrides ── */
+body{padding-bottom:0}
+
+/* Hero scan line effect */
+.hero-scanline{
+  position:absolute;top:0;left:0;width:100%;height:100%;
+  background:repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0,245,255,0.015) 2px,
+    rgba(0,245,255,0.015) 4px
+  );
+  pointer-events:none;z-index:0;
+}
+
+/* Parallax container fix */
+.hero-block{will-change:transform,opacity}
+
+/* Trust bar separator */
+.trust-sep{width:1px;height:40px;background:var(--border);margin:auto}
+
+/* Loading shimmer */
+.shimmer{
+  background:linear-gradient(90deg, var(--bg-glass) 25%, rgba(255,255,255,0.03) 50%, var(--bg-glass) 75%);
+  background-size:200% 100%;
+  animation:shimmer 1.5s ease-in-out infinite;
+  border-radius:4px;
+}
+@keyframes shimmer{
+  0%{background-position:200% 0}
+  100%{background-position:-200% 0}
+}
+
+/* Mobile hamburger */
+.mobile-toggle{display:none;background:none;border:none;color:var(--text-dim);font-size:22px;cursor:pointer;padding:8px}
+@media (max-width:900px){
+  .mobile-toggle{display:block}
+  .nav-links{display:none;position:absolute;top:68px;left:0;right:0;flex-direction:column;background:rgba(5,5,8,0.98);padding:20px;gap:16px;border-bottom:1px solid var(--border)}
+  .nav-links.open{display:flex}
+  .nav-links a:not(.nav-cta):not(:nth-child(-n+3)){display:block}
+}
+
+/* Enhanced insight card hover */
+.insight-card .ic-read{
+  display:inline-flex;align-items:center;gap:4px;
+  font-size:12px;color:var(--cyan);font-weight:600;
+  opacity:0;transform:translateX(-4px);
+  transition:all .35s var(--ease-out);
+  margin-top:8px;
+}
+.insight-card:hover .ic-read{opacity:1;transform:translateX(0)}
+
+/* ── Footer new layout (ftr-*) ── */
+.ftr-main{max-width:1200px;margin:0 auto;display:flex;gap:48px;justify-content:space-between;flex-wrap:wrap}
+.ftr-brand{flex:0 0 200px;display:flex;flex-direction:column}
+.ftr-links{flex:1 1 0;display:flex;flex-direction:column;gap:16px;padding-top:4px;min-width:0}
+.ftr-links-grid{display:flex;gap:32px;flex-wrap:wrap;justify-content:space-evenly}
+.ftr-partner-row{display:flex;align-items:center;gap:20px;flex-wrap:wrap;padding:10px 0;border-top:1px solid rgba(255,255,255,0.04);justify-content:space-evenly}
+.ftr-partner-row a{color:var(--text-dim);text-decoration:none;transition:opacity .25s;opacity:.6}
+.ftr-partner-row a:hover{opacity:1}
+.ftr-partner-text{font-size:12px}
+.ftr-bottom{max-width:1200px;margin:36px auto 0;padding:16px 0;border-top:1px solid var(--border);text-align:center;font-size:11px;color:var(--text-muted)}
+.ftr-bottom a{color:var(--text-muted);text-decoration:none;transition:color .25s}
+.ftr-bottom a:hover{color:var(--text-high)}
+.ftr-bottom-sep{color:var(--border);margin:0 10px}
+@media(max-width:768px){.ftr-main{flex-direction:column;gap:30px}.ftr-brand{align-items:center;text-align:center}.ftr-links-grid{gap:24px}}
+</style>
+</head>
+<body>
+<!-- ── Particles Background (fixed) ── -->
+<div id="particles-bg"></div>
+<!-- ── Navigation ── -->
+<nav class="nav" role="navigation">
+<div class="nav-inner">
+<a class="nav-logo" href="/">
+      {% if brand and brand.logo_icon_url %}
+      <img alt="{{ brand.site_name_en }}" src="{{ brand.logo_icon_url }}" style="width:32px;height:32px;border-radius:6px;object-fit:contain;flex-shrink:0"/>
+      {% else %}
+      <div class="logo-icon">{{ (brand.site_name_en if brand else 'E')[0] }}</div>
+      {% endif %}
+      <span>{{ brand.site_name_en if brand else '' }}</span>
+</a>
+<button aria-label="{{ _('Menu') }}" class="mobile-toggle" onclick="toggleMobileNav()">☰</button>
+<div class="nav-links" id="navLinks">
+<a class="{% if page=='home' %}active{% endif %}" href="/">{{ _('Home') }}</a>
+      {% for nav in header_nav %}
+      <a class="nav-item-dyn" data-url="{{ nav.url }}" href="{{ nav.url }}">{{ nav.title }}</a>
+      {% endfor %}
+      <span id="nav-auth-area">
+        {% if is_logged_in %}
+        <a class="nav-cta" href="{{ deploy.url('platform') }}">{{ _('Dashboard') }}</a>
+        {% else %}
+        <a href="/login">{{ _('Register | Login') }}</a>
+        {% endif %}
+      </span>
+</div>
+</div>
+</nav>
+<!-- ── CMS Blocks ── -->
+{% for b in blocks %}
+  {% set bid = b.block_type %}
+
+  {# ═══ HERO ═══ #}
+  {% if bid == 'hero' %}
+    <section class="hero-block no-animate">
+<div class="hero-scanline"></div>
+<div class="bg-grid"></div>
+<div class="bg-glow bg-glow-indigo"></div>
+<div class="bg-glow bg-glow-blue"></div>
+      {% if b.extra_json and b.extra_json.particles == false %}
+      {% else %}
+        {# particles are handled globally by app.js #}
+      {% endif %}
+
+      <div class="block-inner">
+        {% if b.icon %}
+          <div class="hero-badge">
+<span class="badge-dot"></span>
+            {{ b.icon }}
+          </div>
+        {% endif %}
+
+        <h1 class="hero-title">{% autoescape false %}{{ b.title }}{% endautoescape %}</h1>
+
+        {% if b.subtitle %}
+          <p class="hero-subtitle">{{ b.subtitle }}</p>
+        {% endif %}
+
+        {% if b.link_url %}
+          <div class="hero-actions">
+<a class="btn btn-primary" href="{{ b.link_url }}">{{ b.link_text or _('Start Now') }} →</a>
+            {% if b.extra_json and b.extra_json.get('secondary_url') %}
+                <a class="btn btn-secondary" href="{{ b.extra_json.secondary_url }}">{{ b.extra_json.secondary_text or _('Learn More') }}</a>
+              {% endif %}
+            <a class="btn btn-ghost" href="/docs">{{ _('View Docs') }}</a>
+</div>
+        {% endif %}
+
+        {% if b.content %}
+          <div class="hero-stats">{% autoescape false %}{{ b.content }}{% endautoescape %}</div>
+        {% endif %}
+      </div>
+</section>
+
+  {# ═══ TRUST / STATS ═══ #}
+  {% elif bid == 'trust' %}
+    <section class="section section-dark section-border no-animate">
+<div class="bg-glow bg-glow-green" style="top:50%;left:50%;transform:translate(-50%,-50%);width:800px;height:400px;opacity:0.4"></div>
+<div class="section-inner">
+<div class="trust-grid">{% autoescape false %}{{ b.content }}{% endautoescape %}</div>
+</div>
+</section>
+
+  {# ═══ LIVE STATS (real DB counts) ═══ #}
+  {% elif bid == 'stats' %}
+    <section class="section section-dark section-border no-animate">
+<div class="bg-glow bg-glow-green" style="top:50%;left:50%;transform:translate(-50%,-50%);width:800px;height:400px;opacity:0.4"></div>
+<div class="section-inner">
+<div class="trust-grid">
+<div class="trust-item"><div class="t-num">{{ live_stats.agents }}</div><div class="t-label">{{ _('Registered Agents') }}</div></div>
+<div class="trust-sep"></div>
+<div class="trust-item"><div class="t-num">{{ live_stats.users }}</div><div class="t-label">{{ _('Registered Users') }}</div></div>
+<div class="trust-sep"></div>
+<div class="trust-item"><div class="t-num">{{ live_stats.guilds }}</div><div class="t-label">{{ _('Active Camps') }}</div></div>
+</div>
+</div>
+</section>
+
+  {# ═══ PREVIEW ═══ #}
+  {% elif bid == 'preview' %}
+    <section class="section">
+<div class="section-inner">
+        {% if b.title %}
+          <div style="text-align:center">
+<div class="section-label">{{ b.icon or _('Product Preview') }}</div>
+<h2 class="section-title">{{ b.title }}</h2>
+            {% if b.subtitle %}<p class="section-subtitle" style="margin:0 auto">{{ b.subtitle }}</p>{% endif %}
+          </div>
+        {% endif %}
+        <div class="preview-window animate-on-scroll">
+<div class="preview-bar">
+<div class="preview-dot"></div>
+<div class="preview-dot"></div>
+<div class="preview-dot"></div>
+</div>
+<div class="preview-body">{% autoescape false %}{{ b.content }}{% endautoescape %}</div>
+</div>
+</div>
+</section>
+
+  {# ═══ CARDS ═══ #}
+  {% elif bid == 'cards' %}
+    <section class="section section-elevated">
+<div class="bg-grid-dense"></div>
+<div class="section-inner">
+        {% if b.title %}
+          <div style="text-align:center;margin-bottom:8px">
+<div class="section-label">{{ b.icon or '' }}</div>
+<h2 class="section-title">{{ b.title }}</h2>
+            {% if b.subtitle %}<p class="section-subtitle" style="margin:0 auto">{{ b.subtitle }}</p>{% endif %}
+          </div>
+        {% endif %}
+        <div class="cards-grid cards-3">{% autoescape false %}{{ b.content }}{% endautoescape %}</div>
+</div>
+</section>
+
+  {# ═══ FEATURES ═══ #}
+  {% elif bid == 'features' %}
+    <section class="section">
+<div class="bg-glow bg-glow-violet"></div>
+<div class="section-inner">
+        {% if b.title %}
+          <div style="text-align:center;margin-bottom:8px">
+<div class="section-label">{{ b.icon or '' }}</div>
+<h2 class="section-title">{{ b.title }}</h2>
+            {% if b.subtitle %}<p class="section-subtitle" style="margin:0 auto">{{ b.subtitle }}</p>{% endif %}
+          </div>
+        {% endif %}
+        <div class="features-grid">{% autoescape false %}{{ b.content }}{% endautoescape %}</div>
+</div>
+</section>
+
+  {# ═══ STEPS ═══ #}
+  {% elif bid == 'steps' %}
+    <section class="section section-dark section-border">
+<div class="section-inner">
+        {% if b.title %}
+          <div style="text-align:center;margin-bottom:8px">
+<div class="section-label">{{ b.icon or _('Quick Start') }}</div>
+<h2 class="section-title">{{ b.title }}</h2>
+            {% if b.subtitle %}<p class="section-subtitle" style="margin:0 auto">{{ b.subtitle }}</p>{% endif %}
+          </div>
+        {% endif %}
+        <div class="steps-container animate-on-scroll">
+<div class="steps-line"></div>
+          {% autoescape false %}{{ b.content }}{% endautoescape %}
+        </div>
+        {% if b.link_url %}
+          <div class="animate-on-scroll delay-3" style="text-align:center;margin-top:40px">
+<a class="btn btn-primary" href="{{ b.link_url }}">{{ b.link_text or _('View Full Guide') }} →</a>
+</div>
+        {% endif %}
+      </div>
+</section>
+
+  {# ═══ INSIGHTS ═══ #}
+  {% elif bid == 'insights' %}
+    <section class="section" id="insights-section">
+<div class="bg-glow bg-glow-blue" style="width:400px;height:400px;top:-10%;right:-10%"></div>
+<div class="section-inner">
+<div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:16px">
+<div>
+<div class="section-label">{{ b.icon or _('Updates') }}</div>
+<h2 class="section-title">{{ b.title or _('Latest Updates') }}</h2>
+            {% if b.subtitle %}<p class="section-subtitle">{{ b.subtitle }}</p>{% endif %}
+          </div>
+<a class="btn btn-ghost" href="/insights" style="flex-shrink:0">{{ _('View All →') }}</a>
+</div>
+<div class="insights-grid" id="insights-dynamic">
+<div style="grid-column:1/-1;text-align:center;padding:40px">
+<div class="ai-thinking">
+<span style="color:var(--text-muted);font-size:13px">{{ _('Loading Updates...') }}</span>
+<span class="bounce"></span><span class="bounce"></span><span class="bounce"></span>
+</div>
+</div>
+</div>
+</div>
+</section>
+
+  {# ═══ CTA ═══ #}
+  {% elif bid == 'cta' %}
+    <section class="section section-elevated section-border cta-block">
+<div class="bg-grid-dense"></div>
+<div class="cta-inner">
+<h2 class="section-title" style="font-size:2em;margin-bottom:12px">{{ b.title }}</h2>
+        {% if b.subtitle %}<p class="section-subtitle" style="margin:0 auto 32px">{{ b.subtitle }}</p>{% endif %}
+        {% if b.link_url %}
+          <div class="cta-actions">
+<a class="btn btn-primary btn-lg" href="{{ b.link_url }}">{{ b.link_text or _('Start Now') }} →</a>
+</div>
+        {% endif %}
+      </div>
+</section>
+
+  {# ═══ TEXT ═══ #}
+  {% elif bid == 'text' %}
+    <section class="section">
+<div class="section-inner" style="max-width:800px">
+        {% if b.title %}<h2 class="section-title" style="font-size:1.6em">{{ b.title }}</h2>{% endif %}
+        <div style="font-size:15px;color:var(--text-dim);line-height:1.9">{% autoescape false %}{{ b.content }}{% endautoescape %}</div>
+</div>
+</section>
+
+  {% endif %}
+{% endfor %}
+
+<!-- ── Footer ── -->
+{% include '_footer.html' %}
+
+<!-- ── Scripts ── -->
+<script src="/static/js/tsparticles.bundle.min.js"></script>
+<script src="/static/js/app.js"></script>
+
+<script>
+// ── Dynamic Insights Loading ──
+(function(){
+  var el = document.getElementById("insights-dynamic");
+  if (!el) return;
+  fetch("/api/v1/insights/latest")
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (!d.posts || !d.posts.length) { el.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:20px;font-size:13px">{{ translations['No updates yet'] }}</div>'; return; }
+      var h = '';
+      d.posts.forEach(function(p){
+        h += '<a href="/insights/' + p.slug + '" class="insight-card animate-on-scroll delay-1">' +
+             '<div class="ic-body">' +
+             '<div class="ic-cat">' + (p.category || '{{ translations['Updates'] }}') + '</div>' +
+             '<h4>' + p.title + '</h4>' +
+             '<p>' + (p.excerpt || '') + '</p>' +
+             '<div class="ic-read">{{ translations['Read More'] }} →</div>' +
+             '<div class="ic-meta">' + (p.published_at || '') + '</div>' +
+             '</div></a>';
+      });
+      el.innerHTML = h;
+      // Re-trigger scroll animations for new elements
+      if (window.ekaiAnimations) window.ekaiAnimations();
+    })
+    .catch(function(){
+      el.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:20px;font-size:13px">{{ translations['Load failed'] }}</div>';
+    });
+})();
+
+// ── Social Media Icons (dynamic footer, backend-driven) ──
+(function(){
+  var el = document.getElementById("socFooter");
+  if (!el) return;
+  
+  function getSocialIconHTML(item){
+    if(!item.icon_type || !item.icon_value)return null;
+    if(item.icon_type==='fontawesome'){
+      return '<i class="fas '+item.icon_value+'" style="font-size:16px"></i>';
+    }else if(item.icon_type==='lucide'){
+      return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px"><circle cx="12" cy="12" r="10"/></svg>';
+    }else if(item.icon_type==='image_url'){
+      return '<img src="'+item.icon_value+'" style="width:18px;height:18px;border-radius:3px" onerror="this.style.display=\\'none\\'">';
+    }else if(item.icon_type==='svg'){
+      return item.icon_value;
+    }
+    return null;
+  }
+  
+  function escapeHtml(s){
+    if(!s)return '';
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+  
+  fetch("/api/social-media")
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (!d.data || !d.data.length) { el.style.display = "none"; return; }
+      el.style.display = "flex";
+      var h = '';
+      d.data.forEach(function(item){
+        var iconHtml = getSocialIconHTML(item);
+        if(!iconHtml)return;
+        var title=item.hover_text||item.platform_name||"Social Media";
+        h += '<a href="'+escapeHtml(item.url)+'" target="_blank" rel="noopener" title="'+escapeHtml(title)+'" style="color:var(--text-muted);opacity:.6;transition:opacity .2s;display:inline-flex;align-items:center;justify-content:center" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=.6">'+iconHtml+'</a>';
+      });
+      el.innerHTML = h;
+    })
+    .catch(function(){ el.style.display = "none"; });
+})();
+
+// ── Header Nav: JWT login state + dynamic active highlight ──
+(function(){
+  // 1. Highlight active nav item based on current URL path
+  var currentPath = window.location.pathname;
+  var dynLinks = document.querySelectorAll('.nav-item-dyn');
+  dynLinks.forEach(function(a){
+    var navUrl = a.getAttribute('data-url') || '';
+    // Match: exact path, or external URL matching current host
+    if (navUrl === currentPath || navUrl === window.location.href) {
+      a.classList.add('active');
+    } else if (navUrl.startsWith('/') && currentPath.startsWith(navUrl) && navUrl !== '/') {
+      // Sub-path match (e.g. /insights/xxx matches /insights)
+      if (currentPath === navUrl || currentPath.charAt(navUrl.length) === '/') {
+        a.classList.add('active');
+      }
+    }
+  });
+})();
+
+// ── Mobile Navigation Toggle ──
+function toggleMobileNav(){
+  var nav = document.getElementById("navLinks");
+  if (nav) nav.classList.toggle("open");
+}
+
+// ── Close mobile nav on link click ──
+document.addEventListener("click", function(e){
+  var nav = document.getElementById("navLinks");
+  if (nav && nav.classList.contains("open") && e.target.closest("a")) {
+    nav.classList.remove("open");
+  }
+});
+
+// ── Social Media fallback render (guaranteed execution) ──
+(function(){
+  function smRender(){
+    var el=document.getElementById("socFooter");if(!el)return;
+    fetch("/api/social-media").then(function(r){return r.json()}).then(function(d){
+      if(!d||!d.data||!d.data.length)return;
+      var h="";
+      d.data.forEach(function(item){
+        var ih=null;
+        if(item.icon_type==="svg")ih=item.icon_value;
+        else if(item.icon_type==="image_url")ih='<img src="'+item.icon_value.replace(/"/g,"&quot;")+'" style="width:18px;height:18px;border-radius:3px">';
+        else if(item.icon_type==="fontawesome")ih='<i class="fas '+item.icon_value.replace(/"/g,"&quot;")+'"></i>';
+        if(!ih)return;
+        var title=item.hover_text||item.platform_name||"";
+        h+='<a href="'+item.url.replace(/"/g,"&quot;")+'" target="_blank" rel="noopener" title="'+title.replace(/"/g,"&quot;")+'" style="color:var(--text-muted);opacity:.6;transition:opacity .2s;display:inline-flex;align-items:center;justify-content:center" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=.6">'+ih+'</a>';
+      });
+      if(h){el.innerHTML=h;el.style.display="flex"}
+    }).catch(function(){});
+  }
+  setTimeout(smRender,200);
+  setTimeout(smRender,1500);
+})();
+</script>
+
+</body>
+</html>

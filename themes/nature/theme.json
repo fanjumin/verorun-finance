@@ -1,0 +1,16 @@
+{
+  "name": "自然绿",
+  "slug": "nature",
+  "version": "1.0.0",
+  "author": "VeroRun",
+  "description": "自然绿色风格 — 适合餐饮、健康、农业、环保行业。清新、有机、生命力。",
+  "industry": "food",
+  "tags": ["green", "nature", "organic", "food", "health", "agriculture"],
+  "sites": ["main", "platform"],
+  "variables": {
+    "preset": "light",
+    "font_scale": 1.0,
+    "border_radius": 14
+  },
+  "builtin": false
+}

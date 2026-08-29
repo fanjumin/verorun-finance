@@ -1,0 +1,80 @@
+﻿window.l_tickets=function(){
+  document.getElementById("pt").textContent="{{ _('User Tickets') }}";
+  ticketLoadList();
+}
+function ticketLoadList(){
+  var url="/admin/tickets";
+  var params=[];
+  if(_ticketFilter)params.push("status="+_ticketFilter);
+  if(_ticketTypeFilter)params.push("type="+_ticketTypeFilter);
+  if(params.length)url+="?"+params.join("&");
+  fetch(url,{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success||!d.data)return;
+    var h='<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap">';
+    // {{ _('Status Filter Row') }}
+    h+='<button class="btn btn-sm'+(d.open>0&&!_ticketFilter?' bp':'')+'" onclick="_ticketFilter=&#39;open&#39;;ticketLoadList()">{{ _('Pending') }} ('+(d.open||0)+')</button>';
+    h+='<button class="btn btn-sm'+(d.replied!=null?'':'')+'" onclick="_ticketFilter=&#39;replied&#39;;ticketLoadList()">{{ _('Replied') }} ('+(d.replied||0)+')</button>';
+    h+='<button class="btn btn-sm" onclick="_ticketFilter=&#39;&#39;;ticketLoadList()">{{ _('All') }} ('+(d.total||0)+')</button>';
+    h+='<span style="color:var(--border);margin:0 4px">|</span>';
+    // {{ _('Type Filter Row') }}
+    h+='<button class="btn btn-sm'+(d.total!=null&&!_ticketTypeFilter?' bp':'')+'" onclick="_ticketTypeFilter=&#39;&#39;;ticketLoadList()">{{ _('All Types') }}</button>';
+    ['presale','aftersale','complaint','suggestion'].forEach(function(tp){
+      var cnt=d['cnt_'+tp]||0;
+      h+='<button class="btn btn-sm'+(d.data&&_ticketTypeFilter===tp?' bp':'')+'" onclick="_ticketTypeFilter=&#39;'+tp+'&#39;;ticketLoadList()" style="color:'+_ADM_TYPE_COLORS[tp]+'">'+_ADM_TYPE_LABELS[tp]+' ('+cnt+')</button>';
+    });
+    h+='</div>';
+    h+='<div class="cd"><div class="st">{{ _('Tickets') }} ('+d.data.length+')</div><table><tr><th>{{ _('Type') }}</th><th>{{ _('User') }}</th><th>{{ _('Title') }}</th><th>{{ _('Status') }}</th><th>{{ _('Time') }}</th><th>{{ _('Actions') }}</th></tr>';
+    d.data.forEach(function(t){
+      var u=t.username||t.phone||'{{ _('User') }}#'+t.user_id;
+      var tl=_ADM_TYPE_LABELS[t.type]||'{{ _('After-Sales') }}';
+      var tc=_ADM_TYPE_COLORS[t.type]||'#888';
+      var tpBadge='<span style="display:inline-block;padding:2px 6px;border-radius:3px;font-size:10px;background:'+tc+'22;color:'+tc+';border:1px solid '+tc+'44;white-space:nowrap">'+tl+'</span>';
+      var prioMark=t.priority==='high'?' <span style="color:#ef4444;font-size:10px">\u{1f534}</span>':'';
+      var sb=t.status==='open'?'<span class="bdg pd">{{ _('Pending') }}</span>':t.status==='replied'?'<span class="bdg on">{{ _('Replied') }}</span>':'<span class="bdg">{{ _('Closed') }}</span>';
+      var tm=(t.created_at||'').replace('T',' ').slice(0,16);
+      h+='<tr><td>'+tpBadge+prioMark+'</td><td>'+eschtml(u)+'</td><td style="cursor:pointer" onclick="ticketAdminToggle(event,'+t.id+')">'+eschtml(t.title)+'</td><td>'+sb+'</td><td>'+tm+'</td><td>';
+      h+='<button class="btn btn-sm" onclick="ticketAdminToggle(event,'+t.id+')">{{ _('Details') }}</button></td></tr>';
+      h+='<tr id="ticketRow'+t.id+'" style="display:none"><td colspan="6" style="background:var(--bg2,#111);padding:16px">';
+      h+='<div style="margin-bottom:4px;color:var(--dim);font-size:11px">'+tpBadge+' | '+eschtml(t.category||'')+'</div>';
+      h+='<div style="margin-bottom:8px;color:var(--muted)"><b>{{ _('User') }}：</b>'+eschtml(u)+(t.contact?' <span style="color:var(--dim);font-size:11px">{{ _('Contact') }}: '+eschtml(t.contact)+'</span>':'')+'</div>';
+      h+='<div style="margin-bottom:12px;white-space:pre-wrap;font-size:13px">'+eschtml(t.content||'')+'</div>';
+      if(t.admin_reply){
+        h+='<div style="background:rgba(34,211,238,.06);border-left:2px solid var(--accent2);padding:10px 12px;border-radius:4px;margin-bottom:12px;font-size:13px"><b style="color:var(--accent2)">{{ _('Admin Reply') }}：</b><br>'+eschtml(t.admin_reply)+'<br><span style="font-size:10px;color:var(--dim)">'+(t.replied_at||'').replace('T',' ').slice(0,16)+'</span></div>';
+      }
+      if(t.status!=='closed'){
+        h+='<div style="display:flex;gap:8px;align-items:flex-start"><textarea id="ticketReply'+t.id+'" rows="2" placeholder="{{ _('Enter Reply') }}..." style="flex:1;padding:8px;border-radius:6px;border:1px solid var(--border);background:rgba(0,0,0,.3);color:var(--text);font-size:13px;font-family:inherit;resize:vertical"></textarea>';
+        h+='<div style="display:flex;flex-direction:column;gap:4px"><button class="btn btn-sm bp" onclick="ticketAdminReply('+t.id+')">{{ _('Reply') }}</button>';
+        h+='<button class="btn btn-sm" onclick="ticketAdminAction('+t.id+',&#39;close&#39;)">{{ _('Close') }}</button></div></div>';
+      }else{
+        h+='<button class="btn btn-sm" onclick="ticketAdminAction('+t.id+',&#39;reopen&#39;)">{{ _('Reopen') }}</button>';
+      }
+      h+='</td></tr>';
+    });
+    h+='</table></div>';
+    document.getElementById("mc").innerHTML=h;
+  }).catch(function(){document.getElementById("mc").innerHTML='<div class="em">{{ _('Load failed') }}</div>'});
+}
+function ticketAdminToggle(e,tid){
+  e.stopPropagation();
+  var row=document.getElementById('ticketRow'+tid);
+  if(row)row.style.display=row.style.display==='none'?'':'none';
+}
+function ticketAdminReply(tid){
+  var reply=document.getElementById('ticketReply'+tid).value.trim();
+  if(!reply){alert('{{ _('Enter Reply Content') }}');return}
+  fetch('/admin/tickets/'+tid,{method:'PUT',headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify({action:'reply',admin_reply:reply})})
+    .then(function(r){return r.json()}).then(function(d){
+      if(d.success)ticketLoadList();else alert('{{ _('Failed') }}: '+(d.error||''));
+    }).catch(function(){alert('{{ _('Request Failed') }}')});
+}
+function ticketAdminAction(tid,action){
+  fetch('/admin/tickets/'+tid,{method:'PUT',headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify({action:action})})
+    .then(function(r){return r.json()}).then(function(d){
+      if(d.success)ticketLoadList();else alert('{{ _('Failed') }}: '+(d.error||''));
+    }).catch(function(){alert('{{ _('Request Failed') }}')});
+}
+function eschtml(s){if(!s)return'';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+
+// {{ _('Complaint') }}/{{ _('Suggestion Merged into User Ticket') }}
+
+// NOTE: 频道管理（IM Gateway）前端已迁移到 plugins/im_gateway/templates/admin_imgateway.html

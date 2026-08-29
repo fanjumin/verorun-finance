@@ -1,0 +1,121 @@
+# Content Factory Plugin — 中文翻译
+plugin.name: 内容工厂
+Content Factory: 内容工厂
+Source Management: 来源管理
+Raw Content: 原始内容
+Raw Content List: 原始内容列表
+Process Content: 加工内容
+Process Content List: 加工内容列表
+Process Content Items: 加工内容项
+Add Source: 添加来源
+Collection Source: 采集来源
+Collection Interval: 采集间隔
+Manual: 手动
+Max Per Round: 每轮上限
+Keywords Filter: 关键词过滤
+Platform ID: 平台标识
+Optional: 可选
+Interval: 间隔
+Last Collected: 上次采集
+Crawl: 采集
+Collecting...: 采集中...
+Collection Complete: 采集完成
+Collect Failed: 采集失败
+Add: 新增
+Skip: 跳过
+No Source: 暂无来源
+No Content: 暂无内容
+No Process Content: 暂无加工内容
+No Title: 无标题
+No Body: 无内容
+All: 全部
+Pending Process: 待处理
+Processed: 已处理
+Failed: 失败
+Processing: 加工中...
+Processing complete: 加工完成
+Process Failed: 加工失败
+AI Processing...: AI加工中...
+Batch: 批量
+Process: 加工
+Batch Delete: 批量删除
+Search Title: 搜索标题
+Draft: 草稿
+Reviewing: 审核中
+Approved: 已通过
+Rejected: 已驳回
+Reject: 驳回
+Danger: 危险
+Medium: 中等
+View: 查看
+Submit for Review: 提交审核
+Approve: 通过
+Revert to Draft: 退回草稿
+Publish: 发布
+Publish to This Site: 发布到本站
+Push to Social Media: 推送到社媒
+Social Media: 社媒
+Multi-Publish: 多平台发布
+Push to Knowledge Base: 推送到知识库
+Push: 推送
+Push Success: 推送成功
+Push Failed: 推送失败
+Pushing...: 推送中...
+Pushed to Knowledge Base: 已推送到知识库
+Edit Content: 编辑内容
+Edit: 编辑
+Edit Source: 编辑来源
+Close: 关闭
+Saved: 已保存
+Deleted: 已删除
+Publish to local CMS?: 发布到本站CMS？
+Published Successfully: 发布成功
+Publish Failed: 发布失败
+Publish to CMS + Social Media?: 同时发布到CMS和社媒？
+Published: 已发布
+Save: 保存
+Save failed: 保存失败
+Cancel: 取消
+Delete: 删除
+Delete this source?: 删除此来源？
+Delete failed: 删除失败
+Confirm Delete: 确认删除
+Cannot Be Recovered: 不可恢复
+Deleting...: 删除中...
+Delete One by One: 逐条删除
+No Batch Delete: 无批量删除
+One by One: 逐条
+Including Pushed: 含已推送
+Skill: Skill
+Please select content first: 请先选择内容
+Not found: 不存在
+Name and URL are required: 名称和URL不能为空
+Body cannot be empty: 正文不能为空
+Discard changes?: 放弃修改？
+Direct Publish to WeChat: 直接发布到微信
+Push Platform: 推送平台
+Comma Separated: 逗号分隔
+Push Target: 推送目标
+Go: 确认
+In Progress: 进行中
+Success: 成功
+Operation Failed: 操作失败
+Push this content to knowledge base?: 是否推送此内容到知识库？
+Pushing to knowledge base...: 推送知识库中...
+Request Failed: 请求失败
+Load failed: 加载失败
+Name: 名称
+Type: 类型
+Status: 状态
+Actions: 操作
+Time: 时间
+Title: 标题
+Summary: 摘要
+Keywords: 关键词
+Risk: 风险
+Body: 正文
+Auto Schedule: 自动调度
+Enabled: 启用
+Disable: 禁用
+Web Page: 网页
+Loading: 加载中...

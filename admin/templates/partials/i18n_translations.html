@@ -1,0 +1,93 @@
+﻿window.l_i18n_translations=function(){
+  document.getElementById("pt").textContent="{{ _('Translations') }}";
+  var mc=document.getElementById("mc");
+  var page=1,search='',locale='{{ LANG }}';
+  function load(){
+    mc.innerHTML='<div class="lo"><div class="s"></div>{{ _('Loading...') }}</div>';
+    var url='/admin/i18n/translations?page='+page+'&limit=50&locale='+locale;
+    if(search)url+='&search='+encodeURIComponent(search);
+    fetch(url,{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+      if(!d.success){mc.innerHTML='<div class="em">'+d.error+'</div>';return}
+      var ds=d.data;
+      var h='<div style="margin-bottom:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">';
+      h+='<select id="i18nLocale" onchange="locale=this.value;load()" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-size:13px">';
+      h+='<option value="zh-CN" '+(locale==='zh-CN'?'selected':'')+'>{{ _('Chinese') }}</option>';
+      h+='<option value="en" '+(locale==='en'?'selected':'')+'>English</option>';
+      h+='</select>';
+      h+='<input type="text" id="i18nSearch" placeholder="{{ _('Search...') }}" value="'+escAttr(search)+'" ';
+      h+='onkeydown="if(event.key===\'Enter\'){search=this.value;page=1;load()}" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-size:13px;width:200px">';
+      h+='<span class="btn bo" onclick="search=document.getElementById(\'i18nSearch\').value;page=1;load()">{{ _('Search') }}</span>';
+      h+='<span class="btn" onclick="showAddDialog()">{{ _('+ Add') }}</span>';
+      h+='<span class="btn" onclick="seedFromYaml()">{{ _('Sync from YAML') }}</span>';
+      h+='</div>';
+      h+='<div style="margin-bottom:8px;font-size:12px;color:var(--text-dim)">{{ _('Total:') }} '+ds.total+' {{ _('translations') }}</div>';
+      h+='<table><tr><th>ID</th><th>{{ _('Source') }}</th><th>{{ _('Translation') }}</th><th>{{ _('Auto') }}</th><th>{{ _('Updated') }}</th><th>{{ _('Actions') }}</th></tr>';
+      (ds.items||[]).forEach(function(t){
+        var autoBadge=t.is_auto?'<span class="bdg">{{ _('Auto') }}</span>':'<span class="bdg on">{{ _('Manual') }}</span>';
+        h+='<tr><td>'+t.id+'</td><td style="max-width:300px;word-break:break-all">'+esc(t.source)+'</td>';
+        h+='<td style="max-width:300px;word-break:break-all">'+esc(t.translation)+'</td>';
+        h+='<td>'+autoBadge+'</td><td style="font-size:11px">'+(t.updated_at||'')+'</td>';
+        h+='<td><span class="btn bo" onclick="editTranslation('+t.id+',\''+escAttr(t.source)+'\',\''+escAttr(t.translation)+'\')">{{ _('Edit') }}</span> ';
+        h+='<span class="btn bo" style="color:var(--red)" onclick="deleteTranslation('+t.id+')">{{ _('Delete') }}</span></td></tr>';
+      });
+      h+='</table>';
+      // Pagination
+      var totalPages=Math.ceil(ds.total/50);
+      if(totalPages>1){
+        h+='<div style="margin-top:12px;display:flex;gap:4px;align-items:center;justify-content:center">';
+        for(var p=1;p<=Math.min(totalPages,10);p++){
+          var act=p===page?'background:var(--accent);color:#fff':'';
+          h+='<span class="btn bo" style="'+act+'" onclick="page='+p+';load()">'+p+'</span>';
+        }
+        if(totalPages>10)h+='<span>...</span>';
+        h+='</div>';
+      }
+      mc.innerHTML=h;
+    }).catch(function(){mc.innerHTML='<div class="em">{{ _('Request Failed') }}</div>'});
+  }
+  function showAddDialog(){
+    var src=prompt('{{ _('Enter source text (Chinese)') }}');
+    if(!src)return;
+    var trans=prompt('{{ _('Enter translation text') }}');
+    if(trans===null)return;
+    fetch('/admin/i18n/translations',{method:'POST',headers:{"Authorization":"Bearer "+T,'Content-Type':'application/json'},
+      body:JSON.stringify({locale:locale,source:src,translation:trans||''})})
+    .then(function(r){return r.json()}).then(function(d){
+      if(d.success)load();
+      else alert(d.error);
+    });
+  }
+  window.showAddDialog=showAddDialog;
+  function editTranslation(id,src,trans){
+    var newTrans=prompt('{{ _('Edit Translation') }}: '+(src.length>60?src.substring(0,60)+'...':src),trans);
+    if(newTrans===null)return;
+    fetch('/admin/i18n/translations/'+id,{method:'PUT',headers:{"Authorization":"Bearer "+T,'Content-Type':'application/json'},
+      body:JSON.stringify({translation:newTrans,is_auto:0})})
+    .then(function(r){return r.json()}).then(function(d){
+      if(d.success)load();
+      else alert(d.error);
+    });
+  }
+  window.editTranslation=editTranslation;
+  function deleteTranslation(id){
+    if(!confirm('{{ _('Delete this translation?') }}'))return;
+    fetch('/admin/i18n/translations/'+id,{method:'DELETE',headers:{"Authorization":"Bearer "+T}})
+    .then(function(r){return r.json()}).then(function(d){
+      if(d.success)load();
+      else alert(d.error);
+    });
+  }
+  window.deleteTranslation=deleteTranslation;
+  function seedFromYaml(){
+    fetch('/admin/i18n/seed?locale='+locale,{method:'POST',headers:{"Authorization":"Bearer "+T}})
+    .then(function(r){return r.json()}).then(function(d){
+      if(d.success)load();
+      else alert(d.error);
+    });
+  }
+  window.seedFromYaml=seedFromYaml;
+  load();
+}
+
+// 💬 {{ _('Comment Management') }}
+// ============================

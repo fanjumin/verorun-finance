@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>{{ _('Renewal') }} — {{ brand.site_name_cn if brand and brand.site_name_cn else '' }}</title>
+<link rel="icon" type="image/png" sizes="32x32" href="{{ brand.favicon_url if brand and brand.favicon_url else '/static/favicon-32x32.png' }}">
+<style>
+/* ═══════════════════════════════════════════════════════
+   VeroRun Renew — Dark Fintech, Glassmorphism
+   ═══════════════════════════════════════════════════════ */
+
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+
+:root {
+  --bg-deep: #060B18;
+  --bg-card: rgba(13, 21, 42, 0.75);
+  --border: rgba(47, 107, 255, 0.12);
+  --text: #E4E8F0;
+  --text-muted: #8894B0;
+  --text-dim: #4B5675;
+  --accent: #2F6BFF;
+  --accent2: #00C2FF;
+  --success: #00D68F;
+  --danger: #FF3D71;
+  --warning: #FFAA00;
+  --radius: 16px;
+  --radius-sm: 10px;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', system-ui, 'Noto Sans SC', sans-serif;
+  background: var(--bg-deep);
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+}
+
+/* Background effects */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 0%, rgba(47, 107, 255, 0.08) 0%, transparent 70%),
+    radial-gradient(ellipse 60% 50% at 80% 80%, rgba(0, 194, 255, 0.05) 0%, transparent 60%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Grid overlay */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(47, 107, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(47, 107, 255, 0.02) 1px, transparent 1px);
+  background-size: 60px 60px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.tm-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.tm-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  position: relative;
+  z-index: 1;
+}
+
+/* Card (Glassmorphism) */
+.tm-card {
+  width: 100%;
+  max-width: 480px;
+  background: var(--bg-card);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 36px 32px 32px;
+  box-shadow:
+    0 0 0 1px rgba(47, 107, 255, 0.04),
+    0 8px 48px rgba(0, 0, 0, 0.5),
+    0 0 60px rgba(47, 107, 255, 0.04);
+  animation: tm-card-in 0.5s ease-out;
+}
+@keyframes tm-card-in {
+  from { opacity: 0; transform: translateY(24px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Brand */
+.tm-brand {
+  text-align: center;
+  margin-bottom: 28px;
+}
+.tm-brand h1 {
+  font-size: 22px; font-weight: 700; letter-spacing: -0.3px;
+  background: linear-gradient(135deg, #E4E8F0, #A0B0D0);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  margin-bottom: 4px;
+}
+.tm-brand p { font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+
+/* Status indicator */
+.tm-status {
+  text-align: center;
+  padding: 24px;
+  border-radius: 14px;
+  margin-bottom: 24px;
+}
+.tm-status.expired {
+  background: rgba(255, 61, 113, 0.06);
+  border: 1px solid rgba(255, 61, 113, 0.15);
+}
+.tm-status.active {
+  background: rgba(0, 214, 143, 0.06);
+  border: 1px solid rgba(0, 214, 143, 0.15);
+}
+.tm-status.unknown {
+  background: rgba(47, 107, 255, 0.06);
+  border: 1px solid rgba(47, 107, 255, 0.15);
+}
+.tm-status-icon {
+  width: 56px; height: 56px;
+  margin: 0 auto 12px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+}
+.tm-status.expired .tm-status-icon {
+  background: rgba(255, 61, 113, 0.12);
+}
+.tm-status.active .tm-status-icon {
+  background: rgba(0, 214, 143, 0.12);
+}
+.tm-status.unknown .tm-status-icon {
+  background: rgba(47, 107, 255, 0.12);
+}
+.tm-status-icon svg { width: 28px; height: 28px; }
+.tm-status.expired .tm-status-icon svg { color: var(--danger); }
+.tm-status.active .tm-status-icon svg { color: var(--success); }
+.tm-status.unknown .tm-status-icon svg { color: var(--accent2); }
+.tm-status-label {
+  font-size: 18px; font-weight: 700;
+  margin-bottom: 6px;
+}
+.tm-status.expired .tm-status-label { color: var(--danger); }
+.tm-status.active .tm-status-label { color: var(--success); }
+.tm-status.unknown .tm-status-label { color: var(--accent2); }
+.tm-status-days {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+.tm-status-msg {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+/* Info rows */
+.tm-info {
+  margin-bottom: 24px;
+}
+.tm-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(47, 107, 255, 0.06);
+  font-size: 13px;
+}
+.tm-info-row:last-child { border-bottom: none; }
+.tm-info-label { color: var(--text-dim); }
+.tm-info-value { color: var(--text); font-weight: 500; }
+.tm-info-value.expired { color: var(--danger); }
+.tm-info-value.active { color: var(--success); }
+
+/* Primary button */
+.tm-btn-primary {
+  width: 100%; padding: 14px;
+  background: linear-gradient(135deg, #2F6BFF, #0066FF);
+  border: none; border-radius: var(--radius-sm);
+  color: #fff; font-size: 15px; font-weight: 600;
+  cursor: pointer; position: relative; overflow: hidden;
+  transition: all 0.25s ease;
+  font-family: inherit;
+  letter-spacing: 0.3px;
+  box-shadow: 0 4px 20px rgba(47, 107, 255, 0.25);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.tm-btn-primary:hover {
+  box-shadow: 0 6px 28px rgba(47, 107, 255, 0.4);
+  transform: translateY(-1px);
+}
+.tm-btn-primary:active { transform: scale(0.98); }
+.tm-btn-primary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+.tm-btn-secondary {
+  width: 100%; padding: 13px;
+  background: rgba(47, 107, 255, 0.08);
+  border: 1.5px solid rgba(47, 107, 255, 0.2);
+  border-radius: var(--radius-sm);
+  color: var(--accent2); font-size: 14px; font-weight: 600;
+  cursor: pointer; transition: all 0.25s ease;
+  font-family: inherit; text-decoration: none;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+}
+.tm-btn-secondary:hover {
+  background: rgba(47, 107, 255, 0.15);
+  border-color: rgba(47, 107, 255, 0.4);
+  box-shadow: 0 0 16px rgba(47, 107, 255, 0.12);
+}
+
+.tm-btn-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Refresh button small */
+.tm-btn-refresh {
+  background: none; border: none;
+  color: var(--text-dim); font-size: 11px;
+  cursor: pointer; font-family: inherit;
+  transition: color 0.25s;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+.tm-btn-refresh:hover { color: var(--accent2); background: rgba(47, 107, 255, 0.06); }
+.tm-btn-refresh:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Footer */
+.tm-footer {
+  text-align: center; padding: 20px;
+  color: var(--text-dim); font-size: 11px;
+  position: relative; z-index: 1;
+  border-top: 1px solid rgba(47, 107, 255, 0.06);
+  width: 100%;
+  flex-shrink: 0;
+}
+.tm-footer a { color: var(--text-dim); text-decoration: none; transition: color 0.25s; }
+.tm-footer a:hover { color: var(--text-muted); }
+
+/* Toast */
+.tm-toast-wrap {
+  position: fixed; top: 24px; right: 24px; z-index: 999;
+  display: flex; flex-direction: column; gap: 8px; pointer-events: none;
+}
+.tm-toast {
+  padding: 12px 20px; border-radius: 10px;
+  background: rgba(13, 21, 42, 0.9);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+  color: var(--text); font-size: 13px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  display: flex; align-items: center; gap: 10px;
+  animation: tm-slide-in 0.3s ease-out;
+  pointer-events: auto; max-width: 360px;
+}
+.tm-toast.toast-success { border-color: rgba(0, 214, 143, 0.3); }
+.tm-toast.toast-error { border-color: rgba(255, 61, 113, 0.3); }
+.tm-toast .toast-icon { width: 18px; height: 18px; flex-shrink: 0; }
+.tm-toast.toast-success .toast-icon { color: var(--success); }
+.tm-toast.toast-error .toast-icon { color: var(--danger); }
+.tm-toast.toast-leave { animation: tm-slide-out 0.25s ease-in forwards; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes tm-slide-in {
+  from { opacity: 0; transform: translateX(60px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes tm-slide-out {
+  from { opacity: 1; transform: translateX(0); }
+  to { opacity: 0; transform: translateX(60px); }
+}
+
+@media (max-width: 480px) {
+  .tm-card { padding: 28px 20px 24px; border-radius: 16px; }
+  .tm-toast-wrap { left: 16px; right: 16px; top: 16px; }
+  .tm-toast { max-width: 100%; }
+}
+</style>
+</head>
+<body>
+
+<div class="tm-toast-wrap" id="toastWrap"></div>
+
+<div class="tm-page">
+
+<div class="tm-container">
+  <div class="tm-card">
+    <!-- Brand -->
+    <div class="tm-brand">
+      <h1>{{ brand.software_name if brand else '' }}</h1>
+      <p>{{ _('AI Matrix · Smart Business Platform') }}</p>
+    </div>
+
+    <!-- Status -->
+    {% if license.status == 'active' %}
+    <div class="tm-status active">
+      <div class="tm-status-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+          <polyline points="22 4 12 14.01 9 11.01"/>
+        </svg>
+      </div>
+      <div class="tm-status-label">{{ _('Active') }}</div>
+      <div class="tm-status-days">{{ _('Remaining') }} {{ license.days_remaining }} {{ _('Days') }}</div>
+      <div class="tm-status-msg">{{ license.message }}</div>
+    </div>
+    {% elif license.status == 'unknown' %}
+    <div class="tm-status unknown">
+      <div class="tm-status-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="12" y1="16" x2="12" y2="12"/>
+          <line x1="12" y1="8" x2="12.01" y2="8"/>
+        </svg>
+      </div>
+      <div class="tm-status-label">{{ _('Pending Verification') }}</div>
+      <div class="tm-status-msg">{{ license.message or _('Waiting for Authorization Verification...') }}</div>
+    </div>
+    {% else %}
+    <div class="tm-status expired">
+      <div class="tm-status-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="15" y1="9" x2="9" y2="15"/>
+          <line x1="9" y1="9" x2="15" y2="15"/>
+        </svg>
+      </div>
+      <div class="tm-status-label">{{ _('Expired') }}</div>
+      <div class="tm-status-days">{{ _('Expired') }} {{ license.days_remaining|abs }} {{ _('days ago') }}</div>
+      <div class="tm-status-msg">{{ license.message or '请续费以恢复管理后台和AI功能' }}</div>
+    </div>
+    {% endif %}
+
+    <!-- Info -->
+    <div class="tm-info">
+      <div class="tm-info-row">
+        <span class="tm-info-label">{{ _('Status') }}</span>
+        <span class="tm-info-value {{ license.status }}">{{ {'active': _('Valid'), 'expired': _('Expired'), 'unknown': _('Unverified')}[license.status] }}</span>
+      </div>
+      <div class="tm-info-row">
+        <span class="tm-info-label">{{ _('Days Left') }}</span>
+        <span class="tm-info-value">{{ license.days_remaining }} {{ _('Days') }}</span>
+      </div>
+      <div class="tm-info-row">
+        <span class="tm-info-label">{{ _('Cached At') }}</span>
+        <span class="tm-info-value">{{ license.cached_at or 'N/A' }}</span>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="tm-btn-group">
+      {% if license.status == 'expired' %}
+      <a href="/" target="_blank" class="tm-btn-primary">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M5 12h14"/><path d="M12 5l7 7-7 7"/>
+        </svg>{{ _('Renew Now') }}</a>
+      {% endif %}
+      {% if license.needs_refresh or license.status == 'unknown' %}
+      <button class="tm-btn-secondary" onclick="refreshLicense()" id="refreshBtn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="23 4 23 10 17 10"/>
+          <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+        </svg>{{ _('Re-verify') }}</button>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="tm-footer">
+  {{ brand.software_name if brand else '' }} · <a href="https://beian.miit.gov.cn/">{{ brand.icp_number | safe if brand and brand.icp_number else '' }}</a>
+</div>
+
+</div>
+
+<script>
+async function refreshLicense() {
+  const btn = document.getElementById('refreshBtn');
+  btn.disabled = true;
+  btn.innerHTML = "<span style=\"display:inline-block;animation:spin 0.7s linear infinite\">⟳</span>" + {{ _(' Verifying...') | tojson }};
+  try {
+    const r = await fetch('/admin/api/license-refresh', { method: 'POST' });
+    const d = await r.json();
+    if (d.success) {
+      if (d.data.valid) {
+        toast("{{ _('Subscription active, redirecting...') }}", 'success');
+        setTimeout(() => { window.location.href = '/admin'; }, 1200);
+      } else {
+        toast("{{ _('Subscription expired, please renew') }}", 'error');
+        setTimeout(() => { window.location.reload(); }, 1000);
+      }
+    } else {
+      toast({{ _('Validation Failed: ') | tojson }} + (d.error || "{{ _('Please try again later') }}"), 'error');
+    }
+  } catch (e) {
+    toast("{{ _('Network error, please try again') }}", 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = "{{ _('⟳ Re-verify') }}";
+  }
+}
+
+function toast(msg, t) {
+  const c = document.getElementById('toastWrap');
+  if (!c) return;
+  const el = document.createElement('div');
+  el.className = 'tm-toast toast-' + t;
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('class', 'toast-icon');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('d', t === 'success'
+    ? 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z'
+    : 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z');
+  svg.appendChild(path);
+  const msgSpan = document.createElement('span');
+  msgSpan.textContent = msg;
+  el.appendChild(svg);
+  el.appendChild(msgSpan);
+  c.appendChild(el);
+  setTimeout(() => { el.classList.add('toast-leave'); setTimeout(() => el.remove(), 250); }, 3000);
+}
+</script>
+
+</body>
+</html>

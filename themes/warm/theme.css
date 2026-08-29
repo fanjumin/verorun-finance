@@ -1,0 +1,49 @@
+/* ════════════════════════════════════════════════════════
+   VeroRun 主题 — Warm (暖橙)
+   零售 · 生活服务 · 美容 · 家居 — 温馨亲切
+   ════════════════════════════════════════════════════════ */
+
+:root {
+  /* Background — warm cream */
+  --bg-deep:      #fef7e6;
+  --bg:           #fffbeb;
+  --bg-elevated:  #fef3cd;
+  --bg-card:      #ffffff;
+  --bg-glass:     rgba(255,255,255,0.80);
+  --bg-overlay:   rgba(0,0,0,0.3);
+
+  /* Accent — Amber/Orange */
+  --blue:         #f59e0b;
+  --violet:       #d97706;
+  --green:        #65a30d;
+  --indigo:       #d97706;
+  --cyan:         #f97316;
+  --gold:         #eab308;
+  --rose:         #e11d48;
+  --orange:       #ea580c;
+
+  /* Text — warm brown */
+  --text:         #292524;
+  --text-dim:     #78716c;
+  --text-muted:   #a8a29e;
+  --text-high:    #1c1917;
+
+  /* Borders — warm tan */
+  --border:       rgba(120,113,108,0.12);
+  --border-light: rgba(120,113,108,0.06);
+  --border-accent:rgba(217,119,6,0.18);
+
+  /* Gradients */
+  --gradient-primary:  linear-gradient(135deg, #d97706, #f97316);
+  --gradient-electric: linear-gradient(135deg, #f59e0b, #ea580c);
+  --gradient-neon:     linear-gradient(135deg, #65a30d, #f59e0b);
+  --gradient-fire:     linear-gradient(135deg, #eab308, #e11d48);
+  --gradient-dark:     linear-gradient(180deg, #fffbeb, #fef7e6);
+
+  /* Shadows */
+  --shadow-sm:   0 2px 8px rgba(0,0,0,0.05);
+  --shadow-md:   0 8px 32px rgba(0,0,0,0.07);
+  --shadow-lg:   0 20px 60px rgba(0,0,0,0.09);
+  --shadow-glow: 0 0 40px rgba(217,119,6,0.10);
+  --shadow-glow-blue: 0 0 40px rgba(249,115,22,0.08);
+}

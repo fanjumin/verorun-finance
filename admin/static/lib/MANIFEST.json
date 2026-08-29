@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-08-12T19:19:24Z",
+  "description": "Integrity manifest for vendored frontend libraries under admin/static/lib/. Paths are relative to this file. Versions marked \"unknown\" are minified bundles without embedded version headers.",
+  "libraries": [
+    {
+      "path": "chart.min.js",
+      "name": "chart.js",
+      "version": "4.4.0",
+      "sha256": "0e2326c6868072bec1592760c6729043caeea2960a2b46cee6a2192aac6abff0"
+    },
+    {
+      "path": "dicebear.js",
+      "name": "@dicebear/core",
+      "version": "unknown",
+      "sha256": "c3198a6fe49c246a6e2bb1bb53221958c1adc8c56f6b7949cbf04808bcb9ebc6"
+    },
+    {
+      "path": "echarts.min.js",
+      "name": "echarts",
+      "version": "5.5.0",
+      "sha256": "42f8329d989b6f6539dd2b15bbdf0d82025762ac112fbb60dc57b27d7bcf3946"
+    },
+    {
+      "path": "quill.min.js",
+      "name": "quill",
+      "version": "1.3.7",
+      "sha256": "f6157c72ac9b3f51cdead426335688a027b12405d9d6a4daadd38a676b2d7ff2"
+    },
+    {
+      "path": "quill.snow.css",
+      "name": "quill",
+      "version": "1.3.7",
+      "sha256": "33a9faca918b0db7e6efe04e3f190f84052b43c2a7d933c3192ff05226a35bfa"
+    },
+    {
+      "path": "plugin-frameworks/vue.global.prod.js",
+      "name": "vue",
+      "version": "3.4.38",
+      "sha256": "b50eeefe35d41636bb96c92b40f1df0b4fb7914e07b3c625b1ec15e9748767b9"
+    },
+    {
+      "path": "workflow/react.production.min.js",
+      "name": "react",
+      "version": "18.3.1",
+      "sha256": "d72610e728466bf70f27ecc9a1a14580fd8f1e75b977aa0612146cab0e80a3fe"
+    },
+    {
+      "path": "workflow/react-dom.production.min.js",
+      "name": "react-dom",
+      "version": "18.3.1",
+      "sha256": "13b1c0705b9fa93346936ed98bd4a858fea4cdacdb09e564f897c5ba6bd0943a"
+    },
+    {
+      "path": "workflow/reactflow.umd.js",
+      "name": "reactflow",
+      "version": "12",
+      "sha256": "b70bedf430abb93306abe3cfff6491d50d31da66e9a4972917e43726e577e741"
+    },
+    {
+      "path": "workflow/reactflow.css",
+      "name": "reactflow",
+      "version": "12",
+      "sha256": "03d29734aed1418e067f1281e863c1ad64796086a9673ddf284ecb38335ca361"
+    }
+  ]
+}

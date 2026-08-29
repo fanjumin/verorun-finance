@@ -1,0 +1,16 @@
+name: Vision
+slug: vision
+role_type: sub
+description: Visual understanding specialist — image analysis, OCR, diagram interpretation, visual QA
+domain: vision
+managed_modules:
+  - image
+  - cover
+  - media_library
+provider_model_id: 0
+provider: zhipu
+model_name: glm-4v-plus
+capabilities:
+  - vision
+is_system: true
+is_active: 1

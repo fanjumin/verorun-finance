@@ -1,0 +1,15 @@
+﻿window.l_orders=function(){
+  document.getElementById("pt").textContent="{{ _('Order Management') }}";
+  fetch("/admin/orders?limit=100",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success||!d.data)return;
+    var ds=d.data;
+    var h="<div class=\"cd\"><div class=\"st\">{{ _('Order') }} ("+ds.total+")</div><table><tr><th>{{ _('Order No.') }}</th><th>{{ _('User') }}</th><th>{{ _('Amount') }}</th><th>{{ _('Type') }}</th><th>{{ _('Status') }}</th><th>{{ _('Time') }}</th></tr>";
+    ds.orders.forEach(function(o){
+      var st=o.status=="paid"?'<span class="bdg on">{{ _('Paid') }}</span>':'<span class="bdg pd">'+o.status+'</span>';
+      h+="<tr><td>"+o.order_no+"</td><td>"+(o.user_name||"-")+"</td><td>\u00a5"+o.amount+"</td><td>"+o.item_type+"</td><td>"+st+"</td><td>"+(o.created_at||"")+"</td></tr>";
+    });
+    h+="</table></div>";
+    document.getElementById("mc").innerHTML=h;
+  }).catch(function(){})
+}
+

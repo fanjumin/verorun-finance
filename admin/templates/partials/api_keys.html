@@ -1,0 +1,15 @@
+﻿window.l_keys=function(){
+  document.getElementById("pt").textContent="{{ _('API Key Management') }}";
+  fetch("/admin/api-keys?limit=100",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success||!d.data)return;
+    var ds=d.data;
+    var h="<div class=\"cd\"><div class=\"st\">{{ _('Global') }} Key ("+ds.total+")</div><table><tr><th>{{ _('Name') }}</th><th>Key</th><th>{{ _('User') }}</th><th>{{ _('Call') }}</th><th>{{ _('Status') }}</th><th>{{ _('Time') }}</th></tr>";
+    ds.keys.forEach(function(k){
+      var st=k.active?'<span class="bdg on">{{ _('Enabled') }}</span>':'<span class="bdg off">{{ _('Promoted') }}</span>';
+      h+="<tr><td>"+(k.name||"-")+"</td><td>"+k.key_prefix+"...</td><td>"+(k.user_name||"-")+"</td><td>"+k.calls_total+"</td><td>"+st+"</td><td>"+(k.created_at||"")+"</td></tr>";
+    });
+    h+="</table></div>";
+    document.getElementById("mc").innerHTML=h;
+  }).catch(function(){document.getElementById("mc").innerHTML='<div class="em">{{ _('Load failed') }}，{{ _('Please try again later') }}</div>'})
+}
+

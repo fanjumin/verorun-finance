@@ -1,0 +1,559 @@
+﻿<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ _('Knowledge Center') }} — {{ brand.site_name_cn if brand else '' }}</title>
+<meta name="description" content="{{ _('Website building guides, AI applications, SEO optimization, and industry insights') }}">
+<link rel="icon" type="image/png" sizes="32x32" href="{{ brand.favicon_url if brand and brand.favicon_url else '/static/favicon-32x32.png' }}">
+
+<link href="/static/css/fonts.css" rel="stylesheet"/>
+
+<link rel="stylesheet" href="/static/css/landing.css">
+{% if theme_css_url %}<link rel="stylesheet" href="{{ theme_css_url }}">{% endif %}
+
+<style>
+:root {
+  --k-bg: #050508;
+  --k-card: #0f0f1a;
+  --k-border: rgba(255,255,255,0.06);
+  --k-accent: #6366f1;
+  --k-cyan: #22d3ee;
+  --k-green: #00ff9f;
+  --k-gold: #f59e0b;
+  --k-text: #f1f5f9;
+  --k-text-dim: #94a3b8;
+  --k-text-muted: #475569;
+}
+body { background: var(--k-bg); }
+
+.k-hero {
+  padding: 100px 40px 60px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.k-hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, rgba(99,102,241,0.08) 0%, transparent 60%);
+}
+
+.k-hero h1 {
+  font-size: clamp(2em, 4vw, 3.2em);
+  font-weight: 800;
+  color: var(--k-text);
+  font-family: 'Inter', sans-serif;
+  margin-bottom: 16px;
+  position: relative;
+}
+
+.k-hero h1 .gradient {
+  background: linear-gradient(135deg, var(--k-accent), var(--k-cyan));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.k-hero p {
+  font-size: 1.1em;
+  color: var(--k-text-dim);
+  max-width: var(--container-text);
+  margin: 0 auto;
+  position: relative;
+}
+
+.k-search-box {
+  max-width: var(--container-sm);
+  margin: 40px auto 0;
+  position: relative;
+}
+
+.k-search-box input {
+  width: 100%;
+  padding: 16px 20px 16px 48px;
+  border-radius: 12px;
+  border: 1px solid var(--k-border);
+  background: rgba(15,15,26,0.8);
+  color: var(--k-text);
+  font-size: 15px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color .3s;
+}
+
+.k-search-box input:focus {
+  border-color: var(--k-accent);
+}
+
+.k-search-box::before {
+  content: '🔍';
+  position: absolute;
+  left: 18px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 16px;
+}
+
+.k-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 40px;
+}
+
+.k-categories {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 40px;
+  justify-content: center;
+}
+
+.k-category {
+  padding: 10px 24px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .25s;
+  border: 1px solid var(--k-border);
+  color: var(--k-text-dim);
+}
+
+.k-category:hover {
+  border-color: var(--k-accent);
+  color: var(--k-text);
+}
+
+.k-category.active {
+  background: linear-gradient(135deg, var(--k-accent), var(--k-cyan));
+  color: #fff;
+  border-color: transparent;
+}
+
+.k-content-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 20px;
+}
+
+.k-article-card {
+  background: var(--k-card);
+  border: 1px solid var(--k-border);
+  border-radius: 12px;
+  padding: 24px;
+  transition: all .35s;
+  cursor: pointer;
+}
+
+.k-article-card:hover {
+  border-color: var(--k-accent);
+  transform: translateY(-6px);
+  box-shadow: 0 12px 40px rgba(99,102,241,0.15);
+}
+
+.k-article-card .article-tag {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.k-article-card .article-tag.guide { background: rgba(99,102,241,0.15); color: var(--k-accent); }
+.k-article-card .article-tag.ai { background: rgba(0,255,159,0.15); color: var(--k-green); }
+.k-article-card .article-tag.seo { background: rgba(245,158,11,0.15); color: var(--k-gold); }
+.k-article-card .article-tag.insight { background: rgba(34,211,238,0.15); color: var(--k-cyan); }
+
+.k-article-card h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--k-text);
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+
+.k-article-card p {
+  font-size: 13px;
+  color: var(--k-text-dim);
+  line-height: 1.6;
+  margin-bottom: 16px;
+}
+
+.k-article-card .article-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: var(--k-text-muted);
+}
+
+.k-article-card .article-meta .read-time {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.k-section {
+  margin-top: 60px;
+}
+
+.k-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 28px;
+}
+
+.k-section-header h2 {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--k-text);
+}
+
+.k-section-header a {
+  font-size: 13px;
+  color: var(--k-cyan);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.k-section-header a:hover { text-decoration: underline; }
+
+.k-guide-card {
+  display: flex;
+  gap: 20px;
+  background: var(--k-card);
+  border: 1px solid var(--k-border);
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 16px;
+  transition: all .25s;
+}
+
+.k-guide-card:hover {
+  border-color: var(--k-accent);
+  background: rgba(99,102,241,0.04);
+}
+
+.k-guide-card .guide-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.k-guide-card .guide-icon.step1 { background: linear-gradient(135deg, rgba(99,102,241,0.2), rgba(34,211,238,0.2)); }
+.k-guide-card .guide-icon.step2 { background: linear-gradient(135deg, rgba(0,255,159,0.2), rgba(34,211,238,0.2)); }
+.k-guide-card .guide-icon.step3 { background: linear-gradient(135deg, rgba(245,158,11,0.2), rgba(0,255,159,0.2)); }
+.k-guide-card .guide-icon.step4 { background: linear-gradient(135deg, rgba(99,102,241,0.2), rgba(0,255,159,0.2)); }
+
+.k-guide-card .guide-info h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--k-text);
+  margin-bottom: 4px;
+}
+
+.k-guide-card .guide-info p {
+  font-size: 13px;
+  color: var(--k-text-dim);
+}
+
+.k-guide-card .guide-step {
+  margin-left: auto;
+  font-size: 32px;
+  font-weight: 700;
+  font-family: 'Orbitron', sans-serif;
+  color: rgba(99,102,241,0.1);
+}
+
+.k-tips-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.k-tip-card {
+  background: var(--k-card);
+  border: 1px solid var(--k-border);
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.k-tip-card .tip-icon {
+  font-size: 20px;
+  margin-bottom: 12px;
+}
+
+.k-tip-card h4 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--k-text);
+  margin-bottom: 6px;
+}
+
+.k-tip-card p {
+  font-size: 12px;
+  color: var(--k-text-dim);
+  line-height: 1.5;
+}
+
+.k-insight-card {
+  background: var(--k-card);
+  border: 1px solid var(--k-border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.k-insight-card .insight-image {
+  height: 160px;
+  background: linear-gradient(135deg, var(--k-accent), var(--k-cyan));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 48px;
+}
+
+.k-insight-card .insight-content {
+  padding: 20px;
+}
+
+.k-insight-card .insight-category {
+  font-size: 11px;
+  color: var(--k-cyan);
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.k-insight-card h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--k-text);
+  margin-bottom: 8px;
+}
+
+.k-insight-card p {
+  font-size: 13px;
+  color: var(--k-text-dim);
+  line-height: 1.6;
+}
+
+.k-insight-card .insight-author {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--k-border);
+}
+
+.k-insight-card .insight-author .avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--k-accent), var(--k-cyan));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.k-insight-card .insight-author .info {
+  font-size: 12px;
+}
+
+.k-insight-card .insight-author .info .name {
+  color: var(--k-text);
+  font-weight: 500;
+}
+
+.k-insight-card .insight-author .info .date {
+  color: var(--k-text-muted);
+  font-size: 11px;
+}
+
+.k-footer {
+  margin-top: 80px;
+  padding: 40px;
+  text-align: center;
+  border-top: 1px solid var(--k-border);
+}
+
+.k-footer p {
+  font-size: 13px;
+  color: var(--k-text-muted);
+}
+
+.k-empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--k-text-muted);
+}
+
+.k-empty-icon { font-size: 48px; margin-bottom: 16px; opacity: 0.5; }
+
+@media (max-width: 768px) {
+  .k-hero { padding: 80px 20px 40px; }
+  .k-container { padding: 0 20px; }
+  .k-content-grid { grid-template-columns: 1fr; }
+  .k-guide-card { flex-direction: column; }
+  .k-guide-card .guide-step { display: none; }
+}
+</style>
+</head>
+<body>
+<div id="particles-bg"></div>
+
+<section class="k-hero">
+  <h1>{{ _('Knowledge Center') }}</h1>
+  <p>{{ _('Explore website building guides, AI application tips, SEO strategies and industry insights') }}</p>
+  
+  <div class="k-search-box">
+    <input type="text" placeholder="{{ _('Search articles, tutorials or questions...') }}">
+  </div>
+</section>
+
+<div class="k-container">
+  <div class="k-categories">
+    <div class="k-category active" onclick="filterArticles('all')">{{ _('All') }}</div>
+    <div class="k-category" onclick="filterArticles('guide')">{{ _('Website Guides') }}</div>
+    <div class="k-category" onclick="filterArticles('ai')">{{ _('AI Applications') }}</div>
+    <div class="k-category" onclick="filterArticles('seo')">{{ _('SEO Optimization') }}</div>
+    <div class="k-category" onclick="filterArticles('insight')">{{ _('Industry Insights') }}</div>
+  </div>
+
+  <div class="k-section">
+    <div class="k-section-header">
+      <h2>{{ _('Website Guides') }}</h2>
+      <a href="#">{{ _('View All') }} →</a>
+    </div>
+    
+    {% if guides and guides | length > 0 %}
+    <div>
+      {% for guide in guides %}{% set idx = loop.index0 %}
+      <div class="k-guide-card">
+        <div class="guide-icon step{{ (idx % 4) + 1 }}">{{ guide.icon | default('📋') }}</div>
+        <div class="guide-info">
+          <h3>{{ guide.title }}</h3>
+          <p>{{ guide.description }}</p>
+        </div>
+        <div class="guide-step">{{ '{:02d}'.format(idx + 1) }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+      <div class="k-empty">
+        <div class="k-empty-icon">📚</div>
+        <p>{{ _('No website guides yet') }}</p>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="k-section">
+    <div class="k-section-header">
+      <h2>{{ _('AI Application Tips') }}</h2>
+      <a href="#">{{ _('View All') }} →</a>
+    </div>
+    
+    {% if ai_tips and ai_tips | length > 0 %}
+    <div class="k-tips-container">
+      {% for tip in ai_tips %}
+      <div class="k-tip-card">
+        <div class="tip-icon">{{ tip.icon | default('💡') }}</div>
+        <h4>{{ tip.title }}</h4>
+        <p>{{ tip.description }}</p>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+      <div class="k-empty">
+        <div class="k-empty-icon">🤖</div>
+        <p>{{ _('No AI application tips yet') }}</p>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="k-section">
+    <div class="k-section-header">
+      <h2>{{ _('Popular Articles') }}</h2>
+      <a href="#">{{ _('View All') }} →</a>
+    </div>
+    
+    {% if articles and articles | length > 0 %}
+    <div class="k-content-grid">
+      {% for article in articles %}
+      <div class="k-article-card">
+        <span class="article-tag {{ article.category }}">{{ article.category_label }}</span>
+        <h3>{{ article.title }}</h3>
+        <p>{{ article.description }}</p>
+        <div class="article-meta">
+          <span>{{ _('{count} Reads', count=article.read_count | default(0)) }}</span>
+          <span class="read-time">📖 {{ article.read_time | default('') }}</span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+      <div class="k-empty">
+        <div class="k-empty-icon">📝</div>
+        <p>{{ _('No articles yet') }}</p>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="k-section">
+    <div class="k-section-header">
+      <h2>{{ _('Industry Insights') }}</h2>
+      <a href="#">{{ _('View All') }} →</a>
+    </div>
+    
+    {% if insights and insights | length > 0 %}
+    <div class="k-content-grid">
+      {% for insight in insights %}
+      <div class="k-insight-card">
+        <div class="insight-image">{{ insight.icon | default('📈') }}</div>
+        <div class="insight-content">
+          <span class="insight-category">{{ insight.category }}</span>
+          <h3>{{ insight.title }}</h3>
+          <p>{{ insight.description }}</p>
+          <div class="insight-author">
+            <div class="avatar">{{ insight.author_initial | default('A') }}</div>
+            <div class="info">
+              <div class="name">{{ insight.author | default('') }}</div>
+              <div class="date">{{ insight.date | default('') }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+      <div class="k-empty">
+        <div class="k-empty-icon">🔮</div>
+        <p>{{ _('No industry insights yet') }}</p>
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+<footer class="k-footer">
+  <p>{{ _('VeroRun Knowledge Center') }} © 2026 | {{ _('Continuously updating') }}</p>
+</footer>
+
+<script>
+function filterArticles(type) {
+  document.querySelectorAll('.k-category').forEach(c => c.classList.remove('active'));
+  event.target.classList.add('active');
+}
+</script>
+</body>
+</html>

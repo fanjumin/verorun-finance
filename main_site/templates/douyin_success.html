@@ -1,0 +1,22 @@
+<!DOCTYPE html><html lang="{{ lang }}"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>{{ _('Login Successful') }}</title><style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#0d1117;color:#c9d1d9}.card{text-align:center;padding:40px}</style></head><body><div class="card"><h2>{{ _('Login Successful') }}</h2><p>{{ _('Redirecting...') }}</p></div><script>
+(function(){
+  var p = new URLSearchParams(window.location.search);
+  var token = p.get('token');
+  var redirect = p.get('redirect') || '/';
+  if (token) {
+    localStorage.setItem('sso_token', token);
+    localStorage.setItem('tm_token', token);
+    localStorage.setItem('token', token);
+    var domain = "{{ brand.site_domain if brand and brand.site_domain else '' }}";
+    var cookie = 'sso_token=' + token + ';path=/;max-age=604800;SameSite=Lax';
+    if (domain) {
+      cookie += ';domain=' + domain;
+    }
+    document.cookie = cookie;
+    var sep = redirect.indexOf('?') === -1 ? '?' : '&';
+    window.location.replace(redirect + sep + 'token=' + token);
+  } else {
+    window.location.replace(redirect);
+  }
+})();
+</script></body></html>

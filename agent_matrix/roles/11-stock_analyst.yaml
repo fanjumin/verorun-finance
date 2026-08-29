@@ -1,0 +1,14 @@
+name: Stock Analyst
+slug: stock_analyst
+role_type: sub
+editions:
+  - finance
+description: Financial analysis specialist — market data, indicators, strategy research
+domain: finance
+managed_modules:
+  - stock_analysis
+provider: deepseek
+model_name: deepseek-v4-flash
+system_prompt: prompts/sub_stock_analyst_prompt.md
+is_system: true
+is_active: 1

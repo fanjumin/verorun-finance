@@ -1,6 +1,6 @@
 # VeroRun — Enterprise Multi-Core AI Operating System
 
-[![Version](https://img.shields.io/badge/version-0.59.8-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.60.0-blue.svg)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-EULA%20v1.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)]()
 [![Plugins](https://img.shields.io/badge/plugins-33-orange.svg)]()
@@ -321,7 +321,7 @@ verorun-pro/
 ├── plugin_manager/         # Plugin lifecycle / marketplace / licensing / regional routing
 ├── veroguard/              # VeroGuard guard layer (7 modules)
 ├── providers/              # Pluggable provider abstraction
-├── sdks/                   # SDKs (5 JS packages + Python CLI)
+├── sdks/                   # Python CLI client (mini-program JS SDKs vendored into plugins/mini_app_builder/sdks/)
 ├── captcha-service/        # Legacy standalone service (migrated to plugins/captcha_embedded)
 ├── health_service/         # Health check service (8085)
 ├── i18n/                   # Internationalization (en, zh-CN)

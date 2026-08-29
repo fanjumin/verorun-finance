@@ -1,0 +1,6 @@
+# Stock Analysis Skill 配置
+# ============================
+# LLM 由 VeroRun UnifiedLLM 统一管理，插件不保存 provider/model/key。
+# ── 数据源 ──
+DATA_PROVIDER: "sina"
+DATA_CACHE_DIR: "./data/cache"

@@ -1,0 +1,1 @@
+# Shop plugin routes package

@@ -1,0 +1,79 @@
+{
+  "name": "Product Reviews",
+  "name_i18n_key": "plugin.name",
+  "identifier": "reviews",
+  "python_dependencies": {
+    "required": [],
+    "optional": {}
+  },
+  "version": "1.5.2",
+  "description": "商品评价系统 — 用户对已购商品打分、写评价、晒图",
+  "author": "VeroRun",
+  "min_app_version": "0.10.0",
+  "agent_role": "business",
+  "capabilities": [
+    "review.validate",
+    "review.moderation",
+    "review.analyze"
+  ],
+  "category": "shop",
+  "icon": "star",
+  "tags": [
+    "review",
+    "rating",
+    "ecommerce"
+  ],
+  "dependencies": {},
+  "config": {},
+  "permissions": [
+    "shop.product.read",
+    "user.read"
+  ],
+  "hooks": {
+    "provides": [
+      "review/validate"
+    ],
+    "listens": [
+      "order.paid"
+    ]
+  },
+  "dashboard": {
+    "stats": [
+      {
+        "key": "total_reviews",
+        "title": "评价总数",
+        "type": "counter"
+      },
+      {
+        "key": "avg_rating",
+        "title": "平均评分",
+        "type": "gauge"
+      },
+      {
+        "key": "positive_rate",
+        "title": "好评率",
+        "type": "gauge"
+      },
+      {
+        "key": "reviews_24h",
+        "title": "24h 新增评价",
+        "type": "counter"
+      },
+      {
+        "key": "with_images",
+        "title": "带图评价",
+        "type": "counter"
+      }
+    ]
+  },
+  "menu": {
+    "group": "Business Center",
+    "key": "reviews_admin",
+    "icon": "star",
+    "label": "Reviews Moderation"
+  },
+  "settings_schema": {
+    "type": "object",
+    "properties": {}
+  }
+}

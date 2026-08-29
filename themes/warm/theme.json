@@ -1,0 +1,16 @@
+{
+  "name": "暖橙",
+  "slug": "warm",
+  "version": "1.0.0",
+  "author": "VeroRun",
+  "description": "暖橙色风格 — 适合零售、生活服务、美容、家居行业。温馨、亲切、生活气息。",
+  "industry": "retail",
+  "tags": ["warm", "orange", "retail", "lifestyle", "beauty", "home"],
+  "sites": ["main", "platform"],
+  "variables": {
+    "preset": "light",
+    "font_scale": 1.0,
+    "border_radius": 16
+  },
+  "builtin": false
+}

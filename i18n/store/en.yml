@@ -1,0 +1,32 @@
+# 商店插件名称本地化（按 identifier 键，方案 §4.1）
+# 英文名与 plugin.json name 字段一致（规范英文值）
+ads: Ad Management
+ali_api: 1688 Supply Chain
+analytics: Analytics
+captcha_embedded: Captcha Service
+chatbot: AI Advisor
+content_factory: Content Factory
+coupons: Smart Coupons
+currency_converter: Currency Converter
+email: Email Service
+enterprise_verify: Enterprise Verification
+health_check: Health Check
+im_gateway: IM Gateway
+logistics: Logistics Express
+memory_engine: CogEvolution
+mini_app_builder: Mini App Builder
+oauth_config: OAuth Login Config
+order_notify: Order Notifications
+payment: Payment Gateway
+project_workspace: Project Workspace
+reviews: Product Reviews
+shop: Shop
+site_builder: AI Site Builder
+site_domains: Site Domains
+sms: SMS Service
+social_push: Social Push
+subscription: Subscription
+vault: Vault
+verification: Identity Verification
+visitor_profile: Visitor Profile Engine
+wishlist: Wishlist

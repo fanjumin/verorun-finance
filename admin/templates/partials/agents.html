@@ -1,0 +1,46 @@
+﻿window.l_agents=function(){
+  document.getElementById("pt").textContent="{{ _('Agent Management') }}";
+  var h='<div class="cd"><div class="st" style="display:flex;justify-content:space-between;align-items:center">Agent {{ _('List') }} <span style="font-weight:400;font-size:11px;color:var(--dim)" id="uaTotal">{{ _('Loading...') }}...</span></div>';
+  h+='<div style="margin-bottom:12px;display:flex;gap:8px">';
+  h+='<input id="uaSearch" placeholder="{{ _('Search Name') }}/{{ _('User') }}..." style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);font-size:12px">';
+  h+='<select id="uaStatusFilter" style="padding:6px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);font-size:12px"><option value="">{{ _('All Status') }}</option><option value="active">{{ _('Active') }}</option><option value="inactive">{{ _('Inactive') }}</option><option value="suspended">{{ _('Pause') }}</option></select>';
+  h+='<span class="btn bp" style="padding:6px 12px;font-size:12px" onclick="loadUserAgents()">🔍 {{ _('Search') }}</span>';
+  h+='</div>';
+  h+='<div id="uaList"><div class="lo"><div class="s"></div>{{ _('Loading...') }}...</div></div></div>';
+  document.getElementById("mc").innerHTML=h;
+  loadUserAgents();
+}
+
+function loadUserAgents(){
+  var list=document.getElementById("uaList");
+  if(!list)return;
+  list.innerHTML='<div class="lo"><div class="s"></div>{{ _('Loading...') }}...</div>';
+  var search=document.getElementById("uaSearch")?.value||'';
+  var status=document.getElementById("uaStatusFilter")?.value||'';
+  var url='/admin/user-agents?limit=200';
+  if(search)url+='&search='+encodeURIComponent(search);
+  if(status)url+='&status='+status;
+  fetch(url,{headers:{"Authorization":"Bearer "+T}})
+    .then(function(r){return r.json()})
+    .then(function(d){
+      if(!d.success||!d.data){list.innerHTML='<div class="em">{{ _('Load failed') }}</div>';return}
+      var totalEl=document.getElementById("uaTotal");
+      if(totalEl)totalEl.textContent='{{ _('Total: ') }}'+d.data.total+' 个 Agent';
+      var agents=d.data.agents||[];
+      if(agents.length===0){list.innerHTML='<div class="em">{{ _('None') }} Agent {{ _('Data') }}</div>';return}
+      var h='{{ _('<table><tr><th>ID</th><th>Name</th><th>User</th><th>Type</th><th>Status</th><th>Keys</th><th>Last Active</th><th>Created</th></tr>') }}';
+      agents.forEach(function(a){
+        var stCls=a.status==='active'?'bdg on':(a.status==='suspended'?'bdg pd':'bdg off');
+        var stText=a.status==='active'?'{{ _('Active') }}':(a.status==='suspended'?'{{ _('Pause') }}':'{{ _('Inactive') }}');
+        h+='<tr><td>'+a.id+'</td><td>'+escAttr(a.agent_name)+'</td>';
+        h+='<td><a href="#" onclick="go(&#39;users&#39;);setTimeout(function(){toggleUserAgents('+a.user_id+',document.querySelector(&#39;#ua-row-'+a.user_id+' .btn&#39;))},500)" style="color:var(--accent);text-decoration:none">'+(a.user_name||'#'+a.user_id)+'</a></td>';
+        h+='<td>'+a.agent_type+'</td><td><span class="'+stCls+'">'+stText+'</span></td>';
+        // Count agent api keys (not available in list, show '-')
+        h+='<td>-</td>';
+        h+='<td>'+(a.last_active_at||'-')+'</td><td>'+(a.created_at||'')+'</td></tr>';
+      });
+      h+='</table>';
+      list.innerHTML=h;
+    }).catch(function(){list.innerHTML='<div class="em">{{ _('Request Failed') }}</div>'});
+}
+

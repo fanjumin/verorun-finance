@@ -1,0 +1,118 @@
+{
+  "name": "Content Factory",
+  "name_i18n_key": "plugin.name",
+  "identifier": "content_factory",
+  "python_dependencies": {
+    "required": [],
+    "optional": {}
+  },
+  "version": "1.5.2",
+  "category": "content",
+  "tags": [
+    "content",
+    "collection",
+    "ai",
+    "publishing",
+    "rss",
+    "skill"
+  ],
+  "icon": "contentfactory",
+  "icon_url": "",
+  "screenshots": [],
+  "readme_url": "",
+  "description": "Content Factory — Multi-source content collection, AI processing, review workflow, publishing, skill push, and static page generation",
+  "author": "VeroRun",
+  "min_app_version": "0.10.0",
+  "dependencies": {},
+  "admin_url": "",
+  "admin_label": "Content Factory Settings",
+  "config": {
+    "dashscope_text_key": "",
+    "max_items_per_run": 10,
+    "skip_review": false,
+    "auto_publish": false
+  },
+  "permissions": [
+    "api:read",
+    "api:write",
+    "network:request"
+  ],
+  "agent_role": "content",
+  "capabilities": [
+    "content.process",
+    "content.publish",
+    "content.push_skill"
+  ],
+  "dashboard": {
+    "stats": [
+      {
+        "key": "source_count",
+        "title": "采集源",
+        "type": "counter"
+      },
+      {
+        "key": "pending",
+        "title": "待处理内容",
+        "type": "counter"
+      },
+      {
+        "key": "processed",
+        "title": "已加工内容",
+        "type": "counter"
+      },
+      {
+        "key": "published",
+        "title": "已发布",
+        "type": "counter"
+      },
+      {
+        "key": "failed",
+        "title": "处理失败",
+        "type": "gauge"
+      }
+    ]
+  },
+  "hooks": {
+    "provides": [
+      "content_factory/collect",
+      "content_factory/process",
+      "content_factory/publish",
+      "content_factory/push_skill"
+    ],
+    "listens": [
+      "cron.tick"
+    ]
+  },
+  "menu": {
+    "group": "AI & Content",
+    "key": "contentfactory",
+    "icon": "contentfactory",
+    "label": "Content Factory"
+  },
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "dashscope_text_key": {
+        "type": "string",
+        "label": "DashScope API Key",
+        "default": "",
+        "description": "通义千问 API Key for AI processing"
+      },
+      "max_items_per_run": {
+        "type": "integer",
+        "default": 10,
+        "description": "Max items per crawl run"
+      },
+      "skip_review": {
+        "type": "boolean",
+        "default": false,
+        "description": "Skip manual review for AI-generated content"
+      },
+      "auto_publish": {
+        "type": "boolean",
+        "default": false,
+        "description": "Auto-publish after AI processing"
+      }
+    }
+  }
+}

@@ -1,0 +1,32 @@
+# 商店插件名称本地化（按 identifier 键，方案 §4.1）
+# 中文名取自各插件 plugins/<id>/i18n/zh-CN.yml 的 plugin.name
+ads: 广告管理
+ali_api: 1688 供应链采集
+analytics: 统计
+captcha_embedded: 验证码服务
+chatbot: AI 顾问
+content_factory: 内容工厂
+coupons: 智能优惠券
+currency_converter: 货币转换
+email: 邮件服务
+enterprise_verify: 企业认证
+health_check: 系统健康检查
+im_gateway: IM 网关
+logistics: 物流快递
+memory_engine: 认知进化
+mini_app_builder: 小程序生成器
+oauth_config: OAuth 登录配置
+order_notify: 订单通知
+payment: 支付网关
+project_workspace: 项目工作台
+reviews: 商品评价
+shop: 商城
+site_builder: AI 智能建站
+site_domains: 站点域名
+sms: 短信服务
+social_push: 社交推送
+subscription: 订阅
+vault: 数据保险库
+verification: 实名认证
+visitor_profile: 访客画像引擎
+wishlist: 收藏

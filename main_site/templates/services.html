@@ -1,0 +1,387 @@
+﻿<!DOCTYPE html>
+
+<html lang="{{ lang }}">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width,initial-scale=1.0" name="viewport"/>
+<title>{{ _('Services — VeroRun · AI Website Platform') }}</title>
+<meta content="{{ _('VeroRun: 4 core services — AI site builder, mini-program builder, site renovation, AI customer service.') }}" name="description"/>
+<link href="/static/favicon-32x32.png" rel="icon" sizes="32x32" type="image/png"/>
+<link href="/static/favicon-16x16.png" rel="icon" sizes="16x16" type="image/png"/>
+<link href="/static/css/fonts.css" rel="stylesheet"/>
+<link href="/static/css/landing.css" rel="stylesheet"/>
+<style>
+/* ── Nav ── */
+.nav{position:fixed;top:0;left:0;right:0;z-index:1000;background:rgba(5,5,8,.82);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border-bottom:1px solid rgba(255,255,255,.05)}.nav-inner{max-width:var(--container-wide);margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 24px;height:66px}
+.nav-logo{display:flex;align-items:center;gap:10px;text-decoration:none;font-weight:700;font-size:18px;color:var(--text-high);flex-shrink:0}.nav-logo .icon{width:32px;height:32px;background:var(--gradient-primary);border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;font-weight:800;font-family:var(--font-tech)}
+.nav-links{display:flex;align-items:center;gap:4px}.nav-links a{color:var(--text-dim);text-decoration:none;font-size:13px;font-weight:500;padding:8px 14px;border-radius:8px;transition:all .2s}.nav-links a:hover{color:var(--text-high);background:rgba(255,255,255,.04)}.nav-links a.active{color:#fff;background:rgba(99,102,241,.12)}
+.nav-cta{padding:8px 20px !important;background:var(--gradient-primary);color:#fff !important;border-radius:8px;font-weight:600 !important}.nav-cta:hover{transform:translateY(-1px);box-shadow:0 4px 20px rgba(99,102,241,.35)}
+.nav-toggle{display:none;background:none;border:none;color:var(--text-dim);font-size:22px;cursor:pointer;padding:8px}
+@media(max-width:900px){
+  .nav-links{display:none}.nav-toggle{display:block}
+  #mb-menu.nav-open{display:flex}
+  #mb-menu{display:none;position:fixed;top:66px;left:0;right:0;flex-direction:column;background:rgba(5,5,8,.98);padding:16px 24px 24px;border-bottom:1px solid var(--border);z-index:999}
+  #mb-menu a{color:var(--text-dim);text-decoration:none;font-size:15px;font-weight:500;padding:12px 0;border-bottom:1px solid rgba(255,255,255,.04)}#mb-menu a:last-child{border:none}
+  #mb-menu .mb-cta{margin-top:8px;text-align:center;background:var(--gradient-primary);color:#fff !important;border-radius:8px;padding:12px !important;font-weight:600}
+}
+
+/* ── Page Hero ── */
+.page-hero{text-align:center;padding:140px 32px 60px;position:relative;overflow:hidden}
+.page-hero .bg-effect{position:absolute;inset:0;z-index:0}
+.page-hero .bg-effect .sphere{position:absolute;width:500px;height:500px;border-radius:50%;filter:blur(100px);opacity:.1}
+.page-hero .bg-effect .s1{top:-150px;right:-100px;background:var(--gradient-primary)}
+.page-hero .bg-effect .s2{bottom:-150px;left:-100px;background:var(--gradient-electric)}
+.page-hero .content{position:relative;z-index:2}
+.page-hero h1{font-size:clamp(2em,3.5vw,2.8em);font-weight:800;letter-spacing:-1px;margin-bottom:12px;color:var(--text-high)}
+.page-hero h1 .gradient{background:var(--gradient-primary);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.page-hero p{font-size:14px;color:var(--text-dim);max-width:var(--container-sm);margin:0 auto}
+
+/* ── Service Grid ── */
+.services-section{padding:0 32px 80px;max-width:var(--container-main);margin:0 auto}
+.service-card{background:var(--bg-glass);backdrop-filter:blur(16px);border:1px solid var(--border);border-radius:var(--radius-lg);padding:40px 32px;margin-bottom:24px;display:grid;grid-template-columns:auto 1fr auto;gap:28px;align-items:start;transition:all .4s var(--ease-out)}
+.service-card:hover{border-color:var(--border-accent);box-shadow:var(--shadow-glow);transform:translateY(-2px)}
+.service-card .s-icon{width:64px;height:64px;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:28px;flex-shrink:0}
+.service-card .s-icon.blue{background:rgba(99,102,241,.12)}
+.service-card .s-icon.cyan{background:rgba(34,211,238,.1)}
+.service-card .s-icon.green{background:rgba(0,255,159,.08)}
+.service-card .s-icon.gold{background:rgba(245,158,11,.1)}
+.service-card .s-body h3{font-size:20px;font-weight:700;margin-bottom:8px;color:var(--text-high)}
+.service-card .s-body .s-desc{font-size:14px;color:var(--text-dim);line-height:1.7;margin-bottom:16px}
+.service-card .s-body .s-features{display:grid;grid-template-columns:1fr 1fr;gap:6px 20px}
+.service-card .s-body .s-features span{font-size:13px;color:var(--text-dim);display:flex;align-items:center;gap:6px}
+.service-card .s-body .s-features span::before{content:'✓';color:var(--cyan);font-weight:700}
+.service-card .s-side{text-align:center;min-width:140px;flex-shrink:0}
+.service-card .s-side .price{font-size:28px;font-weight:800;font-family:var(--font-display);background:var(--gradient-primary);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.service-card .s-side .price-label{font-size:12px;color:var(--text-muted);margin-bottom:16px}
+.service-card .s-side .s-btn{display:inline-block;padding:10px 24px;border-radius:8px;background:var(--indigo);color:#fff;font-size:13px;font-weight:600;text-decoration:none;transition:all .2s;font-family:var(--font-cn)}
+.service-card .s-side .s-btn:hover{background:#7c3aed;box-shadow:0 4px 16px rgba(99,102,241,.3)}
+
+/* ── Comparison Table ── */
+.compare-section{padding:60px 32px 80px;max-width:var(--container-main);margin:0 auto}
+.compare-section h2{text-align:center;font-size:clamp(1.4em,2.5vw,2em);font-weight:700;margin-bottom:40px;color:var(--text-high)}
+.compare-section h2 .gradient{background:var(--gradient-primary);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.compare-table{width:100%;border-collapse:separate;border-spacing:0;overflow:hidden;border-radius:var(--radius-lg);border:1px solid var(--border)}
+.compare-table th{background:var(--bg-elevated);padding:16px 20px;font-size:13px;font-weight:600;color:var(--text-dim);text-align:center;border-bottom:1px solid var(--border)}
+.compare-table th:first-child{text-align:left;color:var(--text-muted);font-weight:500}
+.compare-table td{padding:14px 20px;font-size:13px;color:var(--text-dim);text-align:center;border-bottom:1px solid var(--border);background:var(--bg-glass)}
+.compare-table td:first-child{text-align:left;color:var(--text);font-weight:500}
+.compare-table td .check{color:var(--cyan);font-size:16px}
+.compare-table td .cross{color:var(--text-muted);opacity:.4}
+.compare-table tr:last-child td{border-bottom:none}
+.compare-table tr:hover td{background:rgba(99,102,241,.04)}
+
+/* ── Process Flow ── */
+.process-section{padding:60px 32px 80px;max-width:var(--container-narrow);margin:0 auto}
+.process-section h2{text-align:center;font-size:clamp(1.4em,2.5vw,2em);font-weight:700;margin-bottom:12px;color:var(--text-high)}
+.process-section .subtitle{text-align:center;font-size:14px;color:var(--text-dim);margin-bottom:48px}
+.process-steps{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;counter-reset:step}
+.process-step{text-align:center;padding:28px 16px;background:var(--bg-glass);border:1px solid var(--border);border-radius:var(--radius-lg);position:relative;transition:all .3s}
+.process-step:hover{border-color:var(--border-accent);transform:translateY(-2px)}
+.process-step::before{counter-increment:step;content:counter(step);position:absolute;top:-12px;left:50%;transform:translateX(-50%);width:24px;height:24px;border-radius:50%;background:var(--gradient-primary);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;font-family:var(--font-display)}
+.process-step .p-icon{font-size:32px;margin:12px 0 12px}
+.process-step h4{font-size:14px;font-weight:600;color:var(--text-high);margin-bottom:6px}
+.process-step p{font-size:12px;color:var(--text-dim);line-height:1.5}
+
+/* ── FAQ ── */
+.faq-section{max-width:var(--container-sm);margin:0 auto;padding:0 32px 80px}
+.faq-section h2{text-align:center;font-size:clamp(1.3em,2vw,1.8em);font-weight:700;margin-bottom:40px;color:var(--text-high)}
+.faq-item{border-bottom:1px solid var(--border);padding:16px 0}
+.faq-q{display:flex;justify-content:space-between;align-items:center;cursor:pointer;font-size:14px;font-weight:500;color:var(--text);padding:4px 0}
+.faq-q .arrow{color:var(--text-muted);transition:transform .3s;font-size:12px}
+.faq-q.open .arrow{transform:rotate(180deg)}
+.faq-a{display:none;padding:12px 0 4px;font-size:13px;color:var(--text-dim);line-height:1.7}
+
+/* ── CTA ── */
+.cta-section{text-align:center;padding:60px 32px 80px;position:relative}
+.cta-section .cta-bg{position:absolute;inset:0;background:var(--gradient-dark);z-index:0}
+.cta-section .cta-content{position:relative;z-index:2}
+.cta-section h2{font-size:clamp(1.4em,2.5vw,2em);font-weight:700;margin-bottom:12px;color:var(--text-high)}
+.cta-section p{font-size:14px;color:var(--text-dim);margin-bottom:28px}
+.cta-section .cta-btn{display:inline-flex;align-items:center;gap:8px;padding:14px 36px;border-radius:12px;background:var(--gradient-primary);color:#fff;font-size:15px;font-weight:600;text-decoration:none;transition:all .3s;border:none;cursor:pointer}
+.cta-section .cta-btn:hover{transform:translateY(-2px);box-shadow:0 8px 32px rgba(99,102,241,.35)}
+
+/* ── Footer ── */
+.footer{background:var(--bg-elevated);border-top:1px solid var(--border);padding:60px 32px 32px}
+.footer-grid{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:40px;max-width:var(--container-main);margin:0 auto}
+.footer-brand .footer-logo{font-size:18px;font-weight:800;font-family:var(--font-display);background:var(--gradient-primary);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:12px}
+.footer-brand p{font-size:13px;color:var(--text-dim);line-height:1.6;max-width:var(--container-text)}
+.footer-col h4{font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:16px;text-transform:uppercase;letter-spacing:1px}
+.footer-col a{display:block;color:var(--text-dim);text-decoration:none;font-size:13px;padding:5px 0;transition:color .2s}
+.footer-col a:hover{color:var(--cyan)}
+.footer-bottom{text-align:center;padding-top:32px;margin-top:32px;border-top:1px solid var(--border);font-size:12px;color:var(--text-muted)}
+
+/* ── Responsive ── */
+@media(max-width:900px){
+  .service-card{grid-template-columns:1fr;gap:16px}
+  .service-card .s-side{text-align:left;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  .process-steps{grid-template-columns:1fr 1fr}
+  .footer-grid{grid-template-columns:1fr 1fr}
+}
+@media(max-width:768px){
+  .nav-links,.nav-actions .nav-btn-outline{display:none}
+  .nav-mobile-toggle{display:block}
+  .nav-toggle{display:block}
+  .page-hero{padding:100px 20px 40px}
+  .services-section{padding:0 20px 60px}
+  .compare-section{padding:40px 20px 60px}
+  .compare-table{font-size:12px}
+  .compare-table th,.compare-table td{padding:10px 12px}
+  .service-card .s-body .s-features{grid-template-columns:1fr}
+  .process-steps{grid-template-columns:1fr}
+  .footer-grid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<!-- ═══ Nav ═══ -->
+<nav class="nav">
+<div class="nav-inner">
+<a class="nav-logo" href="/"><div class="icon">AI</div><span>{{ brand.site_name_en if brand else '' }}</span></a>
+<div class="nav-links" id="nl">
+<a href="/">{{ _('Home') }}</a>
+<a href="/ai-matrix">{{ _('AI Matrix') }}</a>
+<a class="active" href="/services">{{ _('Services') }}</a>
+<a href="/shop">{{ _('Shop') }}</a>
+<a href="/cases">{{ _('Cases') }}</a>
+<a href="/ai-experience">{{ _('AI Experience') }}</a>
+<a href="/knowledge">{{ _('Help') }}</a>
+<a class="nav-cta" href="/register">{{ _('Get Started Free') }}</a>
+</div>
+<button aria-label="{{ _('Menu') }}" class="nav-toggle" onclick="tNM()">☰</button>
+</div>
+</nav>
+<div id="mb-menu">
+<a href="/">{{ _('Home') }}</a>
+<a href="/ai-matrix">{{ _('AI Matrix') }}</a>
+<a href="/services">{{ _('Services') }}</a>
+<a href="/shop">{{ _('Shop') }}</a>
+<a href="/cases">{{ _('Cases') }}</a>
+<a href="/ai-experience">{{ _('AI Experience') }}</a>
+<a href="/knowledge">{{ _('Help') }}</a>
+<a class="mb-cta" href="/register">{{ _('Get Started Free') }}</a>
+</div>
+<!-- ═══ Hero ═══ -->
+<section class="page-hero">
+<div class="bg-effect">
+<div class="sphere s1"></div>
+<div class="sphere s2"></div>
+</div>
+<div class="content">
+<h1>{{ _('AI Matrix') }} <span class="gradient">{{ _('Core Services') }}</span></h1>
+<p>{{ _('From content production to customer service, from e-commerce to social media — full-chain AI automation.') }}</p>
+</div>
+</section>
+<!-- ═══ Services ═══ -->
+<section class="services-section">
+{{ _('Service 1 — AI Matrix Orchestration') }}
+<div class="service-card">
+<div class="s-icon blue">🧠</div>
+<div class="s-body">
+<h3>{{ _('AI Matrix Orchestration') }}</h3>
+<div class="s-desc">{{ _('Master Agent (Athena) + 12 sub-agents. Auto-decomposes tasks, parallel calls to 6 AI providers, self-check retry.') }}</div>
+<div class="s-features">
+<span>{{ _('1+12 Agent Collaboration') }}</span>
+<span>{{ _('6 AI Provider Switching') }}</span>
+<span>{{ _('Auto Task Decomposition') }}</span>
+<span>{{ _('Parallel Execution + Self-Check') }}</span>
+<span>{{ _('Auto Result Aggregation') }}</span>
+<span>{{ _('Customizable Workflows') }}</span>
+</div>
+</div>
+<div class="s-side">
+<div class="price">{{ _('Includes') }}</div>
+<div class="price-label">{{ _('All Plans') }}</div>
+<a class="s-btn" href="/pricing">{{ _('View Details') }}</a>
+</div>
+</div>
+{{ _('Service 2 — Content Factory') }}
+<div class="service-card">
+<div class="s-icon green">🏭</div>
+<div class="s-body">
+<h3>{{ _('Content Factory Full Chain') }}</h3>
+<div class="s-desc">{{ _('Auto RSS → AI processing → Knowledge Base → CMS → Social Media. Full pipeline, no manual intervention needed.') }}</div>
+<div class="s-features">
+<span>{{ _('RSS Auto-Collection') }}</span>
+<span>{{ _('AI Smart Processing') }}</span>
+<span>{{ _('Knowledge Base Import') }}</span>
+<span>{{ _('Auto CMS Publishing') }}</span>
+<span>{{ _('WeChat/Weibo/Toutiao Push') }}</span>
+<span>{{ _('Douyin Mini-App Sync') }}</span>
+</div>
+</div>
+<div class="s-side">
+<div class="price">{{ _('Starting at Basic') }}</div>
+<a class="s-btn" href="/pricing">{{ _('View Pricing') }}</a>
+</div>
+</div>
+{{ _('Service 3 — AI CS + Knowledge Base') }}
+<div class="service-card">
+<div class="s-icon cyan">💬</div>
+<div class="s-body">
+<h3>{{ _('AI CS + RAG Knowledge Base') }}</h3>
+<div class="s-desc">{{ _('24/7 AI chatbot with RAG knowledge base. Auto-identifies leads and notifies sales via Feishu. Covers web + Douyin/Toutiao mini-programs, shared knowledge base.') }}</div>
+<div class="s-features">
+<span>{{ _('24/7 Online') }}</span>
+<span>{{ _('Knowledge Base RAG Search') }}</span>
+<span>{{ _('User Profile Memory') }}</span>
+<span>{{ _('Intent Recognition + Feishu Notifications') }}</span>
+<span>{{ _('Web + Douyin + Toutiao') }}</span>
+<span>{{ _('Data Cleaning Agent') }}</span>
+</div>
+</div>
+<div class="s-side">
+<div class="price">{{ _('Starting at Basic') }}</div>
+<a class="s-btn" href="/pricing">{{ _('View Pricing') }}</a>
+</div>
+</div>
+{{ _('Service 4 — E-Commerce Solution') }}
+<div class="service-card">
+<div class="s-icon gold">🛒</div>
+<div class="s-body">
+<h3>{{ _('E-Commerce + 1688') }}</h3>
+<div class="s-desc">{{ _('Full store: products/SKU/cart/orders/payment. One-click 1688 import. Alipay/WeChat. Standalone + mini-program.') }}</div>
+<div class="s-features">
+<span>{{ _('Complete E-Commerce System') }}</span>
+<span>{{ _('One-click 1688 Product Import') }}</span>
+<span>{{ _('AI Product Info Processing') }}</span>
+<span>{{ _('Alipay/WeChat Pay') }}</span>
+<span>{{ _('Order Management') }}</span>
+<span>{{ _('Mini-Program Sync') }}</span>
+</div>
+</div>
+<div class="s-side">
+<div class="price">{{ _('Starting at Pro') }}</div>
+<a class="s-btn" href="/pricing">{{ _('View Pricing') }}</a>
+</div>
+</div>
+</section>
+<!-- ═══ Comparison Table ═══ -->
+<section class="compare-section">
+<h2>{{ _('Plan Comparison,') }}<span class="gradient">{{ _('Choose the Best Fit') }}</span></h2>
+<p style="text-align:center;color:var(--text-dim);margin-bottom:24px">{{ _('See detailed pricing at') }}<a href="/pricing" style="color:var(--cyan);text-decoration:underline">{{ _('Pricing →') }}</a></p>
+<table class="compare-table">
+<thead>
+<tr>
+<th>{{ _('Features') }}</th>
+<th>{{ _('Starter') }}</th>
+<th>{{ _('Professional') }}</th>
+<th>{{ _('Enterprise') }}</th>
+</tr>
+</thead>
+<tbody>
+<tr><td>{{ _('AI Smart Website Builder') }}</td><td><span class="check">✓</span>{{ _('Responsive + Custom Domain') }}</td><td><span class="check">✓</span></td><td><span class="check">✓</span></td></tr>
+<tr><td>{{ _('CMS Content Management') }}</td><td><span class="check">✓</span></td><td><span class="check">✓</span></td><td><span class="check">✓</span></td></tr>
+<tr><td>{{ _('AI Smart Customer Service') }}</td><td>{{ _('Basic Q&A') }}</td><td>{{ _('RAG Knowledge Base') }}</td><td>{{ _('Advanced Multi-Turn CS + CRM + Feishu') }}</td></tr>
+<tr><td>{{ _('AI Content Generation') }}</td><td><span class="check">✓</span>{{ _('Copy/Title/Summary') }}</td><td><span class="check">✓</span></td><td><span class="check">✓</span></td></tr>
+<tr><td>{{ _('AI Content Factory') }}</td><td><span class="cross">✕</span></td><td><span class="check">✓</span>{{ _('RSS → AI Processing → Publish') }}</td><td><span class="check">✓</span>{{ _('Auto Pipeline + Social Push') }}</td></tr>
+<tr><td>{{ _('E-Commerce Store') }}</td><td><span class="cross">✕</span></td><td><span class="check">✓</span>{{ _('Products/Cart/Orders/Payment') }}</td><td><span class="check">✓</span></td></tr>
+<tr><td>{{ _('1688 Supply Chain') }}</td><td><span class="cross">✕</span></td><td><span class="check">✓</span>{{ _('Collect → AI Optimize → Publish') }}</td><td><span class="check">✓</span>{{ _('Batch Management + Auto Listing') }}</td></tr>
+<tr><td>{{ _('Knowledge Base + RAG Search') }}</td><td><span class="cross">✕</span></td><td><span class="check">✓</span></td><td><span class="check">✓</span></td></tr>
+<tr><td>{{ _('SEO Optimization') }}</td><td>{{ _('Basic') }}</td><td>{{ _('AI Continuous SEO & Ranking') }}</td><td><span class="check">✓</span></td></tr>
+<tr><td>{{ _('Multi-AI Provider Switching') }}</td><td><span class="check">✓</span>{{ _('6 vendors') }}</td><td><span class="check">✓</span></td><td><span class="check">✓</span></td></tr>
+<tr><td>{{ _('User Profiles + Reports') }}</td><td><span class="cross">✕</span></td><td><span class="check">✓</span></td><td><span class="check">✓</span>{{ _('12-Dimension + Intent Scoring') }}</td></tr>
+<tr><td>{{ _('Auto Social Media Publish') }}</td><td><span class="cross">✕</span></td><td><span class="cross">✕</span></td><td><span class="check">✓</span>{{ _('WeChat/Weibo/Toutiao/Douyin') }}</td></tr>
+<tr><td>{{ _('Agent Matrix (1+12 Agents)') }}</td><td><span class="cross">✕</span></td><td><span class="cross">✕</span></td><td><span class="check">✓</span></td></tr>
+<tr><td>{{ _('Auto Cloud Provisioning') }}</td><td><span class="cross">✕</span></td><td><span class="cross">✕</span></td><td><span class="check">✓</span></td></tr>
+<tr><td>{{ _('Mini-Program Add-ons') }}</td><td>{{ _('Custom (from ¥12,000)') }}</td><td>{{ _('Custom (from ¥12,000)') }}</td><td>{{ _('Custom (from ¥12,000)') }}</td></tr>
+<tr><td>{{ _('Free AI Credits') }}</td><td>{{ _('🎁 ¥50 Credits (auto top-up, or buy manually)') }}</td><td>{{ _('🎁 ¥80 Credits (auto top-up, or buy manually)') }}</td><td>{{ _('🎁 ¥120 Credits (auto top-up, or buy manually)') }}</td></tr>
+<tr><td>{{ _('Yearly Price') }}</td><td><strong style="color:var(--cyan)">¥1,999</strong></td><td><strong style="color:var(--cyan)">¥3,999</strong></td><td><strong style="color:var(--cyan)">¥6,999</strong></td></tr>
+<tr><td>{{ _('Monthly Price') }}</td><td><strong>¥199</strong></td><td><strong>¥399</strong></td><td><strong>¥699</strong></td></tr>
+</tbody>
+</table>
+</section>
+<!-- ═══ Process ═══ -->
+<section class="process-section">
+<h2>{{ _('Start in 4 Easy Steps') }}</h2>
+<p class="subtitle">{{ _('From registration to launch in as fast as 3 days') }}</p>
+<div class="process-steps">
+<div class="process-step">
+<div class="p-icon">📝</div>
+<h4>{{ _('Register on Platform') }}</h4>
+<p>{{ _('Fill in basic info, create account for free') }}</p>
+</div>
+<div class="process-step">
+<div class="p-icon">🤖</div>
+<h4>{{ _('AI Website Builder') }}</h4>
+<p>{{ _('Enter company info, AI generates your site') }}</p>
+</div>
+<div class="process-step">
+<div class="p-icon">🎨</div>
+<h4>{{ _('Personalized Adjustments') }}</h4>
+<p>{{ _('Adjust content, style, features on demand') }}</p>
+</div>
+<div class="process-step">
+<div class="p-icon">🚀</div>
+<h4>{{ _('Launch & Publish') }}</h4>
+<p>{{ _('Bind Domain, One-Click Publish') }}</p>
+</div>
+</div>
+</section>
+<!-- ═══ FAQ ═══ -->
+<section class="faq-section">
+<h2>{{ _('FAQ') }}</h2>
+<div class="faq-item">
+<div class="faq-q" onclick="toggleFaq(this)">{{ _('Do I need my own domain?') }}<span class="arrow">▾</span></div>
+<div class="faq-a">{{ _('Yes, you need to purchase and point your domain. We provide detailed guides and can assist. Standard+ plans include free domain setup help.') }}</div>
+</div>
+<div class="faq-item">
+<div class="faq-q" onclick="toggleFaq(this)">{{ _('Can AI-generated websites be customized?') }}<span class="arrow">▾</span></div>
+<div class="faq-a">{{ _('Absolutely. AI generates the initial version. Freely customize content, style, and layout via visual editor. CSS/JS supported.') }}</div>
+</div>
+<div class="faq-item">
+<div class="faq-q" onclick="toggleFaq(this)">{{ _('Can I use my own domain?') }}<span class="arrow">▾</span></div>
+<div class="faq-a">{{ _('Yes. All plans support custom domain binding with free SSL certs. See the domain setup guide in our docs.') }}</div>
+</div>
+<div class="faq-item">
+<div class="faq-q" onclick="toggleFaq(this)">{{ _('How is data security and backup ensured?') }}<span class="arrow">▾</span></div>
+<div class="faq-a">{{ _('SSL encryption, daily auto backups, 99.9% uptime SLA. Your data belongs to you only.') }}</div>
+</div>
+</section>
+<!-- ═══ CTA ═══ -->
+<section class="cta-section">
+<div class="cta-bg"></div>
+<div class="cta-content">
+<h2>{{ _('Start Your AI Website Journey') }}</h2>
+<p>{{ _('Build in 3 minutes, AI runs it — you focus on your business') }}</p>
+<a class="cta-btn" href="/pricing">{{ _('View Pricing') }}<span>→</span></a>
+</div>
+</section>
+<!-- ═══ Footer ═══ -->
+<footer class="footer">
+<div class="footer-grid">
+<div class="footer-brand">
+<div class="footer-logo">{{ brand.site_name_en if brand else '' }}</div>
+<p>{{ _('AI Matrix-driven intelligent business platform. Not just building — AI agents run your site.') }}</p>
+</div>
+<div class="footer-col">
+<h4>{{ _('Products') }}</h4>
+<a href="/services">{{ _('AI Smart Website Builder') }}</a>
+<a href="/services">{{ _('AI Smart Customer Service') }}</a>
+</div>
+<div class="footer-col">
+<h4>{{ _('Resources') }}</h4>
+<a href="/docs">{{ _('Docs') }}</a>
+<a href="/start">{{ _('Quick Start') }}</a>
+</div>
+<div class="footer-col">
+<h4>{{ _('Company') }}</h4>
+<a href="/about">{{ _('About Us') }}</a>
+<a href="/privacy">{{ _('Privacy Policy') }}</a>
+</div>
+</div>
+<div class="footer-bottom">
+<p>{{ _('© 2026 VeroRun. All rights reserved.') }}</p>
+</div>
+</footer>
+
+<script>
+function tNM(){document.getElementById('mb-menu').classList.toggle('nav-open')}
+document.addEventListener('click',function(e){var m=document.getElementById('mb-menu');if(m&&m.classList.contains('nav-open')&&e.target.closest('a'))m.classList.remove('nav-open')});
+function toggleFaq(el){
+  el.classList.toggle('open');
+  var a=el.nextElementSibling;
+  a.style.display=a.style.display==='block'?'none':'block';
+}
+</script>
+</body>
+</html>

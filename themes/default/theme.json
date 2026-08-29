@@ -1,0 +1,19 @@
+{
+  "name": "默认主题",
+  "slug": "default",
+  "version": "1.0.0",
+  "author": "VeroRun",
+  "description": "内置默认主题 — AI建站系统深色科技风格。深空背景、电光蓝紫渐变、玻璃态、粒子效果。",
+  "industry": "web_building",
+  "tags": ["dark", "ai", "web_building", "cyberpunk", "glassmorphism"],
+  "sites": ["main", "platform", "admin", "community"],
+  "variables": {
+    "preset": "dark",
+    "font_scale": 1.0,
+    "border_radius": 12
+  },
+  "builtin": true,
+  "compatibility": {
+    "min_app_version": "2.0.0"
+  }
+}

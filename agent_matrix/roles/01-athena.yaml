@@ -1,0 +1,22 @@
+name: Athena
+slug: athena
+role_type: master
+description: Master coordinator — task decomposition, orchestration, reporting, escalation, system admin
+domain: orchestration
+managed_modules:
+  - all
+  - users
+  - agents
+  - keys
+  - config
+  - logs
+  - cleaner
+  - oauth_config
+  - captcha_embedded
+provider_model_id: 401638
+provider: openai
+model_name: gpt-4o
+system_prompt: prompts/master_prompt.md
+is_system: true
+auto_approve: 0
+is_active: 1

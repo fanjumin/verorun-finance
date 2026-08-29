@@ -1,0 +1,16 @@
+{
+  "name": "深海蓝",
+  "slug": "ocean",
+  "version": "1.0.0",
+  "author": "VeroRun",
+  "description": "深海蓝色风格 — 适合企业、制造、物流、金融行业。沉稳、专业、信赖感。",
+  "industry": "enterprise",
+  "tags": ["dark", "blue", "enterprise", "manufacturing", "logistics", "finance"],
+  "sites": ["main", "platform"],
+  "variables": {
+    "preset": "dark",
+    "font_scale": 1.0,
+    "border_radius": 10
+  },
+  "builtin": false
+}

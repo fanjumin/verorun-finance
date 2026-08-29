@@ -1,0 +1,6 @@
+-- VeroRun 主库初始化脚本（VR-PLG-003）——已停用（2026-08-21）
+-- 扩展创建已下沉到插件迁移 SQL（CREATE EXTENSION IF NOT EXISTS vector，幂等）：
+--   docker：app 为超级用户（POSTGRES_USER 默认 superuser），插件激活时迁移即可自建
+--   裸机：common.sh 保证 pgvector trusted（DB owner 可自建）
+-- 本文件保留仅为 docker-compose 挂载引用（/docker-entrypoint-initdb.d），
+-- 不再执行 SQL，避免为未订阅插件预建扩展（部署物垃圾）。

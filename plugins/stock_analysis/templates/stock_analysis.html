@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Stock Analysis</title>
+  <link rel="stylesheet" href="/static/css/design-system.css">
+  <link rel="stylesheet" href="/static/css/themes.css">
+  <style>
+    body { margin: 0; padding: 24px; background: var(--bg, var(--bg-page)); color: var(--text, var(--text-primary)); }
+    main { max-width: 960px; margin: 0 auto; }
+    form { display: flex; gap: 8px; flex-wrap: wrap; margin: 20px 0; }
+    input, select, button { min-height: 38px; padding: 0 12px; }
+    input { flex: 1 1 180px; }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+    .result { margin-top: 16px; padding: 16px; border: 1px solid var(--border); border-radius: 8px; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>{{ _('Stock Analysis') }}</h1>
+  <form id="analysis-form">
+    <input id="symbol" name="symbol" placeholder="{{ _('Stock code, e.g. 600519') }}" required maxlength="12" autocomplete="off">
+    <label for="analysis-type" class="sr-only">{{ _('Analysis Type') }}</label>
+    <select id="analysis-type" name="type">
+      <option value="llm">{{ _('AI Comprehensive') }}</option>
+      <option value="technical">{{ _('Technical') }}</option>
+      <option value="fundamental">{{ _('Fundamental') }}</option>
+      <option value="sentiment">{{ _('Sentiment') }}</option>
+    </select>
+    <button type="submit">{{ _('Analyze') }}</button>
+  </form>
+  <section class="result" aria-live="polite"><pre id="output">{{ _('Enter a stock code to start analysis.') }}</pre></section>
+</main>
+<script>
+(function () {
+  var key = 'verorun_admin_theme';
+  function applyTheme() {
+    try {
+      var theme = localStorage.getItem(key);
+      if (theme === 'slate' || theme === 'light') document.documentElement.setAttribute('data-theme', theme);
+      else document.documentElement.removeAttribute('data-theme');
+    } catch (error) {}
+  }
+  applyTheme();
+  window.addEventListener('storage', function (event) { if (event.key === key || event.key === null) applyTheme(); });
+  setInterval(applyTheme, 1000);
+
+  document.getElementById('analysis-form').addEventListener('submit', function (event) {
+    event.preventDefault();
+    var symbol = document.getElementById('symbol').value.trim();
+    var type = document.getElementById('analysis-type').value;
+    var output = document.getElementById('output');
+    output.textContent = {{ _('Analyzing...')|tojson }};
+    fetch('/admin/stock-analysis/api/analyze?symbol=' + encodeURIComponent(symbol) + '&type=' + encodeURIComponent(type))
+      .then(function (response) { return response.json(); })
+      .then(function (payload) {
+        output.textContent = payload.result && payload.result.report
+          ? payload.result.report + '\n\n' + {{ _('Signal')|tojson }} + ': ' + JSON.stringify(payload.result.signal)
+          : (payload.error || {{ _('Analysis failed')|tojson }});
+      })
+      .catch(function (error) { output.textContent = {{ _('Request failed')|tojson }} + ': ' + error.message; });
+  });
+}());
+</script>
+</body>
+</html>

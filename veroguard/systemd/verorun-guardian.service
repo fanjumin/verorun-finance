@@ -1,0 +1,22 @@
+[Unit]
+Description=VeroGuard — Unified Guardian Daemon (Health + Integrity + Heartbeat)
+After=network.target postgresql.service
+Wants=verorun-health.service verorun-main.service verorun-admin.service verorun-auth.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/verorun
+EnvironmentFile=-/etc/default/verorun-guardian
+ExecStart=/usr/bin/python3 /opt/verorun/veroguard/guardian.py
+Restart=always
+RestartSec=5
+# 状态文件目录（systemd 自动创建 /run/verorun-guardian）
+RuntimeDirectory=verorun-guardian
+RuntimeDirectoryMode=0755
+# 优雅关闭
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

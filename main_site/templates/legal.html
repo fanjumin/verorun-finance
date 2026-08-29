@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+
+<html lang="{{ lang }}">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>{{ _('{title} — VeroRun', title=page.title) }}</title>
+<meta content="{{ page.title }} - VeroRun" name="description"/>
+<link href="/static/favicon-32x32.png" rel="icon" sizes="32x32" type="image/png"/>
+<link href="/static/css/fonts.css" rel="stylesheet"/>
+<link href="/static/css/landing.css" rel="stylesheet"/>
+<style>
+.legal-hero{padding:120px 32px 40px;text-align:center}
+.legal-hero h1{font-size:clamp(1.8em,3vw,2.5em);font-weight:800;background:var(--gradient-primary);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.legal-hero p{font-size:14px;color:var(--text-dim);margin-top:8px}
+.legal-content{max-width:800px;margin:0 auto;padding:0 32px 80px}
+.legal-section{background:var(--bg-glass);backdrop-filter:blur(16px);border:1px solid var(--border);border-radius:var(--radius-lg);padding:32px;margin-bottom:20px;transition:all .3s}
+.legal-section:hover{border-color:var(--border-accent)}
+.legal-section h2{font-size:16px;font-weight:700;color:var(--text-high);margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.legal-section h2 .num{display:inline-flex;width:28px;height:28px;background:var(--indigo);color:#fff;border-radius:8px;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0}
+.legal-section p{font-size:14px;color:var(--text-dim);line-height:1.8}
+@media(max-width:768px){.legal-content{padding:0 20px 60px}.legal-section{padding:24px}}
+</style>
+</head>
+<body style="background:#050508">
+{% include '_nav.html' %}
+<section class="legal-hero">
+<h1>{{ page.title }}</h1>
+<p>{{ _('Last Updated: January 2026') }}</p>
+</section>
+<section class="legal-content">
+  {% for section in page.sections %}
+  <div class="legal-section">
+<h2><span class="num">{{ loop.index }}</span>{{ section[0] }}</h2>
+<p>{{ section[1] }}</p>
+</div>
+  {% endfor %}
+</section>
+{% include '_footer.html' %}
+</body>
+</html>

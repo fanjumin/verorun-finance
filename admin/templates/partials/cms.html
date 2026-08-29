@@ -1,0 +1,516 @@
+﻿window.l_cms=function(){
+  document.getElementById("pt").textContent="{{ _('Create Article') }}";
+  document.getElementById("mc").innerHTML='<div id="cmsContent"></div>';
+  cmsTabArticle();
+};
+
+// ── Tab 0: {{ _('Article Edit') }}（原 CMS）──
+function cmsTabArticle(){
+  var h='';
+  h+='<div style="margin-bottom:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">';
+  h+='<button class="btn bp" onclick="cmsFilterPosts(\'all\')" id="cmsF-all">{{ _('All') }}</button>';
+  h+='<button class="btn bo" onclick="cmsFilterPosts(\'draft\')" id="cmsF-draft">📝 {{ _('Drafts') }}</button>';
+  h+='<button class="btn bo" onclick="cmsFilterPosts(\'published\')" id="cmsF-published">✅ {{ _('Published') }}</button>';
+  h+='<span style="flex:1"></span>';
+  h+='<button class="btn bp" onclick="cmsNewPost()">+ {{ _('New Article') }}</button>';
+  h+='<button class="btn bo" onclick="cmsManageCategories()">{{ _('Column Management') }}</button>';
+  h+='</div>';
+  h+='<div id="cmsPostForm" style="display:none;margin-bottom:14px" class="cd">';
+  h+='<div class="st" id="cmsFormTitle">{{ _('New Article') }}</div>';
+  h+='<div class="g2">';
+  h+='<div><div style="font-size:11px;color:var(--dim);margin-bottom:3px">{{ _('Title') }}</div><input class="in" id="cmsPTitle" style="width:100%"></div>';
+  h+='<div><div style="font-size:11px;color:var(--dim);margin-bottom:3px">{{ _('Column') }}</div><select class="sl" id="cmsPCat" style="width:100%"></select></div>';
+  h+='<div><div style="font-size:11px;color:var(--dim);margin-bottom:3px">{{ _('Author') }}</div><input class="in" id="cmsPAuthor" style="width:100%"></div>';
+  h+='<div style="grid-column:1/3"><div style="font-size:11px;color:var(--dim);margin-bottom:3px">{{ _('Summary') }}</div><input class="in" id="cmsPSummary" style="width:100%"></div>';
+  h+='</div>';
+  h+='<div style="margin-top:8px"><div style="font-size:11px;color:var(--dim);margin-bottom:3px">{{ _('Body') }}</div>';
+  h+='<div id="cmsPBody" style="min-height:350px;background:var(--bg);color:var(--text)"></div></div>';
+  h+='<div style="margin-top:8px;display:flex;gap:6px">';
+  h+='<button class="btn bo" onclick="cmsAiformat()">🤖 AI{{ _('Layout') }}</button> ';
+  h+='<button class="btn bo" onclick="cmsAicover()">🎨 AI{{ _('Add Image') }}</button></div>';
+  h+='<div style="margin-top:12px;padding:10px;background:var(--bg);border-radius:6px;border:1px solid var(--border)">';
+  h+='<div style="font-size:12px;font-weight:600;margin-bottom:6px;color:var(--text)">📤 {{ _('Publish Channel') }}（{{ _('Multi-Select') }}）</div>';
+  h+='<div id="cmsChannelLocal" style="margin-bottom:6px"><div style="font-size:10px;color:var(--dim);margin-bottom:3px">{{ _('Local Column') }}</div><div id="cmsChLocalList"></div></div>';
+  h+='<div id="cmsChannelSocial"><div style="font-size:10px;color:var(--dim);margin-bottom:3px">{{ _('Social Media Platform') }}</div><div id="cmsChSocialList"></div></div>';
+  h+='</div>';
+  h+='<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">';
+  h+='<button class="btn bo" onclick="cmsSaveDraft()">💾 {{ _('Save Draft') }}</button> ';
+  h+='<button class="btn bo bs" onclick="cmsPreviewPost()" id="cmsPreviewBtn" style="display:none">👁 {{ _('Preview') }}</button> ';
+  h+='<button class="btn bp" onclick="cmsPublishPost()">📤 {{ _('Publish to Selected Channels') }}</button> ';
+  h+='<button class="btn bo" onclick="cmsGenerateStatic()">🗂 {{ _('Generate Static Pages') }}</button> ';
+  h+='<button class="btn bo" onclick="cmsCloseForm()">{{ _('Cancel') }}</button><input type="hidden" id="cmsPEid"></div></div>';
+  h+='<div class="cd"><div class="st">{{ _('Article List') }}</div><table><tr><th>ID</th><th>{{ _('Title') }}</th><th>{{ _('Column') }}</th><th>{{ _('Author') }}</th><th>{{ _('Status') }}</th><th>{{ _('Publish Channel') }}</th><th>👀</th><th>{{ _('Time') }}</th><th>{{ _('Actions') }}</th></tr><tbody id="cmsPostBody"></tbody></table></div>';
+  h+='<button class="btn bo" style="margin-top:12px" onclick="cmsToggleSocialHistory()">📤 {{ _('Publish History') }}</button>';
+  h+='<div id="cmsSocialHistoryWrap" style="display:none;margin-top:8px"></div>';
+  document.getElementById("cmsContent").innerHTML=h;
+  cmsLoadCategories();
+  cmsLoadSocialPlatforms();
+  cmsFilterPosts('all');
+}
+
+// ── (Tabs moved to AI Tools sidebar group) ──
+
+var cmsPosts=[];
+var cmsQuill=null;
+var cmsStatusFilter='all';
+var cmsCategories=[];
+
+function cmsInitQuill(content){
+  if(cmsQuill){cmsQuill.root.innerHTML=content||'';return}
+  cmsQuill=new Quill("#cmsPBody",{theme:"snow",placeholder:"{{ _('Edit Body Here') }}...",modules:{toolbar:[["bold","italic","underline","strike"],[{header:1},{header:2}],[{list:"ordered"},{list:"bullet"}],["link","image","code-block"],["clean"]]}});
+  if(content)cmsQuill.root.innerHTML=content;
+}
+
+// ── Categories ──
+
+function cmsLoadCategories(callback){
+  fetch("/admin/cms/categories",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(d.success&&d.data){
+      cmsCategories=d.data;
+      cmsPopulateCategorySelect();
+      cmsPopulateChannelList();
+    }
+    if(callback)callback();
+  }).catch(function(){if(callback)callback()});
+}
+
+function cmsPopulateCategorySelect(){
+  var sel=document.getElementById("cmsPCat");
+  if(!sel)return;
+  sel.innerHTML='';
+  cmsCategories.forEach(function(c){
+    var o=document.createElement("option");
+    o.value=c.name;
+    o.textContent=c.icon+' '+c.name;
+    sel.appendChild(o);
+  });
+}
+
+function cmsPopulateChannelList(){
+  var localDiv=document.getElementById("cmsChLocalList");
+  if(!localDiv)return;
+  var h='';
+  cmsCategories.forEach(function(c){
+    h+='<label style="font-size:12px;display:inline-flex;align-items:center;gap:4px;margin:2px 6px 2px 0;cursor:pointer">';
+    h+='<input type="checkbox" class="cmsChLocal" value="local:'+c.name+'" checked>';
+    h+=c.icon+' '+c.name+'</label>';
+  });
+  localDiv.innerHTML=h;
+}
+
+function cmsLoadSocialPlatforms(){
+  var socialDiv=document.getElementById("cmsChSocialList");
+  if(!socialDiv)return;
+  fetch("/admin/social/check-config",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success||!d.data)return;
+    var h='';
+    d.data.platforms.forEach(function(p){
+      var disabled=p.configured?'':'disabled';
+      var opacity=p.configured?1:0.4;
+      h+='<label style="font-size:12px;display:inline-flex;align-items:center;gap:4px;margin:2px 6px 2px 0;cursor:pointer;opacity:'+opacity+'">';
+      h+='<input type="checkbox" class="cmsChSocial" value="'+p.id+'" '+disabled+'>';
+      h+=p.icon+' '+p.name;
+      if(!p.configured)h+=' <span style="font-size:9px;color:var(--dim)">({{ _('Not Configured') }})</span>';
+      h+='</label>';
+    });
+    socialDiv.innerHTML=h;
+  }).catch(function(){});
+}
+
+// ── Filter ──
+
+function cmsFilterPosts(status){
+  cmsStatusFilter=status;
+  document.querySelectorAll('[id^="cmsF-"]').forEach(function(e){e.className="btn bo"});
+  var el=document.getElementById("cmsF-"+status);
+  if(el)el.className="btn bp";
+  cmsLoadPosts();
+}
+
+function cmsLoadPosts(){
+  var url="/admin/cms/posts?limit=50";
+  if(cmsStatusFilter&&cmsStatusFilter!=='all')url+="&status="+cmsStatusFilter;
+  fetch(url,{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    var _body=document.getElementById("cmsPostBody");
+    if(!_body)return;  // 容器已卸载，放弃本次渲染
+    if(!d.success||!d.data){_body.innerHTML='<tr><td colspan="9"><div class="em">{{ _('None') }}</div></td></tr>';return}
+    cmsPosts=d.data||[];
+    var h='';
+    if(!cmsPosts.length){h='<tr><td colspan="9"><div class="em">{{ _('No Articles Yet') }}</div></td></tr>'}
+    else{cmsPosts.forEach(function(p){
+      var st=p.is_published?'<span class="bdg on">{{ _('Published') }}</span>':'<span class="bdg pd">{{ _('Draft') }}</span>';
+      // Build channel display
+      var chText='—';
+      if(p.publish_channels&&p.publish_channels.length){
+        chText=p.publish_channels.map(function(ch){
+          if(ch.startsWith('local:'))return ch.replace('local:','');
+          var map={wechat:'💬{{ _('WeChat') }}',weibo:'📢{{ _('Weibo') }}',toutiao:'📰{{ _('Headline') }}'};
+          return map[ch]||ch;
+        }).join(' · ');
+      }
+      h+='<tr><td style="font-size:10px">'+p.id+'</td>';
+      h+='<td style="font-weight:600;cursor:pointer;color:var(--accent)" onclick="cmsEditPost('+p.id+')">'+esc(p.title||'-')+'</td>';
+      h+='<td>'+esc(p.category||'')+'</td><td>'+esc(p.author||'-')+'</td><td>'+st+'</td>';
+      h+='<td style="font-size:10px">'+chText+'</td>';
+      h+='<td style="font-size:10px;color:var(--dim)">'+(p.views||0)+'</td>';
+      h+='<td style="font-size:10px">'+(p.created_at||'').slice(0,10)+'</td>';
+      h+='<td><button class="btn bo bs" onclick="cmsEditPost('+p.id+')">{{ _('Edit') }}</button> ';
+      if(p.slug)h+='<button class="btn bo bs" onclick="window.open(\'/preview/'+p.slug+'\',\'_blank\')">👁 {{ _('Preview') }}</button> ';
+      h+='<button class="btn bo bs" onclick="cmsDelPost('+p.id+')">{{ _('Delete') }}</button></td></tr>';
+    })}
+    document.getElementById("cmsPostBody").innerHTML=h;
+  }).catch(function(){var _b=document.getElementById("cmsPostBody");if(_b)_b.innerHTML='<tr><td colspan="9"><div class="em">{{ _('Request Failed') }}</div></td></tr>'});
+}
+
+// ── New / Edit / Close ──
+
+function cmsNewPost(){
+  document.getElementById("cmsFormTitle").textContent="{{ _('New Article') }}";
+  document.getElementById("cmsPEid").value="";
+  document.getElementById("cmsPTitle").value="";
+  document.getElementById("cmsPAuthor").value="";
+  document.getElementById("cmsPSummary").value="";
+  if(cmsCategories.length)document.getElementById("cmsPCat").value=cmsCategories[0].name;
+  document.getElementById("cmsPostForm").style.display="block";
+  document.getElementById("cmsPTitle")._previewSlug='';
+  var pbtn=document.getElementById("cmsPreviewBtn");
+  if(pbtn){pbtn.style.display="none"}
+  // Reset channels: all local checked, social unchecked
+  document.querySelectorAll(".cmsChLocal").forEach(function(cb){cb.checked=true});
+  document.querySelectorAll(".cmsChSocial").forEach(function(cb){cb.checked=false});
+  setTimeout(function(){cmsInitQuill("")},100);
+}
+
+function cmsEditPost(id){
+  var p=null;
+  for(var i=0;i<cmsPosts.length;i++){if(cmsPosts[i].id===id){p=cmsPosts[i];break}}
+  if(!p){showToast("{{ _('Not found') }}","error");return}
+  document.getElementById("cmsFormTitle").textContent="{{ _('Edit Article #') }}"+p.id;
+  document.getElementById("cmsPEid").value=p.id;
+  document.getElementById("cmsPTitle").value=p.title||"";
+  document.getElementById("cmsPAuthor").value=p.author||"";
+  document.getElementById("cmsPCat").value=p.category||(cmsCategories.length?cmsCategories[0].name:"");
+  document.getElementById("cmsPSummary").value=p.excerpt||"";
+  document.getElementById("cmsPostForm").style.display="block";
+  document.getElementById("cmsPTitle")._previewSlug=p.slug||'';
+  var pbtn=document.getElementById("cmsPreviewBtn");
+  if(pbtn){pbtn.style.display=p.slug?"inline-flex":"none"}
+  // Restore channel selections
+  var saved=p.publish_channels||[];
+  setTimeout(function(){
+    document.querySelectorAll(".cmsChLocal").forEach(function(cb){
+      cb.checked=saved.indexOf(cb.value)>=0;
+    });
+    document.querySelectorAll(".cmsChSocial").forEach(function(cb){
+      cb.checked=saved.indexOf(cb.value)>=0;
+    });
+    cmsInitQuill(p.content||"")
+  },100);
+}
+
+function cmsCloseForm(){
+  document.getElementById("cmsPostForm").style.display="none";
+}
+
+function cmsPreviewPost(){
+  var slug=document.getElementById("cmsPTitle")._previewSlug||'';
+  if(!slug){
+    showToast("{{ _('Save draft first before preview') }}","");
+    cmsSaveDraftWithPreview();
+    return;
+  }
+  window.open('/preview/'+slug,'_blank');
+}
+
+function cmsSaveDraftWithPreview(){
+  var data=cmsGetFormData();
+  if(!data.title||!data.content||data.content==="<p><br></p>"){showToast("{{ _('Title and body are required') }}","error");return}
+  data.is_published=0;
+  data.publish_channels=[];
+  var eid=document.getElementById("cmsPEid").value;
+  if(eid)data.id=parseInt(eid);
+  showToast("{{ _('Saving...') }}","");
+  var url=eid?"/admin/cms/posts/"+eid:"/admin/cms/posts";
+  var method=eid?"PUT":"POST";
+  fetch(url,{method:method,headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify(data)}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){
+      var slug=d.data&&d.data.slug;
+      if(slug){document.getElementById("cmsPTitle")._previewSlug=slug;window.open('/preview/'+slug,'_blank')}
+      else showToast("{{ _('Saved but slug not generated') }}","success");
+    }
+    else{showToast(d.error||"{{ _('Save failed') }}","error")}
+  }).catch(function(){showToast("{{ _('Request Failed') }}","error")});
+}
+
+// ── Save Draft & Publish ──
+
+function cmsGetFormData(){
+  var body=cmsQuill?cmsQuill.root.innerHTML:"";
+  return {
+    title: document.getElementById("cmsPTitle").value.trim(),
+    author: document.getElementById("cmsPAuthor").value.trim(),
+    content: body,
+    excerpt: document.getElementById("cmsPSummary").value.trim(),
+    category: document.getElementById("cmsPCat").value,
+    slug: ""  // {{ _('Auto-generated by Backend') }}
+  };
+}
+
+function cmsGetSelectedChannels(){
+  var channels=[];
+  document.querySelectorAll(".cmsChLocal:checked").forEach(function(cb){channels.push(cb.value)});
+  document.querySelectorAll(".cmsChSocial:checked").forEach(function(cb){channels.push(cb.value)});
+  return channels;
+}
+
+function cmsSaveDraft(){
+  var data=cmsGetFormData();
+  if(!data.title||!data.content||data.content==="<p><br></p>"){showToast("{{ _('Title and body are required') }}","error");return}
+  data.is_published=0;
+  data.publish_channels=[];
+  var eid=document.getElementById("cmsPEid").value;
+  if(eid)data.id=parseInt(eid);
+  showToast("{{ _('Saving...') }}","");
+  var url=eid?"/admin/cms/posts/"+eid:"/admin/cms/posts";
+  var method=eid?"PUT":"POST";
+  fetch(url,{method:method,headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify(data)}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){
+      var slug=d.data&&d.data.slug;
+      if(slug){document.getElementById("cmsPTitle")._previewSlug=slug}
+      var pbtn=document.getElementById("cmsPreviewBtn");
+      if(pbtn&&slug){pbtn.style.display="inline-flex"}
+      showToast("{{ _('Draft saved') }}","success");cmsCloseForm();cmsLoadPosts()
+    }
+    else{showToast(d.error||"{{ _('Save failed') }}","error")}
+  }).catch(function(){showToast("{{ _('Request Failed') }}","error")});
+}
+
+function cmsPublishPost(){
+  var data=cmsGetFormData();
+  if(!data.title||!data.content||data.content==="<p><br></p>"){showToast("{{ _('Title and body are required') }}","error");return}
+  var channels=cmsGetSelectedChannels();
+  if(!channels.length){showToast("{{ _('Select at least one channel') }}","error");return}
+  data.is_published=1;
+  data.publish_channels=channels;
+  var eid=document.getElementById("cmsPEid").value;
+  if(eid)data.id=parseInt(eid);
+  showToast("{{ _('Publishing...') }}","");
+  // Step 1: save post
+  var url=eid?"/admin/cms/posts/"+eid:"/admin/cms/posts";
+  var method=eid?"PUT":"POST";
+  fetch(url,{method:method,headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify(data)}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success){showToast(d.error||"{{ _('Save failed') }}","error");return}
+    var savedId=eid||d.data.id;
+    // Check if any social platforms are selected
+    var socialChannels=channels.filter(function(ch){return ch!=='local'&&!ch.startsWith('local:')});
+    if(!socialChannels.length){
+      showToast("{{ _('Published to local category') }}","success");
+      cmsCloseForm();
+      cmsLoadPosts();
+      return;
+    }
+    // Step 2: publish to social
+    fetch("/admin/cms/posts/"+savedId+"/publish",{method:"POST",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify({channels:socialChannels,auto_publish:true})}).then(function(r2){return r2.json()}).then(function(d2){
+      if(d2.success){
+        var msgs=(d2.data.results.social||[]).map(function(r){return r.platform+": "+(r.message||r.status)});
+        showToast("{{ _('Published') }}: "+msgs.join(" | "),"success");
+      }else{showToast(d2.error||"{{ _('Social Media Publish Failed') }}","error")}
+      cmsCloseForm();
+      cmsLoadPosts();
+    }).catch(function(){showToast("{{ _('Social media publish request failed') }}","error");cmsCloseForm();cmsLoadPosts()});
+  }).catch(function(){showToast("{{ _('Save failed') }}","error")});
+}
+
+function cmsGenerateStatic(){
+  var eid=document.getElementById("cmsPEid").value;
+  var title=document.getElementById("cmsPTitle").value||"";
+  var data={action:"post"};
+  if(eid){
+    // Find slug from cached posts
+    for(var i=0;i<cmsPosts.length;i++){
+      if(cmsPosts[i].id===parseInt(eid)){data.slug=cmsPosts[i].slug;break}
+    }
+  }
+  if(!data.slug){showToast("{{ _('Save article first before generating static page') }}","error");return}
+  showToast("{{ _('Generating...') }}","");
+  fetch("/admin/content-factory/generate-static",{
+    method:"POST",
+    headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},
+    body:JSON.stringify(data)
+  }).then(function(r){return r.json()}).then(function(d){
+    if(d.success){
+      showToast("{{ _('Static Page Generated') }}: "+d.ok+" {{ _('Success') }}", "success");
+    }else{
+      showToast(d.error||"{{ _('Generation Failed') }}","error");
+    }
+  }).catch(function(){showToast("{{ _('Request Failed') }}","error")});
+}
+
+function cmsGenerateAllStatic(){
+  if(!confirm("{{ _('Generate static pages for all public articles? May take a few seconds.') }}"))return;
+  showToast("{{ _('Generating entire site...') }}","");
+  fetch("/admin/content-factory/generate-static",{
+    method:"POST",
+    headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},
+    body:JSON.stringify({action:"all"})
+  }).then(function(r){return r.json()}).then(function(d){
+    if(d.success){
+      showToast("{{ _('Static Pages Generated') }}: "+d.ok+" {{ _('Success') }}, "+d.fail+" {{ _('Failed') }}", d.fail?"error":"success");
+    }else{
+      showToast(d.error||"{{ _('Generation Failed') }}","error");
+    }
+  }).catch(function(){showToast("{{ _('Request Failed') }}","error")});
+}
+
+function cmsDelPost(id){
+  if(!confirm("{{ _('Confirm Delete Article') }} #"+id+"？"))return;
+  fetch("/admin/cms/posts/"+id,{method:"DELETE",headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){showToast("{{ _('Deleted') }}","success");cmsLoadPosts()}
+    else{showToast(d.error||"{{ _('Delete failed') }}","error")}
+  }).catch(function(){showToast("{{ _('Request Failed') }}","error")});
+}
+
+function cmsAiformat(){
+  var body=cmsQuill?cmsQuill.root.innerHTML:"";
+  var title=document.getElementById("cmsPTitle").value.trim();
+  if(!body||body==="<p><br></p>"){showToast("{{ _('Body cannot be empty') }}","error");return}
+  showToast("{{ _('AI Formatting (~10s)...') }}","");
+  fetch("/admin/content-factory/ai-format",{method:"POST",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify({content:body,title:title})}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){cmsQuill.root.innerHTML=d.formatted;showToast("{{ _('Layout complete') }}","success")}
+    else{showToast(d.error||"{{ _('Layout Failed') }}","error")}
+  }).catch(function(){showToast("{{ _('Request Failed') }}","error")});
+}
+
+function cmsAicover(){
+  var title=document.getElementById("cmsPTitle").value.trim()||"{{ _('Article Image') }}";
+  var p=prompt("{{ _('Image Description') }}（{{ _('Auto Generate if Empty') }}）:",title+" {{ _('Fintech') }} {{ _('Dark Sci-Fi') }}");
+  if(p===null)return;
+  showToast("{{ _('AI Generating Image (~30s)...') }}","");
+  fetch("/admin/content-factory/ai-cover",{method:"POST",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify({title:title,prompt:p||""})}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){
+      var img='<p><img src="'+(d.image_url?esc(d.image_url):'')+'" alt="{{ _('Add Image') }}" style="max-width:100%;border-radius:8px"></p>';
+      cmsQuill.clipboard.dangerouslyPasteHTML(cmsQuill.getLength(),img);
+      showToast("{{ _('Image inserted') }}","success")
+    }else{showToast(d.error||"{{ _('Image Attach Failed') }}","error")}
+  }).catch(function(){showToast("{{ _('Request Failed') }}","error")});
+}
+
+// ── Publish History ──
+
+window.l_publish_history=function(){
+  document.getElementById("pt").textContent="{{ _('Publish History') }}";
+  document.getElementById("mc").innerHTML='<div class="lo"><div class="s"></div>{{ _('Loading...') }}...</div>';
+  fetch("/admin/social/history?limit=100",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success){document.getElementById("mc").innerHTML='<div class="em">{{ _('Load failed') }}</div>';return}
+    var data=d.data||{};
+    var items=Array.isArray(data)?data:(data.items||[]);
+    if(!items.length){document.getElementById("mc").innerHTML='<div class="em">{{ _('No Publication Records') }}</div>';return}
+    var h='<div class="cd"><div class="st">{{ _('Publish History') }} ('+items.length+')</div><table><tr><th>{{ _('Platform') }}</th><th>{{ _('Title') }}</th><th>{{ _('Type') }}</th><th>{{ _('Status') }}</th><th>{{ _('Time') }}</th></tr>';
+    items.forEach(function(r){
+      var stHtml={published:'<span class="bdg on">{{ _('Published') }}</span>',draft:'<span class="bdg pd">{{ _('Draft') }}</span>',publishing:'<span class="bdg pd">{{ _('Publishing') }}</span>',failed:'<span class="bdg off">{{ _('Failed') }}</span>'}[r.status]||'<span class="bdg pd">'+esc(r.status||'')+'</span>';
+      h+='<tr><td>'+esc(r.platform||'')+'</td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;font-weight:600">'+esc(r.title||"-")+'</td><td style="font-size:10px">'+esc(r.content_type||'')+'</td><td>'+stHtml+'</td><td style="font-size:10px">'+(r.created_at||"").slice(0,16)+'</td></tr>';
+    });
+    h+='</table></div>';
+    document.getElementById("mc").innerHTML=h;
+  }).catch(function(){document.getElementById("mc").innerHTML='<div class="em">{{ _('Request Failed') }}</div>'});
+};
+
+var cmsHistoryVisible=false;
+function cmsToggleSocialHistory(){
+  cmsHistoryVisible=!cmsHistoryVisible;
+  var wrap=document.getElementById("cmsSocialHistoryWrap");
+  if(!cmsHistoryVisible){wrap.style.display="none";return}
+  wrap.style.display="block";
+  wrap.innerHTML='<div class="cd"><div class="s"></div>{{ _('Loading...') }}...</div>';
+  fetch("/admin/social/history?limit=50",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success||!d.data){wrap.innerHTML='<div class="cd"><div class="em">{{ _('No Publication Records') }}</div></div>';return}
+    var items=d.data.items||[];
+    if(!items.length){wrap.innerHTML='<div class="cd"><div class="em">{{ _('No Publication Records') }}</div></div>';return}
+    var h='<div class="cd"><div class="st">{{ _('Publish History') }}（{{ _('Social Media') }}）</div><table><tr><th>{{ _('Platform') }}</th><th>{{ _('Title') }}</th><th>{{ _('Type') }}</th><th>{{ _('Status') }}</th><th>{{ _('Time') }}</th></tr>';
+    items.forEach(function(r){
+      var stHtml={published:'<span class="bdg on">{{ _('Published') }}</span>',draft:'<span class="bdg pd">{{ _('Draft') }}</span>',publishing:'<span class="bdg pd">{{ _('Publishing') }}</span>',failed:'<span class="bdg off">{{ _('Failed') }}</span>'}[r.status]||'<span class="bdg pd">'+r.status+'</span>';
+      h+='<tr><td>'+r.platform+'</td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;font-weight:600">'+esc(r.title||"-")+'</td><td style="font-size:10px">'+r.content_type+'</td><td>'+stHtml+'</td><td style="font-size:10px">'+(r.created_at||"").slice(0,16)+'</td></tr>';
+    });
+    h+='</table></div>';
+    wrap.innerHTML=h;
+  }).catch(function(){wrap.innerHTML='<div class="cd"><div class="em">{{ _('Request Failed') }}</div></div>'});
+}
+
+// ── Category Management Modal ──
+
+function cmsManageCategories(){
+  var h='<div class="modal-overlay" onclick="if(event.target===this)cmsCloseModal()">';
+  h+='<div class="modal-box" style="width:500px">';
+  h+='<h3>{{ _('Column Management') }} <span style="font-size:11px;font-weight:400;color:var(--dim)">CMS {{ _('Local Publish Column') }}</span></h3>';
+  h+='<div style="margin-bottom:10px;display:flex;gap:6px">';
+  h+='<input class="in" id="catInput" placeholder="{{ _('Column Name') }}" style="flex:1">';
+  h+='<input class="in" id="catIcon" placeholder="{{ _('Icon') }}(emoji)" style="width:50px" value="📄">';
+  h+='<button class="btn bp" onclick="cmsAddCategory()">+ {{ _('Add') }}</button></div>';
+  h+='<div id="catList"><div class="lo"><div class="s"></div></div></div>';
+  h+='<div style="margin-top:10px"><button class="btn bo" onclick="cmsCloseModal()">{{ _('Close') }}</button></div>';
+  h+='</div></div>';
+  var m=document.createElement("div");
+  m.id="cmsCatModal";
+  m.innerHTML=h;
+  document.body.appendChild(m);
+  cmsReloadCategoryList();
+}
+
+function cmsReloadCategoryList(){
+  var el=document.getElementById("catList");
+  if(!el)return;
+  fetch("/admin/cms/categories",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success||!d.data){el.innerHTML='<div class="em">{{ _('Load failed') }}</div>';return}
+    var cats=d.data;
+    if(!cats.length){el.innerHTML='<div class="em">{{ _('No Columns') }}，{{ _('Add') }}</div>';return}
+    var h='<table><tr><th>{{ _('Order') }}</th><th>{{ _('Icon') }}</th><th>{{ _('Name') }}</th><th>{{ _('Status') }}</th><th>{{ _('Action') }}</th></tr>';
+    cats.forEach(function(c,i){
+      var st=c.is_active?'<span class="bdg on">{{ _('Enabled') }}</span>':'<span class="bdg off">{{ _('Deactivate') }}</span>';
+      h+='<tr>';
+      h+='<td style="font-size:10px">'+(i+1)+'</td>';
+      h+='<td style="font-size:16px">'+esc(c.icon||'📄')+'</td>';
+      h+='<td>'+esc(c.name)+'</td>';
+      h+='<td>'+st+'</td>';
+      h+='<td>';
+      h+='<button class="btn bo bs" onclick="cmsEditCategory('+c.id+','+c.is_active+')">'+(c.is_active?'{{ _('Deactivate') }}':'{{ _('Enabled') }}')+'</button> ';
+      h+='<button class="btn bo bs" onclick="cmsDelCategory('+c.id+',\''+esc(c.name)+'\')">{{ _('Delete') }}</button>';
+      h+='</td></tr>';
+    });
+    h+='</table>';
+    el.innerHTML=h;
+  }).catch(function(){var el=document.getElementById("catList");if(el)el.innerHTML='<div class="em">{{ _('Request Failed') }}</div>'});
+}
+
+function cmsAddCategory(){
+  var name=document.getElementById("catInput").value.trim();
+  if(!name){showToast("{{ _('Enter category name') }}","error");return}
+  var icon=document.getElementById("catIcon").value.trim()||"📄";
+  fetch("/admin/cms/categories",{method:"POST",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify({name:name,icon:icon})}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){showToast("{{ _('Added') }}","success");document.getElementById("catInput").value="";cmsReloadCategoryList()}
+    else{showToast(d.error||"{{ _('Add Failed') }}","error")}
+  }).catch(function(){showToast("{{ _('Request Failed') }}","error")});
+}
+
+function cmsEditCategory(id,wasActive){
+  fetch("/admin/cms/categories/"+id,{method:"PUT",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify({is_active:wasActive?0:1})}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){showToast("{{ _('Updated') }}","success");cmsReloadCategoryList()}
+    else{showToast(d.error||"{{ _('Update Failed') }}","error")}
+  }).catch(function(){showToast("{{ _('Request Failed') }}","error")});
+}
+
+function cmsDelCategory(id,name){
+  if(!confirm("{{ _('Confirm Delete Column') }}「"+name+"」？"))return;
+  fetch("/admin/cms/categories/"+id,{method:"DELETE",headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){showToast("{{ _('Deleted') }}","success");cmsReloadCategoryList()}
+    else{showToast(d.error||"{{ _('Delete failed') }}","error")}
+  }).catch(function(){showToast("{{ _('Request Failed') }}","error")});
+}
+
+function cmsCloseModal(){
+  var m=document.getElementById("cmsCatModal");
+  if(m)m.remove();
+}
+
+// ============================
+// {{ _('Social Push') }}
+// ============================

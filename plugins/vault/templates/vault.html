@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vault — VeroRun</title>
+    <link rel="stylesheet" href="/admin/static/css/themes.css">
+    <link rel="stylesheet" href="/admin/vault/static/vault.css">
+</head>
+<body>
+
+<div class="vault-dashboard">
+
+    {% include 'vault_nav.html' %}
+
+    <!-- Status Bar -->
+    <div class="vault-status-bar">
+        <div class="status-card">
+            <span class="status-label">Health Score</span>
+            <span class="status-value score" id="healthScore">--</span>
+        </div>
+        <div class="status-card">
+            <span class="status-label">Storage Used</span>
+            <span class="status-value" id="storageUsed">--</span>
+        </div>
+        <div class="status-card">
+            <span class="status-label">Last Backup</span>
+            <span class="status-value" id="lastBackup" style="font-size:1rem">--</span>
+        </div>
+        <div class="status-card">
+            <span class="status-label">Next Scheduled</span>
+            <span class="status-value" id="nextSchedule" style="font-size:1rem">--</span>
+        </div>
+    </div>
+
+    <!-- Action Bar -->
+    <div class="vault-actions">
+        <button class="btn btn-primary" id="btnBackupNow">
+            <span class="btn-icon">+</span> Backup Now
+        </button>
+    </div>
+
+    <!-- Charts Row -->
+    <div class="chart-row">
+        <div class="card chart-card">
+            <div class="card-header">
+                <h3>Backup Size Trend</h3>
+            </div>
+            <div id="chartTrend" class="chart-container"></div>
+        </div>
+        <div class="card chart-card">
+            <div class="card-header">
+                <h3>Storage Growth</h3>
+            </div>
+            <div id="chartStorage" class="chart-container"></div>
+        </div>
+    </div>
+
+    <!-- Backup Archives Table -->
+    <div class="card">
+        <div class="card-header">
+            <h3>Backup Archives</h3>
+            <div class="card-header-actions">
+                <input type="text" class="search-input" placeholder="Search..." id="backupSearch">
+                <button class="btn btn-outline btn-sm" id="btnCleanup">Cleanup</button>
+            </div>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Label</th>
+                        <th>Type</th>
+                        <th>Size</th>
+                        <th>Status</th>
+                        <th>Created</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="backupTbody">
+                    <tr><td colspan="6" class="empty-state">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+
+<script src="/admin/static/lib/echarts.min.js"></script>
+<script src="/admin/vault/static/vault.js"></script>
+</body>
+</html>

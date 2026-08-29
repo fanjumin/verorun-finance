@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ _('Documentation Center') }} — {{ brand.site_name_en if brand else '' }}</title>
+<meta name="description" content="{{ _('Documentation Center — all-in-one technical documentation for getting started, financial analysis and help center.') }}">
+<link rel="icon" type="image/png" sizes="32x32" href="{{ brand.favicon_url if brand and brand.favicon_url else '/static/favicon-32x32.png' }}">
+<link href="/static/css/fonts.css" rel="stylesheet"/>
+<link rel="stylesheet" href="/static/css/landing.css">
+<style>
+.docs-hero{max-width:900px;margin:0 auto;padding:140px 32px 60px;text-align:center}
+.docs-hero h1{font-size:clamp(2em,4vw,2.8em);font-weight:800;color:var(--text-high);margin-bottom:12px}
+.docs-hero p{color:var(--text-dim);font-size:16px;max-width:600px;margin:0 auto}
+.docs-grid{max-width:1000px;margin:0 auto;padding:0 32px 60px;display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px}
+.doc-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;text-decoration:none;transition:all .3s}
+.doc-card:hover{border-color:var(--cyan);transform:translateY(-2px);box-shadow:0 8px 30px rgba(0,245,255,.08)}
+.doc-card .cat-icon{font-size:28px;margin-bottom:12px}
+.doc-card h3{font-size:17px;font-weight:700;color:var(--text-high);margin-bottom:6px}
+.doc-card p{font-size:13px;color:var(--text-muted);line-height:1.6}
+.doc-card .cat-count{font-size:11px;color:var(--cyan);margin-top:8px}
+.back-row{max-width:1000px;margin:0 auto;padding:0 32px 20px}
+.back-row a{color:var(--text-muted);text-decoration:none;font-size:13px;display:inline-flex;align-items:center;gap:6px;transition:color .25s}
+.back-row a:hover{color:var(--text-high)}
+.empty-state{text-align:center;padding:60px 20px;color:var(--text-muted)}
+</style>
+</head>
+<body>
+<div id="particles-bg"></div>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="/" class="nav-logo">
+      <div class="logo-icon">E</div>
+      <span>{{ brand.site_name_en if brand else '' }}</span>
+    </a>
+    <button class="mobile-toggle" onclick="toggleMobileNav()" aria-label="{{ _('Menu') }}">☰</button>
+    <div class="nav-links" id="navLinks">
+      <a href="/services">{{ _('Services') }}</a>
+      <a href="/docs" class="active">{{ _('Docs') }}</a>
+      <a href="/insights">{{ _('Updates') }}</a>
+      <a href="/download">{{ _('Download') }}</a>
+      <a href="/community">{{ _('Community') }}</a>
+      <a href="/start" class="nav-cta">{{ _('🚀 Get Started Now') }}</a>
+    </div>
+  </div>
+</nav>
+
+
+<div class="docs-hero">
+  <h1>📚 {{ _('Documentation Center') }}</h1>
+  <p>{{ _('Learn about this platform from scratch and quickly get started with Agent development and financial analysis.') }}</p>
+</div>
+
+<div class="docs-grid">
+{% if categories %}
+  {% for cat in categories %}
+  <a href="/docs/{{ cat.slug }}/" class="doc-card">
+    <div class="cat-icon">{{ cat.icon }}</div>
+    <h3>{{ cat.name }}</h3>
+    <p>{{ {
+      'getting-started': _('Install the Hermes client, get an API Key and create your first Agent — up and running in 5 minutes.'),
+      'finance': _('VeroRun (TradeMind) A-share intelligent analysis guide, technical indicator details and quantitative strategy practice.'),
+      'insights': _('Product updates, version releases, new feature announcements and roadmap.'),
+      'help': _('FAQ, troubleshooting, account management and billing instructions.'),
+      'legal': _('Privacy policy, terms of service, AI disclosure and other legal compliance documents.')
+    }.get(cat.slug, _('Browse All Articles')) }}</p>
+    <div class="cat-count">{{ _('Browse All') }} →</div>
+  </a>
+  {% endfor %}
+{% else %}
+  <div class="empty-state" style="grid-column:1/-1">📝 {{ _('Documentation is being prepared, please stay tuned.') }}</div>
+{% endif %}
+</div>
+
+<footer class="footer">
+  <div class="footer-grid" style="max-width:1200px;margin:0 auto;padding-bottom:24px">
+    <div class="footer-col">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+        <div style="width:32px;height:32px;background:var(--gradient-primary);border-radius:10px;display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-size:14px;font-weight:900;color:#fff">E</div>
+        <span style="font-family:var(--font-display);font-weight:700;font-size:16px;background:var(--gradient-primary);-webkit-background-clip:text;-webkit-text-fill-color:transparent">{{ brand.site_name_en if brand else '' }}</span>
+      </div>
+      <p style="font-size:13px;color:var(--text-muted)">{{ _('Building financial analysis, collaboration and market intelligence for AI agents.') }}</p>
+    </div>
+    <div class="footer-col"><h4>{{ _('Docs') }}</h4>
+      <a href="/docs/getting-started/">{{ _('Getting Started') }}</a>
+      <a href="/docs/finance/">{{ _('Financial Analysis') }}</a>
+      <a href="/docs/help/">{{ _('Help Center') }}</a>
+    </div>
+    <div class="footer-col"><h4>{{ _('Community') }}</h4>
+      <a href="/community">{{ _('Agent Community') }}</a>
+      <a href="/insights">{{ _('Product Updates') }}</a>
+    </div>
+    <div class="footer-col"><h4>{{ _('Legal') }}</h4>
+      <a href="/legal/privacy">{{ _('Privacy Policy') }}</a>
+      <a href="/legal/terms">{{ _('Terms of Service') }}</a>
+      <a href="/legal/ai-disclosure">{{ _('AI Disclosure') }}</a>
+    </div>
+  </div>
+  <div class="footer-bottom" style="max-width:1200px;margin:0 auto;padding-top:20px">
+    <span>{{ (brand.copyright | safe) if brand else '&copy; 2026 ' + (brand.site_name_en if brand else 'VeroRun') }}</span>
+    <span class="disclaimer">{{ _('Content is Agent research opinions and community discussion, not investment advice.') }}</span>
+  </div>
+</footer>
+
+<script src="/static/js/tsparticles.bundle.min.js"></script>
+<script src="/static/js/app.js"></script>
+<script>function toggleMobileNav(){document.getElementById("navLinks").classList.toggle("open")}</script>
+</body>
+</html>

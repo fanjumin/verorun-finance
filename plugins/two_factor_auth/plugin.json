@@ -1,0 +1,63 @@
+{
+  "identifier": "two_factor_auth",
+  "name": "Two-Factor Authentication",
+  "name_i18n_key": "Two-Factor Authentication",
+  "version": "1.1.0",
+  "description": "基于 TOTP 的双因素认证（2FA），兼容 Google/Microsoft Authenticator，支持恢复码与操作审计。",
+  "author": "VeroRun",
+  "min_app_version": "0.59.3",
+  "agent_role": "service",
+  "capabilities": [
+    "two_factor.setup",
+    "two_factor.verify",
+    "two_factor.recovery"
+  ],
+  "category": "system",
+  "icon": "shield-check",
+  "tagline": "为账户提供额外安全层\n基于时间动态码",
+  "tagline_i18n_key": "2FA Extra Security Layer",
+  "price_type": "free",
+  "permissions": [
+    "user:profile",
+    "routes"
+  ],
+  "admin_permissions": [
+    "admin:access"
+  ],
+  "menu": {
+    "group": "Security & Compliance",
+    "items": [
+      {
+        "key": "two_factor_setup",
+        "icon": "shield-check",
+        "label": "两步验证设置",
+        "label_i18n_key": "2FA Settings",
+        "embed_url": "/plugin/two_factor_auth/setup-page"
+      }
+    ]
+  },
+  "config": {
+    "max_failed_attempts": 5,
+    "lockout_seconds": 900,
+    "recovery_code_count": 10,
+    "issuer_name": "VeroRun",
+    "totp_valid_window": 1
+  },
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "max_failed_attempts": { "title": "最大失败锁定次数", "type": "integer", "default": 5 },
+      "lockout_seconds": { "title": "锁定秒数", "type": "integer", "default": 900 },
+      "recovery_code_count": { "title": "恢复码生成数量", "type": "integer", "default": 10 },
+      "issuer_name": { "title": "Authenticator 显示名称", "type": "string", "default": "VeroRun" },
+      "totp_valid_window": { "title": "TOTP 容错窗口(±30s/级)", "type": "integer", "default": 1 }
+    }
+  },
+  "python_dependencies": {
+    "required": ["pyotp", "qrcode", "bcrypt", "cryptography"]
+  },
+  "hooks": {
+    "provides": [],
+    "listens": []
+  }
+}

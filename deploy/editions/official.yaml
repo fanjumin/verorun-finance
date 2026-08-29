@@ -1,0 +1,10 @@
+# VeroRun 官方版发行配置（服务器版：默认全开，判定兜底）
+# 未设 VR_EDITION 的老部署一律按 official 处理，不破坏现有部署。
+# 官方版不经 sync-to-* 流水线分发（verorun-code 直出），本文件仅作为
+# edition 服务门控的单一事实源，供 is_service_enabled() 消费。
+edition: official
+label: 官方版
+services:
+  user_login: true
+  user_console: true
+  main_site: true

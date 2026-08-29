@@ -1,0 +1,70 @@
+{
+  "name": "Wishlist",
+  "name_i18n_key": "plugin.name",
+  "identifier": "wishlist",
+  "python_dependencies": {
+    "required": [],
+    "optional": {}
+  },
+  "version": "1.6.3",
+  "description": "收藏/心愿单 — 用户收藏商品、管理心愿清单",
+  "author": "VeroRun",
+  "min_app_version": "0.10.0",
+  "agent_role": "business",
+  "capabilities": [
+    "wishlist.add",
+    "wishlist.remove",
+    "wishlist.list",
+    "wishlist.sync"
+  ],
+  "category": "shop",
+  "icon": "heart",
+  "icon_url": "",
+  "screenshots": [],
+  "readme_url": "",
+  "tags": [
+    "wishlist",
+    "favorites",
+    "ecommerce"
+  ],
+  "dependencies": {},
+  "enabled": true,
+  "config": {},
+  "permissions": [
+    "api:read",
+    "user:profile"
+  ],
+  "hooks": {
+    "provides": [
+      "wishlist/sync"
+    ],
+    "listens": []
+  },
+  "dashboard": {
+    "stats": [
+      {
+        "key": "total_favorites",
+        "title": "总收藏数",
+        "type": "counter"
+      },
+      {
+        "key": "active_users",
+        "title": "有收藏的用户数",
+        "type": "counter"
+      }
+    ]
+  },
+  "menu": null,
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "max_page_size": {
+        "title": "最大分页大小",
+        "type": "integer",
+        "default": 50,
+        "minimum": 1,
+        "maximum": 200
+      }
+    }
+  }
+}

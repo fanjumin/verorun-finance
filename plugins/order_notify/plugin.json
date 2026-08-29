@@ -1,0 +1,58 @@
+{
+  "name": "Order Notifications",
+  "name_i18n_key": "plugin.name",
+  "identifier": "order_notify",
+  "python_dependencies": {
+    "required": [],
+    "optional": {}
+  },
+  "version": "1.4.3",
+  "description": "订单通知 — 下单/支付成功/发货/退款时自动发送站内信和邮件通知",
+  "author": "VeroRun",
+  "min_app_version": "0.10.0",
+  "agent_role": "finance",
+  "capabilities": [
+    "order.notify.send",
+    "order.notify.track"
+  ],
+  "category": "shop",
+  "icon": "bell",
+  "tags": [
+    "notification",
+    "order"
+  ],
+  "dependencies": {},
+  "config": {},
+  "permissions": [
+    "notification.send",
+    "email.send"
+  ],
+  "hooks": {
+    "provides": [],
+    "listens": [
+      "order/created",
+      "order/paid",
+      "order/shipped",
+      "order/refunded"
+    ]
+  },
+  "dashboard": {
+    "stats": [
+      {
+        "key": "total_notifications",
+        "title": "通知总数",
+        "type": "counter"
+      },
+      {
+        "key": "today_notifications",
+        "title": "今日通知",
+        "type": "counter"
+      }
+    ]
+  },
+  "menu": null,
+  "settings_schema": {
+    "type": "object",
+    "properties": {}
+  }
+}

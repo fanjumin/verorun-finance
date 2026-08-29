@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>{{ _('AI Experience — VeroRun AI · Free AI Website Building Trial') }}</title>
+<meta name="description" content="{{ _('Experience VeroRun AI website building, AI customer service and AI content generation for free — see the full AI-driven website building workflow.') }}">
+<link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">
+<link href="/static/css/fonts.css" rel="stylesheet"/>
+<link rel="stylesheet" href="/static/css/landing.css">
+<style>
+/* ── Nav ── */
+.nav{position:fixed;top:0;left:0;right:0;z-index:1000;background:rgba(5,5,8,.82);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border-bottom:1px solid rgba(255,255,255,.05)}.nav-inner{max-width:var(--container-wide);margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 24px;height:66px}
+.nav-logo{display:flex;align-items:center;gap:10px;text-decoration:none;font-weight:700;font-size:18px;color:var(--text-high);flex-shrink:0}.nav-logo .icon{width:32px;height:32px;background:var(--gradient-primary);border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;font-weight:800;font-family:var(--font-tech)}
+.nav-links{display:flex;align-items:center;gap:4px}.nav-links a{color:var(--text-dim);text-decoration:none;font-size:13px;font-weight:500;padding:8px 14px;border-radius:8px;transition:all .2s}.nav-links a:hover{color:var(--text-high);background:rgba(255,255,255,.04)}.nav-links a.active{color:#fff;background:rgba(99,102,241,.12)}
+.nav-cta{padding:8px 20px !important;background:var(--gradient-primary);color:#fff !important;border-radius:8px;font-weight:600 !important}.nav-cta:hover{transform:translateY(-1px);box-shadow:0 4px 20px rgba(99,102,241,.35)}
+.nav-toggle{display:none;background:none;border:none;color:var(--text-dim);font-size:22px;cursor:pointer;padding:8px}
+@media(max-width:900px){
+  .nav-links{display:none}.nav-toggle{display:block}
+  #mb-menu.nav-open{display:flex}
+  #mb-menu{display:none;position:fixed;top:66px;left:0;right:0;flex-direction:column;background:rgba(5,5,8,.98);padding:16px 24px 24px;border-bottom:1px solid var(--border);z-index:999}
+  #mb-menu a{color:var(--text-dim);text-decoration:none;font-size:15px;font-weight:500;padding:12px 0;border-bottom:1px solid rgba(255,255,255,.04)}#mb-menu a:last-child{border:none}
+  #mb-menu .mb-cta{margin-top:8px;text-align:center;background:var(--gradient-primary);color:#fff !important;border-radius:8px;padding:12px !important;font-weight:600}
+}
+
+/* ── Hero ── */
+.page-hero{text-align:center;padding:140px 32px 60px;position:relative;overflow:hidden}
+.page-hero .bg{position:absolute;inset:0;z-index:0}
+.page-hero .bg .s{position:absolute;width:500px;height:500px;border-radius:50%;filter:blur(100px);opacity:.1}
+.page-hero .bg .s1{top:-200px;right:-100px;background:var(--gradient-primary)}
+.page-hero .bg .s2{bottom:-200px;left:-100px;background:var(--gradient-electric)}
+.page-hero .h-content{position:relative;z-index:2}
+.page-hero h1{font-size:clamp(2em,3.5vw,2.8em);font-weight:800;letter-spacing:-1px;margin-bottom:12px;color:var(--text-high)}
+.page-hero h1 .g{background:var(--gradient-primary);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.page-hero p{font-size:14px;color:var(--text-dim);max-width:var(--container-sm);margin:0 auto}
+
+/* ── Experience Grid ── */
+.exp-section{padding:0 32px 80px;max-width:var(--container-main);margin:0 auto}
+.exp-tabs{display:flex;gap:4px;margin-bottom:32px;background:var(--bg-elevated);padding:4px;border-radius:12px;overflow-x:auto}
+.exp-tab{padding:12px 24px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;border:none;background:transparent;color:var(--text-dim);transition:all .2s;white-space:nowrap;font-family:inherit}
+.exp-tab:hover{color:var(--text)}
+.exp-tab.active{background:var(--indigo);color:#fff}
+.exp-content{display:none}
+.exp-content.active{display:block;animation:fadeIn .4s ease}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+
+/* ── Chat Demo ── */
+.chat-demo{background:var(--bg-glass);backdrop-filter:blur(16px);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;max-width:var(--container-sm);margin:0 auto}
+.chat-header{background:var(--bg-elevated);padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
+.chat-header .dot{width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block;animation:pulse 2s infinite}
+.chat-header span{font-size:13px;font-weight:600;color:var(--text)}
+.chat-body{padding:20px;min-height:360px;max-height:400px;overflow-y:auto}
+.chat-msg{margin-bottom:16px;display:flex;gap:10px}
+.chat-msg.bot .avatar{width:32px;height:32px;border-radius:8px;background:var(--indigo);display:flex;align-items:center;justify-content:center;font-size:14px;color:#fff;flex-shrink:0}
+.chat-msg.user .avatar{width:32px;height:32px;border-radius:8px;background:var(--cyan);display:flex;align-items:center;justify-content:center;font-size:14px;color:#0a0a12;flex-shrink:0}
+.chat-msg .bubble{background:var(--bg-elevated);padding:12px 16px;border-radius:12px 12px 12px 4px;font-size:13px;line-height:1.6;color:var(--text);max-width:80%}
+.chat-msg.user .bubble{background:rgba(99,102,241,.12);border-radius:12px 12px 4px 12px;color:var(--text-high)}
+.chat-msg .bubble .typing{display:inline-flex;gap:4px;align-items:center}
+.chat-msg .bubble .typing span{width:6px;height:6px;border-radius:50%;background:var(--text-dim);animation:typingBounce 1.4s infinite}
+.chat-msg .bubble .typing span:nth-child(2){animation-delay:.2s}
+.chat-msg .bubble .typing span:nth-child(3){animation-delay:.4s}
+.chat-footer{display:flex;padding:12px 16px;border-top:1px solid var(--border);gap:8px}
+.chat-footer input{flex:1;background:var(--bg-elevated);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:13px;color:var(--text);outline:none;transition:all .2s;font-family:inherit}
+.chat-footer input:focus{border-color:var(--indigo)}
+.chat-footer button{padding:10px 20px;border-radius:8px;border:none;background:var(--indigo);color:#fff;font-size:13px;font-weight:600;cursor:pointer;transition:all .2s;font-family:inherit}
+.chat-footer button:hover{background:#7c3aed}
+.chat-footer button:disabled{opacity:.5;cursor:default}
+.chat-suggestions{display:flex;gap:6px;flex-wrap:wrap;padding:8px 16px 12px;border-top:1px solid var(--border)}
+.chat-suggestions button{font-size:11px;padding:6px 14px;border-radius:16px;border:1px solid var(--border);background:transparent;color:var(--text-dim);cursor:pointer;transition:all .2s;font-family:inherit}
+.chat-suggestions button:hover{border-color:var(--indigo);color:var(--indigo)}
+
+/* ── Content Gen Demo ── */
+.content-demo{background:var(--bg-glass);backdrop-filter:blur(16px);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;max-width:var(--container-sm);margin:0 auto}
+.content-demo .cd-header{background:var(--bg-elevated);padding:14px 20px;border-bottom:1px solid var(--border)}
+.content-demo .cd-header h3{font-size:14px;font-weight:600;color:var(--text)}
+.content-demo .cd-body{padding:24px}
+.cd-preview{border:1px solid var(--border);border-radius:8px;padding:24px;margin-bottom:20px;min-height:180px;background:var(--bg-deep)}
+.cd-preview .generated{font-size:14px;line-height:1.8;color:var(--text-dim)}
+.cd-preview .generated .highlight{color:var(--cyan);font-weight:600}
+.cd-preview .generated .placeholder{color:var(--text-muted);animation:blink 1s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+.cd-inputs{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
+.cd-inputs input,.cd-inputs select{padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg-elevated);color:var(--text);font-size:13px;outline:none;transition:all .2s;font-family:inherit}
+.cd-inputs input:focus,.cd-inputs select:focus{border-color:var(--indigo)}
+.cd-inputs select option{background:var(--bg-elevated);color:var(--text)}
+.cd-actions{display:flex;gap:8px;justify-content:center}
+.cd-actions button{padding:10px 24px;border-radius:8px;border:none;background:var(--indigo);color:#fff;font-size:13px;font-weight:600;cursor:pointer;transition:all .2s;font-family:inherit}
+.cd-actions button:hover{background:#7c3aed}
+.cd-actions button:disabled{opacity:.5;cursor:default}
+.cd-actions .cd-copy{padding:10px 24px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text-dim);font-size:13px;font-weight:500;cursor:pointer;transition:all .2s;font-family:inherit}
+.cd-actions .cd-copy:hover{border-color:var(--indigo);color:var(--indigo)}
+
+/* ── Site Gen Demo ── */
+.site-demo{background:var(--bg-glass);backdrop-filter:blur(16px);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;max-width:var(--container-sm);margin:0 auto;padding:32px;text-align:center}
+.site-demo .sg-form{max-width:var(--container-sm);margin:0 auto 28px}
+.site-demo .sg-form input{width:100%;padding:12px 16px;border-radius:8px;border:1px solid var(--border);background:var(--bg-elevated);color:var(--text);font-size:14px;outline:none;margin-bottom:12px;font-family:inherit;box-sizing:border-box}
+.site-demo .sg-form input:focus{border-color:var(--indigo)}
+.site-demo .sg-form .sg-tags{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin-bottom:16px}
+.site-demo .sg-form .sg-tags button{padding:6px 16px;border-radius:16px;border:1px solid var(--border);background:transparent;color:var(--text-dim);font-size:12px;cursor:pointer;transition:all .2s;font-family:inherit}
+.site-demo .sg-form .sg-tags button.selected{border-color:var(--indigo);background:rgba(99,102,241,.12);color:var(--indigo)}
+.site-demo .sg-form .sg-tags button:hover{border-color:var(--indigo)}
+.site-demo .sg-form .sg-gen{padding:12px 36px;border-radius:8px;border:none;background:var(--gradient-primary);color:#fff;font-size:14px;font-weight:600;cursor:pointer;transition:all .2s;font-family:inherit}
+.site-demo .sg-form .sg-gen:hover{box-shadow:0 4px 20px rgba(99,102,241,.3);transform:translateY(-1px)}
+.site-demo .sg-form .sg-gen:disabled{opacity:.5;cursor:default;transform:none}
+.site-preview{aspect-ratio:16/10;border:1px solid var(--border);border-radius:8px;overflow:hidden;position:relative;background:var(--bg-deep)}
+.site-preview .prep-content{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px;transition:all .5s}
+.site-preview .prep-content .prep-title{font-size:22px;font-weight:700;margin-bottom:8px;color:var(--text-high);font-family:var(--font-display)}
+.site-preview .prep-content .prep-desc{font-size:13px;color:var(--text-dim);margin-bottom:24px}
+.site-preview .prep-content .prep-nav{display:flex;gap:24px;margin-bottom:24px}
+.site-preview .prep-content .prep-nav span{font-size:12px;color:var(--text-muted)}
+.site-preview .prep-content .prep-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;width:100%;max-width:500px}
+.site-preview .prep-content .prep-cards div{aspect-ratio:16/10;border-radius:6px;background:var(--bg-elevated);border:1px solid var(--border)}
+
+/* ── Shared ── */
+.exp-intro{text-align:center;margin-bottom:40px}
+.exp-intro h2{font-size:clamp(1.3em,2vw,1.6em);font-weight:700;margin-bottom:8px;color:var(--text-high)}
+.exp-intro p{font-size:13px;color:var(--text-dim);max-width:var(--container-sm);margin:0 auto}
+
+/* ── Footer ── */
+.footer{background:var(--bg-elevated);border-top:1px solid var(--border);padding:60px 32px 32px}
+.footer-grid{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:40px;max-width:var(--container-main);margin:0 auto}
+.footer-brand .footer-logo{font-size:18px;font-weight:800;font-family:var(--font-display);background:var(--gradient-primary);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:12px}
+.footer-brand p{font-size:13px;color:var(--text-dim);line-height:1.6;max-width:var(--container-text)}
+.footer-col h4{font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:16px;text-transform:uppercase;letter-spacing:1px}
+.footer-col a{display:block;color:var(--text-dim);text-decoration:none;font-size:13px;padding:5px 0;transition:color .2s}
+.footer-col a:hover{color:var(--cyan)}
+.footer-bottom{text-align:center;padding-top:32px;margin-top:32px;border-top:1px solid var(--border);font-size:12px;color:var(--text-muted)}
+
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+@keyframes typingBounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+
+@media(max-width:768px){
+  .nav-links,.nav-actions .nav-btn-outline{display:none}
+  .nav-mobile-toggle{display:block}
+  .nav-toggle{display:block}
+  .page-hero{padding:100px 20px 40px}
+  .exp-section{padding:0 20px 60px}
+  .cd-inputs{grid-template-columns:1fr}
+  .footer-grid{grid-template-columns:1fr}
+  .exp-tabs{overflow-x:auto}
+}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="/" class="nav-logo"><div class="icon">AI</div><span>{{ brand.site_name_en if brand else 'VeroRun' }}</span></a>
+    <div class="nav-links" id="nl">
+      <a href="/">{{ _('Home') }}</a>
+      <a href="/ai-matrix">{{ _('AI Matrix') }}</a>
+      <a href="/services">{{ _('Services') }}</a>
+      <a href="/shop">{{ _('Mall') }}</a>
+      <a href="/cases">{{ _('Cases') }}</a>
+  <a href="/ai-experience" class="active">{{ _('AI Experience') }}</a>
+      <a href="/knowledge">{{ _('Help') }}</a>
+      <a href="/register" class="nav-cta">{{ _('Start Free') }}</a>
+    </div>
+    <button class="nav-toggle" onclick="tNM()" aria-label="{{ _('Menu') }}">☰</button>
+  </div>
+</nav>
+<div id="mb-menu">
+  <a href="/">{{ _('Home') }}</a>
+  <a href="/ai-matrix">{{ _('AI Matrix') }}</a>
+  <a href="/services">{{ _('Services') }}</a>
+  <a href="/shop">{{ _('Mall') }}</a>
+  <a href="/cases">{{ _('Cases') }}</a>
+  <a href="/ai-experience">{{ _('AI Experience') }}</a>
+  <a href="/knowledge">{{ _('Help') }}</a>
+  <a href="/register" class="mb-cta">{{ _('Start Free') }}</a>
+</div>
+
+<section class="page-hero">
+  <div class="bg">
+    <div class="s s1"></div>
+    <div class="s s2"></div>
+  </div>
+  <div class="h-content">
+    <h1>{{ _('Free Trial of') }} <span class="g">{{ _('AI Website Building') }}</span></h1>
+    <p>{{ _('No registration needed — experience the power of AI website building right now') }}</p>
+  </div>
+</section>
+
+<section class="exp-section">
+  <div class="exp-tabs">
+    <button class="exp-tab active" onclick="switchTab('chat')">💬 {{ _('AI Customer Service Chat') }}</button>
+    <button class="exp-tab" onclick="switchTab('content')">✍️ {{ _('AI Content Generation') }}</button>
+    <button class="exp-tab" onclick="switchTab('site')">🌐 {{ _('AI Website Generation') }}</button>
+  </div>
+
+  <!-- Tab: Chat -->
+  <div class="exp-content active" id="tab-chat">
+    <div class="exp-intro">
+      <h2>{{ _('AI Smart Customer Service') }}</h2>
+      <p>{{ _('Online 24/7, automatically answers visitor questions and identifies potential customers') }}</p>
+    </div>
+    <div class="chat-demo">
+      <div class="chat-header">
+        <span class="dot"></span>
+        <span>{{ _('VeroRun Smart Customer Service') }} <span style="font-size:11px;color:var(--text-muted);font-weight:400">· {{ _('Online') }}</span></span>
+      </div>
+      <div class="chat-body" id="chatBody">
+        <div class="chat-msg bot">
+          <div class="avatar">🤖</div>
+          <div class="bubble">{{ _("Hello! I'm the VeroRun AI customer service. Ask me about website building, AI website building, pricing plans and more. Try asking:") }}<br><br>• "{{ _('How much does a website cost?') }}"<br>• "{{ _('How long does AI website building take?') }}"<br>• "{{ _('Can I use a custom domain?') }}"</div>
+        </div>
+      </div>
+      <div class="chat-suggestions">
+        <button onclick='quickChat({{ _('How much does a website cost?') | tojson }})'>{{ _('Pricing') }}</button>
+        <button onclick='quickChat({{ _('How long does AI website building take?') | tojson }})'>{{ _('Build Timeline') }}</button>
+        <button onclick='quickChat({{ _('Can I try it for free?') | tojson }})'>{{ _('Free Trial') }}</button>
+      </div>
+      <div class="chat-footer">
+        <input type="text" id="chatInput" placeholder="{{ _('Enter your question...') }}" onkeydown="if(event.key==='Enter')sendChat()">
+        <button onclick="sendChat()" id="chatBtn">{{ _('Send') }}</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab: Content -->
+  <div class="exp-content" id="tab-content">
+    <div class="exp-intro">
+      <h2>{{ _('AI Content Generation') }}</h2>
+      <p>{{ _('Enter a topic and AI automatically generates marketing copy, SEO content and social media posts') }}</p>
+    </div>
+    <div class="content-demo">
+      <div class="cd-header"><h3>{{ _('AI Marketing Copy Generation') }}</h3></div>
+      <div class="cd-body">
+        <div class="cd-preview" id="contentPreview">
+          <div class="generated" style="color:var(--text-muted);text-align:center;margin-top:40px">
+            {{ _('Enter product or service info, then click Generate') }}<br>
+            <span style="font-size:12px">{{ _('AI will create professional marketing copy for you') }}</span>
+          </div>
+        </div>
+        <div class="cd-inputs">
+          <input type="text" id="topicInput" placeholder="{{ _('Product/service name (e.g. AI website building)') }}" value="{{ _('AI Website Building Service') }}">
+          <select id="styleSelect">
+            <option value="professional">{{ _('Professional Business Style') }}</option>
+            <option value="friendly" selected>{{ _('Friendly Natural Style') }}</option>
+            <option value="viral">{{ _('Viral Marketing Style') }}</option>
+            <option value="technical">{{ _('Technical Analysis Style') }}</option>
+          </select>
+        </div>
+        <div class="cd-actions">
+          <button onclick="genContent()" id="genBtn">{{ _('Generate Copy') }}</button>
+          <button class="cd-copy" onclick="copyContent()">{{ _('Copy') }}</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab: Site -->
+  <div class="exp-content" id="tab-site">
+    <div class="exp-intro">
+      <h2>{{ _('AI Website Generation') }}</h2>
+      <p>{{ _('Enter your business info and preview the AI-generated website homepage in 3 seconds') }}</p>
+    </div>
+    <div class="site-demo">
+      <div class="sg-form">
+        <input type="text" id="companyInput" placeholder="{{ _('Enter company/brand name') }}" value="{{ _('Star Tech') }}">
+        <div class="sg-tags">
+          <button onclick='selectTag(this,{{ _('Technology') | tojson }})' class="selected">🌐 {{ _('Technology') }}</button>
+          <button onclick='selectTag(this,{{ _('E-commerce') | tojson }})'>🛒 {{ _('E-commerce') }}</button>
+          <button onclick='selectTag(this,{{ _('Education') | tojson }})'>📚 {{ _('Education') }}</button>
+          <button onclick='selectTag(this,{{ _('Restaurant') | tojson }})'>🍜 {{ _('Restaurant') }}</button>
+          <button onclick='selectTag(this,{{ _('Medical') | tojson }})'>🏥 {{ _('Medical') }}</button>
+        </div>
+        <button class="sg-gen" onclick="genSite()" id="genSiteBtn">🎯 {{ _('AI Generate Website') }}</button>
+      </div>
+      <div class="site-preview" id="sitePreview">
+        <div class="prep-content">
+          <div class="prep-title" id="prepTitle">{{ _('Star Tech') }}</div>
+          <div class="prep-desc" id="prepDesc" style="color:var(--text-muted)">{{ _('Enter your company name, choose an industry, and click Generate to preview') }}</div>
+          <div class="prep-nav">
+            <span>{{ _('Home') }}</span>
+            <span>{{ _('Products') }}</span>
+            <span>{{ _('Cases') }}</span>
+            <span>{{ _('About') }}</span>
+            <span>{{ _('Contact') }}</span>
+          </div>
+          <div class="prep-cards">
+            <div></div><div></div><div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="cta-section">
+  <div class="cta-bg"></div>
+  <div class="cta-content">
+    <h2>{{ _('Had enough? Start building your website now') }}</h2>
+    <p>{{ _('Build your website in 3 minutes — AI runs it automatically, so you can focus on your business') }}</p>
+    <a href="/register" class="cta-btn">{{ _('Start Building Free') }} <span>→</span></a>
+  </div>
+</section>
+
+<footer class="footer">
+  <div class="footer-grid">
+    <div class="footer-brand">
+      <div class="footer-logo">{{ brand.site_name_en if brand else 'VeroRun' }}</div>
+      <p>{{ _("AI Matrix-driven smart business operations platform. More than website building — it's a multi-agent AI matrix running your website.") }}</p>
+    </div>
+    <div class="footer-col">
+      <h4>{{ _('Products') }}</h4>
+      <a href="/services">{{ _('AI Website Building') }}</a>
+      <a href="/services">{{ _('AI Smart Customer Service') }}</a>
+    </div>
+    <div class="footer-col"><h4>{{ _('Resources') }}</h4><a href="/docs">{{ _('Help Docs') }}</a><a href="/start">{{ _('Quick Start') }}</a></div>
+    <div class="footer-col"><h4>{{ _('Company') }}</h4><a href="/about">{{ _('About Us') }}</a><a href="/privacy">{{ _('Privacy Policy') }}</a></div>
+  </div>
+  <div class="footer-bottom"><p>{{ brand.copyright | safe if brand else '© 2026 ' + (brand.site_name_en if brand else 'VeroRun') + '. All rights reserved.' }}</p></div>
+</footer>
+
+<style>.cta-section{text-align:center;padding:60px 32px 80px;position:relative}.cta-section .cta-bg{position:absolute;inset:0;background:var(--gradient-dark);z-index:0}.cta-section .cta-content{position:relative;z-index:2}.cta-section h2{font-size:clamp(1.4em,2.5vw,2em);font-weight:700;margin-bottom:12px;color:var(--text-high)}.cta-section p{font-size:14px;color:var(--text-dim);margin-bottom:28px}.cta-section .cta-btn{display:inline-flex;align-items:center;gap:8px;padding:14px 36px;border-radius:12px;background:var(--gradient-primary);color:#fff;font-size:15px;font-weight:600;text-decoration:none;transition:all .3s}.cta-section .cta-btn:hover{transform:translateY(-2px);box-shadow:0 8px 32px rgba(99,102,241,.35)}</style>
+
+<script>
+function tNM(){document.getElementById('mb-menu').classList.toggle('nav-open')}
+document.addEventListener('click',function(e){var m=document.getElementById('mb-menu');if(m&&m.classList.contains('nav-open')&&e.target.closest('a'))m.classList.remove('nav-open')});
+
+/* ═══ Tab switch ═══ */
+function switchTab(tab){
+  document.querySelectorAll('.exp-tab').forEach(function(t){t.classList.remove('active')});
+  document.querySelectorAll('.exp-content').forEach(function(c){c.classList.remove('active')});
+  document.querySelector('.exp-tab[onclick*="'+tab+'"]').classList.add('active');
+  document.getElementById('tab-'+tab).classList.add('active');
+}
+
+/* ═══ Chat Demo ═══ */
+var chatResponses={
+  {{ _('How much does a website cost?') | tojson }}:{{ _('Website building services vary by plan:<br>• <strong>Basic</strong>: <span style="color:var(--cyan);font-weight:600">¥1,999/year</span> — for individual entrepreneurs<br>• <strong>Standard</strong>: <span style="color:var(--cyan);font-weight:600">¥5,999/year</span> — for SMBs (most popular)<br>• <strong>Pro</strong>: <span style="color:var(--cyan);font-weight:600">¥19,999/year</span> — for growing businesses<br><br>All plans include AI capabilities, SSL certificates and technical support. <a href="/services" style="color:var(--indigo)">See full comparison →</a>') | tojson }},
+  {{ _('How long does AI website building take?') | tojson }}:{{ _('AI website building can generate a complete website in as little as <strong style="color:var(--cyan)">3 minutes</strong>!<br><br>The general flow from registration to launch:<br>1. 📝 Register an account (1 minute)<br>2. 🤖 AI generates the website (3 minutes)<br>3. 🎨 Personalization adjustments (1-2 days)<br>4. 🚀 Bind your domain and go live (instantly)<br><br>On average, the entire process takes <strong style="color:var(--cyan)">3-7 days</strong> — far faster than the 2-4 weeks of traditional website building.') | tojson }},
+  {{ _('Can I try it for free?') | tojson }}:{{ _('Of course! We offer <strong style="color:var(--cyan)">free registration</strong> to try:<br><br>• Click Free sign-up in the top-right to create an account<br>• No credit card required<br>• Experience the full AI website building flow for free<br>• Choose a paid plan only when you are satisfied<br><br><a href="/register" style="color:var(--indigo)">Sign up free now →</a>') | tojson }},
+  {{ _('Can I use a custom domain?') | tojson }}:{{ _('Yes! <strong style="color:var(--cyan)">All plans</strong> support binding a custom domain, and a <strong>free SSL certificate</strong> (HTTPS) is configured automatically.<br><br>• Buy your domain from any registrar<br>• Configure DNS resolution following our help guide<br>• The system automatically issues and renews the SSL certificate<br><br><a href="/docs" style="color:var(--indigo)">View the domain setup guide →</a>') | tojson }},
+  {{ _('How does the AI customer service work?') | tojson }}:{{ _('The AI smart customer service is a <strong style="color:var(--cyan)">24/7</strong> online auto-response system:<br><br>• 🤖 Automatically answers common questions<br>• 🎯 Identifies potential customers and saves their contact info<br>• 📊 Provides consultation data analytics<br>• 🔄 Supports custom knowledge base training<br>• 📱 Works on websites, mini programs and WeChat official accounts<br><br>AI customer service is included in the Standard plan and above.') | tojson }},
+  default:{{ _('Thanks for your question! I need more details to help you. You can:<br><br>1️⃣ Try the quick questions above<br>2️⃣ <a href="/register" style="color:var(--indigo)">Sign up free</a> and chat in depth with our AI customer service<br>3️⃣ Or <a href="/docs" style="color:var(--indigo)">view the help docs</a> to learn more') | tojson }}
+};
+
+function addChatMsg(role,text){
+  var body=document.getElementById('chatBody');
+  var div=document.createElement('div');
+  div.className='chat-msg '+role;
+  div.innerHTML='<div class="avatar">'+(role==='bot'?'🤖':'👤')+'</div><div class="bubble">'+text+'</div>';
+  body.appendChild(div);
+  body.scrollTop=body.scrollHeight;
+}
+
+function sendChat(){
+  var input=document.getElementById('chatInput');
+  var btn=document.getElementById('chatBtn');
+  var q=input.value.trim();
+  if(!q)return;
+  addChatMsg('user',q);
+  input.value='';
+  btn.disabled=true;
+  // typing indicator
+  var body=document.getElementById('chatBody');
+  var typingDiv=document.createElement('div');
+  typingDiv.className='chat-msg bot';
+  typingDiv.id='typingIndicator';
+  typingDiv.innerHTML='<div class="avatar">🤖</div><div class="bubble"><div class="typing"><span></span><span></span><span></span></div></div>';
+  body.appendChild(typingDiv);
+  body.scrollTop=body.scrollHeight;
+  setTimeout(function(){
+    document.getElementById('typingIndicator')&&document.getElementById('typingIndicator').remove();
+    var resp=chatResponses[q]||chatResponses.default;
+    addChatMsg('bot',resp);
+    btn.disabled=false;
+  },1200);
+}
+
+function quickChat(q){
+  document.getElementById('chatInput').value=q;
+  sendChat();
+}
+
+/* ═══ Content Generator ═══ */
+var contentSamples={
+  {{ _('AI Website Building Service') | tojson }}:{
+    professional:{{ _('Professional business style:<br><br><span class="highlight">[Title]</span> AI-Powered Website Building — Keep Your Business Online and Acquiring Customers 24/7<br><br><span class="highlight">[Body]</span><br>In the wave of digitalization, your website is the digital business card of your business. The VeroRun smart website building platform deeply integrates AI technology, automating everything from content generation to site deployment. No coding or design experience needed — enter your business info and get a professional corporate website in 3 minutes. The built-in AI customer service system responds to visitor inquiries 24/7 and precisely identifies potential customers, boosting your lead acquisition efficiency 15x. Choose VeroRun to empower your business growth.<br><br><span class="highlight">[Best for]</span> Corporate websites, LinkedIn, industry media') | tojson }},
+    friendly:{{ _('Friendly natural style:<br><br><span class="highlight">[Title]</span> Building a Website Has Never Been This Easy!<br><br><span class="highlight">[Body]</span><br>Xiaoming runs a dessert shop and always wanted a website but did not know tech. Until a friend recommended VeroRun — enter your shop name, pick a template, and AI automatically generated a complete brand website, including product pages and customer service. The whole process was as simple as chatting.<br><br>VeroRun does not just help you build a website — it builds it for you. Choose an industry, enter your info, one-click generate: three steps to a corporate website. The built-in AI customer service is online 24 hours a day, so late-night orders never slip through. The time of a boss should be spent on more important things, right?<br><br><span class="highlight">[Best for]</span> WeChat official accounts, Moments, Xiaohongshu') | tojson }},
+    viral:{{ _('Viral marketing style:<br><br><span class="highlight">[Title]</span> 🔥 Shocking! Build a Website in 3 Minutes? Bosses Are Secretly Using This!<br><br><span class="highlight">[Body]</span><br>Here is a secret that e-commerce bosses will not tell you 👇<br><br>They build websites with VeroRun:<br>⚡ 3-minute AI auto generation<br>🤖 24-hour AI customer service<br>📢 One-click publish to WeChat / Weibo / Toutiao<br><br>While you are still paying thousands and waiting two weeks?<br><br>Stop grinding — use the tool!<br>Register now for the annual discount 👉 Try it now<br><br><span class="highlight">[Best for]</span> Douyin, Weibo, Toutiao') | tojson }},
+    technical:{{ _('Technical analysis style:<br><br><span class="highlight">[Title]</span> From 0 to 1: Technical Architecture of AI-Driven Corporate Website Building<br><br><span class="highlight">[Body]</span><br>The VeroRun platform uses a multi-layer AI architecture: the underlying layer uses the Qwen large language model for semantic understanding and content generation, the frontend uses an AI layout engine for intelligent arrangement based on industry templates, and the backend uses a microservices architecture to support multi-tenant parallel rendering. Key technical points include:<br><br>1. Template matching algorithm: NLP-based enterprise info extraction + industry classification for intelligent template matching<br>2. Content filling engine: auto-generates brand copy, SEO metadata and product descriptions<br>3. Real-time preview rendering: WebSocket-driven what-you-see-is-what-you-get editing experience<br><br><span class="highlight">[Best for]</span> Zhihu, tech blogs, developer communities') | tojson }}
+  }
+};
+
+function genContent(){
+  var topic=document.getElementById('topicInput').value.trim()||{{ _('AI Website Building Service') | tojson }};
+  var style=document.getElementById('styleSelect').value;
+  var btn=document.getElementById('genBtn');
+  var preview=document.getElementById('contentPreview');
+  btn.disabled=true;
+  btn.textContent={{ _('Generating...') | tojson }};
+  preview.innerHTML='<div class="generated" style="text-align:center;padding:30px"><div class="typing" style="display:inline-flex;gap:4px"><span style="width:8px;height:8px;border-radius:50%;background:var(--indigo);animation:typingBounce 1.4s infinite"></span><span style="width:8px;height:8px;border-radius:50%;background:var(--indigo);animation:typingBounce 1.4s infinite;animation-delay:.2s"></span><span style="width:8px;height:8px;border-radius:50%;background:var(--indigo);animation:typingBounce 1.4s infinite;animation-delay:.4s"></span></div><div style="font-size:12px;color:var(--text-muted);margin-top:12px">{{ _('AI is creating content for you...') }}</div></div>';
+  setTimeout(function(){
+    var s=contentSamples[topic]||contentSamples[{{ _('AI Website Building Service') | tojson }}];
+    var text=s?.[style]||s?.professional||{{ _('The VeroRun smart website building platform keeps your website generating leads 24/7.') | tojson }};
+    preview.innerHTML='<div class="generated">'+text+'</div>';
+    btn.disabled=false;
+    btn.textContent={{ _('Generate Copy') | tojson }};
+  },1800);
+}
+
+function copyContent(){
+  var text=document.getElementById('contentPreview').innerText||'';
+  if(text&&!text.includes({{ _('Enter product') | tojson }})){
+    navigator.clipboard.writeText(text).then(function(){alert({{ _('Copied to clipboard!') | tojson }})});
+  }else{
+    alert({{ _('Please generate copy first') | tojson }});
+  }
+}
+
+/* ═══ Site Generator ═══ */
+var siteThemes={
+  {{ _('Technology') | tojson }}:{gradient:'linear-gradient(135deg,#0f0f1e,#1a1a3e)',accent:'#6366f1',title:'{name}',nav:{{ _('Tech Products Cases About Contact') | tojson }},tag:{{ _('Tech Innovation') | tojson }}},
+  {{ _('E-commerce') | tojson }}:{gradient:'linear-gradient(135deg,#0a0a12,#1a1a2e)',accent:'#22d3ee',title:{{ _('{name} Shop') | tojson }},nav:{{ _('Home Products Promotions Cart Mine') | tojson }},tag:{{ _('Quality Products') | tojson }}},
+  {{ _('Education') | tojson }}:{gradient:'linear-gradient(135deg,#0a0f0a,#0f1f0f)',accent:'#00d4aa',title:{{ _('{name} · Education') | tojson }},nav:{{ _('Courses Faculty Trial Results Contact') | tojson }},tag:{{ _('Achieving the Future') | tojson }}},
+  {{ _('Restaurant') | tojson }}:{gradient:'linear-gradient(135deg,#1a0f0a,#2e1a0a)',accent:'#f59e0b',title:'{name}',nav:{{ _('Menu Environment Reservation Reviews Contact') | tojson }},tag:{{ _('Taste of Life') | tojson }}},
+  {{ _('Medical') | tojson }}:{gradient:'linear-gradient(135deg,#0a0f14,#0a1a2e)',accent:'#06b6d4',title:'{name}',nav:{{ _('Departments Experts Appointment Cases Contact') | tojson }},tag:{{ _('Protecting Health') | tojson }}}
+};
+
+function selectTag(el,industry){
+  el.parentElement.querySelectorAll('button').forEach(function(b){b.classList.remove('selected')});
+  el.classList.add('selected');
+}
+
+function genSite(){
+  var name=document.getElementById('companyInput').value.trim()||{{ _('Star Tech') | tojson }};
+  var btn=document.getElementById('genSiteBtn');
+  btn.disabled=true;
+  btn.textContent={{ _('Generating...') | tojson }};
+  var selected=document.querySelector('.sg-tags .selected');
+  var industry=selected?selected.textContent.replace(/^[^\s]+\s/,''):{{ _('Technology') | tojson }};
+  setTimeout(function(){
+    var theme=siteThemes[industry]||siteThemes[{{ _('Technology') | tojson }}];
+    var preview=document.getElementById('sitePreview');
+    var title=theme.title.replace('{name}',name);
+    document.getElementById('prepTitle').textContent=title;
+    document.getElementById('prepTitle').style.color='#fff';
+    preview.querySelector('.prep-content').style.background=theme.gradient;
+    document.getElementById('prepDesc').innerHTML='<span style="padding:2px 10px;border-radius:12px;background:'+theme.accent+'22;color:'+theme.accent+';font-size:12px">'+theme.tag+'</span>  ·  '+{{ _('AI Website Building') | tojson }}+' · '+{{ _('Responsive Design') | tojson }};
+    preview.querySelector('.prep-nav').innerHTML=theme.nav.split(' ').map(function(n){return '<span style="color:var(--text-dim)">'+n+'</span>'}).join(' ');
+    preview.querySelector('.prep-cards').innerHTML='<div style="background:'+theme.accent+'15;border:1px solid '+theme.accent+'22;border-radius:6px"></div><div style="background:'+theme.accent+'15;border:1px solid '+theme.accent+'22;border-radius:6px"></div><div style="background:'+theme.accent+'15;border:1px solid '+theme.accent+'22;border-radius:6px"></div>';
+    btn.disabled=false;
+    btn.textContent={{ _('AI Generate Website') | tojson }};
+  },1500);
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+name: Ops
+slug: ops
+role_type: sub
+description: System ops engineer — automation, health monitoring, alerting, deployment, captcha
+domain: ops
+managed_modules:
+  - automation
+  - health_check
+  - monitor
+  - alerter
+  - workflow
+  - cron
+  - deployment
+  - provision
+  - captcha_embedded
+provider_model_id: 401638
+provider: deepseek
+model_name: deepseek-v4-flash
+system_prompt: prompts/sub_ops_prompt.md
+is_system: true
+is_active: 1

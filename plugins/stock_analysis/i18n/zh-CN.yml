@@ -1,0 +1,15 @@
+plugin.name: 股票分析
+menu.stock_analysis: 股票分析
+Stock Analysis: 股票分析
+Stock code, e.g. 600519: 股票代码，如 600519
+Analysis Type: 分析类型
+AI Comprehensive: AI 综合
+Technical: 技术面
+Fundamental: 基本面
+Sentiment: 情绪面
+Analyze: 分析
+Enter a stock code to start analysis.: 请输入股票代码开始分析。
+Analyzing...: 分析中...
+Signal: 信号
+Analysis failed: 分析失败
+Request failed: 请求失败

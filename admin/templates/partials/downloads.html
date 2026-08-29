@@ -1,0 +1,132 @@
+﻿window.l_downloads=function(){
+  document.getElementById("pt").textContent="{{ _('Download Management') }}";
+  fetch("/admin/downloads",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success||!d.data)return;
+    var h='<div style="margin-bottom:12px"><button class="btn bp" onclick="dlForm()">+ {{ _('Upload Download') }}</button></div>';
+    h+='<div id="dlForm" style="display:none;margin-bottom:16px" class="cd"><div class="st" id="dlFormTitle">{{ _('Upload Download') }}</div><div class="g2">';
+    h+='<div><div style="font-size:11px;color:var(--dim)">{{ _('Installer') }} *</div><input type="file" id="dlFile" style="width:100%;font-size:12px;padding:4px 0" onchange="dlFC()"><div id="dlFI" style="font-size:10px;color:var(--dim);margin-top:2px"></div></div>';
+    h+='<div><div style="font-size:11px;color:var(--dim)">{{ _('Name') }} *</div><input class="in" id="dlName" style="width:100%" placeholder="Hermes Agent"></div>';
+    h+='<div><div style="font-size:11px;color:var(--dim)">Slug *</div><input class="in" id="dlSlug" style="width:100%" placeholder="hermes-agent"></div>';
+    h+='<div><div style="font-size:11px;color:var(--dim)">{{ _('Categories') }}</div><select class="sl" id="dlCat" style="width:100%"><option value="core">{{ _('Core Framework') }}</option><option value="skills" selected>Skills</option><option value="sdk">SDK</option><option value="plugin">{{ _('Plugins') }}</option><option value="model">{{ _('Models') }}</option></select></div>';
+    h+='<div><div style="font-size:11px;color:var(--dim)">{{ _('Version') }}</div><input class="in" id="dlVer" style="width:100%" value="1.0.0"></div>';
+    h+='<div><div style="font-size:11px;color:var(--dim)">{{ _('Bio') }}</div><input class="in" id="dlTagline" style="width:100%" placeholder="{{ _('One-Line Description') }}"></div>';
+    h+='<div><div style="font-size:11px;color:var(--dim)">{{ _('External Links') }} ({{ _('Optional') }})</div><input class="in" id="dlUrl" style="width:100%" placeholder="GitHub Release URL..."></div>';
+    h+='<div><div style="font-size:11px;color:var(--dim)">GitHub</div><input class="in" id="dlRepo" style="width:100%" placeholder="https://github.com/user/repo"></div>';
+    h+='<div><div style="font-size:11px;color:var(--dim)">{{ _('Size') }} ({{ _('Leave Empty for Auto') }})</div><input class="in" id="dlSize" style="width:100%" placeholder="{{ _('Auto Detect') }}"></div>';
+    h+='<div><div style="font-size:11px;color:var(--dim)">{{ _('Tags') }}</div><input class="in" id="dlTags" style="width:100%" placeholder="stable, official"></div>';
+    h+='<div style="grid-column:1/3"><label style="font-size:12px;color:var(--muted)"><input type="checkbox" id="dlPub" checked> {{ _('Publish') }}</label></div>';
+    h+='<input type="hidden" id="dlEditId" value="">';
+    h+='</div><div style="margin-top:10px"><button class="btn bp" onclick="dlSave()">{{ _('Save') }}</button> <button class="btn bo" onclick="dlH()">{{ _('Cancel') }}</button></div></div>';
+    h+='<div class="cd"><div class="st">{{ _('Download List') }} ('+d.data.length+')</div><table><tr><th>{{ _('Name') }}</th><th>{{ _('Categories') }}</th><th>{{ _('Version') }}</th><th>{{ _('Status') }}</th><th>{{ _('Download') }}</th><th>{{ _('Actions') }}</th></tr>';
+    d.data.forEach(function(dl){
+      var st=dl.is_published?'<span class="bdg on">{{ _('Published') }}</span>':'<span class="bdg off">{{ _('Hide') }}</span>';
+      h+='<tr><td>'+esc(dl.name||'-')+'</td><td>'+dl.category+'</td><td>'+dl.version+'</td><td>'+st+'</td><td>'+dl.download_count+'</td><td>';
+      h+='<button class="btn bo bs" onclick="dlE('+dl.id+')">{{ _('Edit') }}</button> ';
+      h+='<button class="btn bo bs" onclick="dlD('+dl.id+')">{{ _('Delete') }}</button></td></tr>';
+    });
+    h+='</table></div>';
+    document.getElementById("mc").innerHTML=h;
+  }).catch(function(){})
+};
+var dlFileData=null;
+function dlFC(){var f=document.getElementById("dlFile").files[0];if(!f){dlFileData=null;document.getElementById("dlFI").textContent="";return}dlFileData=f;var s=f.size<1048576?(f.size/1024).toFixed(1)+" KB":(f.size/1048576).toFixed(1)+" MB";document.getElementById("dlFI").textContent=f.name+" ("+s+")";if(!document.getElementById("dlSize").value)document.getElementById("dlSize").value=s}
+function dlForm(){document.getElementById("dlForm").style.display="block";document.getElementById("dlFormTitle").textContent="{{ _('Upload Download') }}";document.getElementById("dlEditId").value="";document.getElementById("dlName").value="";document.getElementById("dlSlug").value="";document.getElementById("dlTagline").value="";document.getElementById("dlVer").value="1.0.0";document.getElementById("dlUrl").value="";document.getElementById("dlRepo").value="";document.getElementById("dlSize").value="";document.getElementById("dlTags").value="";document.getElementById("dlPub").checked=true;document.getElementById("dlFile").value="";dlFileData=null;document.getElementById("dlFI").textContent=""}
+function dlH(){document.getElementById("dlForm").style.display="none"}
+function dlSave(){
+  var id=document.getElementById("dlEditId").value;
+  var fd=new FormData();
+  fd.append("name",document.getElementById("dlName").value);
+  fd.append("slug",document.getElementById("dlSlug").value);
+  fd.append("tagline",document.getElementById("dlTagline").value);
+  fd.append("category",document.getElementById("dlCat").value);
+  fd.append("version",document.getElementById("dlVer").value);
+  fd.append("download_url",document.getElementById("dlUrl").value);
+  fd.append("repo_url",document.getElementById("dlRepo").value);
+  fd.append("file_size",document.getElementById("dlSize").value);
+  var tags=document.getElementById("dlTags").value.split(",").map(function(s){return s.trim()}).filter(function(s){return s});
+  fd.append("tags",JSON.stringify(tags));
+  fd.append("is_published",document.getElementById("dlPub").checked?"1":"0");
+  if(dlFileData)fd.append("file",dlFileData);
+  var url="/admin/downloads",method="POST";
+  if(id){url+="?id="+id;method="PUT"}
+  fetch(url,{method:method,headers:{"Authorization":"Bearer "+T},body:fd}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){dlH();l_downloads();showToast("{{ _('Saved') }}","success");dlFileData=null}
+    else{alert(d.error||"{{ _('Save failed') }}")}
+  }).catch(function(){alert("{{ _('Save failed') }}")})
+}
+function dlE(id){
+  fetch("/admin/downloads/"+id,{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success||!d.data)return;
+    var dl=d.data;
+    document.getElementById("dlForm").style.display="block";
+    document.getElementById("dlFormTitle").textContent={{ _('Edit — ') | tojson }}+dl.name;
+    document.getElementById("dlEditId").value=dl.id;
+    document.getElementById("dlName").value=dl.name||"";
+    document.getElementById("dlSlug").value=dl.slug||"";
+    document.getElementById("dlTagline").value=dl.tagline||"";
+    document.getElementById("dlCat").value=dl.category||"skills";
+    document.getElementById("dlVer").value=dl.version||"1.0.0";
+    document.getElementById("dlUrl").value=dl.download_url||"";
+    document.getElementById("dlRepo").value=dl.repo_url||"";
+    document.getElementById("dlSize").value=dl.file_size||"";
+    document.getElementById("dlTags").value=(dl.tags||[]).join(", ");
+    document.getElementById("dlPub").checked=dl.is_published===1;
+    document.getElementById("dlFile").value="";dlFileData=null;document.getElementById("dlFI").textContent="";
+  })
+}
+function dlD(id){
+  if(!confirm("{{ _('Delete?') }}"))return;
+  fetch("/admin/downloads/"+id,{method:"DELETE",headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){l_downloads();showToast("{{ _('Deleted') }}","success")}
+    else{alert(d.error||"{{ _('Delete failed') }}")}
+  }).catch(function(){alert("{{ _('Delete failed') }}")})
+}
+function showToast(msg,type){
+  var t=document.getElementById("adminToast");
+  t.textContent=msg;
+  t.className="toast show "+(type||"");
+  setTimeout(function(){t.classList.remove("show")},3000);
+}
+function viewEmail(uid){
+  fetch("/admin/email/read/"+uid,{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success){showToast("{{ _('Load failed') }}: "+(d.error||""),"error");return}
+    var m=d.data;
+    var bodyHtml=m.body_html||"";
+    var bodyText=(m.body||"({{ _('No Content') }})").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\n/g,"<br>");
+    var h='<div class="modal-overlay" onclick="closeEmailModal(event)">';
+    h+='<div class="modal-box" onclick="event.stopPropagation()">';
+    h+='<button onclick="closeEmailModal()" style="float:right;background:none;border:none;color:var(--dim);font-size:20px;cursor:pointer;line-height:1">✕</button>';
+    h+='<h3>'+(m.subject||"({{ _('No Subject') }})")+'</h3>';
+    h+='<div class="modal-meta">';
+    h+='<div><span>{{ _('Sender') }}</span> '+(m.from||"-")+'</div>';
+    h+='<div><span>{{ _('Recipient') }}</span> '+(m.to||"-")+'</div>';
+    h+='<div><span>{{ _('Time') }}</span> '+(m.date||"-")+'</div>';
+    h+='</div>';
+    h+='<div class="modal-body">';
+    if(bodyHtml){h+=bodyHtml}
+    else{h+=bodyText}
+    h+='</div>';
+    // Attachments
+    if(m.attachments&&m.attachments.length){
+      h+='<div class="modal-attach"><span style="font-size:12px;color:var(--dim)">📎 {{ _('Attachment') }}</span>';
+      m.attachments.forEach(function(a){
+        var fn=a.filename||a.name||"file";
+        h+=' <a href="/admin/email/attachment/'+uid+'/'+encodeURIComponent(fn)+'" target="_blank">📎 '+fn+'</a>';
+      });
+      h+='</div>';
+    }
+    h+='<div style="margin-top:16px;display:flex;gap:8px">';
+    h+='<button class="btn bp" onclick="re('+uid+',\''+(m.from||"").replace(/'/g,"")+'\',\''+(m.subject||"").replace(/'/g,"")+'\');closeEmailModal()">↩ {{ _('Reply') }}</button>';
+    h+='<button class="btn bo" onclick="closeEmailModal()">{{ _('Close') }}</button></div></div></div>';
+    // Remove any existing modal
+    var old=document.querySelector(".modal-overlay");
+    if(old)old.remove();
+    document.body.insertAdjacentHTML("beforeend",h);
+  }).catch(function(){showToast("{{ _('Load failed') }}","error")});
+}
+function closeEmailModal(e){
+  if(e&&e.target!==e.currentTarget)return;
+  var m=document.querySelector(".modal-overlay");
+  if(m)m.remove();
+}
+

@@ -1,0 +1,326 @@
+{# Subscription Admin — inline partial (Phase 3.2) #}
+{# V20260809: convert from iframe (subscribe_admin.html) to l_subscription_admin() #}
+{# menu key: subscription_admin #}
+{# V20260819: 继承系统样式——tab 栏改用系统 .ai-tab-bar/.ai-tab，其余自造类替换为系统 .in/.em 或内联样式 #}
+window.l_subscription_admin = function () {
+  document.getElementById('pt').textContent = {{ _('Subscription Management') | tojson }};
+  var mc = document.getElementById('mc');
+  mc.innerHTML = '<div class="lo"><div class="s"></div>{{ _('Loading...') }}...</div>';
+  subRenderPanel();
+  subLoadItems();
+  subLoadUsers();
+  subLoadOrders();
+};
+
+var subActiveTab = 'items';
+
+function subRenderPanel() {
+  var mc = document.getElementById('mc');
+  mc.innerHTML =
+    '<div>' +
+      '<!-- Tabs -->' +
+      '<div class="ai-tab-bar" style="border-radius:8px;margin-bottom:16px">' +
+        '<div class="ai-tab active" id="tab-items" onclick="subSwitchTab(\'items\')">{{ _('Plans') }}</div>' +
+        '<div class="ai-tab" id="tab-users" onclick="subSwitchTab(\'users\')">{{ _('Subscribers') }}</div>' +
+        '<div class="ai-tab" id="tab-orders" onclick="subSwitchTab(\'orders\')">{{ _('Orders') }}</div>' +
+        '<div class="ai-tab" id="tab-stats" onclick="subSwitchTab(\'stats\')">{{ _('Revenue') }}</div>' +
+        '<div class="ai-tab" id="tab-billing" onclick="subSwitchTab(\'billing\')">{{ _('Billing Log') }}</div>' +
+        '<div class="ai-tab" id="tab-codes" onclick="subSwitchTab(\'codes\')">{{ _('Deploy Codes') }}</div>' +
+      '</div>' +
+
+      '<!-- Plans Panel -->' +
+      '<div id="panel-items" style="margin-bottom:16px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">' +
+          '<strong>{{ _('Subscription Plans') }}</strong>' +
+          '<button class="btn btn-p" onclick="subShowAddItem()">{{ _('Add Plan') }}</button>' +
+        '</div>' +
+        '<div style="overflow-x:auto"><table>' +
+          '<thead><tr><th>{{ _('Key') }}</th><th>{{ _('Name') }}</th><th>{{ _('Price') }}</th><th>{{ _('Category') }}</th><th>{{ _('Status') }}</th><th>{{ _('Actions') }}</th></tr></thead>' +
+          '<tbody id="items-tbody"><tr><td colspan="6" class="em">{{ _('Loading...') }}</td></tr></tbody>' +
+        '</table></div>' +
+      '</div>' +
+
+      '<!-- Subscribers Panel -->' +
+      '<div id="panel-users" style="display:none;margin-bottom:16px">' +
+        '<div style="display:flex;gap:12px;align-items:flex-end;margin-bottom:16px">' +
+          '<div style="flex:0 0 200px"><label style="font-size:12px;color:var(--dim)">{{ _('Filter by User ID') }}</label>' +
+          '<input class="in" id="user-filter" placeholder="{{ _('Enter user ID') }}" style="height:34px;width:100%" onchange="subLoadUsers()"></div>' +
+        '</div>' +
+        '<div style="overflow-x:auto"><table>' +
+          '<thead><tr><th>{{ _('User ID') }}</th><th>{{ _('Plan') }}</th><th>{{ _('Status') }}</th><th>{{ _('Start') }}</th><th>{{ _('End') }}</th></tr></thead>' +
+          '<tbody id="users-tbody"><tr><td colspan="5" class="em">{{ _('Loading...') }}</td></tr></tbody>' +
+        '</table></div>' +
+      '</div>' +
+
+      '<!-- Orders Panel -->' +
+      '<div id="panel-orders" style="display:none">' +
+        '<div style="overflow-x:auto"><table>' +
+          '<thead><tr><th>{{ _('Order No.') }}</th><th>{{ _('User ID') }}</th><th>{{ _('Item') }}</th><th>{{ _('Amount') }}</th><th>{{ _('Status') }}</th><th>{{ _('Created') }}</th></tr></thead>' +
+          '<tbody id="orders-tbody"><tr><td colspan="6" class="em">{{ _('Loading...') }}</td></tr></tbody>' +
+        '</table></div>' +
+      '</div>' +
+
+      '<!-- Revenue Panel (U6) -->' +
+      '<div id="panel-stats" style="display:none;margin-bottom:16px">' +
+        '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px">' +
+          '<div style="flex:0 0 180px"><div style="font-size:11px;color:var(--dim)">{{ _('Today Revenue') }}</div><div style="font-size:22px;font-weight:700" id="st-today">-</div></div>' +
+          '<div style="flex:0 0 180px"><div style="font-size:11px;color:var(--dim)">{{ _('Month Revenue') }}</div><div style="font-size:22px;font-weight:700" id="st-month">-</div></div>' +
+          '<div style="flex:0 0 180px"><div style="font-size:11px;color:var(--dim)">{{ _('MRR') }}</div><div style="font-size:22px;font-weight:700" id="st-mrr">-</div></div>' +
+          '<div style="flex:0 0 150px"><div style="font-size:11px;color:var(--dim)">{{ _('Active Subscriptions') }}</div><div style="font-size:22px;font-weight:700" id="st-subs">-</div></div>' +
+          '<div style="flex:0 0 120px"><div style="font-size:11px;color:var(--dim)">{{ _('Pending Orders') }}</div><div style="font-size:22px;font-weight:700" id="st-pending">-</div></div>' +
+        '</div>' +
+        '<div style="overflow-x:auto;margin-top:12px"><table>' +
+          '<thead><tr><th>{{ _('Date') }}</th><th>{{ _('Revenue') }}</th></tr></thead>' +
+          '<tbody id="stats-tbody"><tr><td colspan="2" class="em">{{ _('Loading...') }}</td></tr></tbody>' +
+        '</table></div>' +
+      '</div>' +
+
+      '<!-- Billing Log Panel (U6) -->' +
+      '<div id="panel-billing" style="display:none;margin-bottom:16px">' +
+        '<div style="overflow-x:auto"><table>' +
+          '<thead><tr><th>ID</th><th>{{ _('User') }}</th><th>{{ _('Type') }}</th><th>{{ _('Channel') }}</th><th>{{ _('Amount') }}</th><th>{{ _('Result') }}</th><th>{{ _('Reason') }}</th><th>{{ _('Time') }}</th></tr></thead>' +
+          '<tbody id="billing-tbody"><tr><td colspan="8" class="em">{{ _('Loading...') }}</td></tr></tbody>' +
+        '</table></div>' +
+      '</div>' +
+
+      '<!-- Deploy Codes Panel (U6) -->' +
+      '<div id="panel-codes" style="display:none">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">' +
+          '<strong>{{ _('Deploy Codes') }}</strong>' +
+          '<button class="btn btn-p" onclick="subShowAddCode()">{{ _('Generate Code') }}</button>' +
+        '</div>' +
+        '<div style="overflow-x:auto"><table>' +
+          '<thead><tr><th>{{ _('Code') }}</th><th>{{ _('User ID') }}</th><th>{{ _('Item') }}</th><th>{{ _('Duration') }}</th><th>{{ _('Expires') }}</th><th>{{ _('Status') }}</th><th>{{ _('Actions') }}</th></tr></thead>' +
+          '<tbody id="codes-tbody"><tr><td colspan="7" class="em">{{ _('Loading...') }}</td></tr></tbody>' +
+        '</table></div>' +
+      '</div>' +
+    '</div>';
+}
+
+function subSwitchTab(name) {
+  subActiveTab = name;
+  document.querySelectorAll('.ai-tab').forEach(function(t){t.classList.remove('active');});
+  document.getElementById('tab-'+name).classList.add('active');
+  ['items','users','orders','stats','billing','codes'].forEach(function(p){
+    document.getElementById('panel-'+p).style.display = name===p?'block':'none';
+  });
+  if(name==='stats') subLoadStats();
+  if(name==='billing') subLoadBilling();
+  if(name==='codes') subLoadCodes();
+}
+
+function subLoadItems() {
+  fetch('/plugin/subscription/admin/items', { headers: { 'Authorization': 'Bearer ' + T } })
+    .then(function(r){return r.json()})
+    .then(function(data){
+      var tb = document.getElementById('items-tbody');
+      if(!tb) return;
+      tb.innerHTML = '';
+      if(!data.items||!data.items.length){tb.innerHTML='<tr><td colspan="6" class="em">{{ _('No plans configured') }}</td></tr>';return}
+      data.items.forEach(function(item){
+        var tr=document.createElement('tr');
+        tr.innerHTML=
+          '<td><code>'+esc(item.item_key)+'</code></td>'+
+          '<td><strong>'+esc(item.name||item.item_key)+'</strong></td>'+
+          '<td>&yen;'+(item.price_month_yuan||'-')+' / '+(item.price_year_yuan||'-')+'</td>'+
+          '<td>'+esc(item.category||'-')+'</td>'+
+          '<td><span class="bdg '+(item.is_active?'on':'off')+'">'+(item.is_active?'{{ _('Active') }}':'{{ _('Inactive') }}')+'</span></td>'+
+          '<td><button class="btn bo bs" style="font-size:11px;color:#f85149" onclick="subDeleteItem(\''+escAttr(item.item_key)+'\')">{{ _('Delete') }}</button></td>';
+        tb.appendChild(tr);
+      });
+    }).catch(function(e){console.error('Load items failed:',e)});
+}
+
+function subLoadUsers() {
+  var uid=document.getElementById('user-filter');
+  var url='/plugin/subscription/admin/users';
+  if(uid&&uid.value) url+='?user_id='+encodeURIComponent(uid.value);
+  fetch(url,{headers:{'Authorization':'Bearer '+T}})
+    .then(function(r){return r.json()})
+    .then(function(data){
+      var tb=document.getElementById('users-tbody');
+      if(!tb) return;
+      tb.innerHTML='';
+      if(!data.subscriptions||!data.subscriptions.length){tb.innerHTML='<tr><td colspan="5" class="em">{{ _('No subscriptions found') }}</td></tr>';return}
+      data.subscriptions.forEach(function(s){
+        var tr=document.createElement('tr');
+        tr.innerHTML=
+          '<td>'+s.user_id+'</td>'+
+          '<td>'+esc(s.item_key||'-')+'</td>'+
+          '<td><span class="bdg '+(s.status==='active'?'on':'off')+'">'+(s.status==='active'?'{{ _('Active') }}':esc(s.status))+'</span></td>'+
+          '<td style="font-size:12px">'+esc(s.period_start||'-')+'</td>'+
+          '<td style="font-size:12px">'+esc(s.period_end||'-')+'</td>';
+        tb.appendChild(tr);
+      });
+    }).catch(function(e){console.error('Load users failed:',e)});
+}
+
+function subLoadOrders() {
+  fetch('/plugin/subscription/admin/orders',{headers:{'Authorization':'Bearer '+T}})
+    .then(function(r){return r.json()})
+    .then(function(data){
+      var tb=document.getElementById('orders-tbody');
+      if(!tb) return;
+      tb.innerHTML='';
+      if(!data.orders||!data.orders.length){tb.innerHTML='<tr><td colspan="6" class="em">{{ _('No orders found') }}</td></tr>';return}
+      data.orders.forEach(function(o){
+        var tr=document.createElement('tr');
+        tr.innerHTML=
+          '<td><code>'+esc(o.order_no||'-')+'</code></td>'+
+          '<td>'+(o.user_id||'-')+'</td>'+
+          '<td>'+esc(o.item_key||'-')+'</td>'+
+          '<td>&yen;'+(o.amount_yuan||'-')+'</td>'+
+          '<td><span class="bdg '+(o.status==='paid'?'on':o.status==='refunded'?'off':'')+'">'+esc(o.status||'-')+'</span></td>'+
+          '<td style="font-size:12px">'+esc(o.created_at||'-')+'</td>';
+        tb.appendChild(tr);
+      });
+    }).catch(function(e){console.error('Load orders failed:',e)});
+}
+
+function subLoadStats() {
+  fetch('/plugin/subscription/admin/stats',{headers:{'Authorization':'Bearer '+T}})
+    .then(function(r){return r.json()})
+    .then(function(data){
+      var s=data.stats||{};
+      function set(id,v){var el=document.getElementById(id);if(el)el.textContent=v;}
+      set('st-today','¥'+(s.today_revenue||0).toFixed(2));
+      set('st-month','¥'+(s.month_revenue||0).toFixed(2));
+      set('st-mrr','¥'+(s.mrr||0).toFixed(2));
+      set('st-subs',s.active_subscriptions||0);
+      set('st-pending',s.pending_orders||0);
+      var tb=document.getElementById('stats-tbody');
+      if(!tb) return;
+      tb.innerHTML='';
+      var tr=s.revenue_trend_30d||[];
+      if(!tr.length){tb.innerHTML='<tr><td colspan="2" class="em">{{ _('No revenue data') }}</td></tr>';return}
+      tr.forEach(function(t){
+        var row=document.createElement('tr');
+        row.innerHTML='<td style="font-size:12px">'+esc(t.date)+'</td><td>&yen;'+t.revenue.toFixed(2)+'</td>';
+        tb.appendChild(row);
+      });
+    }).catch(function(e){console.error('Load stats failed:',e)});
+}
+
+function subLoadBilling() {
+  fetch('/plugin/subscription/admin/billing',{headers:{'Authorization':'Bearer '+T}})
+    .then(function(r){return r.json()})
+    .then(function(data){
+      var tb=document.getElementById('billing-tbody');
+      if(!tb) return;
+      tb.innerHTML='';
+      if(!data.events||!data.events.length){tb.innerHTML='<tr><td colspan="8" class="em">{{ _('No billing events') }}</td></tr>';return}
+      data.events.forEach(function(e){
+        var tr=document.createElement('tr');
+        tr.innerHTML=
+          '<td style="font-size:12px">'+e.id+'</td>'+
+          '<td>'+(e.user_id||'-')+'</td>'+
+          '<td style="font-size:12px">'+esc(e.event_type||'-')+'</td>'+
+          '<td style="font-size:12px">'+esc(e.channel||'-')+'</td>'+
+          '<td>&yen;'+((e.amount_fen||0)/100).toFixed(2)+'</td>'+
+          '<td><span class="bdg '+(e.result==='success'?'on':'off')+'">'+esc(e.result||'-')+'</span></td>'+
+          '<td style="font-size:12px">'+esc(e.fail_reason||'-')+'</td>'+
+          '<td style="font-size:12px">'+esc(e.created_at||'-')+'</td>';
+        tb.appendChild(tr);
+      });
+    }).catch(function(e){console.error('Load billing failed:',e)});
+}
+
+function subLoadCodes() {
+  fetch('/plugin/subscription/admin/deploy-codes',{headers:{'Authorization':'Bearer '+T}})
+    .then(function(r){return r.json()})
+    .then(function(data){
+      var tb=document.getElementById('codes-tbody');
+      if(!tb) return;
+      tb.innerHTML='';
+      if(!data.codes||!data.codes.length){tb.innerHTML='<tr><td colspan="7" class="em">{{ _('No deploy codes') }}</td></tr>';return}
+      data.codes.forEach(function(c){
+        var tr=document.createElement('tr');
+        tr.innerHTML=
+          '<td><code style="font-size:11px">'+esc(c.code)+'</code></td>'+
+          '<td>'+(c.user_id||'-')+'</td>'+
+          '<td>'+esc(c.item_key||'-')+'</td>'+
+          '<td style="font-size:12px">'+(c.duration_days||0)+'d</td>'+
+          '<td style="font-size:12px">'+esc(c.expires_at||'-')+'</td>'+
+          '<td><span class="bdg '+(c.status==='active'?'on':c.status==='revoked'?'off':'')+'">'+esc(c.status||'-')+'</span></td>'+
+          '<td><button class="btn bo bs" style="font-size:11px;color:#f85149" onclick="subRevokeCode(\''+escAttr(c.code)+'\')">{{ _('Revoke') }}</button></td>';
+        tb.appendChild(tr);
+      });
+    }).catch(function(e){console.error('Load codes failed:',e)});
+}
+
+function subShowAddCode() {
+  var uid=prompt('{{ _('Enter user ID:') }}');
+  if(!uid) return;
+  var itemKey=prompt('{{ _('Enter item key:') }}')||'deploy_basic';
+  var duration=parseInt(prompt('{{ _('Enter duration days:') }}')||'365',10)||365;
+  fetch('/plugin/subscription/admin/deploy-codes',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+T},
+    body:JSON.stringify({user_id:parseInt(uid,10),item_key:itemKey,duration_days:duration})
+  })
+  .then(function(r){return r.json()})
+  .then(function(d){
+    if(d.code){alert('{{ _('Generated code:') }}\n'+d.code);subLoadCodes();showToast('{{ _('Code generated') }}','success')}
+    else{showToast(d.error||'{{ _('Failed') }}','error')}
+  })
+  .catch(function(e){showToast(e.message,'error')});
+}
+
+function subRevokeCode(code) {
+  if(!confirm('{{ _('Revoke this code?') }}')) return;
+  fetch('/plugin/subscription/admin/deploy-codes/'+encodeURIComponent(code),{
+    method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+T},
+    body:JSON.stringify({status:'revoked'})
+  })
+  .then(function(r){return r.json()})
+  .then(function(d){
+    if(d.message){subLoadCodes();showToast('{{ _('Code revoked') }}','success')}
+    else{showToast(d.error||'{{ _('Failed') }}','error')}
+  })
+  .catch(function(e){showToast(e.message,'error')});
+}
+
+function subShowAddItem() {
+  var itemKey=prompt('{{ _('Enter plan key:') }}');
+  if(!itemKey) return;
+  var nameZh=prompt('{{ _('Enter plan name (Chinese):') }}');
+  if(!nameZh) return;
+  var nameEn=prompt('{{ _('Enter plan name (English):') }}')||nameZh;
+  var category=prompt('{{ _('Enter category:') }}')||'feature';
+  var priceMonth=parseFloat(prompt('{{ _('Enter monthly price (yuan):') }}')||'0');
+  var priceYear=parseFloat(prompt('{{ _('Enter yearly price (yuan):') }}')||'0');
+  var descZh=prompt('{{ _('Enter description (Chinese):') }}')||'';
+  var descEn=prompt('{{ _('Enter description (English):') }}')||'';
+  fetch('/plugin/subscription/admin/items',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+T},
+    body:JSON.stringify({
+      item_key:itemKey,category:category,
+      name_zh:nameZh,name_en:nameEn,
+      description_zh:descZh,description_en:descEn,
+      price_month:Math.round(priceMonth*100),price_year:Math.round(priceYear*100),
+      is_active:1
+    })
+  })
+  .then(function(r){return r.json()})
+  .then(function(d){
+    if(d.message){subLoadItems();showToast('{{ _('Plan created') }}','success')}
+    else{showToast(d.error||'{{ _('Failed') }}','error')}
+  })
+  .catch(function(e){showToast(e.message,'error')});
+}
+
+function subDeleteItem(key){
+  if(!confirm('{{ _('Delete this plan?') }}')) return;
+  fetch('/plugin/subscription/admin/items/'+encodeURIComponent(key),{
+    method:'DELETE',
+    headers:{'Authorization':'Bearer '+T}
+  })
+  .then(function(r){return r.json()})
+  .then(function(d){
+    if(d.message){subLoadItems();showToast('{{ _('Plan deleted') }}','success')}
+    else{showToast(d.error||'{{ _('Failed') }}','error')}
+  })
+  .catch(function(e){showToast(e.message,'error')});
+}

@@ -1,0 +1,38 @@
+name: Content
+slug: content
+role_type: sub
+description: Content manager — content creation, publishing, analytics, ads, social media
+domain: content
+managed_modules:
+  - cms
+  - comments
+  - image
+  - cover
+  - media_library
+  - downloads
+  - analytics
+  - reports
+  - stats
+  - trends
+  - daily_usage
+  - token_monitoring
+  - ads
+  - content_factory
+  - social_push
+provider_model_id: 401638
+provider: siliconflow
+model_name: deepseek-ai/DeepSeek-V3
+system_prompt: prompts/sub_content_prompt.md
+is_system: true
+is_active: 1
+allowed_tools:
+  - ads_list
+  - ads_create
+  - ads_update
+  - ads_delete
+  - ads_get_stats
+  - ads_analyze
+  - ads_render_snippet
+  - cms_list_channels
+  - cms_create_post
+  - cms_publish_post

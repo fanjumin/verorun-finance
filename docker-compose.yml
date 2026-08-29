@@ -1,0 +1,104 @@
+version: "3.8"
+
+services:
+  # 主 PostgreSQL（核心库，所有服务共用）
+  db:
+    # VR-PLG-003：改用带 pgvector 扩展的官方镜像，否则 project_workspace 的
+    # vector(1536) 列无法创建，插件迁移必失败。
+    image: pgvector/pgvector:pg16
+    container_name: verorun_pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${PG_DB:-appdb}
+      POSTGRES_USER: ${PG_USER:-app}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:?set PG_PASSWORD in .env}
+    # 审计 M6：不发布 5432 到宿主机（应用走内部网络 db:5432 即可），
+    # 避免数据库端口公网可达。如需本地管理可临时取消注释。
+    # ports:
+    #   - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # VR-PLG-003：首启时以超级用户执行 CREATE EXTENSION vector（仅空数据卷时生效）
+      - ./deploy/pg/init/00-init-extensions.sql:/docker-entrypoint-initdb.d/00-init-extensions.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-app} -d ${PG_DB:-appdb}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # v2.1.0 — mini_app_builder 插件独立数据库（数据库级物理隔离）
+  postgres_miniapp:
+    image: postgres:15-alpine
+    container_name: mini_app_pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: mini_app
+      POSTGRES_USER: ${MINI_APP_PG_USER:-app}
+      # 审计 M12：mini_app 库密码改为必填（与主库 :? 一致），杜绝空默认 trust 无密码登录
+      POSTGRES_PASSWORD: ${MINI_APP_PG_PASSWORD:?set MINI_APP_PG_PASSWORD in .env}
+    # 审计 M6：不发布 5433 到宿主机，仅容器内部访问
+    # ports:
+    #   - "5433:5432"
+    volumes:
+      - miniapp_pg_data:/var/lib/postgresql/data
+
+  app:
+    build: {context: ., dockerfile: Dockerfile}
+    container_name: verorun
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      # 审计 D6：启用 HTTPS 时放开 443（配合下方证书挂载 + SSL_CERT_DIR 环境变量）
+      # - "443:443"
+    volumes:
+      - app_data:/app/data
+      # 审计 M17：命名卷挂载点收窄到 uploads 子目录——
+      # static 根不再被命名卷遮蔽（镜像升级后内置静态资产随之更新，避免版本错乱/404）。
+      # 上传代码路径均为 .../static/uploads/{temp,draft,...}，位于卷内，持久化不受影响。
+      - app_uploads:/app/admin/static/uploads
+      - app_platform_uploads:/app/main_site/static/uploads
+      # 审计 D6：HTTPS 证书挂载（可选）。宿主已签发证书（Let's Encrypt 等）目录，
+      # 容器内 entrypoint 检测到即自动启用 443；并设置 SSL_CERT_DIR 指向具体证书目录。
+      # - /etc/letsencrypt/live:/etc/letsencrypt/live:ro
+    env_file:
+      # 审计 C-2 修复：全部安全密钥（JWT_SECRET / FLASK_SECRET_KEY / ENCRYPTION_KEY /
+      # PLUGIN_LICENSE_SECRET / CAPTCHA_SECRET_KEY / DEV_ACCOUNTS_ENCRYPTION_KEY /
+      # LICENSE_SERVER_SECRET / PROBE_SECRET / INTERNAL_SERVICE_TOKEN / APP_DEBUG /
+      # FLASK_DEBUG / PLUGIN_AUTO_INSTALL / DEPLOY_MARKET 等）统一由 .env 注入。
+      # 避免逐项插值遗漏导致插件系统/验证码/VeroGuard 功能不可用。
+      - .env
+    environment:
+      # 仅保留容器网络特有的覆盖项（PG_HOST 走 compose 服务名）。
+      # 注意：不要在 environment 里写 ${VAR:-} 插值透传——变量为空时
+      # environment 会覆盖 env_file 注入值（compose 优先级），造成密钥丢失。
+      - DB_PATH=/app/data/x7k2m9a4.db
+      - PG_HOST=db
+      - PG_PORT=5432
+      - APP_HEARTBEAT_URL=${APP_HEARTBEAT_URL:-https://localhost/api/subscription/heartbeat}
+      - MINI_APP_DB_URL=postgres://${MINI_APP_PG_USER:-app}:${MINI_APP_PG_PASSWORD:?set MINI_APP_PG_PASSWORD in .env}@postgres_miniapp:5432/mini_app
+    depends_on:
+      db:
+        condition: service_healthy
+    # 审计 M14：容器加固——移除所有 Linux capabilities、禁止提权、限制内存与进程数。
+    # 注意：D7 方案 A 下 supervisord(PID1)/nginx 以 root 运行，但绑定 80 端口
+    # 仍需 NET_BIND_SERVICE cap，故仅补回该 cap。
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 1g
+    pids_limit: 200
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  pgdata:
+  app_data:
+  app_uploads:
+  app_platform_uploads:
+  miniapp_pg_data:

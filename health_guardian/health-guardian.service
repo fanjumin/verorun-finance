@@ -1,0 +1,17 @@
+[Unit]
+Description=Health Guardian — 独立看门狗 / 自动回滚
+Documentation=https://github.com/fanjumin/verorun-pro
+After=network.target
+Wants=health.service
+# 注意: 使用 Wants 而非 Requires，确保 health.service 停运时 guardian 仍可独立运行
+
+[Service]
+Type=simple
+User=root
+EnvironmentFile=-/etc/default/health-guardian
+ExecStart=/usr/bin/python3 %h/verorun/health_guardian.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,83 @@
+{
+  "name": "Stock Analysis",
+  "name_i18n_key": "plugin.name",
+  "identifier": "stock_analysis",
+  "version": "1.3.0",
+  "description": "A-share multi-dimensional stock analysis with technical, fundamental, sentiment and AI-assisted research.",
+  "author": "easykai",
+  "min_app_version": "0.59.3",
+  "category": "ai_agent",
+  "icon": "chart",
+  "icon_url": "",
+  "tags": ["finance", "stock", "a-share", "technical-analysis", "fundamental-analysis"],
+  "screenshots": [],
+  "readme_url": "",
+  "tagline": "A股多维研判\n数据辅助决策",
+  "tagline_style": {
+    "font_size": "14px",
+    "color": "#ffffff"
+  },
+  "price_type": "free",
+  "price_amount": 0,
+  "price_interval": "onetime",
+  "price_quarter_fen": 0,
+  "price_year_fen": 0,
+  "trial_days": 0,
+  "compatible_editions": [],
+  "dependencies": {},
+  "conflicts": [],
+  "python_dependencies": {
+    "required": ["pyyaml", "pandas", "requests"],
+    "optional": {}
+  },
+  "config": {
+    "data_provider": "sina",
+    "data_cache_dir": "./data/cache"
+  },
+  "permissions": [
+    "network:request"
+  ],
+  "hooks": {
+    "provides": [],
+    "listens": []
+  },
+  "agent_role": "stock_analyst",
+  "capabilities": [
+    "stock.technical_analysis",
+    "stock.fundamental_analysis",
+    "stock.sentiment_analysis",
+    "stock.signal_explanation"
+  ],
+  "menu": {
+    "group": "Analysis",
+    "items": [
+      {
+        "key": "stock_analysis",
+        "icon": "chart",
+        "label": "Stock Analysis",
+        "label_i18n_key": "menu.stock_analysis",
+        "embed_url": "/admin/stock-analysis/"
+      }
+    ]
+  },
+  "settings_schema": {
+    "type": "object",
+    "title": "Stock Analysis Settings",
+    "description": "Configure the stock analysis plugin data source and cache directory.",
+    "properties": {
+      "data_provider": {
+        "type": "string",
+        "title": "Data Provider",
+        "description": "Primary market data source. Only 'sina' is currently implemented.",
+        "enum": ["sina"],
+        "default": "sina"
+      },
+      "data_cache_dir": {
+        "type": "string",
+        "title": "Data Cache Directory",
+        "description": "Directory for cached market data. Reserved for future file-based caching.",
+        "default": "./data/cache"
+      }
+    }
+  }
+}

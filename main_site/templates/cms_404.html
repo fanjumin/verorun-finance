@@ -1,0 +1,11 @@
+<!DOCTYPE html>
+
+<html lang="{{ lang }}">
+<head><meta charset="utf-8"/><title>404 — {{ brand.site_name_en if brand else '' }}</title>
+<style>:root{--bg:#0a0a0f;--muted:#8b949e;--accent:#00d4aa}
+body{background:var(--bg);color:#c9d1d9;font-family:sans-serif;display:flex;align-items:center;
+justify-content:center;height:100vh;flex-direction:column}
+h1{font-size:4em;color:var(--accent)}p{color:var(--muted)}a{color:var(--accent)}</style>
+</head>
+<body><h1>404</h1><p>{{ _('Page Not Found') }}</p><a href="/">{{ _('Back to Home') }}</a></body>
+</html>

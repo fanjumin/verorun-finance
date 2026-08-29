@@ -1,0 +1,358 @@
+# 1688 供应链采集插件 — 中文翻译（源键为英文，§12.1）
+plugin.name: 1688 供应链
+plugin.menu_label: 1688 供应链
+Product Sourcing: 商品采集
+AI Optimization: AI 优化
+Local Publishing: 本地发布
+1688 Supply Chain Plugin: 1688 供应链插件
+AliApiPlugin v2.1.0: AliApiPlugin v2.1.0
+1688 product sourcing, AI optimization, and local marketplace publishing: 提供 1688 商品采集、AI 智能优化和本地商城发布功能
+
+# ── 前端界面字符串（来源：static/ali_console.js __() 调用）──
+Unpriced: 未定价
+Active: 活跃
+Inactive: 非活跃
+Draft: 草稿
+Published: 已发布
+Unpublished: 已下架
+Failed: 失败
+Success: 成功
+Please enter Product ID: 请输入商品ID
+Please enter a numeric ID: 请输入数字ID
+Clear cache?: 确定清理缓存？
+Clear failed: 清理失败
+Available: 可用
+Unavailable: 不可用
+Not configured: 未配置
+Configured: 已配置
+Failed to load products: 加载商品失败
+No product data: 暂无商品数据
+Image: 图片
+No image: 无图
+No title: 无标题
+Uncategorized: 未分类
+View: 查看
+AI Title: AI标题
+AI Title Options: AI标题选项
+Publish: 发布
+Previous: 上一页
+Next: 下一页
+Fetch failed: 获取失败
+Load failed: 加载失败
+View failed: 查看失败
+Product ID: 商品ID
+Title: 标题
+Selected title: 已选标题
+Price: 价格
+Original price: 原价
+Category: 类目
+Status: 状态
+Local Product ID: 本地商品ID
+Specs: 规格
+Image list: 图片列表
+No images yet, click the area above to upload: 暂无图片，请点击上方区域上传
+Delete: 删除
+Delete failed: 删除失败
+Collect failed: 采集失败
+From cache: （来自缓存）
+Please enter search keyword: 请输入搜索关键词
+Search failed: 搜索失败
+AI title generation failed: AI生成标题失败
+No valid AI title options: AI未生成有效的标题选项
+Option: 选项
+Recommended: 推荐
+Please select a title: 请选择一个标题
+Professional: 专业型
+Attractive: 吸引力型
+Concise: 简洁型
+Generic: 通用
+Title selected: 标题已选择成功！
+Selection failed: 选择失败
+Please enter stock quantity (default 999): 请输入库存数量（默认999）
+Publish failed: 发布失败
+No logs: 暂无日志
+System: 系统
+User rate limit: 用户限流
+Disconnected: 未连接
+seconds: 秒
+Memory cache: 内存缓存
+Using Redis: 使用Redis
+Provider: 供应商
+Model: 模型
+User daily limit: 用户日限
+User hourly limit: 用户时限
+Global concurrency: 全局并发
+Global QPS: 全局QPS
+Circuit breaker threshold: 熔断阈值
+Product cache TTL: 商品缓存TTL
+API Gateway URL: API 网关地址
+Save Config: 保存配置
+Saving...: 保存中...
+Saved: 已保存
+Save failed: 保存失败
+Please fill in at least AppKey or AppSecret: 请至少填写 AppKey 或 AppSecret
+Enter 1688 AppSecret: 输入 1688 AppSecret
+No drop-shipping orders: 暂无代发订单
+One-click Purchase: 一键采购
+Sync Tracking: 同步物流
+Order failed: 下单失败
+Unknown error: 未知错误
+
+# ── 模板字符串（来源：index.html _() 调用）──
+User Statistics: 用户统计
+Risk Control Status: 风控状态
+Cache Status: 缓存状态
+Page Number: 页码
+Items per Page: 每页条数
+Settings: 设置
+No products: 暂无商品数据
+Failed to fetch: 获取失败
+Local product ID: 本地商品ID
+Specifications: 规格
+AI title options: AI标题选项
+Failed to load: 加载失败
+" images": 张图片
+No images, click above to upload: 暂无图片，请点击上方区域上传
+"Delete image #": 确定要删除第
+"File ": 文件 
+" exceeds 5MB limit": 超过 5MB 限制
+" format not supported": 格式不支持
+"Upload ": 上传 
+" failed": 失败
+"(from cache)": （来自缓存）
+Collected: 采集成功
+Collection failed: 采集失败
+Enter search keywords: 请输入搜索关键词
+"Search success: found ": 搜索成功！共找到
+" products": 个商品
+Preview: 结果预览
+Generate AI title options?: 确定要使用AI生成多版本标题选项吗？
+Normal: 通用
+Title selected!: 标题已选择成功！
+Enter stock quantity (default 999): 请输入库存数量（默认999）
+"Publish to local store? Stock: ": "确定要将商品发布到本地商城吗？库存:"
+"Published! Local ID: ": "发布成功！本地商品ID:"
+Configured, enter new value to overwrite: 已配置，输入新值以覆盖
+Breaker threshold: 熔断阈值
+s: 秒
+Fill in AppKey or AppSecret: 请至少填写 AppKey 或 AppSecret
+AppKey is masked; enter full key to update: AppKey 显示为脱敏值，如需修改请完整输入新的 AppKey
+User rate limiting: 用户限流
+Daily remaining: 每日剩余
+Hourly remaining: 每小时剩余
+Concurrency control: 并发控制
+Active requests: 活跃请求
+Current QPS: 当前QPS
+Connected: 已连接
+Not connected: 未连接
+Memory: 内存
+Connections: 连接数
+Using memory cache: 使用内存缓存
+Entries: 条目
+Expired: 过期
+Use Redis: 使用Redis
+'Yes': '是'
+'No': '否'
+"Create 1688 purchase order? Verify price and stock.": 确定在 1688 创建采购订单？请确认价格和库存无误。
+"Purchase order submitted to 1688, order# ": "采购单已提交至 1688，订单号:"
+Please enter the product ID: 请输入商品ID
+Confirm cache clear?: 确定清理缓存？
+Cleanup failed: 清理失败
+
+# ── Admin 采集/缓存/配置界面（ali_console 等，从全局迁入的插件专属词条） ──
+'1688 Products': '1688商品'
+'AI Configuration': 'AI配置'
+'AI Content Optimization': 'AI内容优化'
+'API Call': 'API调用'
+'API Endpoint Filter': 'API端点筛选'
+'API Gateway': 'API 网关'
+'API Logs': 'API日志'
+'API Response Cache': 'API响应缓存'
+'API User Count': 'API用户数'
+'API Version': 'API 版本'
+'Active Products': '活跃商品'
+'Alibaba API Management': '阿里巴巴API管理'
+'Alibaba Configuration': '阿里巴巴配置'
+'Alibaba Product ID': '阿里巴巴商品ID'
+'All Caches': '所有缓存'
+'All Products': '所有商品'
+'All Statuses': '所有状态'
+'Cache Cleanup': '缓存清理'
+'Cache Configuration': '缓存配置'
+'Cache Management': '缓存管理'
+'Cache Statistics': '缓存统计'
+'Circuit Breaker Threshold': '熔断阈值'
+'Cleanup Type': '清理类型'
+'Clear Cache': '清理缓存'
+'Client': '客户'
+'Configuration Info': '配置信息'
+'Confirm Selection': '确认选择'
+'Detecting...': '检测中...'
+'Drag image here or click to upload': '拖拽图片到此处或点击上传'
+'Drop Shipping Orders': '代发订单'
+'Enter the product ID to optimize': '输入要优化的商品ID'
+'Global Concurrency Limit': '全局并发限制'
+'Global QPS Limit': '全局QPS限制'
+'Inactive product': '非活跃商品'
+'Last updated': '更新时间'
+'Leave empty to clear all product cache': '留空则清除所有商品缓存'
+'Local order': '本地订单'
+'Manage Drop Shipping Orders': '代发订单管理'
+'Memory Cache Size': '内存缓存大小'
+'Parameters': '参数'
+'Pending procurement': '待采购'
+'Picture': '图片'
+'Product cache': '商品缓存'
+'Product collection': '商品采集'
+'Product image management': '商品图片管理'
+'Product information': '商品信息'
+'Product management': '商品管理'
+'Product title': '商品标题'
+'Purchase Order ID': '采购单ID'
+'Purchase Status': '采购状态'
+'Purchased': '已订购'
+'Redis Configuration': 'Redis配置'
+'Refresh Statistics': '刷新统计'
+'Response code': '响应码'
+'Risk control configuration': '风控配置'
+'Save configuration': '保存配置'
+'Scrape Single Product': '采集单个商品'
+'Search and Collect': '搜索采集'
+'Signature Method': '签名方法'
+'Start collecting': '开始采集'
+'Supplier': '供应商'
+'Time (ms)': '耗时(ms)'
+'Total number of products': '商品总数'
+'Use AI to optimize product titles and descriptions to improve marketing effectiveness. AI service must be available.': '使用AI优化商品标题和描述，提升营销效果。需要AI服务可用。'
+'User Daily Limit': '用户每日限制'
+'User Hourly Limit': '用户每小时限制'
+'You can find the product ID in the Alibaba product detail page URL': '在阿里巴巴商品详情页URL中可以找到商品ID'
+
+# ── 后端 API 响应消息（来源：routes/admin.py _error/_success）──
+'Please log in or you lack permission': '请先登录或权限不足'
+'CSRF verification failed, please refresh and retry': 'CSRF 验证失败，请刷新页面后重试'
+'Please log in': '请先登录'
+'Product not found': '商品不存在'
+'Request data cannot be empty': '请求数据不能为空'
+'Product ID is required': '商品ID不能为空'
+'Failed to parse product data': '解析商品数据失败'
+'Search keyword is required': '搜索关键词不能为空'
+'AI service unavailable': 'AI服务不可用'
+'AI optimization failed': 'AI优化失败'
+'Please provide a title to select': '请提供要选择的标题'
+'Product already published': '商品已发布，不可重复发布'
+'Cannot connect to main database, please check auth-center path': '无法连接主数据库，请确认auth-center模块路径正确'
+'Product not published, cannot unpublish': '商品未发布，无法下架'
+'No file uploaded': '没有上传文件'
+'File is empty': '文件为空'
+'Invalid image index': '图片索引无效'
+'Please provide image order': '请提供图片顺序'
+'Order index count mismatch': '顺序索引数量不匹配'
+'API Gateway URL must start with http:// or https://': 'API 网关地址必须以 http:// 或 https:// 开头'
+'Invalid redirect URI': '非法的回调地址'
+'AppKey not configured': '未配置AppKey'
+'Missing authorization code': '缺少授权码 code'
+'Missing state parameter': '缺少 state 参数'
+'State invalid or expired, please re-authorize': 'state 无效或已过期，请重新授权'
+'refresh_token not found, please re-authorize': '未找到 refresh_token，请重新授权'
+'1688 not authorized or token expired, please re-authorize via /admin/ali-api/oauth/url': '未授权 1688 或 token 已过期无法刷新，请先通过 /admin/ali-api/oauth/url 重新授权'
+'Purchase order ID is required': '缺少采购单 ID'
+'Purchase order not found': '采购单不存在'
+'Order lacks shipping address, please add it in order management': '订单缺少收货地址信息，请先在订单管理中补充收货地址'
+'1688 not authorized, please re-authorize in Configuration': '1688 未授权，请在"配置信息"页面重新授权'
+'This purchase order has not been placed on 1688 yet': '该采购单尚未在 1688 下单'
+'1688 not authorized': '1688 未授权'
+'Resource not found': '资源不存在'
+'Internal server error': '服务器内部错误'
+'Product unpublished': '商品已下架'
+'Image deleted': '图片已删除'
+'Image order updated': '图片排序已更新'
+'Configuration saved successfully.': '配置保存成功。'
+'1688 authorization revoked': '已解除 1688 授权'
+'API returned no product info': 'API返回无商品信息'
+'1688 has not shipped yet': '1688 尚未发货'
+
+# ── 前端/拼接字符串缺失键（批2 方案B 补充）──
+'Ordered': '已订购'
+'Shipped': '已发货'
+'Completed': '已完成'
+'Cancelled': '已取消'
+'Paid': '已付款'
+'Pending': '待支付'
+'Refunded': '已退款'
+'Sync failed': '同步失败'
+'Tracking synced: ': '物流已同步: '
+'Fill in AppKey, AppSecret or API Gateway URL': '请至少填写 AppKey、AppSecret 或 API 网关地址'
+'Enter 1688 AppKey': '输入 1688 AppKey'
+'1688 product link': '1688商品链接'
+'items': '个'
+'Total ': '共'
+'?': ' 张图片吗？'
+'SKU': 'SKU'
+'pics': '张'
+'and ': '还有 '
+'AI optimization completed': 'AI 优化完成'
+'AI generated 3 different style titles, please select the most suitable one.': 'AI 生成了 3 个不同风格的标题，请选择最合适的。'
+'Today: ': '今日：'
+'Supports JPG/PNG/WebP/GIF, up to 5MB per file': '支持 JPG/PNG/WebP/GIF 格式，单个文件不超过 5MB'
+'Clearing cache will delete cached data, which may increase API calls.': '清空缓存会删除缓存的商品数据，可能导致 API 调用量增加。'
+'An procurement order is automatically created after payment. The admin confirms and places the order on 1688, and logistics information is automatically filled back.': '支付后自动生成采购订单，由管理员在 1688 确认下单，物流信息自动回填。'
+
+# ── 后端消息缺失键（批3 补充）──
+'Login required or insufficient permissions': '需要登录或权限不足'
+'Operation succeeded': '操作成功'
+'Operation failed': '操作失败'
+'Please log in first': '请先登录'
+'Failed to fetch data: {error}': '获取数据失败: {error}'
+'Failed to list products: {error}': '获取商品列表失败: {error}'
+'Failed to fetch product details: {error}': '获取商品详情失败: {error}'
+'Product ID cannot be empty': '商品ID不能为空'
+'Rate limit exceeded: {reason}': '请求频率超限: {reason}'
+'API call failed: {error}': 'API 调用失败: {error}'
+'Failed to collect product: {error}': '采集商品失败: {error}'
+'Search keyword cannot be empty': '搜索关键词不能为空'
+'Failed to search products: {error}': '搜索商品失败: {error}'
+'AI optimization failed: {error}': 'AI 优化失败: {error}'
+'AI title generation failed: {options}': 'AI 标题生成失败: {options}'
+'Failed to generate AI title options: {error}': '生成 AI 标题选项失败: {error}'
+'Please provide the title to select': '请提供需要选择的标题'
+'Failed to select title: {error}': '选择标题失败: {error}'
+'Product already published, cannot publish again': '商品已发布，不能重复发布'
+'Cannot connect to main database, check auth-center module path': '无法连接主数据库，请检查 auth-center 模块路径'
+'Failed to publish product: {error}': '发布商品失败: {error}'
+'Failed to unpublish product: {error}': '取消发布商品失败: {error}'
+'Failed to fetch image list: {error}': '获取图片列表失败: {error}'
+'Unsupported file format. Allowed: {allowed}': '不支持的文件格式，仅允许: {allowed}'
+'File too large, max {size}MB': '文件过大，最大 {size}MB'
+'Failed to upload image: {error}': '上传图片失败: {error}'
+'Failed to delete image: {error}': '删除图片失败: {error}'
+'Image order index count mismatch': '图片排序索引数量不匹配'
+'Failed to reorder images: {error}': '图片排序失败: {error}'
+'Failed to fetch cache statistics: {error}': '获取缓存统计失败: {error}'
+'Cache clear failed: {error}': '清空缓存失败: {error}'
+'Failed to fetch rate limit statistics: {error}': '获取频率限制统计失败: {error}'
+'Failed to fetch API logs: {error}': '获取 API 日志失败: {error}'
+'Failed to fetch configuration: {error}': '获取配置失败: {error}'
+'Configuration saved.': '配置已保存。'
+'Invalid callback URL': '无效的回调地址'
+'Failed to fetch token: {error}': '获取令牌失败: {error}'
+'Refresh failed: {error}': '刷新失败: {error}'
+'1688 authorization removed': '已解除 1688 授权'
+'Query failed: {error}': '查询失败: {error}'
+'Failed to fetch purchase order list: {error}': '获取采购订单列表失败: {error}'
+'Missing purchase order ID': '缺少采购订单 ID'
+'Purchase order status is not pending procurement (current: {status}), cannot re-order': '采购订单状态不是待采购（当前: {status}），不能重新下单'
+'Order missing shipping address, please add it in order management': '订单缺少收货地址，请在订单管理中补充'
+'1688 not authorized, please re-authorize in Configuration page': '1688 未授权，请在配置页面重新授权'
+'1688 product unavailable: {error}': '1688 商品不可用: {error}'
+'Purchase order submitted to 1688': '采购订单已提交到 1688'
+'Failed to create purchase order: {error}': '创建采购订单失败: {error}'
+'Purchase order has not been placed on 1688': '采购订单尚未在 1688 下单'
+'Failed to sync tracking: {error}': '同步物流失败: {error}'
+# ── 风控配置可编辑（风控配置改造）──
+'Save risk control configuration': '保存风控配置'
+'Circuit Breaker Window': '熔断窗口'
+'Circuit Breaker Timeout': '熔断超时'
+'Max Retries': '最大重试次数'
+'Retry Delay': '重试延迟'
+'Invalid rate limit configuration': '无效的风控配置'

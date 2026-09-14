@@ -36,8 +36,16 @@
 # 原因：官方版/源码版把 SPARSE_DIRS 刻意置空表示"全量检出（disable sparse-checkout）"；
 # 若用 ${VAR:=default}，空串会被覆盖回白名单，导致只检出 plugins/site_domains、其余插件丢失。
 # 仅当变量从未被赋值（unset）时才填充默认白名单。
+# 审计 F-1（2026-08-30 标准版复测）：标准版内置插件（email/sms/im_gateway）必须在稀疏白名单内，
+# 否则 5b4dd647 新增的 "Bundled plugin tables" 建表步骤 import 不到模块、全部 skip，
+# 管理员后手启用插件时相关功能直接 500。此处与 sync-to-standard.yml 标准版内置插件集合对齐。
+# 审计 F-1a（2026-08-30 复测残留）：email/sms/im_gateway 共享依赖 plugins/_base
+# （db.py / embeddings.py / ratelimit.py，如 from plugins._base.db import get_raw_connection），
+# 白名单必须一并包含 plugins/_base，否则建表/启用仍 No module named 'plugins._base'。
 if [ -z "${SPARSE_DIRS+x}" ]; then
-    SPARSE_DIRS="admin auth-center main_site health_service veroguard plugin_manager agent_matrix orchestrator i18n shared providers themes static deploy scripts plugins/site_domains"
+    # finance/LAN 桌面包裹版需要 plugins/stock_analysis（白名单制逐项登记）。
+    # 仅加入检出清单不激活插件（激活由配置门控），对标准版部署无副作用。
+    SPARSE_DIRS="admin auth-center main_site health_service veroguard plugin_manager agent_matrix orchestrator i18n shared providers themes static deploy scripts plugins/site_domains plugins/email plugins/sms plugins/im_gateway plugins/_base plugins/stock_analysis"
 fi
 : "${FORCE_UPDATE:=0}"              # 审计 C-3：force-overwrite local modifications during update (used with --force)
 : "${PIP_MIRROR:=}"
@@ -92,7 +100,10 @@ _ensure_apt_mirror() {
 _detect_pip_mirror() {
     [ -n "${PIP_MIRROR_DETECTED:-}" ] && return 0
     echo -e "${INFO} Detecting fastest pip mirror..."
-    local _best="" _best_time=999
+    # G3/DE-4 本地稿：_best_time 阈值 999→3000（国内镜像常 1~2s，旧阈值会"全部超阈值"
+    # 而静默回退默认 pypi，导致 CDN 慢源反被选中）；同时记录首个可达镜像作兜底，
+    # 全源 >3s 时仍用最快可达镜像而非空回退默认源。
+    local _best="" _best_time=3000 _first=""
     for _t in \
         "aliyun|https://mirrors.aliyun.com/pypi/simple/pip/|-i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com" \
         "tsinghua|https://pypi.tuna.tsinghua.edu.cn/simple/pip/|-i https://pypi.tuna.tsinghua.edu.cn/simple/ --trusted-host pypi.tuna.tsinghua.edu.cn" \
@@ -102,6 +113,7 @@ _detect_pip_mirror() {
         if command -v curl >/dev/null 2>&1 && curl -s --connect-timeout 3 --max-time 5 "${_url}" -o /dev/null 2>/dev/null; then
             local _elapsed=$(( ($(date +%s%N) - _start) / 1000000 ))
             echo -e "  ${INFO} ${_name}: ${_elapsed}ms"
+            _first="${_first:-${_args}}"
             if [ "${_elapsed}" -lt "${_best_time}" ]; then
                 _best_time="${_elapsed}"; _best="${_args}"
             fi
@@ -109,7 +121,7 @@ _detect_pip_mirror() {
             echo -e "  ${WARN} ${_name}: unreachable"
         fi
     done
-    if [ -n "${_best}" ]; then PIP_MIRROR="${_best}"; fi
+    if [ -n "${_best}" ]; then PIP_MIRROR="${_best}"; elif [ -n "${_first}" ]; then PIP_MIRROR="${_first}"; fi
     PIP_MIRROR_DETECTED=1
     echo -e "${OK} pip mirror → ${PIP_MIRROR:-default}"
 }
@@ -127,6 +139,17 @@ _clone_with_timeout() {
     local _candidates=("${_repo}")
     if echo "${_repo}" | grep -q '^https://github.com/'; then
         _candidates+=("https://ghfast.top/${_repo#https://}" "https://ghproxy.net/${_repo#https://}")
+    fi
+    # 2026-08-31 gitee 原生源支持：REGION=cn 且源为 fanjumin/verorun-code 时，
+    # 优先尝试 gitee 同名 SSH 源（CN 原生直连、免镜像链）。服务器已注册 gitee
+    # deploy key 时立即命中；未注册时 publickey 秒级失败，自动落入原候选链，
+    # 代价仅数秒。注意 gitee verorun-pro 是落地页仓，不参与该回退。
+    if [ "${REGION}" = "cn" ]; then
+        case "${_repo}" in
+            git@github.com:fanjumin/verorun-code.git|https://github.com/fanjumin/verorun-code.git)
+                _candidates=("git@gitee.com:fanjumin/verorun-code.git" "${_candidates[@]}")
+                ;;
+        esac
     fi
     local _url _cloned=""
     for _url in "${_candidates[@]}"; do
@@ -749,6 +772,7 @@ APP_REGION ${REGION:-global}
 DASHSCOPE_TEXT_KEY 
 OPENAI_API_KEY 
 DEEPSEEK_API_KEY 
+LOG_FILE=${LOG_DIR}/verorun-app.jsonl
 EOF
 
     for key in APP_DEBUG:false FLASK_DEBUG:0; do
@@ -902,7 +926,7 @@ GDEVEOF
     # 给出可执行修复指引，让一键安装得到可用系统（无守护）而非 crash-loop。
     local _vr_ed="standard"
     if [ -f "${APP_HOME}/.env" ]; then
-        _vr_ed=$(grep "^VR_EDITION=" "${APP_HOME}/.env" 2>/dev/null | cut -d= -f2-)
+        _vr_ed=$(grep "^VR_EDITION=" "${APP_HOME}/.env" 2>/dev/null | cut -d= -f2- || true)
     fi
     _vr_ed="${_vr_ed:-standard}"
     if [ "${_vr_ed}" != "official" ] && [ ! -x "${APP_HOME}/veroguard/dist/verorun-guardian.bin" ]; then
@@ -1486,6 +1510,10 @@ DEEPSEEK_API_KEY=
 # set to 1 when using cogevolution / evolution features.
 AUTO_KNOWLEDGE_EXTRACT=0
 
+# Structured JSON logs (X-Request-Id correlation) — shared/logging.py mounts the JSON file
+# handler only when LOG_FILE is set (C-4 联调验证依赖此配置；目录不存在时应用自动创建)
+LOG_FILE=${LOG_DIR}/verorun-app.jsonl
+
 # Region routing (VeroRun 0.43.0+)
 APP_REGION=${REGION}
 ENVEOF
@@ -1496,7 +1524,7 @@ ENVEOF
         echo "EDU_CODE=${EDU_CODE:-}" >> "${env_file}"
     fi
 
-    # 桌面版分版（科研版 research / 金融版 finance / 官方版 official 等）：
+    # 桌面版分版（科研桌面版 research-desktop / 金融桌面版 finance-desktop / 官方版 official 等）：
     # 产物根目录的 .verorun-edition 标识驱动 VR_EDITION，供 agent_matrix._current_edition() 消费，
     # 驱动角色集与插件 overlay。标识存在时覆盖上面的 edu 旧分支（双保险）。
     if [ -f "${APP_HOME}/.verorun-edition" ]; then
@@ -1558,8 +1586,10 @@ write_nginx_config() {
         # F-08 修复：统一安全头组（nginx 单一层级，供 3 个 server 复用）。
         # HSTS 固定输出（不再依赖证书安装时序，解决部署后 Certbot 改写导致 HSTS 丢失）；
         # CSP 合并后端 CDN 白名单并移除 unsafe-eval；新增 Permissions-Policy。
+        # 零预置地址：connect-src 已含 https: 通配，已移除硬编码业务子域 http://agent.verorun.com。
+        #   业务地址一律来自部署时用户输入（DOMAIN 等变量），模板中不得预置任何域名或 IP。
         _sec_headers="    add_header X-Frame-Options \"SAMEORIGIN\" always;
-    add_header Content-Security-Policy \"default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob: https:; font-src 'self' data: https://cdn.jsdelivr.net; connect-src 'self' ws: wss: https: http://agent.verorun.com https://api.github.com https://cdn.jsdelivr.net; frame-ancestors 'self'\" always;
+    add_header Content-Security-Policy \"default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob: https:; font-src 'self' data: https://cdn.jsdelivr.net; connect-src 'self' ws: wss: https: https://api.github.com https://cdn.jsdelivr.net; frame-ancestors 'self'\" always;
     add_header X-Content-Type-Options \"nosniff\" always;
     add_header Referrer-Policy \"strict-origin-when-cross-origin\" always;
     add_header Permissions-Policy \"camera=(), microphone=(), geolocation=()\" always;
@@ -1585,6 +1615,7 @@ server {
 
 # 审计 M5：rate limiting for the auth/admin surfaces at the nginx layer (http-level zone, referenced by locations inside servers)
 limit_req_zone \$binary_remote_addr zone=verorun_auth:10m rate=10r/s;
+limit_req_status 429;   # D-14：超限返回 429 而非默认 503（避免客户端误判服务宕机）
 
 # 审计 M9：access_log redaction — use \$uri (without query) instead of \$request,
 # preventing URL query-string tokens such as JWT/sso_token from landing in logs (log leakage equals session hijacking)
@@ -1772,17 +1803,36 @@ NGXEOF
         # 服务器本地健康验证与脚本探测全部拿到 000。
         local _lan_server_name="localhost 127.0.0.1"
         [ -n "${_lan_ips}" ] && _lan_server_name="${_lan_server_name} ${_lan_ips}"
+        # STD-8 修复（2026-08-29 自签 HTTPS 产品化）：no-domain 模式感知自签证书——
+        # 证书由 deploy/intranet/setup_lan_selfsigned.sh 生成；证书存在时主 server 追加 443，
+        # update/configure 重写后 HTTPS 不丢失（与 domain mode D3 同理）。
+        # 443 不设 default_server 444：IP 直连 TLS Client Hello 无 SNI，若 443 default_server 为 444
+        # 兜底块会破坏 https://<IP> 访问（复检报告取舍，未知 Host 在 443 落入主块为残余硬化缺口）。
+        local _lan_ssl_listen=""
+        local _lan_ssl_cert=""
+        if [ -f "/etc/verorun/certs/lanip/fullchain.pem" ] && [ -f "/etc/verorun/certs/lanip/privkey.pem" ]; then
+            _lan_ssl_listen="    listen 443 ssl http2;"
+            _lan_ssl_cert="    ssl_certificate     /etc/verorun/certs/lanip/fullchain.pem;
+    ssl_certificate_key /etc/verorun/certs/lanip/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 1d;"
+        fi
         cat > "${nginx_conf}" << NGXEOF
 # VeroRun Nginx — no-domain mode (auto-generated by ${INSTALL_SCRIPT})
 
 # 审计 M5：rate limiting for the auth/admin surfaces at the nginx layer (http-level zone, referenced by locations inside servers)
 limit_req_zone \$binary_remote_addr zone=verorun_auth:10m rate=10r/s;
+limit_req_status 429;   # D-14：超限返回 429 而非默认 503（避免客户端误判服务宕机）
 
 # 审计 M9：access_log redaction — use \$uri (without query) instead of \$request, preventing token leakage into logs
 log_format verorun_redact '\$remote_addr - \$remote_user [\$time_local] "\$request_method \$uri \$server_protocol" \$status \$body_bytes_sent "\$http_referer"';
 
 server {
     listen 80;
+${_lan_ssl_listen}
+${_lan_ssl_cert}
     # 审计 M11：restrict server_name to the local localhost/LAN IPs; unknown Hosts no longer hit this block
     server_name ${_lan_server_name};
     server_tokens off;
@@ -1925,8 +1975,21 @@ do_install() {
         # so reads must use < /dev/tty or read will swallow the rest of the script.
         # The prompt uses echo -n > /dev/tty instead — read -p prompts go to stderr,
         # and under a 2>&1 | tail pipe they get swallowed by buffering, appearing to hang.
-        echo -n "Install dependencies now? [Y/n] " > /dev/tty 2>/dev/null || true
-        read -r _ans < /dev/tty 2>/dev/null || _ans=""
+        # 审计 F-4（2026-08-30 复测）：非交互/CI 下 /dev/tty 不存在，重定向打开失败会先向 stderr
+        # 报 "没有那个设备或地址"（bash 从左到右处理重定向，2>/dev/null 来不及吞掉打开失败），
+        # 产生 2 条观感像出错的噪音。先探测 tty：无 tty 直接默认继续安装，不写 /dev/tty。
+        _has_tty=0
+        if { exec 3<>/dev/tty; } 2>/dev/null; then
+            exec 3>&-
+            _has_tty=1
+        fi
+        if [ "${_has_tty}" = "1" ]; then
+            echo -n "Install dependencies now? [Y/n] " > /dev/tty
+            read -r _ans < /dev/tty || _ans=""
+        else
+            echo -e "${INFO} Non-interactive mode — auto-continuing with dependency installation"
+            _ans=""
+        fi
         case "${_ans}" in
             n|N) echo -e "${WARN} Skipping dependency installation"; SKIP_DEPS=1 ;;
             *)   echo -e "${OK} Will install missing dependencies" ;;
@@ -2117,6 +2180,13 @@ do_install() {
         fi
         git reset --hard "origin/${GIT_BRANCH}"
     else
+        # 审计 F-3（2026-08-30 标准版复测）：全新安装时 "Create directories" 已 mkdir 出
+        # APP_HOME/data 与 .cache 等框架目录，git clone 目标非空导致首试必败、靠重试自愈
+        # （多耗约 15s 并输出误导性 WARN）。此分支的 APP_HOME 必为本安装创建
+        # （resolve_directory_conflict 已前置处理历史冲突），先清空再 clone，一次成功。
+        if [ -d "${APP_HOME}" ]; then
+            find "${APP_HOME}" -mindepth 1 -delete
+        fi
         _clone_with_timeout "${GIT_REPO}" "${APP_HOME}" "${GIT_BRANCH}"
     fi
     # Apply the sparse-checkout whitelist ONLY when SPARSE_DIRS is non-empty.
@@ -2637,7 +2707,7 @@ print_summary() {
             echo "  ╠══════════════════════════════════════════════════════════════╣"
             echo "  ║  Main site:   http://localhost/                               ║"
             echo "  ║  Admin:       http://localhost/admin/                         ║"
-            echo "  ║  Console:     :8083 only (LAN nginx does not proxy it - P2)   ║"
+            echo "  ║  Login:       http://localhost/login                          ║"
             PUBLIC_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
             if [ -n "${PUBLIC_IP}" ]; then
             echo "  ║  LAN access:  http://${PUBLIC_IP}/  (same paths)              ║"

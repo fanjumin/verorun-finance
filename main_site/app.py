@@ -66,6 +66,26 @@ def inject_deploy():
     return dict(deploy=deploy, edition=os.environ.get('VR_EDITION', ''))
 
 
+# ══ 可观测性：request_id 注入与响应头 ══
+# INT-004 接线：访问日志经统一 get_logger 输出（LOG_FILE 设置时落 JSON，自动并入 request_id/user_id）
+from shared.logging import get_logger as _get_logger
+_access_logger = _get_logger('verorun.access')
+
+
+@app.before_request
+def _inject_request_id():
+    from shared.observability import init_request_id
+    init_request_id()
+
+
+@app.after_request
+def _attach_request_id_header(response):
+    from shared.observability import current_request_id
+    response.headers['X-Request-Id'] = current_request_id()
+    _access_logger.info('%s %s -> %s', request.method, request.path, response.status_code)
+    return response
+
+
 # ══ i18n ══
 from i18n import _, get_lang, get_all_translations, resolve_locale
 
@@ -133,6 +153,12 @@ try:
     from plugin_manager.manager import PluginManager
     app.plugins_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'plugins')
     pm = PluginManager(app)
+    # 技能注册中心（P0）：可用性求值 + 事件联动 + 注入器注册（开关关闭则回退旧行为）
+    try:
+        from plugin_manager.skill_registry import init_skill_registry
+        init_skill_registry(pm)
+    except Exception:
+        pass
     # 启动期挂载全部已安装插件路由（含 mini_app_builder 的运行时 API
     # /api/v1/mini-program/*），运行时由门卫按启用状态放行/拦截
     # （Flask 3 运行时无法动态注册蓝图，故启动期全量挂载）。
@@ -232,7 +258,11 @@ def _chatbot_context():
         'chatbot_float_button_text': 'AI Advisor'
     }
     try:
-        from plugins.chatbot.models import get_all_configs
+        from shared.plugin_access import get_attr
+        get_all_configs = get_attr('plugins.chatbot.models', 'get_all_configs',
+                                   feature='platform_chatbot_context')
+        if get_all_configs is None:
+            return defaults
         cfg = get_all_configs('chatbot')
         return {
             'chatbot_enabled': str(cfg.get('enabled', '1')).lower() in ('1', 'true', 'yes', 'on'),
@@ -517,7 +547,19 @@ def serve_theme_file(slug, filename):
 
 @app.route('/health')
 def health():
-    return jsonify({"status": "ok", "service": "platform", "version": "1.0.0"})
+    """深度健康检查（可观测性）：PG 连通 + 服务基础状态。"""
+    from shared.observability import measure, build_health_payload
+    from models import get_db
+
+    def _pg_ok():
+        with get_db() as conn:
+            conn.execute('SELECT 1')
+        return True, 'ok'
+
+    checks = [measure(_pg_ok, 'postgres')]
+    payload = build_health_payload('platform', checks,
+                                   extra={'version': getattr(app, 'version', '1.0.0')})
+    return jsonify(payload)
 
 
 if __name__ == '__main__':

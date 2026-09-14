@@ -116,7 +116,7 @@ class AlipayVerificationProvider(BaseVerificationProvider):
         """RSA2 签名：对参数按 key 排序后签名。"""
         private_key = self._get_config('verification.alipay.private_key')
         if not private_key:
-            raise RuntimeError("支付宝私钥未配置，请在 system_config 中设置 verification.alipay.private_key")
+            raise RuntimeError(_('Alipay private key is not configured, please set verification.alipay.private_key in system_config'))
         private_key = self._ensure_pem_format(private_key, 'PRIVATE KEY')
 
         sorted_keys = sorted(params.keys())
@@ -134,7 +134,7 @@ class AlipayVerificationProvider(BaseVerificationProvider):
         """通用支付宝 API 调用（RSA2 签名 POST 请求）。"""
         app_id = self._get_config('verification.alipay.app_id')
         if not app_id:
-            raise RuntimeError("支付宝 App ID 未配置")
+            raise RuntimeError(_('Alipay App ID is not configured'))
 
         params = {
             'app_id': app_id,
@@ -187,12 +187,12 @@ class AlipayVerificationProvider(BaseVerificationProvider):
         final_return = return_url or cfg_return
 
         if not app_id:
-            raise RuntimeError("支付宝 App ID 未配置，请在后台 system_config 中设置 verification.alipay.app_id")
+            raise RuntimeError(_('Alipay App ID is not configured, please set verification.alipay.app_id in system_config'))
 
         cert_name = kwargs.get('cert_name', '').strip()
         cert_no = kwargs.get('cert_no', '').strip()
         if not cert_name or not cert_no:
-            raise RuntimeError("缺少实名认证必需信息：真实姓名和身份证号")
+            raise RuntimeError(_('Missing required identity verification information: real name and ID number'))
 
         # Step 1: 调用初始化接口获取 certify_id
         biz_content = {
@@ -214,12 +214,12 @@ class AlipayVerificationProvider(BaseVerificationProvider):
 
         if init_resp.get('code') != '10000':
             logger.error(f"支付宝认证初始化失败: 完整响应={json.dumps(init_resp, ensure_ascii=False)[:500]}")
-            err_msg = init_resp.get('sub_msg', init_resp.get('msg', '未知错误'))
-            raise RuntimeError(f"支付宝认证初始化失败: {err_msg}")
+            err_msg = init_resp.get('sub_msg', init_resp.get('msg', _('Unknown error')))
+            raise RuntimeError(_('Alipay certification initialization failed: {msg}', msg=err_msg))
 
         certify_id = init_resp.get('certify_id', '')
         if not certify_id:
-            raise RuntimeError("支付宝认证初始化返回缺少 certify_id")
+            raise RuntimeError(_('Alipay certification initialization response is missing certify_id'))
 
         # Step 2: POST调用certify接口，捕获302 Location（真实认证URL）
         certify_params = {
@@ -259,7 +259,7 @@ class AlipayVerificationProvider(BaseVerificationProvider):
         except UnicodeDecodeError:
             html_text = raw.decode('gbk')
         logger.warning(f"[支付宝Certify] 无302跳转，body前300字符: {html_text[:300]}")
-        raise RuntimeError("支付宝认证接口未返回有效跳转URL")
+        raise RuntimeError(_('Alipay certification API did not return a valid redirect URL'))
 
     def verify_signature(self, params: Dict[str, Any]) -> bool:
         """验证支付宝异步通知签名。使用 RSA2 公钥验签。"""
@@ -404,7 +404,7 @@ def get_provider() -> BaseVerificationProvider:
     provider_name = _get_config('verification.provider') or 'alipay'
     provider_cls = _PROVIDER_REGISTRY.get(provider_name)
     if not provider_cls:
-        raise ValueError(f"未知的实名认证 Provider: {provider_name}")
+        raise ValueError(_('Unknown verification provider: {name}', name=provider_name))
     return provider_cls()
 
 
@@ -443,12 +443,12 @@ def initiate_verification(user_id: int, return_url: str, cert_name: str = '', ce
     """
     # 检查是否已认证（防重复）
     if check_duplicate(user_id):
-        return {'success': False, 'error': '您已完成实名认证，无需重复操作'}
+        return {'success': False, 'error': _('You have already completed real-name verification')}
 
     enabled = _get_config('verification.enabled') == 'true'
     stub_mode = _get_config('verification.stub_mode') == 'true'
     if not enabled and not stub_mode:
-        return {'success': False, 'error': '实名认证功能暂未开放'}
+        return {'success': False, 'error': _('Real-name verification is currently unavailable')}
 
     request_id = generate_request_id(user_id)
     provider = get_provider()
@@ -457,7 +457,7 @@ def initiate_verification(user_id: int, return_url: str, cert_name: str = '', ce
         auth_url = provider.build_auth_url(request_id, return_url, cert_name=cert_name, cert_no=cert_no)
     except Exception as e:
         logger.error(f"Verification URL generation failed: {e}")
-        return {'success': False, 'error': f'认证服务异常: {str(e)}'}
+        return {'success': False, 'error': _('Verification service error: {msg}', msg=str(e))}
 
     # 记录认证流水（不包含敏感信息）
     with get_db() as conn:
@@ -500,12 +500,12 @@ def verify_callback(user_id: int, params: Dict[str, Any]) -> Dict[str, Any]:
     """
     # 检查重复认证
     if check_duplicate(user_id):
-        return {'success': False, 'error': '您已完成实名认证'}
+        return {'success': False, 'error': _('You have already completed real-name verification')}
 
     # 验证 request_id（防重放）
     request_id = params.get('request_id') or params.get('outer_order_no') or ''
     if not request_id:
-        return {'success': False, 'error': '缺少认证流水号'}
+        return {'success': False, 'error': _('Missing verification request ID')}
 
     with get_db() as conn:
         existing = conn.execute(
@@ -514,7 +514,7 @@ def verify_callback(user_id: int, params: Dict[str, Any]) -> Dict[str, Any]:
         ).fetchone()
 
         if not existing:
-            return {'success': False, 'error': '认证流水不存在'}
+            return {'success': False, 'error': _('Verification request does not exist')}
 
         # F-C4: request_id 归属校验 — 防止使用他人流水号冒名认证
         if existing['user_id'] != user_id:
@@ -522,17 +522,17 @@ def verify_callback(user_id: int, params: Dict[str, Any]) -> Dict[str, Any]:
                 f"Verification request_id={request_id} ownership mismatch: "
                 f"caller={user_id}, owner={existing['user_id']}"
             )
-            return {'success': False, 'error': '认证流水归属校验失败'}
+            return {'success': False, 'error': _('Verification request ownership check failed')}
 
         if existing['status'] == 'completed':
-            return {'success': False, 'error': '该认证流水已处理'}
+            return {'success': False, 'error': _('This verification request has already been processed')}
 
     # 获取 Provider 并验签
     provider = get_provider()
 
     if not provider.verify_signature(params):
         logger.warning(f"Verification signature failed for request_id={request_id}")
-        return {'success': False, 'error': '签名验证失败，回调可能被伪造'}
+        return {'success': False, 'error': _('Signature verification failed, the callback may be forged')}
 
     # 【合规关键】提取姓名 — 只取 real_name，id_number 不存储
     real_name = provider.extract_real_name(params)
@@ -547,7 +547,7 @@ def verify_callback(user_id: int, params: Dict[str, Any]) -> Dict[str, Any]:
     # id_number_raw 引用在此处之后不再被使用，函数返回时 gc 回收
 
     if not real_name:
-        return {'success': False, 'error': '未能获取认证姓名'}
+        return {'success': False, 'error': _('Failed to obtain the verified name')}
 
     # 写入数据库 — 合规：只写 display_name + 认证标记
     with get_db() as conn:

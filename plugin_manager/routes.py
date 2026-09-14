@@ -28,6 +28,7 @@ from flask import Blueprint, jsonify, request
 from .manager import PluginManager
 from .models import PluginStatus
 from .models_store import get_registry_db
+from .skill_registry import get_skill_registry
 from .exceptions import (
     PluginError,
     PluginNotFoundError, PluginStateError,
@@ -51,13 +52,11 @@ def _get_manager() -> PluginManager:
 
 
 def _json_result(success: bool, data=None, error: str = None, code: int = 200):
-    """统一 json 响应"""
-    resp = {'success': success}
-    if data is not None:
-        resp['data'] = data
-    if error:
-        resp['error'] = error
-    return jsonify(resp), code
+    """统一 json 响应（内部委托 shared.http，信封兼容）"""
+    from shared.http import api_ok, api_err
+    if success:
+        return api_ok(data)
+    return api_err(error or 'error', code)
 
 
 def _require_admin():
@@ -72,6 +71,26 @@ def _require_admin():
     payload = validate_token(token) if token else None
     if not payload or not payload.get('is_admin'):
         return jsonify({'success': False, 'error': '需要管理员权限'}), 403
+    return None
+
+
+def _require_store_admin():
+    """商店运营权：官方版 + super_admin 双条件（VR-SEC-014）。
+
+    用户版无论角色一律 403 —— 无官方 Ed25519 凭证，伪造无效。
+    返回 None 表示通过；否则返回 (jsonify, 403) 供视图直接 return。
+    """
+    err = _require_admin()
+    if err:
+        return err
+    from .license import _is_official_edition
+    if not _is_official_edition():
+        return jsonify({'success': False, 'error': '商店运营仅官方端可用'}), 403
+    from services.jwt_service import validate_token
+    token = request.headers.get('Authorization', '').replace('Bearer ', '')
+    payload = validate_token(token) if token else None
+    if not payload or payload.get('role') != 'super_admin':
+        return jsonify({'success': False, 'error': '需要超级管理员'}), 403
     return None
 
 
@@ -90,6 +109,23 @@ def _parse_positive_int(name: str, default: int, lo: int = 1, hi: int = 100000) 
     except (TypeError, ValueError):
         raise ValueError(f'参数 {name} 必须为整数')
     return max(lo, min(hi, v))
+
+
+def _quota(raw, default: int, lo: int, hi: int):
+    """P1-3 配额声明校验（INT-003 修复，模块级以支持单测）。
+
+    仅当字段缺省/空串时回落默认值；0/负/超上限/非整数一律返回 None（调用方转为 400）。
+    0 是合法入参但为 falsy，禁止用 `or default` 吞掉导致越界校验失效。
+    """
+    if raw is None or raw == '':
+        return default
+    try:
+        v = int(raw)
+    except (TypeError, ValueError):
+        return None
+    if v < lo or v > hi:
+        return None
+    return v
 
 
 def _get_jwt_user():
@@ -575,7 +611,7 @@ def store_sync():
       - total: 目录插件数；-1 拉取失败但保留本地缓存；0 拉取失败且无缓存
       - added: 本次同步后新增上架的插件 identifier 列表（即"获取到的新插件"）
     """
-    err = _require_admin()
+    err = _require_store_admin()
     if err:
         return err
     mgr = _get_manager()
@@ -621,7 +657,7 @@ def store_admin_import():
     Query: ?url=https://github.com/owner/repo
     Returns: 归一化 store_plugins 字段 + warnings（不落库，前端回填表单后保存）。
     """
-    err = _require_admin()
+    err = _require_store_admin()
     if err:
         return err
 
@@ -644,7 +680,7 @@ def store_admin_import():
 @bp.route('/store/admin', methods=['GET'])
 def store_admin_list():
     """管理员：列出所有商店插件商品"""
-    err = _require_admin()
+    err = _require_store_admin()
     if err:
         return err
 
@@ -699,6 +735,17 @@ def _localize(p: dict, lang: str = None) -> dict:
     tk = d.get('tagline_i18n_key')
     if tk and tk in store_i18n:
         d['tagline'] = store_i18n[tk]
+    return d
+
+
+# 内部包下载地址 / 签名哈希：绝不下发给未登录的用户端公开接口
+_PUBLIC_SCRUB_FIELDS = ('download_url', 'package_hash')
+
+
+def _scrub_public(d: dict) -> dict:
+    """从公开返回项中剥离内部敏感字段（in-place 修改并返回）。"""
+    for _f in _PUBLIC_SCRUB_FIELDS:
+        d.pop(_f, None)
     return d
 
 
@@ -820,7 +867,7 @@ def _sync_local_usage_guides(mgr) -> list:
 @bp.route('/store/admin', methods=['POST'])
 def store_admin_save():
     """管理员：创建或更新商店插件商品"""
-    err = _require_admin()
+    err = _require_store_admin()
     if err:
         return err
 
@@ -833,13 +880,34 @@ def store_admin_save():
     import re as _re
     if data.get('version') and not _re.match(r'^[0-9]+\.[0-9]+\.[0-9]+$', str(data['version'])):
         return _json_result(False, error='version must be x.y.z semver', code=400)
+    # v1.8：分类白名单 = 内置 7 类 ∪ plugin_categories 注册表（标准 §18.1）
+    # 注册表不可用/为空时回落内置枚举，行为等同 v1.7。
     from .store_importer import CATEGORY_ENUM
-    if data.get('category') and data['category'] not in CATEGORY_ENUM:
-        return _json_result(False, error=f'category must be one of {CATEGORY_ENUM}', code=400)
+    try:
+        from .distribution import valid_category_keys
+        _cat_keys = set(CATEGORY_ENUM) | valid_category_keys()
+    except Exception as _e:
+        print(f'[store] ⚠️ 动态分类取数失败，回落内置枚举: {_e}')
+        _cat_keys = set(CATEGORY_ENUM)
+    if data.get('category') and data['category'] not in _cat_keys:
+        return _json_result(False, error=f'category must be one of {sorted(_cat_keys)}', code=400)
     for _f in ('download_url', 'icon_url', 'readme_url', 'author_url'):
         _v = (data.get(_f) or '').strip()
         if _v and not _v.startswith(('http://', 'https://')):
             return _json_result(False, error=f'{_f} must be a valid http(s) URL', code=400)
+
+    # P1-3: 配额声明校验（对齐 Coze 上限：工具 100 / 依赖 250MB / QPS 50）
+    # INT-003 修复：0 是合法入参但为 falsy，`or 默认值` 会吞掉 0 导致越界校验失效；
+    # 仅当字段缺省/空串时回落默认值；0/负/超上限/非整数一律 400。（_quota 为模块级函数，见文件顶部）
+    _max_tools = _quota(data.get('max_tools'), 100, 1, 1000)
+    if _max_tools is None:
+        return _json_result(False, error='max_tools must be 1-1000', code=400)
+    _max_deps_kb = _quota(data.get('max_dependencies_kb'), 204800, 1024, 512 * 1024)
+    if _max_deps_kb is None:
+        return _json_result(False, error='max_dependencies_kb must be 1024-524288 (KB)', code=400)
+    _qps = _quota(data.get('declared_qps'), 50, 1, 10000)
+    if _qps is None:
+        return _json_result(False, error='declared_qps must be 1-10000', code=400)
 
     # 适用版本：可选，必须为字符串列表（pro/standard/edge 等）
     _editions = data.get('compatible_editions', [])
@@ -869,8 +937,9 @@ def store_admin_save():
                 file_size, category, tags, screenshots, readme_url,
                 tagline, tagline_i18n_key, tagline_font_size, tagline_color,
                 tagline_subtitle, tagline_subtitle_font_size, usage_guide,
-                readme_cache, min_app_version, depends_on, enabled
-            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                readme_cache, min_app_version, depends_on, enabled,
+                max_tools, max_dependencies_kb, declared_qps
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             ON CONFLICT(identifier) DO UPDATE SET
                 name=excluded.name,
                 name_i18n_key=excluded.name_i18n_key,
@@ -904,6 +973,9 @@ def store_admin_save():
                 min_app_version=excluded.min_app_version,
                 depends_on=excluded.depends_on,
                 enabled=excluded.enabled,
+                max_tools=excluded.max_tools,
+                max_dependencies_kb=excluded.max_dependencies_kb,
+                declared_qps=excluded.declared_qps,
                 updated_at=NOW()
         """, (
             identifier,
@@ -939,6 +1011,9 @@ def store_admin_save():
             data.get('min_app_version', '0.10.0'),
             json.dumps(data.get('depends_on', {})),
             int(data.get('enabled', 1)),
+            _max_tools,
+            _max_deps_kb,
+            _qps,
         ))
         conn.commit()
 
@@ -953,7 +1028,7 @@ def store_admin_save():
 @bp.route('/store/admin/<identifier>', methods=['DELETE'])
 def store_admin_delete(identifier: str):
     """管理员：删除商店插件商品"""
-    err = _require_admin()
+    err = _require_store_admin()
     if err:
         return err
 
@@ -976,7 +1051,7 @@ def store_admin_delete(identifier: str):
 @bp.route('/store/admin/<identifier>/toggle', methods=['POST'])
 def store_admin_toggle(identifier: str):
     """管理员：切换插件上架/下架状态"""
-    err = _require_admin()
+    err = _require_store_admin()
     if err:
         return err
 
@@ -1013,12 +1088,15 @@ def store_pricing_preview():
     说明：仅计算不落库；价格规则来自 plugin_manager.pricing（远端
     pricing_rules.json 优先，失败回退内嵌默认）。
     """
-    err = _require_admin()
+    err = _require_store_admin()
     if err:
         return err
     data = request.json if request.is_json else {}
+    base_month_fen_raw = data.get('base_month_fen')
+    if base_month_fen_raw is None:
+        return _json_result(False, error='缺少必填字段: base_month_fen (int, 单位分)', code=400)
     try:
-        base_month_fen = int(data.get('base_month_fen', 0))
+        base_month_fen = int(base_month_fen_raw)
     except (TypeError, ValueError):
         return _json_result(False, error='base_month_fen must be int (fen)', code=400)
     if base_month_fen < 0:
@@ -1148,7 +1226,81 @@ def store_browse():
         _annotate_store_plugins(mgr, data.get('plugins', []))
     except Exception as e:
         print(f'[routes] store_browse annotate failed: {e}')
+
+    # v1.8：动态分流后置过滤（标准 §18.2）。
+    # 刻意放在路由层而非 store.py，以保住既有 SQL 层零改动。
+    # 规则表为空 / resolver 关闭 / 取数失败 → 全部插件可见（行为等同 v1.7）。
+    # 注：total 为「本页命中数」的兜底修正；规则隐藏项跨页时 total 有轻微偏差（可接受）。
+    try:
+        from .distribution import resolve_visible_set, current_profile
+        from .store import DEPLOY_EDITION
+        _plugins = data.get('plugins', [])
+        _vis, _hid = resolve_visible_set(
+            DEPLOY_EDITION, [p.get('identifier') for p in _plugins], current_profile())
+        if _hid:
+            _keep = set(_vis)
+            data['plugins'] = [p for p in _plugins if p.get('identifier') in _keep]
+            if isinstance(data.get('total'), int):
+                data['total'] = max(0, data['total'] - len(_hid))
+            print(f'[store] 🔀 动态分流隐藏 {len(_hid)} 项: {sorted(_hid)[:5]}')
+    except Exception as e:
+        print(f'[routes] store_browse distribution filter failed: {e}')
+
     return _json_result(True, data=data)
+
+
+# ── 用户端商店公开只读接口（P0-2）────────────────────────
+# 现有 /store/* 均为 _require_admin() 的管理员接口；用户端商店
+# （site_builder /shop 页面）需公开只读目录，故新增 public 变体，
+# 不做管理标注（_annotate_store_plugins）、不暴露下载 URL。
+
+@bp.route('/store/public/browse', methods=['GET'])
+def store_public_browse():
+    """用户端商店浏览（公开只读，无管理员标注）。"""
+    mgr = _get_manager()
+    if not mgr or not mgr.store_client:
+        return _json_result(False, error='Store not available', code=503)
+    query = request.args.get('q', '')
+    category = request.args.get('category', '')
+    price_type = request.args.get('price_type', '')
+    sort_by = request.args.get('sort_by', 'downloads')
+    try:
+        page = _parse_positive_int('page', 1)
+        page_size = _parse_positive_int('page_size', 20, 1, 100)
+    except ValueError as e:
+        return _json_result(False, error=str(e), code=400)
+    data = mgr.store_client.search(query, category, price_type, page, page_size, sort_by)
+    for _pl in data.get('plugins', []):
+        _localize(_pl)
+        _scrub_public(_pl)
+    return _json_result(True, data=data)
+
+
+@bp.route('/store/public/<identifier>', methods=['GET'])
+def store_public_detail(identifier: str):
+    """用户端插件详情（公开只读）。"""
+    mgr = _get_manager()
+    if not mgr or not mgr.store_client:
+        return _json_result(False, error='Store not available', code=503)
+    detail = mgr.store_client.get_detail(identifier)
+    if not detail:
+        return _json_result(False, error='Plugin not found', code=404)
+    _localize(detail)
+    _scrub_public(detail)
+    return _json_result(True, data=detail)
+
+
+@bp.route('/mcp/<plugin_id>/manifest', methods=['GET'])
+def plugin_mcp_manifest(plugin_id: str):
+    """P2-5: 插件 MCP 能力清单（对外暴露，供外部 MCP client 发现）。"""
+    err = _require_store_admin()
+    if err:
+        return err
+    from .mcp import build_manifest
+    manifest = build_manifest(plugin_id)
+    if manifest is None:
+        return _json_result(False, error='No MCP servers for this plugin', code=404)
+    return _json_result(True, data=manifest)
 
 
 # ── 19. 商店插件详情 ─────────────────────────────────────
@@ -1236,6 +1388,20 @@ def store_install(identifier: str):
             'status': 'already_installed',
             'version': existing.version,
         })
+
+    # v1.8：动态分流准入闸门（标准 §18.2「展示 / 安装准入 / 运行时门控读同一优先级链」）。
+    # 顺序刻意置于 yaml/compatible_editions 校验之前 —— 与优先级链一致。
+    # 失败一律放行（fail-open），绝不影响既有安装主链路；无规则时 resolve() 返回 None。
+    try:
+        from .store import DEPLOY_EDITION as _dist_edition
+        from .distribution import resolve as _dist_resolve, current_profile as _dist_profile
+        _dres = _dist_resolve(identifier, _dist_edition, _dist_profile())
+        if _dres is not None and not _dres[0]:
+            return _json_result(False,
+                error=f'Plugin "{identifier}" is not available for this deployment ({_dres[1]})',
+                code=403)
+    except Exception as _de:
+        print(f'[routes] store install 分流闸门取数失败（放行）: {_de}')
 
     # 阶段 3：部署版本兼容校验
     from .store import DEPLOY_EDITION, StoreAPIClient
@@ -1408,6 +1574,35 @@ def store_check_compatibility(identifier: str):
     })
 
 
+@bp.route('/store/public/check-compatibility/<identifier>', methods=['GET'])
+def store_public_check_compatibility(identifier: str):
+    """公开兼容性检查 — 无需登录，供用户在商店浏览前预判兼容性"""
+    mgr = _get_manager()
+    if not mgr:
+        return _json_result(False, error='PluginManager not initialized', code=503)
+    if not mgr.store_client:
+        return _json_result(False, error='Store not available', code=503)
+
+    detail = mgr.store_client.get_detail(identifier)
+    if not detail:
+        return _json_result(False, error=f'Plugin "{identifier}" not found', code=404)
+
+    app_version = getattr(mgr.app, 'version', '')
+    min_ver = detail.get('min_app_version', '')
+    compatible = True
+    if app_version and min_ver:
+        from .store import StoreAPIClient
+        compatible = StoreAPIClient._version_compatible(app_version, min_ver)
+
+    return _json_result(True, data={
+        'identifier': identifier,
+        'app_version': app_version,
+        'min_app_version': min_ver,
+        'compatible': compatible,
+        'plugin_version': detail.get('version', ''),
+    })
+
+
 # ====================================================================
 # ★ v1.4 用户上传自研插件
 # ====================================================================
@@ -1553,6 +1748,18 @@ def upload_plugin():
                 if not StoreAPIClient._version_compatible(app_version, min_app_ver):
                     return _json_result(False, error=f'Plugin requires min_app_version={min_app_ver}, but current version is {app_version}', code=400)
 
+        # ★ P1-3: Coze 式配额校验（工具数 = plugin.json capabilities 数量）
+        _caps = plugin_meta.get('capabilities') or []
+        if not isinstance(_caps, list):
+            _caps = []
+        _max_tools = int(plugin_meta.get('max_tools') or 100)
+        if _max_tools < 1 or _max_tools > 1000:
+            _max_tools = 100
+        if len(_caps) > _max_tools:
+            return _json_result(False,
+                error=f'capabilities count ({len(_caps)}) exceeds max_tools ({_max_tools})',
+                code=400)
+
         # 5. 检查插件目录是否已存在
         plugins_root = getattr(mgr, '_plugins_root', _os.path.join(_os.path.dirname(__file__), '..', 'plugins'))
         plugins_root = _os.path.abspath(plugins_root)
@@ -1577,6 +1784,18 @@ def upload_plugin():
                     import shutil as _shutil_guard
                     _shutil_guard.rmtree(dest_dir, ignore_errors=True)
                     return _json_result(False, error='插件解压后体积或文件数超限，已拒绝', code=400)
+
+        # ★ 6a1. P1-3: 体积配额校验（声明 max_dependencies_kb，默认 200MB 对齐护栏）
+        _max_deps_kb = int(plugin_meta.get('max_dependencies_kb') or 204800)
+        if _max_deps_kb < 1024 or _max_deps_kb > 512 * 1024:
+            _max_deps_kb = 204800
+        if _guard_total > _max_deps_kb * 1024:
+            import shutil as _shutil_q
+            _shutil_q.rmtree(dest_dir, ignore_errors=True)
+            return _json_result(False,
+                error=(f'解压体积 {_guard_total / 1024 / 1024:.1f}MB '
+                       f'超过配额 {_max_deps_kb / 1024:.0f}MB'),
+                code=400)
 
         # ★ 6b. 官方插件水印检测（VeroRun 官方插件水印体系）
         # M2/M3 修复：仅「签名验签通过」为不可辩驳 → 上传即硬拒；
@@ -1639,6 +1858,35 @@ def upload_plugin():
             _shutil_sub.rmtree(pending_dir, ignore_errors=True)
             return _json_result(False, error='Failed to create submission record', code=500)
 
+        # ★ P0-C：写入审核记录后立即自动执行 AI 规则审核（只写报告，不改 pending 状态）
+        try:
+            from .audit import review_plugin
+            _auto = review_plugin(pending_dir,
+                                  watermark_result=_wm,
+                                  plugins_root=plugins_root,
+                                  submitted_version=version)
+            with get_registry_db() as conn:
+                conn.execute(
+                    "UPDATE plugin_submissions SET audit_status=%s, audit_report=%s, "
+                    "audit_reasons=%s, reviewed_at=NOW(), updated_at=NOW() WHERE id=%s",
+                    (_auto['status'],
+                     json.dumps(_auto['report'], ensure_ascii=False),
+                     json.dumps(_auto['reasons'], ensure_ascii=False),
+                     _sub_id))
+                conn.commit()
+        except Exception:
+            traceback.print_exc()   # 自动审核失败不阻断上传，保留 pending 供人工
+            # 审计 P2-6 修复：失败不得静默，落 review_comment 标记待人工复核
+            try:
+                with get_registry_db() as conn:
+                    conn.execute(
+                        "UPDATE plugin_submissions SET review_comment=%s, updated_at=NOW() "
+                        "WHERE id=%s",
+                        ('auto audit failed, needs manual review', _sub_id))
+                    conn.commit()
+            except Exception:
+                traceback.print_exc()
+
         return _json_result(True, data={
             'submission_id': _sub_id,
             'identifier': identifier,
@@ -1694,7 +1942,7 @@ def _submission_row_to_dict(row) -> dict:
 @bp.route('/submissions', methods=['GET'])
 def list_submissions():
     """列出插件审核队列（默认 pending；支持 ?status=pending|approved|rejected）"""
-    err = _require_admin()
+    err = _require_store_admin()
     if err:
         return err
     status = request.args.get('status', 'pending')
@@ -1720,7 +1968,7 @@ def list_submissions():
 @bp.route('/submissions/<int:sub_id>/review', methods=['POST'])
 def review_submission(sub_id):
     """执行规则引擎审核（AI 辅助），产出结构化报告"""
-    err = _require_admin()
+    err = _require_store_admin()
     if err:
         return err
     try:
@@ -1735,7 +1983,10 @@ def review_submission(sub_id):
             return _json_result(False, error=f'Submission already {row["status"]}', code=400)
 
         from .audit import review_plugin
-        result = review_plugin(row['file_path'])
+        # 审计（第二轮复测 C.3）：手动复核入口补传 submitted_version，
+        # 与 upload_plugin / developer_submit 行为一致，触发 P1-5 包内版本一致性守卫
+        result = review_plugin(row['file_path'],
+                               submitted_version=str(row.get('version') or ''))
         with get_registry_db() as conn:
             conn.execute(
                 "UPDATE plugin_submissions SET audit_status=%s, audit_report=%s, "
@@ -1755,7 +2006,7 @@ def review_submission(sub_id):
 @bp.route('/submissions/<int:sub_id>/approve', methods=['POST'])
 def approve_submission(sub_id):
     """批准安装：pending 目录移入正式目录 → discover → install → enable → activate"""
-    err = _require_admin()
+    err = _require_store_admin()
     if err:
         return err
     try:
@@ -1774,7 +2025,9 @@ def approve_submission(sub_id):
         #  - audit_status='reject'（含危险代码）→ 禁止安装，除非显式 override=true 强制放行
         #  - audit_status='pending'（从未执行 AI 审核）→ 必须先 /review
         _audit_status = row.get('audit_status') or 'pending'
-        _override = bool((request.get_json(silent=True) or {}).get('override'))
+        _req_body = request.get_json(silent=True) or {}
+        _override = bool(_req_body.get('override'))
+        _auto_publish = bool(_req_body.get('auto_publish'))
         if _audit_status == 'reject' and not _override:
             return _json_result(False, error=(
                 '审计未通过（audit_status=reject），含危险代码特征，禁止安装；'
@@ -1802,6 +2055,25 @@ def approve_submission(sub_id):
         if _wm_final.get('official') and _wm_final.get('method') in WM_HARD:
             return _json_result(False, error=(
                 f'安装前复核命中官方插件签名（{_wm_final.get("reason", "")}），拒绝安装。'), code=400)
+
+        # ★ P0-5 扩展：auto_publish 一键上架
+        # 顺序关键：发布工具要求 status=approved 且 pending 目录存在；
+        # 故先置 approved → 发布（此时目录未 move）→ 发布成功后再本地安装。
+        if _auto_publish:
+            with get_registry_db() as conn:
+                conn.execute(
+                    "UPDATE plugin_submissions SET status='approved', updated_at=NOW() WHERE id=%s",
+                    (sub_id,))
+                conn.commit()
+            _pub = _publish_approved(sub_id)
+            if _pub[1] != 200:
+                # 发布失败：回滚 approved → pending，保持状态机一致
+                with get_registry_db() as conn:
+                    conn.execute(
+                        "UPDATE plugin_submissions SET status='pending', updated_at=NOW() WHERE id=%s",
+                        (sub_id,))
+                    conn.commit()
+                return _pub
 
         _shutil_app.move(pending_dir, dest_dir)
         discovered = mgr._discovery.discover_one(identifier)
@@ -1833,7 +2105,7 @@ def approve_submission(sub_id):
 @bp.route('/submissions/<int:sub_id>/reject', methods=['POST'])
 def reject_submission(sub_id):
     """拒绝：清理 pending 目录，标记 rejected"""
-    err = _require_admin()
+    err = _require_store_admin()
     if err:
         return err
     try:
@@ -2113,6 +2385,10 @@ def store_purchase(identifier: str):
     customer_email = body.get('customer_email', '')
     coupon_code = (body.get('coupon_code') or '').strip()
     price_type = detail.get('price_type', 'onetime')
+    # 用户版强制全订阅制：非官方版只允许 sub，不允许 onetime（一次性买断）
+    from .license import _is_official_edition
+    if not _is_official_edition() and price_type != 'sub':
+        return _json_result(False, error='Subscription only: paid plugins are subscription-based', code=403)
     # 订阅周期：仅 sub 生效；默认取插件配置周期，缺省 month
     interval = (body.get('interval') or detail.get('price_interval') or 'month').strip()
     if price_type == 'sub' and interval not in ('month', 'quarter', 'year'):
@@ -2929,3 +3205,1895 @@ def _auto_install_enable_plugin(mgr, identifier: str):
     except Exception as e:
         traceback.print_exc()
         print(f'[Payment] Auto install/enable failed for {identifier}: {e}')
+
+
+# ====================================================================
+# ★ P0-B：开发者中心（单账号双身份 · 统一 JWT SSO）
+# ====================================================================
+# 开发者 = 普通用户的身份升级。端点全部挂 /admin/plugins/developer/*，
+# 鉴权走 _get_jwt_user() 双通道（用户 token 即可），不做管理员上下文。
+# 表：store_developers（见 models_store.py）。
+
+def _now_iso() -> str:
+    """当前 UTC ISO 时间串（与 store_developers.verify_expires 同格式比较）。"""
+    from datetime import timezone
+    return datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+
+def _ts_add_hours(hours: int) -> str:
+    """hours 小时后的 UTC ISO 时间串。"""
+    from datetime import timedelta, timezone
+    return (datetime.now(timezone.utc) + timedelta(hours=hours)).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+
+def _get_user_email(user_id) -> str:
+    """按统一账号 user_id 查询主库 email（与 auth-center 同一 PG 公共 schema）。"""
+    if not user_id:
+        return ''
+    try:
+        with get_registry_db() as conn:
+            row = conn.execute(
+                'SELECT email FROM public.users WHERE id=%s', (user_id,)).fetchone()
+        return (row['email'] or '') if row else ''
+    except Exception:
+        traceback.print_exc()
+        return ''
+
+
+def _send_dev_verification_email(email: str, token: str) -> bool:
+    """复用 email 插件发送通道发开发者邮箱验证链接；失败不阻断注册（日志 stub）。"""
+    if not email:
+        return False
+    try:
+        from plugins.email.services import send_email
+        # 审计 P1-3 修复：验证链接 origin 用可配置主站地址（PUBLIC_BASE_URL / NOTIFY_BASE），
+        # 跨服务部署（plugin_manager 与 main_site 不同 origin）时不再依赖请求 Host。
+        origin = (os.environ.get('PUBLIC_BASE_URL')
+                  or os.environ.get('NOTIFY_BASE')
+                  or request.host_url).rstrip('/')
+        link = f'{origin}/user/profile?dev_verify={token}'
+        subject = 'VeroRun Developer Email Verification'
+        body_text = (
+            'Welcome to VeroRun Developer Center.\n\n'
+            f'Click the link below to verify your developer email:\n{link}\n\n'
+            'The link is valid for 24 hours. If this was not you, please ignore.'
+        )
+        body_html = (
+            '<h3>VeroRun Developer Email Verification</h3>'
+            f'<p>Click the link to verify your developer email:</p>'
+            f'<p><a href="{link}">{link}</a></p>'
+            '<p style="color:#888">The link is valid for 24 hours. If this was not you, please ignore.</p>'
+        )
+        success, msg = send_email(email, subject, body_text, body_html)
+        if not success:
+            print(f'[PluginManager] dev verify email send failed: {msg} (stub token: {token})')
+        return bool(success)
+    except Exception as e:
+        traceback.print_exc()
+        print(f'[PluginManager] dev verify email exception (stub token: {token}): {e}')
+        return False
+
+
+def _require_developer():
+    """要求当前 JWT 用户已注册为开发者且状态 active。
+
+    Returns:
+        (dev_dict, None) 通过；否则 (None, (jsonify, code)) 供视图 return。
+    """
+    user_id, _name, _admin = _get_jwt_user()
+    if not user_id:
+        return None, _json_result(False, error='Not logged in', code=401)
+    try:
+        with get_registry_db() as conn:
+            cur = conn.execute(
+                'SELECT * FROM store_developers WHERE user_id=%s', (user_id,))
+            row = cur.fetchone()
+    except Exception:
+        traceback.print_exc()
+        return None, _json_result(False, error='DB error', code=500)
+    if not row:
+        return None, _json_result(False, error='Not a registered developer', code=403)
+    if row['status'] != 'active':
+        return None, _json_result(False, error='Developer account suspended', code=403)
+    return dict(row), None
+
+
+@bp.route('/developer/register', methods=['POST'])
+def developer_register():
+    """开发者注册：绑定当前 JWT 用户，幂等（已注册则返回既有记录）。
+
+    P0-3：注册默认 verify_level='free'，随后触发邮箱验证流程；
+    验证通过后由 /developer/verify-email 升为 'email'。
+    """
+    user_id, _user_name, _is_admin = _get_jwt_user()
+    if not user_id:
+        return _json_result(False, error='Not logged in', code=401)
+    # 审计 P2-3 修复：注册接口补限流（复用 _upload_rate_limited DB 共享限流）
+    if _upload_rate_limited(request.headers.get('Authorization', '')):
+        return _json_result(False, error='Too many requests. Please wait.', code=429)
+    data = request.get_json(silent=True) or {}
+    display_name = (data.get('display_name') or '').strip()
+    slug = (data.get('slug') or '').strip().lower()
+    if not display_name or not slug:
+        return _json_result(False, error='display_name and slug are required', code=400)
+    import re as _re
+    if not _re.match(r'^[a-z0-9_-]{2,32}$', slug):
+        return _json_result(False, error='slug: 2-32 chars of [a-z0-9_-]', code=400)
+    # 审计 P1-3 修复：邮箱一律以主库 users.email 为准，拒绝请求体兜底；
+    # 账号无邮箱时要求先补全，保证"验证了哪个邮箱"可审计。
+    _email = _get_user_email(user_id)
+    if not _email:
+        return _json_result(False,
+                            error='Your account has no email on file. Please set it in your profile first.',
+                            code=400)
+    try:
+        with get_registry_db() as conn:
+            cur = conn.execute(
+                'SELECT * FROM store_developers WHERE user_id=%s', (user_id,))
+            row = cur.fetchone()
+            if row:
+                return _json_result(True, data=dict(row))
+            cur = conn.execute(
+                'SELECT 1 FROM store_developers WHERE slug=%s', (slug,))
+            if cur.fetchone():
+                return _json_result(False, error=f'slug "{slug}" already taken', code=409)
+            # 生成一次性验证令牌（哈希存储，复用 stdlib secrets + hashlib）
+            import secrets, hashlib
+            _token = secrets.token_urlsafe(32)
+            _hash = hashlib.sha256(_token.encode()).hexdigest()
+            _expires = _ts_add_hours(24)
+            cur = conn.execute(
+                "INSERT INTO store_developers "
+                " (user_id, display_name, slug, email, verify_token, verify_expires) "
+                "VALUES (%s, %s, %s, %s, %s, %s) RETURNING id",
+                (user_id, display_name, slug, _email, _hash, _expires))
+            _dev_id = cur.fetchone()['id']
+            conn.commit()
+        # 发送验证邮件（复用 email 插件通道；失败不阻断注册）
+        _sent = _send_dev_verification_email(_email, _token)
+        return _json_result(True, data={'id': _dev_id, 'user_id': user_id,
+                                        'display_name': display_name, 'slug': slug,
+                                        'verify_level': 'free',
+                                        'email_verified': 0,
+                                        'email_sent': _sent})
+    except Exception as e:
+        traceback.print_exc()
+        # 审计 P2-10 修复：并发下唯一约束冲突应返回 409 而非 500
+        if ('23505' in str(getattr(getattr(e, 'diag', None), 'sqlstate', '') or '')
+                or 'unique constraint' in str(e).lower()
+                or 'duplicate key' in str(e).lower()):
+            return _json_result(False, error=f'slug "{slug}" already taken', code=409)
+        return _json_result(False, error=f'Register failed: {e}', code=500)
+
+
+@bp.route('/developer/verify-email', methods=['POST'])
+def developer_verify_email():
+    """P0-3：校验邮箱验证令牌，通过后 verify_level='email'、email_verified=1。
+
+    令牌单次有效：校验成功后清空 verify_token/verify_expires。
+    """
+    user_id, _name, _admin = _get_jwt_user()
+    if not user_id:
+        return _json_result(False, error='Not logged in', code=401)
+    # 审计 P2-3 修复：邮箱验证接口补限流（防令牌爆破）
+    if _upload_rate_limited(request.headers.get('Authorization', '')):
+        return _json_result(False, error='Too many requests. Please wait.', code=429)
+    data = request.get_json(silent=True) or {}
+    token = (data.get('token') or '').strip()
+    if not token:
+        return _json_result(False, error='token required', code=400)
+    import hashlib
+    _hash = hashlib.sha256(token.encode()).hexdigest()
+    try:
+        with get_registry_db() as conn:
+            cur = conn.execute(
+                'SELECT id, verify_level, verify_expires FROM store_developers '
+                'WHERE user_id=%s AND verify_token=%s', (user_id, _hash))
+            row = cur.fetchone()
+            if not row:
+                return _json_result(False, error='invalid or expired token', code=400)
+            if row['verify_expires'] and row['verify_expires'] < _now_iso():
+                return _json_result(False, error='verification link expired', code=400)
+            conn.execute(
+                "UPDATE store_developers SET verify_level='email', email_verified=1, "
+                "verify_token='', verify_expires='', updated_at=NOW() WHERE id=%s",
+                (row['id'],))
+            conn.commit()
+        return _json_result(True, data={'verify_level': 'email', 'email_verified': 1})
+    except Exception as e:
+        traceback.print_exc()
+        return _json_result(False, error=f'Verify failed: {e}', code=500)
+
+
+@bp.route('/developer/submissions', methods=['GET'])
+def developer_submissions():
+    """开发者查询自己的提交记录与审核报告（修复提交者不可见问题）。
+
+    注意：plugin_submissions.submitter_id 存 JWT user_id 字符串，
+    全链路统一 str(user_id)，防止类型不一致。
+    """
+    dev, err = _require_developer()
+    if err:
+        return err
+    try:
+        with get_registry_db() as conn:
+            cur = conn.execute(
+                "SELECT id, identifier, name, version, status, audit_status, "
+                "       audit_report, audit_reasons, review_comment, created_at "
+                "FROM plugin_submissions WHERE submitter_id=%s "
+                "ORDER BY id DESC LIMIT 100",
+                (str(dev['user_id']),))
+            rows = [_submission_row_to_dict(r) for r in cur.fetchall()]
+        return _json_result(True, data=rows)
+    except Exception as e:
+        traceback.print_exc()
+        return _json_result(False, error=f'Failed: {e}', code=500)
+
+
+def _publish_approved(submission_id, local_only=False):
+    """P0-5 核心：把已审核通过的提交物打包进 catalog 并触发全站同步。
+
+    供 publish_third_party 端点与 approve(auto_publish) 复用，不重复造轮子。
+    前提：调用方已确保 submission 状态为 approved（或在本函数内更新）。
+
+    Returns:
+        (jsonify, http_code)：成功 http_code=200。
+    """
+    try:
+        with get_registry_db() as conn:
+            row = conn.execute(
+                'SELECT * FROM plugin_submissions WHERE id=%s', (submission_id,)).fetchone()
+        if not row:
+            return _json_result(False, error='Submission not found', code=404)
+        if row['status'] != 'approved':
+            return _json_result(False,
+                                error=f'submission must be approved first (current: {row["status"]})',
+                                code=400)
+        if row['audit_status'] not in ('pass', 'manual'):
+            return _json_result(False,
+                                error=f'audit must be pass/manual (current: {row["audit_status"]})',
+                                code=400)
+        pending_dir = row['file_path'] or ''
+        if not os.path.isdir(pending_dir):
+            return _json_result(False, error='submission package dir not found', code=404)
+    except Exception as e:
+        traceback.print_exc()
+        return _json_result(False, error=f'Failed: {e}', code=500)
+
+    # 调用发布工具打包进 catalog（平台代发）
+    import sys as _sys
+    _tool = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'tools', 'publish_plugin.py'))
+    _cmd = [_sys.executable, _tool, '--third-party', str(submission_id)]
+    if local_only:
+        _cmd.append('--local-only')
+    try:
+        _res = subprocess.run(_cmd, capture_output=True, text=True, timeout=180)
+    except Exception as e:
+        traceback.print_exc()
+        return _json_result(False, error=f'publish tool failed: {e}', code=500)
+    if _res.returncode != 0:
+        # 完整输出仅落服务器日志，错误响应回通用文案，防内部路径/DB 信息泄露
+        print(f'[PluginManager] publish_third_party tool failed '
+              f'(submission_id={submission_id}, local_only={local_only}):\n'
+              f'--- stdout ---\n{_res.stdout}\n--- stderr ---\n{_res.stderr}')
+        return _json_result(False,
+                            error='publish tool failed. See server logs for details.',
+                            code=500)
+
+    # 触发目录同步
+    _n = 0
+    try:
+        mgr = _get_manager()
+        store = getattr(mgr, 'store_client', None)
+        if store:
+            _n = store.sync_all()
+    except Exception:
+        traceback.print_exc()
+        return _json_result(False,
+                            error='Plugin published but catalog sync failed. Please retry sync-all.',
+                            code=500)
+    if _n <= 0:
+        return _json_result(False,
+                            error=f'Plugin published but catalog sync returned {_n}. Please retry sync-all.',
+                            code=500)
+    return _json_result(True, data={'submission_id': submission_id,
+                                    'synced': _n,
+                                    'local_only': local_only})
+
+
+@bp.route('/store/admin/publish_third_party', methods=['POST'])
+def publish_third_party():
+    """P0-5：平台代发第三方插件（人工 approve 后触发）。
+
+    校验插件包通过全部门禁（approved + audit pass/manual）→ 调用
+    publish_plugin.py --third-party <submission_id> 把审核通过的提交物打包并
+    追加进 catalog（第三方无 GitHub 写权限，由平台代发）→ 推送触发 sync 全站同步。
+    --local-only 兜底：直写 store_plugins（is_official=0、catalog_managed=0），
+    sync 跳过覆盖防清除（默认不启用）。
+    """
+    err = _require_store_admin()
+    if err:
+        return err
+    data = request.get_json(silent=True) or {}
+    submission_id = data.get('submission_id')
+    local_only = bool(data.get('local_only'))
+    if not submission_id:
+        return _json_result(False, error='submission_id required', code=400)
+    # 原发布逻辑已抽取为 _publish_approved，端点保持对外行为不变
+    return _publish_approved(submission_id, local_only)
+
+
+# ====================================================================
+# ★ P1 版本管理系统（store_plugin_versions）+ 开发者后台
+# ====================================================================
+
+_SEMVER_RE_P1 = None  # 延迟初始化（避免重复编译）
+
+
+def _p1_semver_re():
+    global _SEMVER_RE_P1
+    if _SEMVER_RE_P1 is None:
+        import re as _re
+        _SEMVER_RE_P1 = _re.compile(r'^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$')
+    return _SEMVER_RE_P1
+
+
+def _require_plugin_owner(identifier: str, dev: dict):
+    """P0-4 归属校验：第三方只能操作自己归属的插件；官方插件走官方通道。
+
+    Returns:
+        (row_dict, None) 通过；否则 (None, (jsonify, code)) 供视图 return。
+    """
+    is_admin = _get_jwt_user()[2]
+    try:
+        with get_registry_db() as conn:
+            cur = conn.execute(
+                'SELECT * FROM store_plugins WHERE identifier=%s', (identifier,))
+            row = cur.fetchone()
+    except Exception as e:
+        traceback.print_exc()
+        return None, _json_result(False, error=f'Failed: {e}', code=500)
+    if not row:
+        return None, _json_result(False, error=f'plugin "{identifier}" not found', code=404)
+    if row['is_official']:
+        return None, _json_result(False,
+                                  error='official plugins are managed via official release pipeline',
+                                  code=403)
+    if not is_admin and int(row['developer_id'] or 0) != int(dev['id']):
+        return None, _json_result(False, error='not owner of this plugin', code=403)
+    return dict(row), None
+
+
+def _version_package_dir() -> str:
+    """审计 B2 修复：本地版本包存储目录（plugins/.versions，沿用 .pending 惯例）。"""
+    _base = os.environ.get('PLUGIN_VERSIONS_DIR') or os.path.abspath(
+        os.path.join(os.path.dirname(__file__), '..', 'plugins', '.versions'))
+    os.makedirs(_base, exist_ok=True)
+    return _base
+
+
+@bp.route('/developer/plugins/<identifier>/versions', methods=['POST'])
+def developer_submit_version(identifier):
+    """P1：开发者提交新版本（真包上传，服务端计算 file_size/package_hash）。
+
+    P0-4：is_owner 归属校验 —— 第三方只能给自己归属的插件提交版本；
+    官方插件由 is_admin 走官方发布通道。
+    审计 B2（方案 A）修复：改为 multipart 接收真实插件 zip，服务端校验
+    zip 内 plugin.json.version 与提交版本一致（版本流 P1-5 守卫），
+    计算 file_size + SHA256 并落盘 plugins/.versions/，不再信任请求体的
+    file_size / package_hash / download_url。
+    """
+    dev, err = _require_developer()
+    if err:
+        return err
+    # 审计 P2-3 修复：版本提交接口补限流
+    if _upload_rate_limited(request.headers.get('Authorization', '')):
+        return _json_result(False, error='Too many requests. Please wait.', code=429)
+
+    version = (request.form.get('version') or '').strip()
+    changelog = (request.form.get('changelog') or '').strip()
+    if not version or not changelog:
+        return _json_result(False, error='version and changelog are required', code=400)
+    # P1-5：对齐标准 §13.1，允许 X.Y.Z-prerelease 后缀
+    if not _p1_semver_re().match(version):
+        return _json_result(False, error='version must be semver (X.Y.Z or X.Y.Z-prerelease)', code=400)
+
+    _row, err = _require_plugin_owner(identifier, dev)
+    if err:
+        return err
+
+    _f = request.files.get('file')
+    if not _f or not getattr(_f, 'filename', ''):
+        return _json_result(False, error='plugin package file is required', code=400)
+    _raw = _f.read()
+    if not _raw:
+        return _json_result(False, error='empty file', code=400)
+    if len(_raw) > 50 * 1024 * 1024:
+        return _json_result(False, error='file too large (max 50MB)', code=400)
+
+    # 审计 B2 修复：校验 zip 内 plugin.json.version == 提交版本
+    import io as _io
+    import zipfile as _zf
+    import hashlib as _hl
+    try:
+        with _zf.ZipFile(_io.BytesIO(_raw)) as _z:
+            _names = _z.namelist()
+            _meta = next(
+                (n for n in _names if n.replace('\\', '/').endswith('plugin.json')), None)
+            if not _meta:
+                return _json_result(False, error='plugin.json not found in package', code=400)
+            _pkg = json.loads(_z.read(_meta).decode('utf-8', 'replace'))
+    except Exception as e:
+        return _json_result(False, error=f'invalid package: {e}', code=400)
+    _pkg_ver = str((_pkg or {}).get('version') or '').strip()
+    if _pkg_ver != version:
+        return _json_result(False,
+                            error=f'package plugin.json.version({_pkg_ver}) does not match '
+                                  f'submitted version({version})',
+                            code=400)
+
+    _size = len(_raw)
+    _sha = _hl.sha256(_raw).hexdigest()
+
+    # 落盘 plugins/.versions/{identifier}/{version}.zip
+    try:
+        _ver_dir = os.path.join(_version_package_dir(), identifier)
+        os.makedirs(_ver_dir, exist_ok=True)
+        _fp = os.path.join(_ver_dir, f'{version}.zip')
+        with open(_fp, 'wb') as _w:
+            _w.write(_raw)
+    except Exception as e:
+        traceback.print_exc()
+        return _json_result(False, error=f'Failed to store package: {e}', code=500)
+
+    try:
+        with get_registry_db() as conn:
+            cur = conn.execute(
+                "INSERT INTO store_plugin_versions "
+                "(plugin_id, developer_id, version, changelog, package_hash, "
+                " file_size, download_url, file_path) VALUES (%s,%s,%s,%s,%s,%s,%s,%s) "
+                "ON CONFLICT(plugin_id, version) DO NOTHING RETURNING id",
+                (identifier, dev['id'], version, changelog, _sha,
+                 _size, '', _fp))
+            _vid = cur.fetchone()
+            conn.commit()
+        if not _vid:
+            return _json_result(False, error=f'version {version} already exists', code=409)
+        return _json_result(True, data={'version_id': _vid['id'], 'status': 'pending'})
+    except Exception as e:
+        traceback.print_exc()
+        return _json_result(False, error=f'Failed: {e}', code=500)
+
+
+def _sync_live_version(conn, plugin_id: str, vid: int) -> None:
+    """回写 store_plugins 主版本字段为指定 live 版本（P1 §5.3）。"""
+    cur = conn.execute(
+        'SELECT version, download_url, package_hash, file_size FROM store_plugin_versions WHERE id=%s',
+        (vid,))
+    row = cur.fetchone()
+    if not row:
+        return
+    # 审计 B2 修复：download_url 指向本地版本包端点，file_size 一并回写（不再恒 0）
+    _dl = row['download_url'] or ''
+    if not _dl:
+        _origin = (os.environ.get('PUBLIC_BASE_URL')
+                   or os.environ.get('NOTIFY_BASE')
+                   or request.host_url).rstrip('/')
+        _dl = f'{_origin}/admin/plugins/store/version-package/{vid}'
+    conn.execute(
+        "UPDATE store_plugins SET version=%s, download_url=%s, package_hash=%s, "
+        "file_size=%s, updated_at=NOW() WHERE identifier=%s",
+        (row['version'], _dl, row['package_hash'] or '', row['file_size'] or 0, plugin_id))
+
+
+@bp.route('/store/version-package/<int:vid>', methods=['GET'])
+def store_version_package(vid):
+    """审计 B2 修复：公开下载版本包（仅 approved/live 版本，路径以 DB 为准防穿越）。"""
+    try:
+        with get_registry_db() as conn:
+            cur = conn.execute(
+                "SELECT file_path, plugin_id, version, status FROM store_plugin_versions WHERE id=%s",
+                (vid,))
+            row = cur.fetchone()
+        if not row or row['status'] not in ('approved', 'live'):
+            return _json_result(False, error='not found', code=404)
+        if not row['file_path'] or not os.path.isfile(row['file_path']):
+            return _json_result(False, error='package missing', code=404)
+        from flask import send_file
+        return send_file(row['file_path'], as_attachment=True,
+                         download_name=f"{row['plugin_id']}-{row['version']}.zip")
+    except Exception as e:
+        traceback.print_exc()
+        return _json_result(False, error=f'Failed: {e}', code=500)
+
+
+@bp.route('/store/admin/versions/<int:vid>/approve', methods=['POST'])
+def approve_plugin_version(vid):
+    """P1：管理员审核通过版本 → 置 live，并回写 store_plugins 主版本字段。"""
+    err = _require_store_admin()
+    if err:
+        return err
+    try:
+        with get_registry_db() as conn:
+            cur = conn.execute(
+                'SELECT * FROM store_plugin_versions WHERE id=%s', (vid,))
+            row = cur.fetchone()
+            if not row:
+                return _json_result(False, error='version not found', code=404)
+            if row['status'] == 'live':
+                return _json_result(False, error='version already live', code=400)
+            # 同一插件先下架其它 live 版本，保证任意时刻至多一个 live
+            conn.execute(
+                "UPDATE store_plugin_versions SET status='retired', updated_at=NOW() "
+                "WHERE plugin_id=%s AND status='live'", (row['plugin_id'],))
+            conn.execute(
+                "UPDATE store_plugin_versions SET status='live', updated_at=NOW() WHERE id=%s",
+                (vid,))
+            _sync_live_version(conn, row['plugin_id'], vid)
+            conn.commit()
+        return _json_result(True, data={'version_id': vid, 'status': 'live'})
+    except Exception as e:
+        traceback.print_exc()
+        return _json_result(False, error=f'Failed: {e}', code=500)
+
+
+@bp.route('/store/admin/versions/<int:vid>/reject', methods=['POST'])
+def reject_plugin_version(vid):
+    """P1：管理员驳回版本 → 置 rejected。"""
+    err = _require_store_admin()
+    if err:
+        return err
+    try:
+        with get_registry_db() as conn:
+            cur = conn.execute(
+                'SELECT id FROM store_plugin_versions WHERE id=%s', (vid,))
+            if not cur.fetchone():
+                return _json_result(False, error='version not found', code=404)
+            conn.execute(
+                "UPDATE store_plugin_versions SET status='rejected', updated_at=NOW() WHERE id=%s",
+                (vid,))
+            conn.commit()
+        return _json_result(True, data={'version_id': vid, 'status': 'rejected'})
+    except Exception as e:
+        traceback.print_exc()
+        return _json_result(False, error=f'Failed: {e}', code=500)
+
+
+@bp.route('/store/admin/plugins/<identifier>/rollback', methods=['POST'])
+def rollback_plugin_version(identifier):
+    """P1：管理员回滚到历史版本（§5.3）——目标版本置 live，原 live 置 retired，回写主表。"""
+    err = _require_store_admin()
+    if err:
+        return err
+    data = request.get_json(silent=True) or {}
+    version = (data.get('version') or '').strip()
+    if not version:
+        return _json_result(False, error='version required', code=400)
+    try:
+        with get_registry_db() as conn:
+            cur = conn.execute(
+                'SELECT id FROM store_plugin_versions WHERE plugin_id=%s AND version=%s',
+                (identifier, version))
+            row = cur.fetchone()
+            if not row:
+                return _json_result(False, error=f'version {version} not found', code=404)
+            # 原 live 版本下架
+            conn.execute(
+                "UPDATE store_plugin_versions SET status='retired', updated_at=NOW() "
+                "WHERE plugin_id=%s AND status='live'", (identifier,))
+            # 目标版本置 live 并回写主表
+            conn.execute(
+                "UPDATE store_plugin_versions SET status='live', updated_at=NOW() WHERE id=%s",
+                (row['id'],))
+            _sync_live_version(conn, identifier, row['id'])
+            conn.commit()
+        return _json_result(True, data={'plugin_id': identifier,
+                                        'version': version, 'status': 'live'})
+    except Exception as e:
+        traceback.print_exc()
+        return _json_result(False, error=f'Failed: {e}', code=500)
+
+
+@bp.route('/developer/overview', methods=['GET'])
+def developer_overview():
+    """P1：开发者后台统计（插件数 / 版本数 / 待审提交 / 待审版本 / 待结算金额）。"""
+    dev, err = _require_developer()
+    if err:
+        return err
+    try:
+        with get_registry_db() as conn:
+            cur = conn.execute(
+                'SELECT COUNT(*) AS n FROM store_plugins WHERE developer_id=%s', (dev['id'],))
+            plugin_count = cur.fetchone()['n'] or 0
+            cur = conn.execute(
+                'SELECT COUNT(*) AS n FROM store_plugin_versions WHERE developer_id=%s', (dev['id'],))
+            version_count = cur.fetchone()['n'] or 0
+            cur = conn.execute(
+                'SELECT COUNT(*) AS n FROM store_plugin_versions '
+                "WHERE developer_id=%s AND status='pending'", (dev['id'],))
+            pending_versions = cur.fetchone()['n'] or 0
+            cur = conn.execute(
+                "SELECT COUNT(*) AS n FROM plugin_submissions "
+                "WHERE submitter_id=%s AND status='pending'", (str(dev['user_id']),))
+            pending_submissions = cur.fetchone()['n'] or 0
+            # 审计 P2-1 修复：待结算金额 = 上一自然月已 paid 流水 × 分成比例（fen）。
+            # 注意：此为「预估待结算」，实时聚合支付流水，未经 generate_payouts
+            # 结算流程；正式金额以 /developer/payouts（developer_payouts 表）
+            # 生成的结算记录为准，两者口径不同、可能暂不一致。
+            _period = _p2_validate_period('')
+            _gross_map = _p2_aggregate(conn, _period)
+            _g = _gross_map.get(dev['id'], 0)
+            _pending_amount = int(_g * int(dev.get('payout_ratio') or 80) / 100) if _g else 0
+        return _json_result(True, data={
+            'plugin_count': plugin_count,
+            'version_count': version_count,
+            'pending_versions': pending_versions,
+            'pending_submissions': pending_submissions,
+            'pending_amount': _pending_amount,
+            'period': _period,
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return _json_result(False, error=f'Failed: {e}', code=500)
+
+
+@bp.route('/developer/plugins', methods=['GET'])
+def developer_plugins():
+    """P1：我的插件列表（store_plugins 归属当前开发者）。"""
+    dev, err = _require_developer()
+    if err:
+        return err
+    try:
+        with get_registry_db() as conn:
+            rows = conn.execute(
+                'SELECT * FROM store_plugins WHERE developer_id=%s '
+                'ORDER BY id DESC', (dev['id'],)).fetchall()
+        data = [dict(r) for r in rows]
+        return _json_result(True, data=data)
+    except Exception as e:
+        traceback.print_exc()
+        return _json_result(False, error=f'Failed: {e}', code=500)
+
+
+@bp.route('/developer/plugins/<identifier>/versions', methods=['GET'])
+def developer_plugin_versions(identifier):
+    """P1：我的插件版本历史（is_owner 校验）。"""
+    dev, err = _require_developer()
+    if err:
+        return err
+    _row, err = _require_plugin_owner(identifier, dev)
+    if err:
+        return err
+    try:
+        with get_registry_db() as conn:
+            rows = conn.execute(
+                'SELECT id, version, changelog, package_hash, file_size, download_url, '
+                'status, created_at, updated_at FROM store_plugin_versions '
+                'WHERE plugin_id=%s ORDER BY version DESC', (identifier,)).fetchall()
+        return _json_result(True, data=[dict(r) for r in rows])
+    except Exception as e:
+        traceback.print_exc()
+        return _json_result(False, error=f'Failed: {e}', code=500)
+
+
+@bp.route('/developer/profile', methods=['PUT'])
+def developer_profile():
+    """P1：修改开发者资料（bio / website）。"""
+    dev, err = _require_developer()
+    if err:
+        return err
+    data = request.get_json(silent=True) or {}
+    bio = (data.get('bio') or '').strip()
+    website = (data.get('website') or '').strip()
+    try:
+        with get_registry_db() as conn:
+            conn.execute(
+                'UPDATE store_developers SET bio=%s, website=%s, updated_at=NOW() WHERE id=%s',
+                (bio, website, dev['id']))
+            conn.commit()
+        return _json_result(True, data={'bio': bio, 'website': website})
+    except Exception as e:
+        traceback.print_exc()
+        return _json_result(False, error=f'Failed: {e}', code=500)
+
+
+@bp.route('/developer/submit', methods=['POST'])
+def developer_submit():
+    """P3：开发者自助提审（multipart file=<plugin.zip>）。
+
+    与 upload_plugin（本地安装通道，需 admin）不同：本通道仅入
+    plugin_submissions 审核队列 + 自动 AI 审核，**不安装到本地**；
+    由 _require_developer 鉴权（JWT 普通用户但已注册开发者）。
+    审核通过后由商店管理员经 publish_plugin.py --third-party 代发上架。
+    """
+    dev, err = _require_developer()
+    if err:
+        return err
+    import os as _os
+    import zipfile as _zipfile
+    import tempfile as _tempfile
+    import shutil as _shutil
+    import re as _re
+    from .watermark import OFFICIAL_PLUGIN_IDS, detect_official_watermark, WM_HARD
+
+    _token = request.headers.get('Authorization', '')
+    if _upload_rate_limited(_token):
+        return _json_result(False, error='Too many uploads. Please wait.', code=429)
+
+    # 1. 检查文件
+    if 'file' not in request.files:
+        return _json_result(False, error='No file uploaded', code=400)
+    file = request.files['file']
+    if not file.filename or not file.filename.lower().endswith('.zip'):
+        return _json_result(False, error='Only .zip files are accepted', code=400)
+    file.seek(0, 2)
+    _file_size = file.tell()
+    file.seek(0)
+    if _file_size > 50 * 1024 * 1024:
+        return _json_result(False, error=f'File too large ({_file_size / 1024 / 1024:.1f}MB). Max 50MB.', code=400)
+    _magic = file.read(4)
+    file.seek(0)
+    if _magic != b'PK\x03\x04':
+        return _json_result(False, error='Invalid zip file (bad magic bytes)', code=400)
+
+    tmp_path = None
+    pending_dir = None
+    try:
+        # 2. 暂存 + 读取 plugin.json
+        fd, tmp_path = _tempfile.mkstemp(suffix='.submit.zip')
+        _os.close(fd)
+        file.save(tmp_path)
+
+        with _zipfile.ZipFile(tmp_path, 'r') as zf:
+            json_entry = None
+            for name in zf.namelist():
+                cleaned = _os.path.normpath(name).replace('\\', '/')
+                if cleaned.endswith('/plugin.json') or cleaned == 'plugin.json':
+                    json_entry = name
+                    break
+            if json_entry is None:
+                return _json_result(False, error='plugin.json not found in zip root', code=400)
+            json_raw = zf.read(json_entry).decode('utf-8')
+
+        plugin_meta = json.loads(json_raw)
+        identifier = (plugin_meta.get('identifier') or '').strip().lower()
+        name = (plugin_meta.get('name') or '').strip()
+        version = (plugin_meta.get('version') or '').strip()
+        if not identifier or not name or not version:
+            return _json_result(False, error='plugin.json requires fields: identifier, name, version', code=400)
+        # 审计 P1-1 修复：版本号 semver 校验（对齐标准 §13.1，允许 X.Y.Z-prerelease 后缀）
+        if not _p1_semver_re().match(version):
+            return _json_result(False, error=f'Invalid version: "{version}". Use semver X.Y.Z or X.Y.Z-prerelease.', code=400)
+        if not _re.match(r'^[a-z0-9_]+$', identifier):
+            return _json_result(False, error=f'Invalid identifier: "{identifier}". Use only lowercase letters, digits, underscores.', code=400)
+        # P0-4：第三方不得占用官方标识
+        if identifier in OFFICIAL_PLUGIN_IDS:
+            return _json_result(False, error=f'identifier "{identifier}" is reserved for official plugins', code=403)
+        # P1-3：必填元数据
+        for _f in ('description', 'category'):
+            if not str(plugin_meta.get(_f) or '').strip():
+                return _json_result(False, error=f'missing required metadata: {_f}', code=400)
+        # 审计 P1-1 修复（P1-3 定价申报）：付费插件必填 price_amount / price_interval
+        _price_type = str(plugin_meta.get('price_type') or 'free').strip()
+        if _price_type and _price_type != 'free':
+            if plugin_meta.get('price_amount') in (None, ''):
+                return _json_result(False, error='paid plugin requires price_amount', code=400)
+            if not str(plugin_meta.get('price_interval') or '').strip():
+                return _json_result(False, error='paid plugin requires price_interval', code=400)
+
+        mgr = _get_manager()
+        if not mgr:
+            return _json_result(False, error='PluginManager not initialized', code=503)
+        plugins_root = getattr(mgr, '_plugins_root',
+                               _os.path.join(_os.path.dirname(__file__), '..', 'plugins'))
+        plugins_root = _os.path.abspath(plugins_root)
+
+        # 3. 安全解压到 .pending（开发者通道不安装，仅入队审核）
+        from .downloader import _extract_archive
+        pending_root = _os.path.join(plugins_root, '.pending')
+        _os.makedirs(pending_root, exist_ok=True)
+        pending_dir = _os.path.join(pending_root, f'{identifier}-{dev["id"]}')
+        if _os.path.exists(pending_dir):
+            _shutil.rmtree(pending_dir, ignore_errors=True)
+        _extract_archive(tmp_path, pending_dir)
+
+        # 解压护栏（防解压炸弹）
+        _guard_total = 0
+        _guard_count = 0
+        for _gdp, _gdns, _gfns in _os.walk(pending_dir):
+            for _gfn in _gfns:
+                _guard_count += 1
+                _guard_total += _os.path.getsize(_os.path.join(_gdp, _gfn))
+                if _guard_count > 2000 or _guard_total > 200 * 1024 * 1024:
+                    _shutil.rmtree(pending_dir, ignore_errors=True)
+                    return _json_result(False, error='插件解压后体积或文件数超限，已拒绝', code=400)
+
+        # 4. 官方水印检测（硬拒即回滚）
+        _wm = detect_official_watermark(pending_dir)
+        if _wm.get('official') and _wm.get('method') in WM_HARD:
+            _shutil.rmtree(pending_dir, ignore_errors=True)
+            return _json_result(False, error=(
+                f'检测到官方插件二次打包（identifier={_wm.get("identifier") or "未知"}）。'
+                '官方插件请从插件商店安装，禁止重新打包提交。'), code=400)
+
+        # 5. 写入审核队列（含元数据 + developer_id）
+        from .models import get_registry_db
+        _sub_id = None
+        try:
+            with get_registry_db() as conn:
+                _cur = conn.execute(
+                    "INSERT INTO plugin_submissions "
+                    "(identifier, name, version, status, submitter, submitter_id, "
+                    " file_path, file_size, wm_method, wm_reason, developer_id, "
+                    " description, category, tagline, screenshots, readme_url, "
+                    " compatible_editions, min_app_version, agent_role, capabilities, "
+                    " price_type, price_amount, price_interval) "
+                    "VALUES (%s,%s,%s,'pending',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+                    "RETURNING id",
+                    (identifier, name, version,
+                     str(dev.get('display_name') or dev.get('name') or ''),
+                     str(dev['user_id']),
+                     pending_dir, _file_size,
+                     _wm.get('method', ''), _wm.get('reason', ''), dev['id'],
+                     str(plugin_meta.get('description') or ''),
+                     str(plugin_meta.get('category') or ''),
+                     str(plugin_meta.get('tagline') or ''),
+                     json.dumps(plugin_meta.get('screenshots') or [], ensure_ascii=False),
+                     str(plugin_meta.get('readme_url') or ''),
+                     json.dumps(plugin_meta.get('compatible_editions') or [], ensure_ascii=False),
+                     str(plugin_meta.get('min_app_version') or ''),
+                     str(plugin_meta.get('agent_role') or ''),
+                     json.dumps(plugin_meta.get('capabilities') or [], ensure_ascii=False),
+                     _price_type,
+                     plugin_meta.get('price_amount') if _price_type != 'free' else 0,
+                     str(plugin_meta.get('price_interval') or 'onetime')))
+                _row = _cur.fetchone()
+                conn.commit()
+            _sub_id = _row['id'] if _row else None
+        except Exception:
+            traceback.print_exc()
+            if pending_dir:
+                _shutil.rmtree(pending_dir, ignore_errors=True)
+            return _json_result(False, error='Failed to create submission record', code=500)
+
+        # 6. 自动 AI 审核（只写报告，不改 pending 状态）
+        try:
+            from .audit import review_plugin
+            _auto = review_plugin(pending_dir,
+                                  watermark_result=_wm,
+                                  plugins_root=plugins_root,
+                                  submitted_version=version)
+            with get_registry_db() as conn:
+                conn.execute(
+                    "UPDATE plugin_submissions SET audit_status=%s, audit_report=%s, "
+                    "audit_reasons=%s, reviewed_at=NOW(), updated_at=NOW() WHERE id=%s",
+                    (_auto['status'],
+                     json.dumps(_auto['report'], ensure_ascii=False),
+                     json.dumps(_auto['reasons'], ensure_ascii=False),
+                     _sub_id))
+                conn.commit()
+        except Exception:
+            traceback.print_exc()   # 自动审核失败不阻断提交，保留 pending 供人工
+            # 审计 P2-6 修复：失败不得静默，落 review_comment 标记待人工复核
+            try:
+                with get_registry_db() as conn:
+                    conn.execute(
+                        "UPDATE plugin_submissions SET review_comment=%s, updated_at=NOW() "
+                        "WHERE id=%s",
+                        ('auto audit failed, needs manual review', _sub_id))
+                    conn.commit()
+            except Exception:
+                traceback.print_exc()
+
+        return _json_result(True, data={
+            'submission_id': _sub_id,
+            'identifier': identifier,
+            'name': name,
+            'version': version,
+            'status': 'pending',
+            'message': '插件已提交审核，请前往开发者中心查看进度。',
+        })
+
+    except json.JSONDecodeError:
+        return _json_result(False, error='plugin.json is not valid JSON', code=400)
+    except ValueError as e:
+        return _json_result(False, error=f'Invalid archive: {e!s}', code=400)
+    except Exception as e:
+        return _json_result(False, error=f'Submit failed: {e!s}', code=500)
+    finally:
+        if tmp_path and _os.path.exists(tmp_path):
+            try:
+                _os.unlink(tmp_path)
+            except OSError:
+                pass
+
+
+# ====================================================================
+# ★ P2 收益分成（developer_payouts · 80/20）
+# ====================================================================
+
+import re as _p2_re
+
+
+def _p2_validate_period(period: str) -> str:
+    """校验/推导结算周期：'YYYY-MM'；缺省取上一自然月。"""
+    period = (period or '').strip()
+    if period:
+        if not _p2_re.match(r'^[0-9]{4}-(0[1-9]|1[0-2])$', period):
+            raise ValueError('period must be YYYY-MM')
+        return period
+    from datetime import timedelta
+    _now = datetime.now()
+    _prev = _now.replace(day=1) - timedelta(days=1)
+    return _prev.strftime('%Y-%m')
+
+
+def _p2_aggregate(conn, period: str) -> dict:
+    """按月聚合第三方插件支付流水（fen）。
+
+    数据源（P0-2 修正）：plugin_payment_orders（paid 订单 paid_at 命中周期）
+    + plugin_subscriptions（active 订阅 last_charge_at 命中周期）。
+    仅统计 store_plugins.developer_id > 0 的第三方插件。
+    返回 {developer_id: gross_fen}
+    """
+    gross: dict = {}
+    # 1) 一次性买断订单
+    rows = conn.execute(
+        "SELECT sp.developer_id AS dev_id, SUM(po.amount_fen) AS gross "
+        "FROM plugin_payment_orders po "
+        "JOIN store_plugins sp ON sp.identifier = po.plugin_id "
+        "WHERE sp.developer_id > 0 AND po.status = 'paid' "
+        "  AND po.paid_at LIKE %s "
+        "GROUP BY sp.developer_id",
+        (f'{period}%',)).fetchall()
+    for r in rows:
+        gross[r['dev_id']] = gross.get(r['dev_id'], 0) + (r['gross'] or 0)
+    # 2) 订阅续费流水（本月有扣款记录的 active 订阅）
+    rows = conn.execute(
+        "SELECT sp.developer_id AS dev_id, SUM(ps.amount_fen) AS gross "
+        "FROM plugin_subscriptions ps "
+        "JOIN store_plugins sp ON sp.identifier = ps.plugin_id "
+        "WHERE sp.developer_id > 0 AND ps.status = 'active' "
+        "  AND ps.last_charge_at LIKE %s "
+        "GROUP BY sp.developer_id",
+        (f'{period}%',)).fetchall()
+    for r in rows:
+        gross[r['dev_id']] = gross.get(r['dev_id'], 0) + (r['gross'] or 0)
+    return gross
+
+
+@bp.route('/store/admin/payouts/generate', methods=['POST'])
+def generate_payouts():
+    """P2：按周期聚合支付流水生成结算记录（幂等，可重跑）。
+
+    金额口径统一 fen；ratio 取 store_developers.payout_ratio（默认 80）。
+    UNIQUE(developer_id, period) → ON CONFLICT 覆盖更新。
+    """
+    err = _require_store_admin()
+    if err:
+        return err
+    data = request.get_json(silent=True) or {}
+    try:
+        period = _p2_validate_period(str(data.get('period') or ''))
+    except ValueError as e:
+        return _json_result(False, error=str(e), code=400)
+    try:
+        with get_registry_db() as conn:
+            gross = _p2_aggregate(conn, period)
+            if not gross:
+                return _json_result(True, data={'period': period,
+                                                'developers': [], 'total': 0})
+            result = []
+            total_fen = 0
+            for dev_id, g in sorted(gross.items()):
+                row = conn.execute(
+                    'SELECT payout_ratio FROM store_developers WHERE id=%s', (dev_id,)).fetchone()
+                ratio = row['payout_ratio'] if row else 80
+                amount = int(g * ratio / 100)
+                total_fen += amount
+                cur = conn.execute(
+                    "INSERT INTO developer_payouts "
+                    "(developer_id, period, gross_fen, ratio, amount_fen) "
+                    "VALUES (%s,%s,%s,%s,%s) "
+                    "ON CONFLICT(developer_id, period) DO UPDATE SET "
+                    "gross_fen=EXCLUDED.gross_fen, ratio=EXCLUDED.ratio, "
+                    "amount_fen=EXCLUDED.amount_fen "
+                    "RETURNING id, status",
+                    (dev_id, period, g, ratio, amount))
+                _p = cur.fetchone()
+                result.append({'developer_id': dev_id,
+                               'gross_fen': g, 'ratio': ratio,
+                               'amount_fen': amount,
+                               'payout_id': _p['id'], 'status': _p['status']})
+            conn.commit()
+        return _json_result(True, data={'period': period,
+                                        'developers': result,
+                                        'total_amount_fen': total_fen})
+    except Exception as e:
+        traceback.print_exc()
+        return _json_result(False, error=f'Failed: {e}', code=500)
+
+
+@bp.route('/developer/payouts', methods=['GET'])
+def developer_payouts():
+    """P2：开发者查看自己的结算记录。"""
+    dev, err = _require_developer()
+    if err:
+        return err
+    try:
+        with get_registry_db() as conn:
+            rows = conn.execute(
+                'SELECT * FROM developer_payouts WHERE developer_id=%s '
+                'ORDER BY period DESC', (dev['id'],)).fetchall()
+        return _json_result(True, data=[dict(r) for r in rows])
+    except Exception as e:
+        traceback.print_exc()
+        return _json_result(False, error=f'Failed: {e}', code=500)
+
+
+@bp.route('/developer/payout-account', methods=['PUT'])
+def developer_payout_account():
+    """P2-1：开发者绑定/更新结算账户。
+
+    写入 store_developers.payout_account（JSON）。
+    注意：生产环境该字段应加密存储（当前明文落库，属已知缺口，见方案标注）。
+    """
+    dev, err = _require_developer()
+    if err:
+        return err
+    data = request.get_json(silent=True) or {}
+    account_type = (data.get('account_type') or '').strip()
+    account_no = (data.get('account_no') or '').strip()
+    account_name = (data.get('account_name') or '').strip()
+    if not account_type or not account_no:
+        return _json_result(False, error='account_type and account_no are required', code=400)
+    if account_type not in ('alipay', 'wechat', 'bank', 'paypal'):
+        return _json_result(False, error=f'unsupported account_type: {account_type}', code=400)
+    try:
+        payload = json.dumps({
+            'account_type': account_type,
+            'account_no': account_no,
+            'account_name': account_name,
+        }, ensure_ascii=False)
+        with get_registry_db() as conn:
+            conn.execute(
+                'UPDATE store_developers SET payout_account=%s, updated_at=NOW() WHERE id=%s',
+                (payload, dev['id']))
+            conn.commit()
+        # 脱敏回显：只返回尾 4 位，防完整账号泄露
+        masked = '****' + account_no[-4:] if len(account_no) >= 4 else '****'
+        return _json_result(True, data={'account_type': account_type,
+                                        'account_no': masked})
+    except Exception as e:
+        traceback.print_exc()
+        return _json_result(False, error=f'Failed: {e}', code=500)
+
+
+@bp.route('/developer/withdrawals', methods=['POST'])
+def developer_withdrawal_apply():
+    """P2-2：开发者发起提现申请。
+
+    可提现余额 = 已结算(paid)合计 - 已在途(pending/processing)提现合计。
+    幂等：存在在途申请时拒绝重复申请。
+    """
+    dev, err = _require_developer()
+    if err:
+        return err
+    data = request.get_json(silent=True) or {}
+    try:
+        amount_fen = int(data.get('amount_fen') or 0)
+    except (TypeError, ValueError):
+        return _json_result(False, error='amount_fen must be integer', code=400)
+    if amount_fen <= 0:
+        return _json_result(False, error='amount_fen must be positive', code=400)
+    try:
+        with get_registry_db() as conn:
+            paid = conn.execute(
+                "SELECT COALESCE(SUM(amount_fen),0) AS t FROM developer_payouts "
+                "WHERE developer_id=%s AND status='paid'",
+                (dev['id'],)).fetchone()['t']
+            inflight = conn.execute(
+                "SELECT COALESCE(SUM(amount_fen),0) AS t FROM developer_withdrawals "
+                "WHERE developer_id=%s AND status IN ('pending','processing')",
+                (dev['id'],)).fetchone()['t']
+            available = (paid or 0) - (inflight or 0)
+            if amount_fen > available:
+                return _json_result(False,
+                                    error=f'insufficient balance: available={available}, requested={amount_fen}',
+                                    code=400)
+            # 幂等：存在在途申请即拒绝
+            dup = conn.execute(
+                "SELECT id FROM developer_withdrawals "
+                "WHERE developer_id=%s AND status IN ('pending','processing') LIMIT 1",
+                (dev['id'],)).fetchone()
+            if dup:
+                return _json_result(False, error='a withdrawal is already in progress', code=400)
+            account_snapshot = conn.execute(
+                'SELECT payout_account FROM store_developers WHERE id=%s', (dev['id'],)).fetchone()
+            cur = conn.execute(
+                "INSERT INTO developer_withdrawals (developer_id, amount_fen, account) "
+                "VALUES (%s,%s,%s) RETURNING id",
+                (dev['id'], amount_fen, account_snapshot['payout_account'] or '{}'))
+            wid = cur.fetchone()['id']
+            conn.commit()
+        return _json_result(True, data={'withdrawal_id': wid, 'amount_fen': amount_fen,
+                                        'status': 'pending'})
+    except Exception as e:
+        traceback.print_exc()
+        return _json_result(False, error=f'Failed: {e}', code=500)
+
+
+@bp.route('/developer/withdrawals', methods=['GET'])
+def developer_withdrawals():
+    """P2-2：开发者查看自己的提现历史。"""
+    dev, err = _require_developer()
+    if err:
+        return err
+    try:
+        with get_registry_db() as conn:
+            rows = conn.execute(
+                'SELECT * FROM developer_withdrawals WHERE developer_id=%s '
+                'ORDER BY applied_at DESC LIMIT 100', (dev['id'],)).fetchall()
+        return _json_result(True, data=[dict(r) for r in rows])
+    except Exception as e:
+        traceback.print_exc()
+        return _json_result(False, error=f'Failed: {e}', code=500)
+
+
+# ── P0-1：轻量技能层（社区 UGC，Markdown 低门槛）─────────────────────
+
+def _skill_row_dict(row) -> dict:
+    """技能行 → dict（tags JSON 反序列化）。"""
+    d = dict(row)
+    try:
+        d['tags'] = json.loads(d.get('tags') or '[]')
+    except Exception:
+        d['tags'] = []
+    return d
+
+
+def _submit_skill_record(dev: dict, content_md: str):
+    """技能提交核心：校验 + 自动审核 + 幂等入库（submit / import 共用）。
+
+    Returns:
+        (ok, payload, http_code)：ok=True → payload 为成功 data；
+        ok=False → payload 为错误文案，http_code 区分 400/500。
+    """
+    from .skills import validate_skill, audit_skill
+    errors, meta = validate_skill(content_md)
+    if errors:
+        return False, '; '.join(errors), 400
+    audit_status, reasons = audit_skill(content_md)
+    try:
+        with get_registry_db() as conn:
+            cur = conn.execute(
+                'SELECT id FROM store_skills WHERE identifier=%s', (meta['identifier'],))
+            existing = cur.fetchone()
+            if existing:
+                cur = conn.execute(
+                    'UPDATE store_skills SET content_md=%s, name=%s, description=%s, '
+                    'tagline=%s, tags=%s, version=%s, audit_status=%s, audit_note=%s, '
+                    "status='pending', updated_at=NOW() WHERE id=%s RETURNING id",
+                    (content_md, meta['name'], meta['description'], meta['tagline'],
+                     json.dumps(meta['tags']), meta['version'], audit_status,
+                     json.dumps(reasons), existing['id']))
+            else:
+                cur = conn.execute(
+                    "INSERT INTO store_skills "
+                    " (identifier, name, description, tagline, tags, content_md, "
+                    "  author_developer_id, version, status, audit_status, audit_note) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'pending',%s,%s) RETURNING id",
+                    (meta['identifier'], meta['name'], meta['description'], meta['tagline'],
+                     json.dumps(meta['tags']), content_md, dev['id'], meta['version'],
+                     audit_status, json.dumps(reasons)))
+            skill_id = cur.fetchone()['id']
+            conn.commit()
+        return True, {'id': skill_id, 'identifier': meta['identifier'],
+                      'status': 'pending', 'audit_status': audit_status}, 200
+    except Exception as e:
+        traceback.print_exc()
+        return False, f'Failed: {e}', 500
+
+
+@bp.route('/skills/submit', methods=['POST'])
+def skill_submit():
+    """P0-1：开发者提交技能（幂等：重复 identifier 更新未审版本为 pending）。"""
+    dev, err = _require_developer()
+    if err:
+        return err
+    data = request.get_json(silent=True) or {}
+    content_md = (data.get('content_md') or '').strip()
+    if not content_md:
+        return _json_result(False, error='content_md is required', code=400)
+    ok, payload, code = _submit_skill_record(dev, content_md)
+    return _json_result(ok, data=payload if ok else None,
+                        error=None if ok else payload, code=code)
+
+
+@bp.route('/skills/import', methods=['POST'])
+def skill_import():
+    """P1-4：导入外部 SKILL.md（粘贴内容或 URL 拉取），复用 submit 校验/审核/入库。"""
+    dev, err = _require_developer()
+    if err:
+        return err
+    data = request.get_json(silent=True) or {}
+    content_md = (data.get('content_md') or '').strip()
+    url = (data.get('url') or '').strip()
+    if not content_md and url:
+        if not url.startswith(('http://', 'https://')):
+            return _json_result(False, error='url must be http(s)', code=400)
+        try:
+            from urllib.request import urlopen, Request as _Req
+            with urlopen(_Req(url, headers={'User-Agent': 'VeroRun-PluginManager/1.0'}),
+                         timeout=10) as _resp:
+                content_md = _resp.read().decode('utf-8', errors='replace').strip()
+        except Exception as e:
+            return _json_result(False, error=f'Failed to fetch url: {e}', code=400)
+    if not content_md:
+        return _json_result(False, error='content_md or url is required', code=400)
+    ok, payload, code = _submit_skill_record(dev, content_md)
+    return _json_result(ok, data=payload if ok else None,
+                        error=None if ok else payload, code=code)
+
+
+@bp.route('/skills/<identifier>/export', methods=['GET'])
+def skill_export(identifier: str):
+    """P1-4：导出标准 SKILL.md（兼容 agentskills.io / Hermes 格式）。"""
+    try:
+        with get_registry_db() as conn:
+            row = conn.execute(
+                "SELECT * FROM store_skills WHERE identifier=%s AND status='approved'",
+                (identifier,)).fetchone()
+    except Exception as e:
+        traceback.print_exc()
+        return _json_result(False, error=f'Failed: {e}', code=500)
+    if not row:
+        return _json_result(False, error='Skill not found', code=404)
+    from .skills import export_skill_md
+    from flask import make_response
+    md = export_skill_md(dict(row))
+    resp = make_response(md)
+    resp.headers['Content-Type'] = 'text/markdown; charset=utf-8'
+    resp.headers['Content-Disposition'] = f'attachment; filename="{identifier}.md"'
+    return resp
+
+
+# ── 可观测性：深度健康检查（admin 域，供 Nginx/负载均衡判活） ────────
+
+@bp.route('/health/ready', methods=['GET'])
+def health_ready():
+    """插件管理器就绪检查：registry DB + 商店目录 + MCP 工具。"""
+    from shared.observability import measure, build_health_payload
+    from .models_store import get_registry_db
+
+    def _pg_ok():
+        with get_registry_db() as conn:
+            conn.execute('SELECT 1')
+        return True, 'ok'
+
+    def _store_ok():
+        mgr = _get_manager()
+        if not mgr or not mgr.store_client:
+            return False, 'store client unavailable'
+        try:
+            mgr.store_client._last_sync_ts  # noqa: B018 存在性探测
+        except Exception:
+            pass
+        return True, 'available'
+
+    def _mcp_ok():
+        from .mcp import _enabled_records
+        try:
+            n = len(_enabled_records())
+            return True, f'{n} mcp server(s) enabled'
+        except Exception as e:
+            return False, str(e)
+
+    checks = [measure(_pg_ok, 'registry_db'),
+              measure(_store_ok, 'store_catalog'),
+              measure(_mcp_ok, 'mcp_servers')]
+    payload = build_health_payload('plugin_manager', checks)
+    return _json_result(True, data=payload)
+
+
+@bp.route('/skills/browse', methods=['GET'])
+def skill_browse():
+    """P0-1：商店浏览已上架技能（q 搜索 + 分页，按安装量排序）。"""
+    q = (request.args.get('q') or '').strip()
+    page = _parse_positive_int('page', 1, 1, 100000)
+    per_page = _parse_positive_int('per_page', 20, 1, 100)
+    where = ["status='approved'"]
+    params: list = []
+    if q:
+        where.append('(name ILIKE %s OR description ILIKE %s OR tags ILIKE %s)')
+        like = f'%{q}%'
+        params += [like, like, like]
+    sql_where = ' AND '.join(where)
+    try:
+        with get_registry_db() as conn:
+            total = conn.execute(
+                f'SELECT COUNT(*) AS c FROM store_skills WHERE {sql_where}', params
+            ).fetchone()['c']
+            rows = conn.execute(
+                f'SELECT id, identifier, name, description, tagline, tags, version, '
+                f'rating, installs, author_developer_id, created_at, requirements, source '
+                f'FROM store_skills '
+                f'WHERE {sql_where} ORDER BY installs DESC, created_at DESC '
+                f'LIMIT %s OFFSET %s',
+                params + [per_page, (page - 1) * per_page]).fetchall()
+        items = [_skill_row_dict(r) for r in rows]
+        reg = get_skill_registry()
+        if reg is not None:                       # 降级铁律：registry 未初始化则不带 availability
+            avail = reg.availability_map([dict(r) for r in rows], site_id=0)  # P0 单站点
+            for it in items:
+                it['availability'] = avail.get(it['id'], {'available': True, 'reasons': []})
+        return _json_result(True, data={'items': items,
+                                        'total': total, 'page': page, 'per_page': per_page})
+    except Exception as e:
+        traceback.print_exc()
+        return _json_result(False, error=f'Failed: {e}', code=500)
+
+
+@bp.route('/skills/<identifier>', methods=['GET'])
+def skill_detail(identifier):
+    """P0-1：技能详情（含 content_md，公开）。"""
+    try:
+        with get_registry_db() as conn:
+            row = conn.execute(
+                "SELECT * FROM store_skills WHERE identifier=%s AND status='approved'",
+                (identifier,)).fetchone()
+    except Exception as e:
+        traceback.print_exc()
+        return _json_result(False, error=f'Failed: {e}', code=500)
+    if not row:
+        return _json_result(False, error='Skill not found', code=404)
+    return _json_result(True, data=_skill_row_dict(row))
+
+
+@bp.route('/skills/<identifier>/install', methods=['POST'])
+def skill_install(identifier):
+    """P0-1：安装技能到本地 data/skills/<identifier>/SKILL.md（登录用户）。"""
+    user_id, _name, _admin = _get_jwt_user()
+    if not user_id:
+        return _json_result(False, error='Not logged in', code=401)
+    try:
+        with get_registry_db() as conn:
+            row = conn.execute(
+                "SELECT id, identifier, content_md, version FROM store_skills "
+                "WHERE identifier=%s AND status='approved'", (identifier,)).fetchone()
+    except Exception as e:
+        traceback.print_exc()
+        return _json_result(False, error=f'Failed: {e}', code=500)
+    if not row:
+        return _json_result(False, error='Skill not found', code=404)
+    # 依赖预检（P0）：registry 启用时先过 AvailabilityResolver，不满足则拒绝落盘
+    reg = get_skill_registry()
+    if reg is not None:
+        pre = reg.install(int(row['id']), 0, row['version'])   # site_id=0（P0 单站点）
+        if not pre['ok']:
+            return _json_result(False, data={'missing': pre['missing']},
+                                error='requirements_not_met', code=200)
+    from .skills import install_skill
+    try:
+        path = install_skill(row['identifier'], row['content_md'])
+    except Exception as e:
+        traceback.print_exc()
+        return _json_result(False, error=f'Install failed: {e}', code=500)
+    try:
+        with get_registry_db() as conn:
+            conn.execute('UPDATE store_skills SET installs=installs+1 WHERE id=%s',
+                         (row['id'],))
+            conn.commit()
+    except Exception:
+        pass
+    return _json_result(True, data={'identifier': row['identifier'], 'path': path})
+
+
+@bp.route('/skills/<identifier>/uninstall', methods=['POST'])
+def skill_uninstall(identifier):
+    """P0-1：卸载本地技能（删 SKILL.md）。"""
+    user_id, _name, _admin = _get_jwt_user()
+    if not user_id:
+        return _json_result(False, error='Not logged in', code=401)
+    from .skills import uninstall_skill
+    try:
+        removed = uninstall_skill(identifier)
+    except Exception as e:
+        traceback.print_exc()
+        return _json_result(False, error=f'Uninstall failed: {e}', code=500)
+    return _json_result(True, data={'removed': removed})
+
+
+@bp.route('/skills/mine', methods=['GET'])
+def skill_mine():
+    """P0-1：开发者自己的技能列表。"""
+    dev, err = _require_developer()
+    if err:
+        return err
+    try:
+        with get_registry_db() as conn:
+            rows = conn.execute(
+                'SELECT * FROM store_skills WHERE author_developer_id=%s '
+                'ORDER BY created_at DESC', (dev['id'],)).fetchall()
+        return _json_result(True, data=[_skill_row_dict(r) for r in rows])
+    except Exception as e:
+        traceback.print_exc()
+        return _json_result(False, error=f'Failed: {e}', code=500)
+
+
+@bp.route('/skills/admin', methods=['GET'])
+def skill_admin_list():
+    """P0-1：管理员技能列表（默认待审，?status= 过滤）。"""
+    err = _require_store_admin()
+    if err:
+        return err
+    status = (request.args.get('status') or 'pending').strip()
+    try:
+        with get_registry_db() as conn:
+            rows = conn.execute(
+                'SELECT * FROM store_skills WHERE status=%s ORDER BY created_at ASC',
+                (status,)).fetchall()
+        return _json_result(True, data=[_skill_row_dict(r) for r in rows])
+    except Exception as e:
+        traceback.print_exc()
+        return _json_result(False, error=f'Failed: {e}', code=500)
+
+
+@bp.route('/skills/admin/<int:skill_id>/review', methods=['POST'])
+def skill_admin_review(skill_id):
+    """P0-1：管理员审核技能（approve 上架 / reject 驳回）。"""
+    err = _require_store_admin()
+    if err:
+        return err
+    data = request.get_json(silent=True) or {}
+    action = (data.get('action') or '').strip()
+    if action not in ('approve', 'reject'):
+        return _json_result(False, error='action must be approve|reject', code=400)
+    new_status = 'approved' if action == 'approve' else 'rejected'
+    note = (data.get('note') or '').strip()
+    try:
+        with get_registry_db() as conn:
+            cur = conn.execute(
+                "UPDATE store_skills SET status=%s, audit_note=%s, "
+                "published_at=CASE WHEN %s='approved' THEN NOW()::text ELSE published_at END, "
+                "updated_at=NOW()::text WHERE id=%s RETURNING id, identifier",
+                (new_status, note, new_status, skill_id))
+            row = cur.fetchone()
+            conn.commit()
+        if not row:
+            return _json_result(False, error='Skill not found', code=404)
+        return _json_result(True, data={'id': row['id'], 'identifier': row['identifier'],
+                                        'status': new_status})
+    except Exception as e:
+        traceback.print_exc()
+        return _json_result(False, error=f'Failed: {e}', code=500)
+
+
+@bp.route('/skills/available', methods=['GET'])
+def skill_available():
+    """P0：仅返回当前可用技能（供 Agent 编排器/前端下拉用）。
+    支持 ?role= & task_type= 过滤；registry 关闭时降级返回空列表。"""
+    role = (request.args.get('role') or '').strip()
+    task_type = (request.args.get('task_type') or '').strip()
+    reg = get_skill_registry()
+    if reg is None:
+        return _json_result(True, data=[])   # 降级铁律
+    try:
+        with get_registry_db() as conn:
+            rows = conn.execute(
+                "SELECT * FROM store_skills WHERE status='approved'").fetchall()
+    except Exception as e:
+        traceback.print_exc()
+        return _json_result(False, error=f'Failed: {e}', code=500)
+    out = []
+    for r in rows:
+        row = dict(r)
+        res = reg.resolver.evaluate(row, site_id=0)   # P0 单站点
+        if not res.available:
+            continue
+        reqs = reg.resolver._parse_requirements(row.get('requirements', '{}'))
+        if role and role not in reqs.get('roles', []):
+            continue
+        if task_type and task_type not in _skill_task_types(row):
+            continue
+        out.append(_skill_row_dict(r))
+    return _json_result(True, data=out)
+
+
+@bp.route('/skills/<identifier>/requirements', methods=['GET'])
+def skill_requirements(identifier):
+    """P0：返回技能依赖解析树（每条依赖的满足状态 + 恢复路径）。"""
+    reg = get_skill_registry()
+    if reg is None:
+        return _json_result(True, data={'identifier': identifier, 'available': True,
+                                        'requirements': {}, 'reasons': []})   # 降级铁律
+    try:
+        with get_registry_db() as conn:
+            row = conn.execute(
+                "SELECT * FROM store_skills WHERE identifier=%s AND status='approved'",
+                (identifier,)).fetchone()
+    except Exception as e:
+        traceback.print_exc()
+        return _json_result(False, error=f'Failed: {e}', code=500)
+    if not row:
+        return _json_result(False, error='Skill not found', code=404)
+    r = dict(row)
+    res = reg.resolver.evaluate(r, site_id=0)
+    reqs = reg.resolver._parse_requirements(r.get('requirements', '{}'))
+    return _json_result(True, data={
+        'identifier': identifier,
+        'available': res.available,
+        'requirements': reqs,
+        'reasons': res.to_dict()['reasons'],
+    })
+
+
+@bp.route('/skills/admin/circuit-breaker', methods=['POST'])
+def skill_circuit_breaker():
+    """P0：熔断开关（scope: community | user | all），写 system_config。"""
+    err = _require_store_admin()
+    if err:
+        return err
+    data = request.get_json(silent=True) or {}
+    enabled = bool(data.get('enabled', False))
+    scope = (data.get('scope') or 'community').strip()
+    if scope not in ('community', 'user', 'all'):
+        return _json_result(False, error='scope must be community|user|all', code=400)
+    value = scope if enabled else '0'
+    try:
+        with get_registry_db() as conn:
+            conn.execute(
+                "INSERT INTO system_config (key, value, description, updated_at) "
+                "VALUES ('skill_circuit_breaker', %s, 'skill circuit breaker scope', NOW()::text) "
+                "ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW()::text",
+                (value,))
+            conn.commit()
+    except Exception as e:
+        traceback.print_exc()
+        return _json_result(False, error=f'Failed: {e}', code=500)
+    reg = get_skill_registry()
+    if reg is not None:
+        reg.resolver.invalidate()   # 熔断变化即时生效
+    return _json_result(True, data={'enabled': enabled, 'scope': scope, 'value': value})
+
+
+def _skill_task_types(row: dict) -> list:
+    """从 requirements JSON 提取 task_types（0.9 技能返回空）。"""
+    try:
+        reqs = json.loads((row.get('requirements') or '{}'))
+        return reqs.get('task_types') or []
+    except Exception:
+        return []
+
+
+@bp.route('/store/admin/payouts', methods=['GET'])
+def admin_payouts():
+    """P2：管理员查看全部结算记录（可过滤 ?period= / ?status=）。"""
+    err = _require_store_admin()
+    if err:
+        return err
+    period = (request.args.get('period') or '').strip()
+    status = (request.args.get('status') or '').strip()
+    sql = 'SELECT p.*, d.display_name AS developer_name FROM developer_payouts p ' \
+          'LEFT JOIN store_developers d ON d.id = p.developer_id WHERE 1=1'
+    params = []
+    if period:
+        sql += ' AND p.period=%s'
+        params.append(period)
+    if status:
+        sql += ' AND p.status=%s'
+        params.append(status)
+    sql += ' ORDER BY p.period DESC, p.id DESC LIMIT 500'
+    try:
+        with get_registry_db() as conn:
+            rows = conn.execute(sql, tuple(params)).fetchall()
+        return _json_result(True, data=[dict(r) for r in rows])
+    except Exception as e:
+        traceback.print_exc()
+        return _json_result(False, error=f'Failed: {e}', code=500)
+
+
+@bp.route('/store/admin/payouts/<int:pid>/pay', methods=['POST'])
+def pay_payout(pid):
+    """P2：管理员标记结算已支付。"""
+    err = _require_store_admin()
+    if err:
+        return err
+    try:
+        with get_registry_db() as conn:
+            row = conn.execute(
+                'SELECT status FROM developer_payouts WHERE id=%s', (pid,)).fetchone()
+            if not row:
+                return _json_result(False, error='payout not found', code=404)
+            if row['status'] == 'paid':
+                return _json_result(False, error='payout already paid', code=400)
+            if row['status'] == 'void':
+                return _json_result(False, error='payout is void', code=400)
+            conn.execute(
+                "UPDATE developer_payouts SET status='paid', paid_at=NOW() WHERE id=%s",
+                (pid,))
+            conn.commit()
+        return _json_result(True, data={'payout_id': pid, 'status': 'paid'})
+    except Exception as e:
+        traceback.print_exc()
+        return _json_result(False, error=f'Failed: {e}', code=500)
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# v1.8 动态分类与动态分流
+#   设计：《VeroRun 插件动态分类与动态分流 - 轻量增量方案 v1.0》§4.3 / §5
+#   标准：docs/plugin-standard v1.8 §18
+#   命名空间并入既有 /store/admin/*，不新建并列管理面。
+#   ⚠️ 本段为**纯追加**：不改动上方任何既有端点与函数。
+# ══════════════════════════════════════════════════════════════════════════
+
+import re as _dist_re
+
+_DIST_KEY_RE = _dist_re.compile(r'^[a-z0-9_]+$')
+
+
+def _dist_int(raw, default: int) -> int:
+    """宽容整数解析：缺失/非法 → default（供分流规则写入使用）。"""
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return default
+
+
+def _dist_admin_name() -> str:
+    """尽力解析当前管理员标识（写入 distribution 审计列）；失败返回 ''。"""
+    try:
+        from services.jwt_service import validate_token
+        token = request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not token:
+            token = (request.args.get('token') or request.cookies.get('sso_token')
+                     or request.cookies.get('tm_token'))
+        payload = validate_token(token) if token else None
+        if not payload:
+            return ''
+        return str(payload.get('username') or payload.get('email') or payload.get('sub') or '')
+    except Exception:
+        return ''
+
+
+@bp.route('/store/categories', methods=['GET'])
+def store_categories():
+    """公开只读：分类注册表（供商店前台/后台渲染，替代硬编码 map）。
+
+    前端**必须保留内置 map 作为 fallback**：本端点不可用时不崩、不空白。
+    失败时返回空集而非 5xx —— 前端据此走内置 map。
+    """
+    try:
+        from .distribution import list_categories, category_map
+        return _json_result(True, data={
+            'categories': list_categories(),
+            'map': category_map(),
+        })
+    except Exception as e:
+        print(f'[store] ⚠️ /store/categories 取数失败（前端将走内置 fallback）: {e}')
+        return _json_result(True, data={'categories': [], 'map': {}})
+
+
+@bp.route('/store/admin/categories', methods=['POST'])
+def store_admin_category_save():
+    """管理员：新增/更新分类（动态分类写入通道）。
+
+    - ``builtin=1`` 的内置分类**可改展示名/emoji/渐变/排序，但不可删除**
+    - ``ON CONFLICT(key) DO UPDATE`` 幂等；写后立即失效 resolver 快照
+    """
+    err = _require_store_admin()
+    if err:
+        return err
+
+    d = request.get_json(silent=True) or {}
+    key = (d.get('key') or '').strip().lower()
+    if not key or not _DIST_KEY_RE.match(key):
+        return _json_result(False, error='key must match [a-z0-9_]+', code=400)
+
+    try:
+        with get_registry_db() as conn:
+            row = conn.execute(
+                'SELECT builtin FROM plugin_categories WHERE key=%s', (key,)).fetchone()
+            _builtin = _dist_int(row['builtin'], 0) if row else 0
+            conn.execute(
+                "INSERT INTO plugin_categories "
+                "(key, label, label_i18n_key, emoji, icon_svg, grad_from, grad_to, "
+                " default_tagline, sort_order, enabled, builtin, is_official, updated_at) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,0,NOW()) "
+                "ON CONFLICT(key) DO UPDATE SET "
+                "  label=excluded.label, label_i18n_key=excluded.label_i18n_key, "
+                "  emoji=excluded.emoji, icon_svg=excluded.icon_svg, "
+                "  grad_from=excluded.grad_from, grad_to=excluded.grad_to, "
+                "  default_tagline=excluded.default_tagline, "
+                "  sort_order=excluded.sort_order, enabled=excluded.enabled, updated_at=NOW()",
+                (key, d.get('label', ''), d.get('label_i18n_key', ''),
+                 d.get('emoji', ''), d.get('icon_svg', ''),
+                 d.get('grad_from') or '#3b82f6', d.get('grad_to') or '#8b5cf6',
+                 d.get('default_tagline', ''), _dist_int(d.get('sort_order'), 100),
+                 _dist_int(d.get('enabled'), 1), _builtin))
+            conn.commit()
+        from .distribution import invalidate_cache
+        invalidate_cache()
+        return _json_result(True, data={'key': key})
+    except Exception as e:
+        traceback.print_exc()
+        return _json_result(False, error=f'Failed: {e}', code=500)
+
+
+@bp.route('/store/admin/distribution/<identifier>', methods=['GET', 'PUT'])
+def store_admin_distribution(identifier: str):
+    """管理员：读取 / 保存插件分流规则（动态分流写入通道）。
+
+    与 ``store_plugins`` 严格 1:1（``identifier`` UNIQUE），仅承载分流附加语义。
+    ``editions`` / ``profiles`` 均为 ``[]`` 时 = 不参与对应维度过滤（回落 yaml）。
+    """
+    err = _require_store_admin()
+    if err:
+        return err
+
+    from .distribution import rule_for, invalidate_cache
+
+    if request.method == 'GET':
+        try:
+            # 归一化对外形状：editions/profiles/categories 为 JSON 文本列，
+            # 统一转数组返回，与 PUT 入参对称，避免消费方各自 json.loads。
+            from .distribution import _as_list as _dist_list
+            _rule = dict(rule_for(identifier) or {'identifier': identifier})
+            for _f in ('editions', 'profiles', 'categories'):
+                _rule[_f] = _dist_list(_rule.get(_f))
+            _rule['hidden'] = _dist_int(_rule.get('hidden'), 0)
+            _rule['priority'] = _dist_int(_rule.get('priority'), 100)
+            return _json_result(True, data=_rule)
+        except Exception as e:
+            traceback.print_exc()
+            return _json_result(False, error=f'Failed: {e}', code=500)
+
+    d = request.get_json(silent=True) or {}
+
+    def _str_list(name):
+        v = d.get(name) or []
+        if not isinstance(v, list) or not all(isinstance(x, str) for x in v):
+            return None
+        return [x.strip() for x in v if x and x.strip()]
+
+    _eds, _profs, _cats = _str_list('editions'), _str_list('profiles'), _str_list('categories')
+    if _eds is None or _profs is None or _cats is None:
+        return _json_result(
+            False, error='editions/profiles/categories must be lists of strings', code=400)
+
+    _channel = (d.get('channel') or 'stable').strip().lower()
+    if _channel not in ('stable', 'beta', 'canary'):
+        return _json_result(False, error='channel must be stable|beta|canary', code=400)
+
+    # 分类归属必须命中合法集合（内置 ∪ 注册表）
+    if _cats:
+        try:
+            from .distribution import valid_category_keys
+            _bad = [c for c in _cats if c not in valid_category_keys()]
+        except Exception:
+            _bad = []
+        if _bad:
+            return _json_result(False, error=f'unknown categories: {_bad}', code=400)
+
+    try:
+        with get_registry_db() as conn:
+            conn.execute(
+                "INSERT INTO plugin_distribution_rules "
+                "(identifier, editions, profiles, categories, channel, priority, "
+                " hidden, note, updated_by, updated_at) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW()) "
+                "ON CONFLICT(identifier) DO UPDATE SET "
+                "  editions=excluded.editions, profiles=excluded.profiles, "
+                "  categories=excluded.categories, channel=excluded.channel, "
+                "  priority=excluded.priority, hidden=excluded.hidden, "
+                "  note=excluded.note, updated_by=excluded.updated_by, updated_at=NOW()",
+                (identifier,
+                 json.dumps(_eds, ensure_ascii=False),
+                 json.dumps(_profs, ensure_ascii=False),
+                 json.dumps(_cats, ensure_ascii=False),
+                 _channel, _dist_int(d.get('priority'), 100),
+                 1 if d.get('hidden') else 0,
+                 (d.get('note') or '')[:500],
+                 _dist_admin_name()))
+            conn.commit()
+        invalidate_cache()
+        return _json_result(True, data={'identifier': identifier})
+    except Exception as e:
+        traceback.print_exc()
+        return _json_result(False, error=f'Failed: {e}', code=500)
+
+
+# ── 发行版矩阵（方案Ⅰ：业务版 × 形态 拆行；官方版/网站版「只排不白」）──
+# 定位：动态分流的「发行版默认范围」权威源（标准 §18.2 优先级链级3）。
+# 与 plugin_distribution_rules（单插件覆盖层，级1/2）互补；矩阵无命中时回落 yaml。
+# 仅承载 default_exclude（本版默认排除），官方版/网站版=全量可选 → 不设 include。
+
+@bp.route('/store/admin/editions', methods=['GET'])
+def store_admin_editions_list():
+    """管理员：读取发行版矩阵（全部版本及其默认排除清单）。"""
+    err = _require_store_admin()
+    if err:
+        return err
+    try:
+        with get_registry_db() as conn:
+            rows = conn.execute(
+                'SELECT edition, label, form_factor, enabled, default_exclude, '
+                '       note, updated_by, updated_at '
+                'FROM edition_catalog ORDER BY form_factor, edition'
+            ).fetchall()
+        items = []
+        for r in rows:
+            try:
+                excludes = json.loads(r['default_exclude'] or '[]')
+                if not isinstance(excludes, list):
+                    excludes = []
+            except (TypeError, ValueError):
+                excludes = []
+            items.append({
+                'edition': r['edition'],
+                'label': r['label'],
+                'form_factor': r['form_factor'],
+                'enabled': _dist_int(r['enabled'], 1),
+                'default_exclude': excludes,
+                'note': r['note'],
+                'updated_by': r['updated_by'],
+                'updated_at': r['updated_at'],
+            })
+        return _json_result(True, data={'items': items})
+    except Exception as e:
+        traceback.print_exc()
+        return _json_result(False, error=f'Failed: {e}', code=500)
+
+
+@bp.route('/store/admin/editions/<edition>', methods=['PUT'])
+def store_admin_edition_save(edition: str):
+    """管理员：新增 / 更新发行版矩阵单行（发行版默认范围，ON CONFLICT 幂等）。
+
+    入参：``label`` / ``form_factor`` / ``enabled`` / ``default_exclude``(list) / ``note``。
+    写后立即失效 resolver 快照；matrix 无记录时回落 yaml 语义，绝不影响既有行为。
+    """
+    err = _require_store_admin()
+    if err:
+        return err
+
+    edition = (edition or '').strip().lower()
+    if not edition or not _DIST_KEY_RE.match(edition):
+        return _json_result(False, error='edition must match [a-z0-9_]+', code=400)
+
+    d = request.get_json(silent=True) or {}
+    form = (d.get('form_factor') or '').strip().lower()
+    if form not in ('desktop', 'web', 'edge', ''):
+        return _json_result(False, error='form_factor must be desktop|web|edge', code=400)
+
+    excludes = d.get('default_exclude')
+    if excludes is None:
+        excludes = []
+    if not isinstance(excludes, list) or not all(isinstance(x, str) for x in excludes):
+        return _json_result(False, error='default_exclude must be a list of strings', code=400)
+    _excl = [x.strip() for x in excludes if x and x.strip()]
+
+    try:
+        with get_registry_db() as conn:
+            conn.execute(
+                "INSERT INTO edition_catalog "
+                "(edition, label, form_factor, enabled, default_exclude, note, "
+                " updated_by, updated_at) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,NOW()) "
+                "ON CONFLICT(edition) DO UPDATE SET "
+                "  label=excluded.label, form_factor=excluded.form_factor, "
+                "  enabled=excluded.enabled, default_exclude=excluded.default_exclude, "
+                "  note=excluded.note, updated_by=excluded.updated_by, updated_at=NOW()",
+                (edition,
+                 (d.get('label') or '').strip()[:64],
+                 form,
+                 _dist_int(d.get('enabled'), 1),
+                 json.dumps(_excl, ensure_ascii=False),
+                 (d.get('note') or '')[:500],
+                 _dist_admin_name()))
+            conn.commit()
+        from .distribution import invalidate_cache
+        invalidate_cache()
+        return _json_result(True, data={'edition': edition})
+    except Exception as e:
+        traceback.print_exc()
+        return _json_result(False, error=f'Failed: {e}', code=500)

@@ -228,7 +228,7 @@ tr:hover td{background:rgba(99,102,241,.03)}
   window.TOKEN = TOKEN;
 })();
 
-var titles={'overview':[{{ _('Dashboard') | tojson }},{{ _('Account Overview & Usage') | tojson }}],'account':[{{ _('Profile') | tojson }},{{ _('Personal Info & Membership') | tojson }}],'notifications-page':[{{ _('Notifications') | tojson }},{{ _('In-app Notifications & System Messages') | tojson }}],'coupons':[{{ _('Coupons') | tojson }},{{ _('My Coupons') | tojson }}],'tickets':[{{ _('Help & Support') | tojson }},{{ _('Submit Tickets, Complaints & Suggestions') | tojson }}],'support-chat':[{{ _('Live Chat') | tojson }},{{ _('Online AI Customer Service') | tojson }}],'docs':[{{ _('Help Docs') | tojson }},{{ _('Guides & FAQ') | tojson }}],'orders':[{{ _('My Orders') | tojson }},{{ _('Order Management & Payment') | tojson }}],'billing':[{{ _('My Subscription') | tojson }},{{ _('Plans & Billing History') | tojson }}],'security':[{{ _('Security Settings') | tojson }},{{ _('Password, 2FA & Devices') | tojson }}],'activity':[{{ _('Activity Log') | tojson }},{{ _('Login History & Security Actions') | tojson }}],'notif-prefs':[{{ _('Notification Preferences') | tojson }},{{ _('Notification Settings') | tojson }}]};
+var titles={'overview':[{{ _('Dashboard') | tojson }},{{ _('Account Overview & Usage') | tojson }}],'account':[{{ _('Profile') | tojson }},{{ _('Personal Info & Membership') | tojson }}],'notifications-page':[{{ _('Notifications') | tojson }},{{ _('In-app Notifications & System Messages') | tojson }}],'coupons':[{{ _('Coupons') | tojson }},{{ _('My Coupons') | tojson }}],'tickets':[{{ _('Help & Support') | tojson }},{{ _('Submit Tickets, Complaints & Suggestions') | tojson }}],'support-chat':[{{ _('Live Chat') | tojson }},{{ _('Online AI Customer Service') | tojson }}],'docs':[{{ _('Help Docs') | tojson }},{{ _('Guides & FAQ') | tojson }}],'orders':[{{ _('My Orders') | tojson }},{{ _('Order Management & Payment') | tojson }}],'billing':[{{ _('My Subscription') | tojson }},{{ _('Plans & Billing History') | tojson }}],'security':[{{ _('Security Settings') | tojson }},{{ _('Password, 2FA & Devices') | tojson }}],'activity':[{{ _('Activity Log') | tojson }},{{ _('Login History & Security Actions') | tojson }}],'notif-prefs':[{{ _('Notification Preferences') | tojson }},{{ _('Notification Settings') | tojson }}],'dev-register':[{{ _('Become a Developer') | tojson }},{{ _('Developer Registration') | tojson }}],'dev-dash':[{{ _('Developer Center') | tojson }},{{ _('My Submissions') | tojson }}]};
 
 function loadSection(s){
   Object.keys(titles).forEach(function(k){var el=document.getElementById('nav-'+k);if(el)el.classList.toggle('active',k===s)});
@@ -245,6 +245,8 @@ function loadSection(s){
   else if(s==='security')loadSecurity();
   else if(s==='activity')loadActivityLog();
   else if(s==='notif-prefs')loadNotifPrefs();
+  else if(s==='dev-register')loadDevRegister();
+  else if(s==='dev-dash')loadDevDash();
 }
 
 function api(p,o){return fetch((p||'/user/profile')+(o||''),{headers:{'Authorization':'Bearer '+TOKEN}}).then(function(r){if(r.status===401){showLogin();return Promise.reject()}return r.json()})}
@@ -252,6 +254,156 @@ function showLogin(){document.getElementById('mainContent').style.display='none'
 function logout(){
   Object.keys(localStorage).forEach(function(k){if(k.includes('token')||k.includes('tm_')||k.includes('sso_'))localStorage.removeItem(k)});
   fetch('/auth/logout',{method:'POST',credentials:'include'}).then(function(){location.href='/login'}).catch(function(){location.href='/login'})
+}
+
+// ============ 开发者中心（P0：注册 / 邮箱验证 / 提交状态）============
+// 登录态由 /user/profile 返回 dev_level（''=非开发者；free/email/identity/org=开发者）
+function renderDevNav(devLevel){
+  var nav=document.querySelector('nav');
+  if(!nav)return;
+  // 幂等：先移除既有开发者入口，避免重复插入
+  var oldSec=document.getElementById('devNavSection');
+  if(oldSec)oldSec.remove();
+  var oldBtn=document.getElementById('nav-dev-dash')||document.getElementById('nav-dev-register');
+  if(oldBtn)oldBtn.remove();
+  var html='<div class="nav-section" id="devNavSection">{{ _('Developer') }}</div>';
+  if(devLevel){
+    html+='<button class="nav-item" id="nav-dev-dash" onclick="loadSection(\'dev-dash\')"><svg fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><rect height="16" rx="2" width="20" x="2" y="4"></rect><path d="M8 12h.01M12 12h.01M16 12h.01M8 16h.01M12 16h.01M16 16h.01"></path></svg><span>{{ _('Developer Center') }}</span></button>';
+  }else{
+    html+='<button class="nav-item" id="nav-dev-register" onclick="loadSection(\'dev-register\')"><svg fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg><span>{{ _('Become a Developer') }}</span></button>';
+  }
+  nav.insertAdjacentHTML('beforeend',html);
+}
+
+function loadDevRegister(){
+  var box=document.getElementById('mainContent');
+  box.innerHTML='<div class="card" style="max-width:520px;margin:0 auto"><h3>{{ _('Become a Developer') }}</h3>'
+    +'<div class="field"><label>{{ _('Developer Name') }}</label><input id="devName" style="flex:1" placeholder="Your Studio / Brand Name"></div>'
+    +'<div class="field"><label>{{ _('Developer Slug') }}</label><input id="devSlug" style="flex:1" placeholder="e.g. acme-studio"></div>'
+    +'<div style="margin-top:14px"><button class="btn btn-primary" onclick="devRegister()">{{ _('Submit') }}</button></div>'
+    +'<div id="devRegResult"></div></div>';
+}
+function devRegister(){
+  var res=document.getElementById('devRegResult');
+  res.innerHTML='<div class="spinner" style="margin:10px auto"></div>';
+  fetch('/admin/plugins/developer/register',{method:'POST',headers:{'Authorization':'Bearer '+TOKEN,'Content-Type':'application/json'},body:JSON.stringify({display_name:document.getElementById('devName').value,slug:document.getElementById('devSlug').value})}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success){res.innerHTML='<div style="color:#f85149;font-size:13px;margin-top:12px">'+esc(d.error||'')+'</div>';return}
+    res.innerHTML='<div style="margin-top:12px;padding:10px;border-radius:6px;background:rgba(63,185,80,.1);color:#3fb950;font-size:13px">{{ _('Registered. Check your email for the verification link.') }}</div>'
+      +'<div class="field"><label>{{ _('Verification Token') }}</label><input id="devToken" style="flex:1" placeholder="Paste the token from email"></div>'
+      +'<div style="margin-top:10px"><button class="btn btn-primary" onclick="devVerify()">{{ _('Verify Email') }}</button></div>';
+  }).catch(function(){res.innerHTML='<div style="color:#f85149;font-size:13px;margin-top:12px">{{ _('Network error') }}</div>'});
+}
+function devVerify(){
+  var res=document.getElementById('devRegResult');
+  fetch('/admin/plugins/developer/verify-email',{method:'POST',headers:{'Authorization':'Bearer '+TOKEN,'Content-Type':'application/json'},body:JSON.stringify({token:document.getElementById('devToken').value})}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){
+      res.innerHTML='<div style="padding:10px;border-radius:6px;background:rgba(63,185,80,.1);color:#3fb950;font-size:13px">{{ _('Email verified! You are now a developer.') }}</div>';
+      renderDevNav('email');
+      loadSection('dev-dash');
+    }else{res.innerHTML='<div style="color:#f85149;font-size:13px;margin-top:12px">'+esc(d.error||'')+'</div>'}
+  }).catch(function(){res.innerHTML='<div style="color:#f85149;font-size:13px;margin-top:12px">{{ _('Network error') }}</div>'});
+}
+function loadDevDash(){
+  var box=document.getElementById('mainContent');
+  box.innerHTML='<div class="spinner" style="margin:40px auto"></div>';
+  var h='<div class="card"><h3>{{ _('Developer Center') }}</h3>'
+    +'<div id="devOverview"><div class="spinner" style="margin:10px auto"></div></div>'
+    +'<div class="field" style="margin-top:14px"><label>{{ _('Verification Level') }}</label><div class="val" id="devLevel">-</div></div>'
+    +'</div>'
+    +'<div class="card"><h3>{{ _('My Plugins') }}</h3><div id="devPluginList"><div class="spinner" style="margin:10px auto"></div></div></div>'
+    +'<div class="card" id="devVersionCard" style="display:none"><h3 id="devVersionTitle">{{ _('Version History') }}</h3><div id="devVersionBody"></div></div>'
+    +'<div class="card"><h3>{{ _('My Submissions') }}</h3><div id="devSubList"><div class="spinner" style="margin:10px auto"></div></div></div>';
+  box.innerHTML=h;
+  // 开发者等级（dev_level 来自 /user/profile）
+  api('/user/profile').then(function(d){
+    if(d.success)document.getElementById('devLevel').textContent=d.data.dev_level||'free';
+  }).catch(function(){});
+  // 统计卡（overview）
+  fetch('/admin/plugins/developer/overview',{headers:{'Authorization':'Bearer '+TOKEN}}).then(function(r){return r.json()}).then(function(d){
+    var el=document.getElementById('devOverview');
+    if(!d.success){el.innerHTML='<div style="color:#f85149;font-size:13px">'+esc(d.error||'')+'</div>';return}
+    var o=d.data;
+    el.innerHTML='<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:6px">'
+      +'<div class="stat-card"><div class="stat-label">{{ _('Plugins') }}</div><div class="stat-value blue">'+o.plugin_count+'</div></div>'
+      +'<div class="stat-card"><div class="stat-label">{{ _('Versions') }}</div><div class="stat-value">'+o.version_count+'</div></div>'
+      +'<div class="stat-card"><div class="stat-label">{{ _('Pending Review') }}</div><div class="stat-value yellow">'+o.pending_versions+'</div></div>'
+      +'<div class="stat-card"><div class="stat-label">{{ _('Pending Submissions') }}</div><div class="stat-value yellow">'+o.pending_submissions+'</div></div>'
+      +'<div class="stat-card"><div class="stat-label">{{ _('Estimated Pending Payout') }}</div><div class="stat-value" style="color:#3fb950">¥'+((o.pending_amount||0)/100).toFixed(2)+'</div></div>'
+      +'</div>';
+  }).catch(function(){var el=document.getElementById('devOverview');if(el)el.innerHTML='<div style="color:#f85149;font-size:13px">{{ _('Network error') }}</div>'});
+  // 我的插件列表
+  fetch('/admin/plugins/developer/plugins',{headers:{'Authorization':'Bearer '+TOKEN}}).then(function(r){return r.json()}).then(function(d){
+    var el=document.getElementById('devPluginList');
+    if(!d.success){el.innerHTML='<div style="color:#f85149;font-size:13px">'+esc(d.error||'')+'</div>';return}
+    if(!d.data||!d.data.length){el.innerHTML='<div class="empty-state">{{ _('No plugins yet') }}</div>';return}
+    var r='';
+    d.data.forEach(function(p){
+      r+='<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">';
+      r+='<div><div style="font-weight:600">'+esc(p.name||p.identifier)+' <span style="color:var(--dim)">v'+esc(p.version)+'</span></div>';
+      r+='<div style="font-size:11px;color:var(--dim)">'+esc(p.identifier)+'</div></div>';
+      r+='<button class="btn" onclick="devVersions(\''+escAttr(p.identifier)+'\')">{{ _('Version History') }}</button>';
+      r+='</div>';
+    });
+    el.innerHTML=r;
+  }).catch(function(){var el=document.getElementById('devPluginList');if(el)el.innerHTML='<div style="color:#f85149;font-size:13px">{{ _('Network error') }}</div>'});
+  // 我的提交记录
+  fetch('/admin/plugins/developer/submissions',{headers:{'Authorization':'Bearer '+TOKEN}}).then(function(r){return r.json()}).then(function(s){
+    var list=document.getElementById('devSubList');
+    if(!s.success){list.innerHTML='<div style="color:#f85149;font-size:13px">'+esc(s.error||'')+'</div>';return}
+    if(!s.data||!s.data.length){list.innerHTML='<div class="empty-state">{{ _('No submissions yet') }}</div>';return}
+    var r='';
+    s.data.forEach(function(sub){
+      r+='<div style="display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">';
+      r+='<div><div style="font-weight:600">'+esc(sub.name||sub.identifier)+' <span style="color:var(--dim)">v'+esc(sub.version)+'</span></div>';
+      r+='<div style="font-size:11px;color:var(--dim)">{{ _('Submitted') }} '+esc((sub.created_at||'').slice(0,10))+'</div></div>';
+      r+='<div><span class="badge" style="background:rgba(63,185,80,.12);color:#3fb950">'+esc(sub.status)+'</span> <span class="badge" style="background:rgba(139,91,240,.12);color:#8b5bf0">'+esc(sub.audit_status||'pending')+'</span></div>';
+      r+='</div>';
+    });
+    list.innerHTML=r;
+  }).catch(function(){var list=document.getElementById('devSubList');if(list)list.innerHTML='<div style="color:#f85149;font-size:13px">{{ _('Network error') }}</div>'});
+}
+function devVersions(identifier){
+  var card=document.getElementById('devVersionCard');
+  if(!card)return;
+  card.style.display='block';
+  document.getElementById('devVersionTitle').textContent=identifier+' — {{ _('Version History') }}';
+  var body=document.getElementById('devVersionBody');
+  body.innerHTML='<div class="spinner" style="margin:10px auto"></div>';
+  fetch('/admin/plugins/developer/plugins/'+encodeURIComponent(identifier)+'/versions',{headers:{'Authorization':'Bearer '+TOKEN}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success){body.innerHTML='<div style="color:#f85149;font-size:13px">'+esc(d.error||'')+'</div>';return}
+    var r='<div style="margin-bottom:12px;padding:12px;border-radius:6px;background:rgba(56,139,253,.06);border:1px solid var(--border)">'
+      +'<div class="field"><label>{{ _('Version') }}</label><input id="devNewVersion" style="flex:1" placeholder="e.g. 1.2.0"></div>'
+      +'<div class="field"><label>{{ _('Changelog') }}</label><input id="devNewChangelog" style="flex:1" placeholder="What changed in this version"></div>'
+      +'<div class="field"><label>{{ _('Package') }}</label><input id="devNewPackage" type="file" accept=".zip" style="flex:1"></div>'
+      +'<div style="margin-top:10px"><button class="btn btn-primary" onclick="devSubmitVersion(\''+escAttr(identifier)+'\')">{{ _('Submit Version') }}</button></div>'
+      +'<div id="devVersionResult"></div></div>';
+    if(!d.data||!d.data.length){r+='<div class="empty-state">{{ _('No versions yet') }}</div>';body.innerHTML=r;return}
+    d.data.forEach(function(v){
+      r+='<div style="display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">';
+      r+='<div><div style="font-weight:600">v'+esc(v.version)+'</div>';
+      r+='<div style="font-size:11px;color:var(--dim)">'+esc(v.changelog||'')+'</div></div>';
+      r+='<span class="badge" style="background:rgba(63,185,80,.12);color:#3fb950">'+esc(v.status)+'</span>';
+      r+='</div>';
+    });
+    body.innerHTML=r;
+  }).catch(function(){body.innerHTML='<div style="color:#f85149;font-size:13px">{{ _('Network error') }}</div>'});
+}
+function devSubmitVersion(identifier){
+  var res=document.getElementById('devVersionResult');
+  if(!res)return;
+  var f=document.getElementById('devNewPackage');
+  if(!f||!f.files||!f.files.length){res.innerHTML='<div style="color:#f85149;font-size:13px;margin-top:12px">{{ _('Please choose the plugin package file') }}</div>';return}
+  res.innerHTML='<div class="spinner" style="margin:10px auto"></div>';
+  // 审计 B2 修复：版本提交改为真包上传（multipart），服务端计算 file_size/package_hash
+  var fd=new FormData();
+  fd.append('version',document.getElementById('devNewVersion').value);
+  fd.append('changelog',document.getElementById('devNewChangelog').value);
+  fd.append('file',f.files[0]);
+  fetch('/admin/plugins/developer/plugins/'+encodeURIComponent(identifier)+'/versions',{method:'POST',headers:{'Authorization':'Bearer '+TOKEN},body:fd}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success){res.innerHTML='<div style="color:#f85149;font-size:13px;margin-top:12px">'+esc(d.error||'')+'</div>';return}
+    res.innerHTML='<div style="padding:10px;border-radius:6px;background:rgba(63,185,80,.1);color:#3fb950;font-size:13px;margin-top:12px">{{ _('Version submitted for review') }}</div>';
+    devVersions(identifier);
+  }).catch(function(){res.innerHTML='<div style="color:#f85149;font-size:13px;margin-top:12px">{{ _('Network error') }}</div>'});
 }
 
 // ============ 通知系统 ============
@@ -319,6 +471,7 @@ api('/user/profile').then(function(d){
   var u=d.data;
   document.getElementById('loading').style.display='none';document.getElementById('mainContent').style.display='block';document.getElementById('userFoot').style.display='flex';
   document.getElementById('footName').textContent=u.nickname||u.phone||{{ _('User') | tojson }};
+  renderDevNav(u.dev_level||'');
   loadSection('overview');
   notifPollCount();setInterval(notifPollCount,30000);
 }).catch(function(){showLogin()});
@@ -862,7 +1015,7 @@ function showAlert(options){
     document.body.appendChild(overlay);
   }
   var isSuccess=(options.type||'info')==='success';
-  overlay.innerHTML='<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:28px 32px;max-width:380px;width:90%;text-align:center;box-shadow:0 8px 40px rgba(0,0,0,.5)"><div style="font-size:36px;margin-bottom:12px">'+(isSuccess?'✅':'⚠️')+'</div><div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:8px">'+(options.title||'')+'</div><div style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:20px">'+(options.message||'')+'</div><button id="alertOkBtn" style="padding:8px 28px;border-radius:8px;border:none;background:var(--accent);color:#fff;cursor:pointer;font-size:13px;font-family:inherit">{{ _('OK') }}</button></div>';
+  overlay.innerHTML='<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:28px 32px;max-width:380px;width:90%;text-align:center;box-shadow:0 8px 40px rgba(0,0,0,.5)"><div style="font-size:36px;margin-bottom:12px">'+(isSuccess?'✅':'⚠️')+'</div><div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:8px">'+esc(options.title||'')+'</div><div style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:20px">'+esc(options.message||'')+'</div><button id="alertOkBtn" style="padding:8px 28px;border-radius:8px;border:none;background:var(--accent);color:#fff;cursor:pointer;font-size:13px;font-family:inherit">{{ _('OK') }}</button></div>';
   return new Promise(function(resolve){
     document.getElementById('alertOkBtn').onclick=function(){document.body.removeChild(overlay);resolve()};
   });
@@ -1283,7 +1436,7 @@ async function chatSend(){
   var btn=document.getElementById('chat-send-btn');
   if(btn)btn.disabled=true;
   try{
-    var resp=await fetch('/api/v1/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text,history:chatHistory.slice(-{{ chatbot_max_history | default(20) | int }})})});
+    var resp=await fetch('/api/v1/chat/advisor',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text})});
     if(!resp.ok){botDiv.innerHTML='<span style="color:#ff4d4f">\u26a0 {{ _('Request failed') }} ('+resp.status+')<\/span>';isChatStreaming=false;if(btn)btn.disabled=false;return;}
     var reader=resp.body.getReader();
     var decoder=new TextDecoder();
@@ -1350,7 +1503,7 @@ async function chatSend(){
 
 // CSAT 评分提交
 function submitCSAT(sid,score,el){
-  fetch('/admin/chatbot/csat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:sid,score:score})})
+  fetch('/api/v1/chat/csat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({thread_id:sid,score:score})})
     .then(function(r){return r.json()}).then(function(d){
       if(d.success){
         var parent=el.parentNode;
@@ -1409,7 +1562,7 @@ function loadDocs(){
 // ============ 我的订单 ============
 function loadOrders(){
   document.getElementById('mainContent').innerHTML='<div class="spinner" style="margin:40px auto"></div>';
-  fetch('/shop/api/orders',{headers:{'Authorization':'Bearer '+TOKEN}}).then(function(r){
+  fetch('/mall/api/orders',{headers:{'Authorization':'Bearer '+TOKEN}}).then(function(r){
     if(r.status===401){showLogin();return}
     return r.json();
   }).then(function(d){
@@ -1420,7 +1573,7 @@ function loadOrders(){
     var orders=d.data;
     var h='';
     if(!orders||!orders.length){
-      h='<div class="empty" style="padding:60px"><div style="font-size:40px;margin-bottom:12px">📭</div><div>{{ _('No orders yet') }}</div><a href="/shop" style="color:var(--accent);margin-top:8px;display:inline-block">→ {{ translations['Go Shopping'] }}</a></div>';
+      h='<div class="empty" style="padding:60px"><div style="font-size:40px;margin-bottom:12px">📭</div><div>{{ _('No orders yet') }}</div><a href="/mall" style="color:var(--accent);margin-top:8px;display:inline-block">→ {{ translations['Go Shopping'] }}</a></div>';
       document.getElementById('mainContent').innerHTML=h;
       return;
     }
@@ -1453,7 +1606,7 @@ function loadOrders(){
       }
       h+='</div></div></div>';
     });
-    h+='<div style="margin-top:16px;text-align:center"><a href="/shop" class="btn btn-sm">🛒 '+{{ _('Continue Shopping') | tojson }}+' →</a></div>';
+    h+='<div style="margin-top:16px;text-align:center"><a href="/mall" class="btn btn-sm">🛒 '+{{ _('Continue Shopping') | tojson }}+' →</a></div>';
     document.getElementById('mainContent').innerHTML=h;
   }).catch(function(){
     document.getElementById('mainContent').innerHTML='<div class="empty">{{ _('Failed to load') }}</div>';
@@ -1462,7 +1615,7 @@ function loadOrders(){
 
 function payShopOrder(oid){
   if(!confirm({{ _('Pay order') | tojson }}+' '+oid+'?'))return;
-  fetch('/shop/api/pay/'+oid,{method:'POST',headers:{'Authorization':'Bearer '+TOKEN,'Content-Type':'application/json'},body:JSON.stringify({method:'alipay'})})
+  fetch('/mall/api/pay/'+oid,{method:'POST',headers:{'Authorization':'Bearer '+TOKEN,'Content-Type':'application/json'},body:JSON.stringify({method:'alipay'})})
     .then(function(r){
       if(r.status===401){showLogin();return Promise.reject()}
       return r.json();
@@ -1475,7 +1628,7 @@ function payShopOrder(oid){
 
 function cancelShopOrder(oid){
   if(!confirm({{ _('OK to cancel this order?') | tojson }}))return;
-  fetch('/shop/api/orders/'+oid+'/cancel',{method:'POST',headers:{'Authorization':'Bearer '+TOKEN}})
+  fetch('/mall/api/orders/'+oid+'/cancel',{method:'POST',headers:{'Authorization':'Bearer '+TOKEN}})
     .then(function(r){
       if(r.status===401){showLogin();return Promise.reject()}
       return r.json();
@@ -1488,7 +1641,7 @@ function cancelShopOrder(oid){
 
 function deleteShopOrder(oid){
   if(!confirm({{ _('OK to delete this order?') | tojson }}))return;
-  fetch('/shop/api/orders/'+oid+'/delete',{method:'POST',headers:{'Authorization':'Bearer '+TOKEN}})
+  fetch('/mall/api/orders/'+oid+'/delete',{method:'POST',headers:{'Authorization':'Bearer '+TOKEN}})
     .then(function(r){
       if(r.status===401){showLogin();return Promise.reject()}
       return r.json();
@@ -1525,7 +1678,7 @@ function loadBilling(){
   });
   // Load order history
   Promise.all([
-    fetch('/shop/api/orders',{headers:{'Authorization':'Bearer '+TOKEN}}).then(function(r){return r.json()}).catch(function(){return{}}),
+    fetch('/mall/api/orders',{headers:{'Authorization':'Bearer '+TOKEN}}).then(function(r){return r.json()}).catch(function(){return{}}),
     fetch('/subscription/orders',{headers:{'Authorization':'Bearer '+TOKEN}}).then(function(r){return r.json()}).catch(function(){return{}})
   ]).then(function(res){
     var shopOrders=res[0].success?res[0].data||[]:[];
@@ -1565,7 +1718,7 @@ function loadBilling(){
     }
     oh+='</div>';
     if(shopOrders.length){
-      oh+='<div style="margin-top:8px"><a href="/shop" class="btn btn-sm">🛒 '+{{ _('Go to Shop') | tojson }}+'</a></div>';
+      oh+='<div style="margin-top:8px"><a href="/mall" class="btn btn-sm">🛒 '+{{ _('Go to Shop') | tojson }}+'</a></div>';
     }
     document.getElementById('blOrders').innerHTML=oh;
   });
@@ -1707,7 +1860,7 @@ function pwdSubmit(){
 
 function payShopOrder(oid){
   if(!confirm({{ _('Pay order') | tojson }}+' '+oid+'?'))return;
-  fetch('/shop/api/pay/'+oid,{method:'POST',headers:{'Authorization':'Bearer '+TOKEN,'Content-Type':'application/json'},body:JSON.stringify({method:'alipay'})})
+  fetch('/mall/api/pay/'+oid,{method:'POST',headers:{'Authorization':'Bearer '+TOKEN,'Content-Type':'application/json'},body:JSON.stringify({method:'alipay'})})
     .then(function(r){return r.json()}).then(function(d){
       if(d.success&&d.data&&d.data.pay_url){window.location.href=d.data.pay_url}
       else alert(d.error||{{ _('Payment creation failed') | tojson }});

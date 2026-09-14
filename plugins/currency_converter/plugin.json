@@ -8,8 +8,10 @@
     ],
     "optional": {}
   },
-  "version": "1.4.3",
+  "version": "1.5.4",
   "description": "Currency Converter — Multi-currency display with real-time exchange rates, user preference, and automatic price conversion",
+  "tagline": "多币种实时汇率展示",
+  "tagline_subtitle": "实时汇率 · 用户偏好 · 价格自动换算",
   "author": "VeroRun",
   "min_app_version": "0.10.0",
   "agent_role": "business",

@@ -45,13 +45,13 @@ def internal_brand():
 
 @internal_api_bp.route('/cms/pages')
 def internal_cms_pages():
-    """已发布页面列表（slug/title/meta）。"""
+    """已发布页面列表（基于 cms_blocks 真实 schema：page slug 分组统计）。"""
     try:
         from models import get_db
         with get_db() as conn:
             rows = conn.execute(
-                "SELECT slug, title, meta_description, updated_at FROM cms_posts "
-                "WHERE status='published' AND post_type='page' ORDER BY sort_order ASC"
+                "SELECT page AS slug, COUNT(*) AS block_count, MAX(updated_at) AS updated_at "
+                "FROM cms_blocks WHERE is_published=1 GROUP BY page ORDER BY page"
             ).fetchall()
         return jsonify([dict(r) for r in rows])
     except Exception as e:
@@ -60,25 +60,22 @@ def internal_cms_pages():
 
 @internal_api_bp.route('/cms/page/<slug>')
 def internal_cms_page(slug):
-    """单个已发布页面（含 blocks）。"""
+    """单个已发布页面（基于 cms_blocks 真实 schema，返回 {slug, page, blocks}）。
+
+    dict 形状为兼容 mini_app_builder 等消费方的 isinstance(data, dict) 校验。
+    """
     try:
         from models import get_db
         with get_db() as conn:
-            row = conn.execute(
-                "SELECT * FROM cms_posts WHERE slug=%s AND status='published' "
-                "AND post_type='page' LIMIT 1",
+            rows = conn.execute(
+                "SELECT * FROM cms_blocks WHERE page=%s AND is_published=1 "
+                "ORDER BY position",
                 (slug,)
-            ).fetchone()
-            if not row:
-                return jsonify({'error': 'Page not found'}), 404
-            page = dict(row)
-            blocks = conn.execute(
-                "SELECT * FROM cms_blocks WHERE post_id=%s AND status='published' "
-                "ORDER BY sort_order ASC",
-                (page['id'],)
             ).fetchall()
-            page['blocks'] = [dict(b) for b in blocks]
-        return jsonify(page)
+            blocks = [dict(b) for b in rows]
+            if not blocks:
+                return jsonify({'error': 'Page not found'}), 404
+        return jsonify({'slug': slug, 'page': slug, 'blocks': blocks})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -91,7 +88,11 @@ def internal_draft_tokens():
     直接读插件库（与插件同进程部署，经 plugins 顶层包导入）。
     """
     try:
-        from plugins.site_builder.site_settings.models import get_draft_tokens
+        from shared.plugin_access import get_attr
+        get_draft_tokens = get_attr('plugins.site_builder.site_settings.models', 'get_draft_tokens',
+                                    feature='internal_draft_tokens')
+        if get_draft_tokens is None:
+            return jsonify({})
         return jsonify(get_draft_tokens() or {})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -131,12 +132,14 @@ def internal_cms_draft_blocks():
             if page:
                 rows = conn.execute(
                     "SELECT * FROM cms_blocks WHERE is_published=0 AND page=%s "
+                    "AND (extra_json::jsonb->>'deleted') IS DISTINCT FROM 'true' "
                     "ORDER BY page, position",
                     (page,)
                 ).fetchall()
             else:
                 rows = conn.execute(
                     "SELECT * FROM cms_blocks WHERE is_published=0 "
+                    "AND (extra_json::jsonb->>'deleted') IS DISTINCT FROM 'true' "
                     "ORDER BY page, position"
                 ).fetchall()
         return jsonify([dict(r) for r in rows])
@@ -161,17 +164,25 @@ def internal_cms_draft_documents():
 
 @internal_api_bp.route('/cms/page-blocks')
 def internal_cms_page_blocks():
-    """指定 page 的全部区块（含已发布），供 LLM 修改上下文。"""
+    """指定 page 的区块；?published=1 时仅返回已发布（is_published=1），供渲染网关使用。
+
+    缺省返回全部（含草稿），兼容 LLM 修改上下文等既有消费方。
+    """
     page = request.args.get('page', '')
+    published = request.args.get('published', '0') == '1'
     if not page:
         return jsonify({'error': 'page required'}), 400
     try:
         from models import get_db
         with get_db() as conn:
-            rows = conn.execute(
-                "SELECT * FROM cms_blocks WHERE page=%s ORDER BY position",
-                (page,)
-            ).fetchall()
+            q = "SELECT * FROM cms_blocks WHERE page=%s"
+            args = [page]
+            if published:
+                q += " AND is_published=1"
+                # DEF-N2：已发布查询同样过滤软删块（纵深防御，历史污染不渲染）
+                q += " AND (extra_json::jsonb->>'deleted') IS DISTINCT FROM 'true'"
+            q += " ORDER BY position"
+            rows = conn.execute(q, args).fetchall()
         return jsonify([dict(r) for r in rows])
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -349,6 +360,14 @@ def internal_cms_block_add():
     title = data.get('title', 'New Section')
     content = data.get('content', '')
     icon = data.get('icon', '')
+    # FIX-C: section 为 NOT NULL 列（无 DB 默认值），缺省取 'main' 与 replace 路径对齐，
+    # 一并补齐 subtitle / image_url / link_* / extra_json，避免 INSERT 直接 500。
+    section = data.get('section') or 'main'
+    subtitle = data.get('subtitle', '')
+    image_url = data.get('image_url', '')
+    link_url = data.get('link_url', '')
+    link_text = data.get('link_text', '')
+    extra_json = data.get('extra_json', {})
     is_published = 1 if data.get('is_published') else 0
     try:
         from models import get_db
@@ -360,10 +379,13 @@ def internal_cms_block_add():
             )
             row = conn.execute(
                 "INSERT INTO cms_blocks "
-                "(page, position, block_type, title, content, icon, is_published, "
+                "(page, section, block_type, position, title, subtitle, content, "
+                " image_url, link_url, link_text, icon, extra_json, is_published, "
                 " created_at, updated_at) "
-                "VALUES (%s,%s,%s,%s,%s,%s,%s,NOW(),NOW()) RETURNING id",
-                (page, position, block_type, title, content, icon, is_published)
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(),NOW()) RETURNING id",
+                (page, section, block_type, position, title, subtitle, content,
+                 image_url, link_url, link_text, icon,
+                 _safe_extra_json(extra_json), is_published)
             ).fetchone()
             new_id = row['id'] if row else None
             conn.commit()
@@ -411,12 +433,37 @@ def internal_cms_document():
 
 @internal_api_bp.route('/cms/publish', methods=['POST'])
 def internal_cms_publish():
-    """发布草稿：cms_blocks / cms_posts 的 is_published 0→1。"""
+    """发布草稿：cms_blocks / cms_posts 的 is_published 0→1（合并语义）。
+
+    DEF-P1-2 修复：发布只提升草稿、不删除现存已发布块。作用域化：请求体
+    可带 {pages: [cms_blocks.page...], slugs: [cms_posts.slug...]}；缺省
+    （空列表）时全量提升，向后兼容历史调用方。
+    """
+    data = request.get_json(force=True, silent=True) or {}
+    pages = data.get('pages') or None
+    slugs = data.get('slugs') or None
     try:
         from models import get_db
         with get_db() as conn:
-            conn.execute("UPDATE cms_blocks SET is_published=1 WHERE is_published=0")
-            conn.execute("UPDATE cms_posts SET is_published=1 WHERE is_published=0")
+            # DEF-P1-2 修复（合并模式，已与产品确认）：
+            # 发布"只提升草稿、不删除已发布块"，避免"部分草稿"（如 add-block 增补）
+            # 发布时误删同页其余已发布块造成内容丢失。
+            # 注：重新生成整站时被移除的旧区块不会自动清场，需显式软删/重新生成。
+            if pages:
+                conn.execute(
+                    "UPDATE cms_blocks SET is_published=1 "
+                    "WHERE is_published=0 AND page = ANY(%s) "
+                    "AND (extra_json::jsonb->>'deleted') IS DISTINCT FROM 'true'", (pages,))
+            else:
+                conn.execute(
+                    "UPDATE cms_blocks SET is_published=1 WHERE is_published=0 "
+                    "AND (extra_json::jsonb->>'deleted') IS DISTINCT FROM 'true'")
+            if slugs:
+                conn.execute(
+                    "UPDATE cms_posts SET is_published=1 "
+                    "WHERE is_published=0 AND slug = ANY(%s)", (slugs,))
+            else:
+                conn.execute("UPDATE cms_posts SET is_published=1 WHERE is_published=0")
             conn.commit()
         return jsonify({'ok': True, 'published': True})
     except Exception as e:

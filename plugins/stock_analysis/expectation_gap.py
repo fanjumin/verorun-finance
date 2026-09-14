@@ -1,0 +1,281 @@
+"""
+expectation_gap.py — 预期差计算模块（P1 W13-14）
+
+比较实际业绩 vs 一致预期（分析师估计 / 业绩预告），输出结构化预期差。
+两条数据通路：
+  - FMP（美股）：analyst-estimates → estimatedRevenue / estimatedEps / estimatedNetIncome
+  - Tushare（A 股）：forecast_vip → net_profit_min/max, basic_eps_min/max
+
+核心函数：
+  compute_gap(consensus, actuals) → ExpectationGapResult
+  format_gap_card(result) → str  （供 LLM / UI 消费）
+"""
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
+
+_log = logging.getLogger(__name__)
+
+
+@dataclass
+class GapItem:
+    """单项预期差。"""
+    metric: str
+    label: str
+    actual: Optional[float] = None
+    estimate: Optional[float] = None
+    estimate_low: Optional[float] = None
+    estimate_high: Optional[float] = None
+    surprise_pct: Optional[float] = None
+    unit: str = ""
+
+    @property
+    def beat(self) -> Optional[str]:
+        if self.surprise_pct is None:
+            return None
+        if self.surprise_pct > 5:
+            return "beat"
+        if self.surprise_pct < -5:
+            return "miss"
+        return "inline"
+
+
+@dataclass
+class ExpectationGapResult:
+    """预期差汇总。"""
+    symbol: str
+    period: str = ""
+    items: List[GapItem] = field(default_factory=list)
+    source: str = ""
+    overall_surprise: Optional[float] = None
+    narrative: str = ""
+
+    @property
+    def verdict(self) -> str:
+        if self.overall_surprise is None:
+            return "unknown"
+        if self.overall_surprise > 5:
+            return "超预期"
+        if self.overall_surprise < -5:
+            return "低于预期"
+        return "符合预期"
+
+
+def _safe_float(val: Any) -> Optional[float]:
+    if val is None:
+        return None
+    try:
+        f = float(val)
+        return f if f == f else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _pct_surprise(actual: float, estimate: float) -> Optional[float]:
+    if estimate == 0:
+        return None
+    return (actual - estimate) / abs(estimate) * 100
+
+
+def _extract_fmp_actuals(actuals: dict) -> dict:
+    """从 fundamental income 表提取最近一期 FMP 可比字段。"""
+    income_list = actuals.get("income", [])
+    if not income_list:
+        return {}
+    latest = income_list[0] if isinstance(income_list[0], dict) else {}
+    return {
+        "revenue": _safe_float(latest.get("revenue") or latest.get("total_revenue")),
+        "net_income": _safe_float(latest.get("net_income")),
+        "eps": _safe_float(latest.get("eps") or latest.get("basic_eps")),
+    }
+
+
+def _extract_ts_actuals(actuals: dict) -> dict:
+    """从 Tushare fina_indicator / income 提取最近一期 A 股可比字段。"""
+    fina = actuals.get("fina_indicator", [])
+    income = actuals.get("income", [])
+    latest_fina = fina[0] if fina and isinstance(fina[0], dict) else {}
+    latest_income = income[0] if income and isinstance(income[0], dict) else {}
+    return {
+        "revenue": _safe_float(latest_income.get("revenue") or latest_fina.get("revenue")),
+        "net_income": _safe_float(
+            latest_income.get("n_income") or latest_fina.get("net_profit")
+        ),
+        "eps": _safe_float(latest_fina.get("eps") or latest_fina.get("basic_eps")),
+    }
+
+
+def _compute_from_fmp(consensus: list | dict, actuals: dict, symbol: str) -> ExpectationGapResult:
+    """FMP analyst-estimates：列表，每条含 estimatedRevenue / estimatedEps / estimatedNetIncome。"""
+    items: List[GapItem] = []
+    period = ""
+
+    if isinstance(consensus, list) and consensus:
+        est = consensus[0] if isinstance(consensus[0], dict) else {}
+    elif isinstance(consensus, dict):
+        est = consensus
+    else:
+        return ExpectationGapResult(symbol=symbol, source="fmp", narrative="无一致预期数据")
+
+    period = str(est.get("date", ""))
+    act = _extract_fmp_actuals(actuals)
+
+    est_rev = _safe_float(est.get("estimatedRevenue"))
+    act_rev = act.get("revenue")
+    if est_rev and act_rev is not None:
+        items.append(GapItem(
+            metric="revenue", label="营业收入",
+            actual=act_rev, estimate=est_rev,
+            surprise_pct=_pct_surprise(act_rev, est_rev),
+            unit="USD",
+        ))
+
+    est_ni = _safe_float(est.get("estimatedNetIncome"))
+    act_ni = act.get("net_income")
+    if est_ni and act_ni is not None:
+        items.append(GapItem(
+            metric="net_income", label="净利润",
+            actual=act_ni, estimate=est_ni,
+            surprise_pct=_pct_surprise(act_ni, est_ni),
+            unit="USD",
+        ))
+
+    est_eps = _safe_float(est.get("estimatedEps"))
+    act_eps = act.get("eps")
+    if est_eps and act_eps is not None:
+        items.append(GapItem(
+            metric="eps", label="每股收益(EPS)",
+            actual=act_eps, estimate=est_eps,
+            surprise_pct=_pct_surprise(act_eps, est_eps),
+            unit="USD/share",
+        ))
+
+    surprises = [it.surprise_pct for it in items if it.surprise_pct is not None]
+    overall = sum(surprises) / len(surprises) if surprises else None
+
+    return ExpectationGapResult(
+        symbol=symbol, period=period, items=items,
+        source="fmp", overall_surprise=overall,
+    )
+
+
+def _compute_from_tushare(consensus: dict, actuals: dict, symbol: str) -> ExpectationGapResult:
+    """Tushare forecast_vip：业绩预告，含区间估计。"""
+    items: List[GapItem] = []
+    period = str(consensus.get("end_date", ""))
+    act = _extract_ts_actuals(actuals)
+
+    ni_low = _safe_float(consensus.get("net_profit_min"))
+    ni_high = _safe_float(consensus.get("net_profit_max"))
+    act_ni = act.get("net_income")
+    if ni_low is not None and ni_high is not None:
+        mid = (ni_low + ni_high) / 2
+        surprise = None
+        if act_ni is not None and mid != 0:
+            surprise = _pct_surprise(act_ni, mid)
+        items.append(GapItem(
+            metric="net_income", label="净利润(预告)",
+            actual=act_ni, estimate=mid,
+            estimate_low=ni_low, estimate_high=ni_high,
+            surprise_pct=surprise,
+            unit="CNY",
+        ))
+
+    eps_low = _safe_float(consensus.get("basic_eps_min"))
+    eps_high = _safe_float(consensus.get("basic_eps_max"))
+    act_eps = act.get("eps")
+    if eps_low is not None and eps_high is not None:
+        mid = (eps_low + eps_high) / 2
+        surprise = None
+        if act_eps is not None and mid != 0:
+            surprise = _pct_surprise(act_eps, mid)
+        items.append(GapItem(
+            metric="eps", label="每股收益(预告)",
+            actual=act_eps, estimate=mid,
+            estimate_low=eps_low, estimate_high=eps_high,
+            surprise_pct=surprise,
+            unit="CNY/share",
+        ))
+
+    surprises = [it.surprise_pct for it in items if it.surprise_pct is not None]
+    overall = sum(surprises) / len(surprises) if surprises else None
+
+    summary = consensus.get("summary", "")
+    change_reason = consensus.get("change_reason", "")
+
+    narrative_parts = []
+    if summary:
+        narrative_parts.append(f"业绩预告摘要：{summary}")
+    if change_reason:
+        narrative_parts.append(f"变动原因：{change_reason}")
+
+    return ExpectationGapResult(
+        symbol=symbol, period=period, items=items,
+        source="tushare", overall_surprise=overall,
+        narrative="；".join(narrative_parts),
+    )
+
+
+def compute_gap(consensus: Any, actuals: dict, symbol: str = "") -> ExpectationGapResult:
+    """计算预期差。
+
+    Parameters
+    ----------
+    consensus : dict | list
+        FMP 返回列表（analyst-estimates），Tushare 返回 dict（forecast_vip）。
+    actuals : dict
+        fundamental 四表数据（income / balance / cashflow / fina_indicator）。
+    symbol : str
+        标的代码（用于结果标识）。
+    """
+    if not consensus:
+        return ExpectationGapResult(symbol=symbol, narrative="无一致预期数据")
+    if not actuals:
+        return ExpectationGapResult(symbol=symbol, narrative="无实际业绩数据")
+
+    if isinstance(consensus, list):
+        return _compute_from_fmp(consensus, actuals, symbol)
+    if isinstance(consensus, dict) and consensus.get("source") == "tushare":
+        return _compute_from_tushare(consensus, actuals, symbol)
+    if isinstance(consensus, dict) and any(
+        k in consensus for k in ("estimatedRevenue", "estimatedEps", "estimatedNetIncome")
+    ):
+        return _compute_from_fmp(consensus, actuals, symbol)
+    if isinstance(consensus, dict) and any(
+        k in consensus for k in ("net_profit_min", "net_profit_max", "basic_eps_min")
+    ):
+        return _compute_from_tushare(consensus, actuals, symbol)
+
+    return ExpectationGapResult(symbol=symbol, narrative="无法识别一致预期数据格式")
+
+
+def format_gap_card(result: ExpectationGapResult) -> str:
+    """格式化为可读文本，供 LLM 上下文或 UI 卡片消费。"""
+    if not result.items:
+        return f"## 预期差\n{result.narrative or '无数据'}"
+
+    lines = [f"## 预期差（{result.verdict}）"]
+    if result.period:
+        lines.append(f"报告期：{result.period}")
+
+    for it in result.items:
+        parts = [f"**{it.label}**"]
+        if it.actual is not None:
+            parts.append(f"实际 {it.actual:,.2f}")
+        if it.estimate_low is not None and it.estimate_high is not None:
+            parts.append(f"预告区间 [{it.estimate_low:,.2f}, {it.estimate_high:,.2f}]")
+        elif it.estimate is not None:
+            parts.append(f"预期 {it.estimate:,.2f}")
+        if it.surprise_pct is not None:
+            direction = "↑" if it.surprise_pct > 0 else "↓" if it.surprise_pct < 0 else "→"
+            parts.append(f"偏差 {direction}{abs(it.surprise_pct):.1f}%")
+        lines.append(" | ".join(parts))
+
+    if result.overall_surprise is not None:
+        lines.append(f"\n综合偏差：{result.overall_surprise:+.1f}%（{result.verdict}）")
+    if result.narrative:
+        lines.append(result.narrative)
+
+    return "\n".join(lines)

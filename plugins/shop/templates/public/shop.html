@@ -64,7 +64,7 @@ var T = '{{ token or "" }}';
 // Load products
 function loadProducts(cat){
   document.getElementById("productList").innerHTML='<div class="loading-spinner"><div class="s"></div></div>';
-  var url="/shop/api/products"+(cat&&cat!=='cloud'?"?category="+encodeURIComponent(cat):"");
+  var url="/mall/api/products"+(cat&&cat!=='cloud'?"?category="+encodeURIComponent(cat):"");
   fetch(url,{headers:T?{"Authorization":"Bearer "+T}:{}}).then(function(r){return r.json()}).then(function(d){
     if(!d.success){document.getElementById("productList").innerHTML='<div class="empty-state">{{ _('Load Failed') }}</div>';return}
     var ps=d.data||[], h="";
@@ -74,7 +74,7 @@ function loadProducts(cat){
       var types={"vip":"{{ _('VIP Package') }}","template":"{{ _('Template') }}","token":"{{ _('Token Package') }}","service":"{{ _('Service') }}","plugin":"{{ _('Plugin') }}","cloud_service":"{{ _('Cloud Service') }}"};
       var cfg=p.product_config||{};
       var specs=cfg.specs||{};
-      h+='<div class="prod-card" onclick="location.href=\'/shop/'+p.id+'\'">';
+      h+='<div class="prod-card" onclick="location.href=\'/mall/'+p.id+'\'">';
       if(p.thumbnail) h+='<img class="thumb" src="'+esc(p.thumbnail)+'" alt="'+esc(p.title)+'" onerror="this.style.display=\'none\'">';
       else h+='<div class="thumb">☁️</div>';
       h+='<div class="body"><div class="title">'+esc(p.title)+'</div>';

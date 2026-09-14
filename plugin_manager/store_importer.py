@@ -24,7 +24,11 @@ from urllib.error import URLError, HTTPError
 # ── SSRF 防护：仅允许访问以下域名 ──
 ALLOWED_NETLOCS = {'github.com', 'raw.githubusercontent.com', 'cdn.jsdelivr.net'}
 
-# 与前端下拉 / docs/plugin-manifest.schema.json 完全一致的单一枚举来源
+# 内置分类兜底集（v1.8 起不再是封闭白名单）：
+#   实际合法分类 = 本常量 ∪ plugin_categories 注册表（enabled=1）
+#   见 plugin_manager/distribution.py::valid_category_keys 与 docs/plugin-standard v1.8 §18.1
+# 前端下拉 / docs/plugin-manifest.schema.json 与本常量保持一致的「内置部分」；
+# 注册表为空 / 取数失败时，白名单等价于本常量（行为等同 v1.7）。
 CATEGORY_ENUM = ['system', 'shop', 'content', 'ai_agent', 'social', 'tools', 'supply_chain']
 
 _SEMVER_RE = re.compile(r'^[0-9]+\.[0-9]+\.[0-9]+$')
@@ -222,10 +226,19 @@ def import_from_github(raw_url: str) -> Tuple[Optional[dict], List[str]]:
     if not _SEMVER_RE.match(manifest.get('version', '')):
         warnings.append('version is not x.y.z format, kept as-is, please review manually')
 
+    # v1.8：白名单 = 内置 7 类 ∪ plugin_categories 注册表（标准 §18.1）。
+    # CATEGORY_ENUM 保留为内置兜底常量；注册表不可用/为空时行为等同 v1.7。
     cat = manifest.get('category', '')
-    if cat and cat not in CATEGORY_ENUM:
-        warnings.append(f'category "{cat}" is not in whitelist, cleared, please select from dropdown')
-        cat = ''
+    if cat:
+        try:
+            from .distribution import valid_category_keys
+            _cat_keys = valid_category_keys()
+        except Exception as _e:
+            print(f'[store_importer] ⚠️ 动态分类取数失败，回落内置枚举: {_e}')
+            _cat_keys = set(CATEGORY_ENUM)
+        if cat not in _cat_keys:
+            warnings.append(f'category "{cat}" is not in whitelist, cleared, please select from dropdown')
+            cat = ''
 
     readme_path = f'{dir_path}/README.md' if dir_path else 'README.md'
 

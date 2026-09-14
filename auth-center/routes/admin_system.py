@@ -29,6 +29,10 @@ def revoke_key(kid):
     if err:
         return err
     with get_db() as conn:
+        # D-22: 存在性检查，不存在返回 404，避免"假成功"
+        row = conn.execute('SELECT id FROM api_keys WHERE id=%s', (kid,)).fetchone()
+        if not row:
+            return jsonify({'success': False, 'error': _('Key does not exist')}), 404
         conn.execute('UPDATE api_keys SET active=0 WHERE id=%s', (kid,))
         conn.commit()
     _log(admin['user_id'], 'revoke_api_key', 'api_key', str(kid))
@@ -65,9 +69,15 @@ def agent_matrix_create():
     if err:
         return err
     data = request.get_json(force=True) or {}
-    alias = (data.get('alias', chr(39)+chr(39)) or '')[:12]
-    mission = (data.get('mission', chr(39)+chr(39)) or '')[:64]
-    prompt = (data.get('system_prompt', chr(39)+chr(39)) or '')[:3000]
+    # D-23: 必填字段校验 —— alias 为 NOT NULL 核心字段，缺失/空值直接 400，防未知字段静默建空行
+    alias = (data.get('alias') or '').strip()
+    mission = (data.get('mission') or '').strip()
+    prompt = (data.get('system_prompt') or '').strip()
+    if not alias:
+        return jsonify({'success': False, 'error': _('Alias is required')}), 400
+    alias = alias[:12]
+    mission = mission[:64]
+    prompt = prompt[:3000]
     model_provider_id = data.get('provider_model_id')  # new field name
     if model_provider_id is None:
         model_provider_id = data.get('model_provider_id')  # backward compat
@@ -558,6 +568,10 @@ def admin_notif_templates_delete(tid):
     admin, err = _require_admin()
     if err: return err
     with get_db() as conn:
+        # D-22: 存在性检查，不存在返回 404，避免"假成功"
+        row = conn.execute('SELECT id FROM notification_templates WHERE id=%s', (tid,)).fetchone()
+        if not row:
+            return jsonify({'success': False, 'error': _('Notification template does not exist')}), 404
         conn.execute('DELETE FROM notification_templates WHERE id=%s', (tid,))
         conn.commit()
     _log(admin['user_id'], 'delete_notif_template', detail=f'{tid}')
@@ -1117,8 +1131,10 @@ def admin_i18n_create():
 
     from i18n import set_translation
     ok = set_translation(locale, source, translation, is_auto=0)
-    return jsonify({'success': ok, 'error': '' if ok else _(_('Write failed'))}),
-    201 if ok else 400,
+    # D-06: 原 return jsonify(...),\n 201 if ok else 400, 被 AST 解析为 1 元组 → Flask 500；
+    # 合并为单次返回 (response, status)
+    status = 201 if ok else 400
+    return jsonify({'success': ok, 'error': '' if ok else _('Write failed')}), status
 
 
 @admin_bp.route('/i18n/translations/<int:tid>', methods=['PUT'])

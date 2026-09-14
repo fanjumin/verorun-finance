@@ -81,6 +81,45 @@ def init_sp_db():
                 updated_at    TIMESTAMPTZ DEFAULT NOW()
             )
         """)
+        # 长短文内容草稿表（P2：AI 生成 / 手动编辑暂存，发布时读入）
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS content_drafts (
+                id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                title         TEXT DEFAULT '',
+                mode          TEXT NOT NULL DEFAULT 'short',   -- 'short' | 'long'
+                body          TEXT DEFAULT '',
+                body_html     TEXT DEFAULT '',
+                summary       TEXT DEFAULT '',
+                media_json    TEXT DEFAULT '[]',
+                cover_url     TEXT DEFAULT '',
+                target_json   TEXT DEFAULT '[]',   -- 目标账号/平台 [{channel, account_id}]
+                schedule_at   TIMESTAMPTZ,
+                admin_id      BIGINT,
+                created_at    TIMESTAMPTZ DEFAULT NOW(),
+                updated_at    TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+        # 发布任务队列表（P4：定时/批量/重试）
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS publish_queue (
+                id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                channel       TEXT NOT NULL,
+                draft_id      BIGINT,
+                payload_json  TEXT DEFAULT '{}',
+                status        TEXT NOT NULL DEFAULT 'pending',  -- pending|publishing|published|failed|cancelled
+                schedule_at   TIMESTAMPTZ,
+                publish_at    TIMESTAMPTZ,
+                retry_count   INTEGER DEFAULT 0,
+                error_msg     TEXT DEFAULT '',
+                post_id       TEXT DEFAULT '',
+                post_url      TEXT DEFAULT '',
+                admin_id      BIGINT,
+                created_at    TIMESTAMPTZ DEFAULT NOW(),
+                updated_at    TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_publish_queue_status_sched "
+                     "ON publish_queue (status, schedule_at)")
         conn.commit()
 
     # 幂等迁移：历史 TEXT 列一次性转 TIMESTAMPTZ；已是 TIMESTAMPTZ 时为无操作

@@ -53,12 +53,8 @@ def _ip_rate_limited(ip: str) -> bool:
     return False
 
 
-def api_ok(data=None):
-    return jsonify({'success': True, 'data': data})
-
-
-def api_err(msg, code=400):
-    return jsonify({'success': False, 'error': msg}), code
+# 统一响应契约（shared.http）：信封结构保持兼容，新增 code 业务码字段
+from shared.http import api_ok, api_err
 
 
 def _get_token_from_request():
@@ -450,6 +446,10 @@ def refresh_token():
         role=payload.get('role', 'user'),
         device_name='Token Refresh', device_type='web',
         scenario='refresh')
+    # D-15: 可选轮换 —— JWT_REFRESH_ROTATE=1 时吊销旧 token（默认保留多会话并存）
+    if os.environ.get('JWT_REFRESH_ROTATE') == '1':
+        from services.jwt_service import revoke_token
+        revoke_token(old_token)
     return api_ok({'token': result['token']})
 
 
@@ -489,6 +489,12 @@ def email_send_code():
             if exist:
                 return api_err('This email is already registered')
 
+    # 插件缺失前置校验：避免"验证码已入库但用户收不到"
+    from shared.plugin_access import get_attr
+    send_email = get_attr('plugins.email.services', 'send_email', feature='email_send_code')
+    if send_email is None:
+        return api_err('Email service is unavailable. Please contact the administrator.')
+
     code = generate_code()
     with get_db() as conn:
         expires_at = (__import__('datetime').datetime.now() +
@@ -496,7 +502,6 @@ def email_send_code():
         conn.execute('INSERT INTO sms_codes (phone, code, purpose, expires_at) VALUES (%s,%s,%s,%s)',
                      (email, code, purpose, expires_at))
         conn.commit()
-    from plugins.email.services import send_email
     subject = _('VeroRun Email Verification Code')
     body_text = _('Your verification code is: {code}, valid for 10 minutes. If this was not you, please ignore.').format(code=code)
     body_html = '<h3>{title}</h3><p>Your verification code is: <b style="font-size:20px;color:#6366f1">{code}</b></p><p>{footer}</p>'.format(

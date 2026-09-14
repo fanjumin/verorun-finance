@@ -43,9 +43,9 @@ def sms_templates_list():
         ).fetchall()
     templates = [dict(r) for r in rows]
     categories = {
-        'captcha': {'title': _('verification_code'), 'items': []},
-        'notice':  {'title': _('sms_notification'), 'items': []},
-        'promo':   {'title': _('sms_promotion'), 'items': []},
+        'captcha': {'title': _('Verification Code'), 'items': []},
+        'notice':  {'title': _('SMS Notification'), 'items': []},
+        'promo':   {'title': _('SMS Promotion'), 'items': []},
     }
     for t in templates:
         cat = t.get('category', 'promo')
@@ -239,7 +239,7 @@ def sms_settings_save():
         if k in _SMS_CONFIG_KEYS:
             filtered[k] = str(v) if v is not None else ''
     if not filtered:
-        return jsonify({'success': False, 'error': 'No valid config keys'}), 400
+        return jsonify({'success': False, 'error': _('No valid config keys')}), 400
     result = pm.set_config_batch('sms', filtered, coerce=True)
     if result.get('errors'):
         return jsonify({'success': True, 'warning': str(result['errors'])})

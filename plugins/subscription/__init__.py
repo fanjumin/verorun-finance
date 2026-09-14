@@ -124,11 +124,10 @@ class SubscriptionPlugin(BasePlugin):
 
     def get_dashboard_stats(self) -> dict:
         """Dashboard 聚合统计（读 subscription 独立 schema，幂等）。"""
-        from plugins._base.db import get_raw_connection, PgConnection
+        from plugins._base.db import get_pooled_connection
         stats = {'active_subscriptions': 0, 'total_plans': 0, 'total_revenue_fen': 0}
         try:
-            conn = PgConnection(get_raw_connection())
-            try:
+            with get_pooled_connection() as conn:
                 conn.execute('SET search_path TO subscription')
                 active = conn.execute(
                     "SELECT COUNT(*) AS c FROM user_subscriptions WHERE status='active'"
@@ -142,8 +141,6 @@ class SubscriptionPlugin(BasePlugin):
                 stats['active_subscriptions'] = int(active['c']) if active else 0
                 stats['total_plans'] = int(plans['c']) if plans else 0
                 stats['total_revenue_fen'] = int(rev['c']) if rev else 0
-            finally:
-                conn.close()
         except Exception as e:
             print(f'[Subscription] get_dashboard_stats error: {e}')
         return stats

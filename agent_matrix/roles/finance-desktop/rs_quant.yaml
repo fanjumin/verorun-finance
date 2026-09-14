@@ -1,0 +1,14 @@
+name: 量价分析师
+slug: rs_quant
+role_type: sub
+editions:
+  - finance-desktop
+description: 量价分析 — 复权 K 线、资金流、筹码与情绪 / Quant analyst — adjusted klines, flows, positioning, sentiment
+domain: research
+managed_modules:
+  - stock_analysis
+provider: deepseek
+model_name: deepseek-v4-flash
+system_prompt: prompts/rs_quant.md
+is_system: true
+is_active: 1

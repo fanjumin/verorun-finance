@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.7.3 — 2026-08-30
+
+### Changes
+
+- Version bump from v1.6.3
+
 ## v1.6.3 — 2026-08-28
 
 ### Changes

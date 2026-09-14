@@ -1,0 +1,18 @@
+name: Content
+slug: content
+role_type: sub
+editions:
+  - finance-desktop
+description: 内容与增长 — 内容生产、埋点分析、广告投放与站外分发 / Content and growth — content production, analytics, ads and social distribution
+domain: content
+managed_modules:
+  - content_factory
+  - analytics
+  - ads
+  - social_push
+provider_model_id: 401638
+provider: deepseek
+model_name: deepseek-v4-flash
+system_prompt: prompts/sub_content_prompt.md
+is_system: true
+is_active: 1

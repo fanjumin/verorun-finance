@@ -65,11 +65,11 @@
 
 **English**
 
-The **Shop Plugin** is the standalone e-commerce module of VeroRun. It provides full product and order management — products, categories, SKU specs, cart, checkout, payments, logistics, refunds and user purchases. The plugin is fully decoupled from the core system: it ships as an independent plugin package, registers its own blueprints under the `/shop` URL prefix, stores all data in a dedicated PostgreSQL `shop` schema, and integrates with the Payment and Logistics plugins through the plugin manager.
+The **Shop Plugin** is the standalone e-commerce module of VeroRun. It provides full product and order management — products, categories, SKU specs, cart, checkout, payments, logistics, refunds and user purchases. The plugin is fully decoupled from the core system: it ships as an independent plugin package, registers its own blueprints under the `/mall` URL prefix (admin API under `/admin/shop`), stores all data in a dedicated PostgreSQL `shop` schema, and integrates with the Payment and Logistics plugins through the plugin manager.
 
 **中文**
 
-**商城插件（Shop Plugin）** 是 VeroRun 独立部署的电商模块。它提供完整的商品与订单管理能力——商品、分类、SKU 规格、购物车、结算、支付、物流、退款与用户已购。插件与核心系统完全解耦：以独立插件包形式分发，在 `/shop` URL 前缀下注册自己的蓝图，所有数据存放在专属 PostgreSQL `shop` schema 中，并通过插件管理器与 Payment、Logistics 插件联动。
+**商城插件（Shop Plugin）** 是 VeroRun 独立部署的电商模块。它提供完整的商品与订单管理能力——商品、分类、SKU 规格、购物车、结算、支付、物流、退款与用户已购。插件与核心系统完全解耦：以独立插件包形式分发，在 `/mall` URL 前缀下注册自己的蓝图（后台 API 在 `/admin/shop`），所有数据存放在专属 PostgreSQL `shop` schema 中，并通过插件管理器与 Payment、Logistics 插件联动。
 
 ---
 
@@ -116,8 +116,8 @@ plugins/shop/
 │   └── database.py          # init_shop_db(): creates the 11-table `shop` schema
 ├── routes/
 │   ├── __init__.py
-│   ├── admin.py             # shop_admin_bp (url_prefix=/shop) — admin API
-│   └── public.py            # shop_public_bp (url_prefix=/shop) — storefront pages + user API
+│   ├── admin.py             # shop_admin_bp (url_prefix=/admin/shop) — admin API
+│   └── public.py            # shop_public_bp (url_prefix=/mall) — storefront pages + user API
 ├── services/
 │   └── __init__.py
 ├── templates/
@@ -129,9 +129,9 @@ plugins/shop/
     └── zh-CN.yml            # Chinese translations
 ```
 
-**English** — The admin UI of the shop is rendered inside the admin console (the plugin registers its menu items under the "Business Center" group: Categories, Products, Shop Orders, Purchases), while the API is served by `shop_admin_bp`. The storefront pages and user-facing APIs are served by `shop_public_bp`. Both blueprints share the `/shop` URL prefix.
+**English** — The admin UI of the shop is rendered inside the admin console (the plugin registers its menu items under the "Business Center" group: Categories, Products, Shop Orders, Purchases), while the API is served by `shop_admin_bp`. The storefront pages and user-facing APIs are served by `shop_public_bp` under the `/mall` URL prefix (admin API under `/admin/shop`).
 
-**中文** — 商城后台界面渲染在管理控制台内（插件在「商务中心」分组下注册菜单项：分类、商品、商城订单、已购），API 由 `shop_admin_bp` 提供；店铺前台页面与用户端 API 由 `shop_public_bp` 提供，两个蓝图共用 `/shop` URL 前缀。
+**中文** — 商城后台界面渲染在管理控制台内（插件在「商务中心」分组下注册菜单项：分类、商品、商城订单、已购），API 由 `shop_admin_bp` 提供；店铺前台页面与用户端 API 由 `shop_public_bp` 提供（前台在 `/mall` 前缀，后台 API 在 `/admin/shop`）。
 
 ### 3.2 Plugin Lifecycle / 插件生命周期
 
@@ -228,7 +228,7 @@ The plugin is managed by the Plugin Manager:
 ```
 
 - Installation / enabling triggers `init_shop_db()` — the `shop` schema and 11 tables are created automatically.
-- Routes are registered on the admin console (8084) and platform console; the storefront is served under `/shop/...`.
+- Routes are registered on the admin console (8084) and platform console; the storefront is served under `/mall/...`.
 - Menu entries appear under **Business Center** → Categories / Products / Shop Orders / Purchases.
 
 **中文**
@@ -242,7 +242,7 @@ The plugin is managed by the Plugin Manager:
 ```
 
 - 安装/启用会触发 `init_shop_db()`，自动创建 `shop` schema 与 11 张表。
-- 路由注册在管理后台（8084）与平台控制台；店铺前台服务在 `/shop/...` 下。
+- 路由注册在管理后台（8084）与平台控制台；店铺前台服务在 `/mall/...` 下。
 - 菜单项出现在「商务中心」→ 分类 / 商品 / 商城订单 / 已购。
 
 ---
@@ -325,40 +325,40 @@ The plugin is managed by the Plugin Manager:
 
 | Method | Path | Description / 说明 |
 |--------|------|--------------------|
-| GET | `/shop` / `/shop/` | Product listing / 商品列表页 |
-| GET | `/shop/<pid>` | Product detail page / 商品详情页 |
-| GET | `/shop/preview/<pid>` | Product preview / 商品预览 |
-| GET | `/shop/cart` | Cart page / 购物车页 |
-| GET | `/shop/pay/<oid>` | Payment page / 支付页 |
-| GET | `/shop/orders` | My orders page / 我的订单页 |
-| GET | `/shop/orders/<oid>/track-user` | User-side tracking page / 用户端物流页 |
-| GET | `/shop/cloud` | Cloud instances page / 云实例页 |
+| GET | `/mall` / `/mall/` | Product listing / 商品列表页 |
+| GET | `/mall/<pid>` | Product detail page / 商品详情页 |
+| GET | `/mall/preview/<pid>` | Product preview / 商品预览 |
+| GET | `/mall/cart` | Cart page / 购物车页 |
+| GET | `/mall/pay/<oid>` | Payment page / 支付页 |
+| GET | `/mall/orders` | My orders page / 我的订单页 |
+| GET | `/mall/orders/<oid>/track-user` | User-side tracking page / 用户端物流页 |
+| GET | `/mall/cloud` | Cloud instances page / 云实例页 |
 
 ### 6.2 APIs / 接口
 
 | Method | Path | Description / 说明 |
 |--------|------|--------------------|
-| GET | `/shop/api/user/info` | Current user info / 当前用户信息 |
-| GET | `/shop/api/products` | Product list (filter/search/pagination) / 商品列表 |
-| GET | `/shop/api/products/<pid>` | Product detail / 商品详情 |
-| GET | `/shop/api/products/<pid>/skus` | SKU options / SKU 选项 |
-| GET | `/shop/api/cart` | Cart contents + totals / 购物车内容与合计 |
-| POST | `/shop/api/cart/add` | Add to cart (rate-limited 60/min) / 加购 |
-| POST | `/shop/api/cart/update` | Update quantity / 更新数量 |
-| POST | `/shop/api/cart/remove` | Remove item / 移除商品 |
-| GET | `/shop/api/addresses` | User addresses / 用户地址 |
-| POST | `/shop/api/checkout` | Checkout — single transaction order + coupon + cart clear / 结算下单 |
-| GET | `/shop/api/orders` | My orders / 我的订单 |
-| POST | `/shop/api/orders/<oid>/delete` | Delete order / 删除订单 |
-| POST | `/shop/api/orders/<oid>/cancel` | Cancel order / 取消订单 |
-| POST | `/shop/api/orders/<oid>/confirm-receipt` | Confirm receipt / 确认收货 |
-| POST | `/shop/api/orders/<oid>/request-refund` | Request refund / 申请退款 |
-| POST | `/shop/api/pay/<oid>` | Create payment (Alipay default) / 发起支付 |
-| POST | `/shop/api/pay/<oid>/stub-confirm` | Stub confirm (dev) / 桩确认（开发） |
-| POST | `/shop/api/pay/notify` | Alipay async notify / 支付宝异步回调 |
-| POST | `/shop/api/pay/wechat-notify` | WeChat async notify / 微信异步回调 |
-| GET | `/shop/api/pay/status/<oid>` | Payment status / 支付状态 |
-| POST | `/shop/api/coupon/validate` | Validate coupon / 校验优惠券 |
+| GET | `/mall/api/user/info` | Current user info / 当前用户信息 |
+| GET | `/mall/api/products` | Product list (filter/search/pagination) / 商品列表 |
+| GET | `/mall/api/products/<pid>` | Product detail / 商品详情 |
+| GET | `/mall/api/products/<pid>/skus` | SKU options / SKU 选项 |
+| GET | `/mall/api/cart` | Cart contents + totals / 购物车内容与合计 |
+| POST | `/mall/api/cart/add` | Add to cart (rate-limited 60/min) / 加购 |
+| POST | `/mall/api/cart/update` | Update quantity / 更新数量 |
+| POST | `/mall/api/cart/remove` | Remove item / 移除商品 |
+| GET | `/mall/api/addresses` | User addresses / 用户地址 |
+| POST | `/mall/api/checkout` | Checkout — single transaction order + coupon + cart clear / 结算下单 |
+| GET | `/mall/api/orders` | My orders / 我的订单 |
+| POST | `/mall/api/orders/<oid>/delete` | Delete order / 删除订单 |
+| POST | `/mall/api/orders/<oid>/cancel` | Cancel order / 取消订单 |
+| POST | `/mall/api/orders/<oid>/confirm-receipt` | Confirm receipt / 确认收货 |
+| POST | `/mall/api/orders/<oid>/request-refund` | Request refund / 申请退款 |
+| POST | `/mall/api/pay/<oid>` | Create payment (Alipay default) / 发起支付 |
+| POST | `/mall/api/pay/<oid>/stub-confirm` | Stub confirm (dev) / 桩确认（开发） |
+| POST | `/mall/api/pay/notify` | Alipay async notify / 支付宝异步回调 |
+| POST | `/mall/api/pay/wechat-notify` | WeChat async notify / 微信异步回调 |
+| GET | `/mall/api/pay/status/<oid>` | Payment status / 支付状态 |
+| POST | `/mall/api/coupon/validate` | Validate coupon / 校验优惠券 |
 
 ---
 

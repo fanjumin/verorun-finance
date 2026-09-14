@@ -238,9 +238,21 @@ CREATE INDEX IF NOT EXISTS idx_plugin_registry_identifier
 """
 
 
+# 与 init_license_store_tables 共用同一会话级 advisory lock（见 models_store.py），
+# 串行化所有启动期 DDL，防止多 gunicorn worker 并发建表/迁移造成表锁环死锁。
+_DDL_ADVISORY_LOCK_KEY = 775220
+
+
 def init_plugin_registry_table():
-    """初始化 plugin_registry 表（幂等）"""
+    """初始化 plugin_registry 表（幂等，并发安全：advisory lock 串行化 DDL）"""
     with get_registry_db() as conn:
-        conn.executescript(PLUGIN_REGISTRY_DDL)
-        print('[PluginManager] ✅ plugin_registry table ready')
-        conn.commit()
+        conn.execute('SELECT pg_advisory_lock(%s)', (_DDL_ADVISORY_LOCK_KEY,))
+        try:
+            conn.executescript(PLUGIN_REGISTRY_DDL)
+            print('[PluginManager] ✅ plugin_registry table ready')
+            conn.commit()
+        finally:
+            try:
+                conn.execute('SELECT pg_advisory_unlock(%s)', (_DDL_ADVISORY_LOCK_KEY,))
+            except Exception:
+                pass  # 事务已中止/连接将关闭时，锁由会话结束自动释放

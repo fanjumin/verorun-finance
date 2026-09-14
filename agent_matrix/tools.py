@@ -321,7 +321,11 @@ def _tool_get_system_health(args):
     """读取最近一次健康巡检结果汇总（只读）"""
     try:
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-        from plugins.health_check.models import get_db as health_db
+        from shared.plugin_access import get_attr
+        health_db = get_attr('plugins.health_check.models', 'get_db',
+                             feature='tool_system_health')
+        if health_db is None:
+            return _("No health inspection records.")
         with health_db() as conn:
             run = conn.execute(
                 "SELECT * FROM check_runs WHERE status='completed' "
@@ -366,7 +370,13 @@ def _tool_query_stats(args):
         days = int(args.get('days', 7) or 7)
         days = max(1, min(days, 90))
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-        from plugins.analytics.tracker import generate_report, generate_insight_text
+        from shared.plugin_access import get_attr
+        generate_report = get_attr('plugins.analytics.tracker', 'generate_report',
+                                   feature='tool_query_stats')
+        generate_insight_text = get_attr('plugins.analytics.tracker', 'generate_insight_text',
+                                         feature='tool_query_stats')
+        if generate_report is None or generate_insight_text is None:
+            return "Failed to Query Data Statistics: analytics plugin is not installed"
         report = generate_report(days=days)
         return generate_insight_text(report)
     except Exception as e:
@@ -401,7 +411,10 @@ def _tool_search_knowledge(args):
 def _tool_ads_list(args):
     """列出广告"""
     try:
-        import plugins.ads.ai_tools as ads_tools
+        from shared.plugin_access import optional_import
+        ads_tools = optional_import('plugins.ads.ai_tools', feature='tool_ads_list')
+        if ads_tools is None:
+            return "Failed to Get Ad List: ads plugin is not installed"
         res = ads_tools.list_ads(
             site_key=args.get('site_key'),
             position=args.get('position'),
@@ -428,7 +441,10 @@ def _tool_ads_list(args):
 def _tool_ads_create(args):
     """创建广告"""
     try:
-        import plugins.ads.ai_tools as ads_tools
+        from shared.plugin_access import optional_import
+        ads_tools = optional_import('plugins.ads.ai_tools', feature='tool_ads_create')
+        if ads_tools is None:
+            return "Ad creation failed: ads plugin is not installed"
         res = ads_tools.create_ad(args)
         if res['success']:
             return f"✅ Ad created, ID: {res['data']['id']}"
@@ -441,7 +457,10 @@ def _tool_ads_create(args):
 def _tool_ads_update(args):
     """更新广告"""
     try:
-        import plugins.ads.ai_tools as ads_tools
+        from shared.plugin_access import optional_import
+        ads_tools = optional_import('plugins.ads.ai_tools', feature='tool_ads_update')
+        if ads_tools is None:
+            return "Failed to update ad: ads plugin is not installed"
         ad_id = args.get('ad_id')
         updates = args.get('updates', {})
         res = ads_tools.update_ad(ad_id, updates)
@@ -456,7 +475,10 @@ def _tool_ads_update(args):
 def _tool_ads_delete(args):
     """删除广告"""
     try:
-        import plugins.ads.ai_tools as ads_tools
+        from shared.plugin_access import optional_import
+        ads_tools = optional_import('plugins.ads.ai_tools', feature='tool_ads_delete')
+        if ads_tools is None:
+            return "Failed to Delete Ad: ads plugin is not installed"
         res = ads_tools.delete_ad(args.get('ad_id'))
         if res['success']:
             return f"✅ Ad {args.get('ad_id')} deleted"
@@ -469,7 +491,10 @@ def _tool_ads_delete(args):
 def _tool_ads_get_stats(args):
     """查询广告统计"""
     try:
-        import plugins.ads.ai_tools as ads_tools
+        from shared.plugin_access import optional_import
+        ads_tools = optional_import('plugins.ads.ai_tools', feature='tool_ads_get_stats')
+        if ads_tools is None:
+            return "Failed to Query Ad Statistics: ads plugin is not installed"
         res = ads_tools.get_stats(
             ad_id=args.get('ad_id'),
             site_key=args.get('site_key'),
@@ -499,7 +524,10 @@ def _tool_ads_get_stats(args):
 def _tool_ads_analyze(args):
     """分析广告效果"""
     try:
-        import plugins.ads.ai_tools as ads_tools
+        from shared.plugin_access import optional_import
+        ads_tools = optional_import('plugins.ads.ai_tools', feature='tool_ads_analyze')
+        if ads_tools is None:
+            return "Advertisement analysis failed: ads plugin is not installed"
         res = ads_tools.analyze_ads(days=int(args.get('days', 7)))
         if res['success']:
             return res['data']
@@ -512,7 +540,10 @@ def _tool_ads_analyze(args):
 def _tool_ads_render_snippet(args):
     """生成广告渲染代码片段"""
     try:
-        import plugins.ads.ai_tools as ads_tools
+        from shared.plugin_access import optional_import
+        ads_tools = optional_import('plugins.ads.ai_tools', feature='tool_ads_render_snippet')
+        if ads_tools is None:
+            return "Failed to generate code: ads plugin is not installed"
         res = ads_tools.generate_render_snippet(
             position=args.get('position', 'sidebar'),
             page=args.get('page', '*'),
@@ -925,11 +956,30 @@ def get_tools_for_agent(allowed_tools):
             return []
     if not isinstance(allowed_tools, list):
         return []
-    return [TOOL_SCHEMAS[name] for name in allowed_tools if name in TOOL_SCHEMAS]
+    result = [TOOL_SCHEMAS[name] for name in allowed_tools if name in TOOL_SCHEMAS]
+    # P2-5: 合并已启用插件的 MCP 工具（名称带 mcp__ 前缀，失败静默降级）
+    try:
+        from plugin_manager.mcp import get_enabled_mcp_tool_schemas
+        result += get_enabled_mcp_tool_schemas()
+    except Exception:
+        pass
+    return result
+
+
+def _execute_mcp_tool(name, args):
+    """P2-5: 路由 MCP 工具调用（mcp__<plugin>__<server>__<tool>）。"""
+    try:
+        from plugin_manager.mcp import call_mcp_tool
+        return call_mcp_tool(name, args)
+    except Exception as e:
+        logger.warning(f'[tool:{name}] MCP 调用失败: {e}')
+        return f'Tool {name} execution error: {e}'
 
 
 def execute_tool(name, args):
     """执行指定工具，返回字符串结果。未知工具或异常均返回错误字符串。"""
+    if name.startswith('mcp__'):
+        return _execute_mcp_tool(name, args)
     executor = TOOL_EXECUTORS.get(name)
     if not executor:
         return f"Unknown tool: {name}"

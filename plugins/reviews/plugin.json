@@ -6,8 +6,10 @@
     "required": [],
     "optional": {}
   },
-  "version": "1.5.2",
+  "version": "1.6.2",
   "description": "商品评价系统 — 用户对已购商品打分、写评价、晒图",
+  "tagline": "商品评价与晒图",
+  "tagline_subtitle": "打分评价 · 晒图 · 审核与舆情分析",
   "author": "VeroRun",
   "min_app_version": "0.10.0",
   "agent_role": "business",

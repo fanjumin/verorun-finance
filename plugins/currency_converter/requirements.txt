@@ -1,0 +1,10 @@
+# currency_converter 运行时依赖
+#
+# 缺失后果（R1 报告 §5.3 实测）：services.py 模块级 `import httpx` 抛
+# ModuleNotFoundError → 插件 setup 失败，注册表状态卡在 enabled、
+# last_error="setup error: No module named 'httpx'"，汇率抓取整条链路不可用。
+#
+# 与既有约定一致：插件自带 requirements.txt 做声明，实际安装由部署链路
+# （deploy/lib/common.sh 只读根 requirements.txt / requirements.lock）与桌面端
+# 便携 venv 预置步骤负责；本文件是「该插件需要什么」的单一说明来源。
+httpx>=0.27.0,<1.0

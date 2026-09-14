@@ -83,7 +83,7 @@ var GROUPS=[
   ["{{ _('Users & Support') }}",true,[["customers",I.customers,"{{ _('All Customers') }}"],["customer_agents",I.agents,"{{ _('Customer Agents') }}"],["api_keys",I.keys,"{{ _('API Tokens') }}"],["notifications",I.notifications,"{{ _('Notifications') }}"],["tickets",I.tickets,"{{ _('User Tickets') }}"],["reward_rules",I.reward_rules,"{{ _('Rewards') }}"]]],
   ["{{ _('Security & Compliance') }}",true,[["posts",I.posts,"{{ _('Post Audit') }}"],["comments",I.comments,"{{ _('Comment Moderation') }}"]]],
   ["{{ _('Monitoring & Data') }}",true,[["logs",I.logs,"{{ _('Operation Log') }}"]]],
-  ["{{ _('Plugins & i18n') }}",true,[["plugins_store",I.plugins,"{{ _('Plugin Management') }}"],["i18n_translations",I.i18n_translations,"{{ _('Translations') }}"]]],
+  ["{{ _('Plugins & i18n') }}",true,[["plugins_store",I.plugins,"{{ _('Plugin Management') }}"],["skills_admin",I.plugins,"{{ _('Skill Review') }}"],["i18n_translations",I.i18n_translations,"{{ _('Translations') }}"]]],
 ];
 // 与 GROUPS 一一对应的英文标识（插件 menu.group 用此匹配现有组，避免 i18n 翻译差异）
 var GROUP_KEYS=["Dashboard","Command Console","System","AI & Content"{% if edition != 'edu' %},"Business Center"{% endif %},"Workflow","Publishing","Users & Support","Security & Compliance","Monitoring & Data","Plugins & i18n"];

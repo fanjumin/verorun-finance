@@ -1,0 +1,15 @@
+name: Builder
+slug: builder
+role_type: sub
+editions:
+  - finance-desktop
+description: 站点与域名运维 — 站点配置、域名绑定与资源归属 / Site and domain operations — site config, domain binding and resource ownership
+domain: site_builder
+managed_modules:
+  - site_domains
+provider_model_id: 401638
+provider: deepseek
+model_name: deepseek-v4-flash
+system_prompt: prompts/sub_builder_prompt.md
+is_system: true
+is_active: 1

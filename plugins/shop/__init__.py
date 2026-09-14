@@ -58,7 +58,7 @@ class ShopPlugin(BasePlugin):
     def register_routes(self):
         from .routes.admin import shop_admin_bp
         from .routes.public import shop_public_bp
-        logger.info('[ShopPlugin] ✅ /shop/* routes registered')
+        logger.info('[ShopPlugin] ✅ /mall/* routes registered')
         return [shop_admin_bp, shop_public_bp]
 
     def on_disable(self, registry):
@@ -78,7 +78,7 @@ class ShopPlugin(BasePlugin):
     def get_dashboard_stats(self) -> dict:
         """返回 Dashboard 统计指标（§2.3/§10.5）"""
         try:
-            from models import get_db
+            from .models import get_db
             from datetime import date
             today = date.today().isoformat()
             with get_db() as conn:

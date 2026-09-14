@@ -59,6 +59,11 @@ class SocialPushPlugin(BasePlugin):
         from .routes import social_bp
         return [social_bp]
 
+    def register_jobs(self):
+        """注册 APScheduler 定时任务（P4：发布队列到期派发）"""
+        from .scheduler import get_jobs
+        return get_jobs(self)
+
     def on_disable(self, registry):
         """禁用时清理"""
         print(_('[SocialPushPlugin] ⚠️ Social promotion plugin is disabled'))

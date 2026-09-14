@@ -14,12 +14,21 @@
     input { flex: 1 1 180px; }
     pre { white-space: pre-wrap; overflow-wrap: anywhere; }
     .result { margin-top: 16px; padding: 16px; border: 1px solid var(--border); border-radius: 8px; }
+    .panel { margin-top: 28px; }
+    .panel h2 { font-size: 1.1rem; margin: 0 0 8px; }
+    #watchlist-list table, #batch-output table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    #watchlist-list th, #watchlist-list td, #batch-output th, #batch-output td { border: 1px solid var(--border); padding: 6px 8px; font-size: 0.9rem; text-align: left; }
     .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
   </style>
 </head>
 <body>
 <main>
   <h1>{{ _('Stock Analysis') }}</h1>
+  <section class="panel" id="deps-panel">
+    <h2>{{ _('Data source environment') }}</h2>
+    <p id="deps-status"></p>
+    <button type="button" id="btn-install-akshare" hidden>{{ _('Install akshare') }}</button>
+  </section>
   <form id="analysis-form">
     <input id="symbol" name="symbol" placeholder="{{ _('Stock code, e.g. 600519') }}" required maxlength="12" autocomplete="off">
     <label for="analysis-type" class="sr-only">{{ _('Analysis Type') }}</label>
@@ -32,6 +41,50 @@
     <button type="submit">{{ _('Analyze') }}</button>
   </form>
   <section class="result" aria-live="polite"><pre id="output">{{ _('Enter a stock code to start analysis.') }}</pre></section>
+
+  <section class="panel" id="watchlist-panel">
+    <h2>{{ _('Watchlist') }}</h2>
+    <form id="watchlist-form">
+      <input id="wl-symbol" placeholder="{{ _('Stock code, e.g. 600519') }}" maxlength="12" autocomplete="off" required>
+      <input id="wl-alias" placeholder="{{ _('Alias') }}" maxlength="64" autocomplete="off">
+      <label for="wl-kind" class="sr-only">{{ _('Analysis Type') }}</label>
+      <select id="wl-kind">
+        <option value="technical">{{ _('Technical') }}</option>
+        <option value="fundamental">{{ _('Fundamental') }}</option>
+        <option value="sentiment">{{ _('Sentiment') }}</option>
+        <option value="llm">{{ _('AI Comprehensive') }}</option>
+      </select>
+      <button type="submit">{{ _('Add') }}</button>
+    </form>
+    <div id="watchlist-list"></div>
+  </section>
+
+  <section class="panel" id="batch-panel">
+    <h2>{{ _('Batch Analysis') }}</h2>
+    <form id="batch-form">
+      <label for="batch-kind" class="sr-only">{{ _('Analysis Type') }}</label>
+      <select id="batch-kind">
+        <option value="technical">{{ _('Technical') }}</option>
+        <option value="fundamental">{{ _('Fundamental') }}</option>
+        <option value="sentiment">{{ _('Sentiment') }}</option>
+      </select>
+      <input id="batch-symbols" placeholder="{{ _('Symbols (comma separated, empty = watchlist)') }}" autocomplete="off">
+      <button type="submit">{{ _('Run') }}</button>
+    </form>
+    <form id="filter-form">
+      <input id="f-run" placeholder="{{ _('Run ID') }}" maxlength="10" autocomplete="off">
+      <input id="f-symbol" placeholder="{{ _('Stock code') }}" maxlength="12" autocomplete="off">
+      <select id="f-signal">
+        <option value="">{{ _('Signal') }}...</option>
+        <option value="buy">buy</option>
+        <option value="hold">hold</option>
+        <option value="sell">sell</option>
+      </select>
+      <button type="submit">{{ _('Query') }}</button>
+      <button type="button" id="btn-export">{{ _('Export JSON') }}</button>
+    </form>
+    <div id="batch-output" class="result"></div>
+  </section>
 </main>
 <script>
 (function () {
@@ -56,12 +109,172 @@
     fetch('/admin/stock-analysis/api/analyze?symbol=' + encodeURIComponent(symbol) + '&type=' + encodeURIComponent(type))
       .then(function (response) { return response.json(); })
       .then(function (payload) {
-        output.textContent = payload.result && payload.result.report
-          ? payload.result.report + '\n\n' + {{ _('Signal')|tojson }} + ': ' + JSON.stringify(payload.result.signal)
-          : (payload.error || {{ _('Analysis failed')|tojson }});
+        var text = '';
+        if (payload.result && payload.result.report) {
+          text = payload.result.report + '\n\n' + {{ _('Signal')|tojson }} + ': ' + JSON.stringify(payload.result.signal);
+          if (payload.result.data && payload.result.data.data_sources && payload.result.data.data_sources.length) {
+            var srcs = payload.result.data.data_sources.map(function (s) {
+              var label = (s.source || s.category) + ':' + (s.category || '');
+              label += s.authorized ? ' [authorized]' : ' [unauthorized]';
+              if (s.note) label += ' ' + s.note;
+              return label;
+            }).join('; ');
+            text += '\n\n' + {{ _('Data sources')|tojson }} + ': ' + srcs;
+          }
+          if (payload.result.disclaimer) text += '\n' + payload.result.disclaimer;
+        } else {
+          text = (payload.error || {{ _('Analysis failed')|tojson }});
+        }
+        output.textContent = text;
       })
       .catch(function (error) { output.textContent = {{ _('Request failed')|tojson }} + ': ' + error.message; });
   });
+
+  // ── 标的池 / 批量分析（阶段 4） ──
+  function api(path, opts) {
+    return fetch('/admin/stock-analysis' + path, opts || {}).then(function (r) { return r.json(); });
+  }
+
+  function loadWatchlist() {
+    api('/api/watchlist').then(function (p) {
+      var box = document.getElementById('watchlist-list');
+      if (!p.success || !p.data || !p.data.length) {
+        box.innerHTML = '<p>' + {{ _('No watchlist items yet.')|tojson }} + '</p>';
+        return;
+      }
+      var rows = p.data.map(function (it) {
+        return '<tr><td>' + it.symbol + '</td><td>' + (it.alias || '') + '</td><td>'
+          + it.kind + '</td><td><button data-del="' + it.symbol + '">' + {{ _('Delete')|tojson }}
+          + '</button></td></tr>';
+      }).join('');
+      box.innerHTML = '<table><thead><tr><th>symbol</th><th>alias</th><th>kind</th><th></th></tr></thead>'
+        + '<tbody>' + rows + '</tbody></table>';
+      box.querySelectorAll('button[data-del]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          api('/api/watchlist?symbol=' + encodeURIComponent(btn.getAttribute('data-del')),
+              { method: 'DELETE' }).then(loadWatchlist);
+        });
+      });
+    });
+  }
+
+  document.getElementById('watchlist-form').addEventListener('submit', function (event) {
+    event.preventDefault();
+    api('/api/watchlist', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        symbol: document.getElementById('wl-symbol').value.trim(),
+        alias: document.getElementById('wl-alias').value.trim(),
+        kind: document.getElementById('wl-kind').value
+      })
+    }).then(function (p) {
+      if (p.success) {
+        document.getElementById('wl-symbol').value = '';
+        document.getElementById('wl-alias').value = '';
+      }
+      loadWatchlist();
+    });
+  });
+
+  function loadResults() {
+    var q = '?page=1&per_page=20';
+    var run = document.getElementById('f-run').value.trim();
+    var sym = document.getElementById('f-symbol').value.trim();
+    var sig = document.getElementById('f-signal').value;
+    if (run) q += '&run_id=' + encodeURIComponent(run);
+    if (sym) q += '&symbol=' + encodeURIComponent(sym);
+    if (sig) q += '&signal=' + encodeURIComponent(sig);
+    api('/api/batch/results' + q).then(function (p) {
+      var out = document.getElementById('batch-output');
+      if (!p.success) { out.textContent = JSON.stringify(p); return; }
+      var rows = (p.data || []).map(function (it) {
+        return '<tr><td>' + it.run_id + '</td><td>' + it.symbol + '</td><td>' + it.kind + '</td><td>'
+          + (it.signal || '') + '</td><td>' + (it.confidence != null ? it.confidence : '') + '</td><td>'
+          + (it.score != null ? it.score : '') + '</td><td>' + (it.created_at || '') + '</td></tr>';
+      }).join('');
+      out.innerHTML = '<p>' + {{ _('Total')|tojson }} + ': ' + p.total + '</p>'
+        + (rows
+            ? '<table><thead><tr><th>run</th><th>symbol</th><th>kind</th><th>signal</th><th>conf</th>'
+              + '<th>score</th><th>time</th></tr></thead><tbody>' + rows + '</tbody></table>'
+            : '<p>' + {{ _('No results.')|tojson }} + '</p>');
+    });
+  }
+
+  document.getElementById('batch-form').addEventListener('submit', function (event) {
+    event.preventDefault();
+    var out = document.getElementById('batch-output');
+    out.textContent = {{ _('Running...')|tojson }};
+    var symbols = document.getElementById('batch-symbols').value.split(',')
+      .map(function (s) { return s.trim(); }).filter(Boolean);
+    api('/api/batch/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind: document.getElementById('batch-kind').value, symbols: symbols })
+    }).then(function (p) {
+      out.textContent = JSON.stringify(p, null, 2);
+      loadResults();
+    });
+  });
+
+  document.getElementById('filter-form').addEventListener('submit', function (event) {
+    event.preventDefault();
+    loadResults();
+  });
+
+  document.getElementById('btn-export').addEventListener('click', function () {
+    var q = '';
+    var run = document.getElementById('f-run').value.trim();
+    var sym = document.getElementById('f-symbol').value.trim();
+    var sig = document.getElementById('f-signal').value;
+    if (run) q += '&run_id=' + encodeURIComponent(run);
+    if (sym) q += '&symbol=' + encodeURIComponent(sym);
+    if (sig) q += '&signal=' + encodeURIComponent(sig);
+    window.location.href = '/admin/stock-analysis/api/batch/export?' + q.replace(/^&/, '');
+  });
+
+  // ── 数据源环境自检 + 一键安装 akshare（方案B，用户确认后才装）──
+  function loadDeps() {
+    api('/api/deps/status').then(function (p) {
+      var box = document.getElementById('deps-status');
+      var btn = document.getElementById('btn-install-akshare');
+      var ak = p && p.success && p.data && p.data.akshare;
+      if (ak && ak.installed) {
+        box.textContent = 'akshare v' + (ak.version || '?') + ' \u2014 ' + {{ _('Install success')|tojson }};
+        btn.hidden = true;
+      } else {
+        box.textContent = {{ _('akshare not installed')|tojson }};
+        btn.hidden = false;
+      }
+    }).catch(function () {
+      document.getElementById('deps-status').textContent = {{ _('Request failed')|tojson }};
+    });
+  }
+
+  document.getElementById('btn-install-akshare').addEventListener('click', function () {
+    var btn = this;
+    var box = document.getElementById('deps-status');
+    if (!window.confirm({{ _('Install akshare')|tojson }} + '?')) return;
+    btn.disabled = true;
+    box.textContent = {{ _('Installing...')|tojson }};
+    api('/api/deps/install', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dep: 'akshare' })
+    }).then(function (p) {
+      if (p.success) {
+        box.textContent = {{ _('Install success')|tojson }};
+        loadDeps();
+      } else {
+        box.textContent = {{ _('Install failed')|tojson }} + ': ' + (p.error || '');
+      }
+    }).catch(function (e) {
+      box.textContent = {{ _('Install failed')|tojson }} + ': ' + e.message;
+    }).finally(function () { btn.disabled = false; });
+  });
+
+  loadWatchlist();
+  loadDeps();
 }());
 </script>
 </body>

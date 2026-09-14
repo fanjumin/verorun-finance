@@ -337,8 +337,8 @@ def settings_page():
 
 def _load_plugin_config() -> dict:
     """从 plugin_registry 读取 vault 插件配置。"""
-    from plugins._base.db import get_raw_connection
-    conn = get_raw_connection()
+    from plugins._base.db import get_pooled_connection
+    conn = get_pooled_connection()
     cur = conn.cursor()
     cur.execute("SELECT config FROM plugin_registry WHERE identifier = 'vault'")
     row = cur.fetchone()
@@ -351,8 +351,8 @@ def _load_plugin_config() -> dict:
 
 def _save_plugin_config(cfg: dict) -> bool:
     """将配置写入 plugin_registry（存在则更新，不存在则插入）。"""
-    from plugins._base.db import get_raw_connection
-    conn = get_raw_connection()
+    from plugins._base.db import get_pooled_connection
+    conn = get_pooled_connection()
     cur = conn.cursor()
     cur.execute(
         "UPDATE plugin_registry SET config = %s, updated_at = NOW() "
@@ -483,8 +483,8 @@ def api_cleanup_backups():
     try:
         keep_days = 30
         try:
-            from plugins._base.db import get_raw_connection
-            conn = get_raw_connection()
+            from plugins._base.db import get_pooled_connection
+            conn = get_pooled_connection()
             cur = conn.cursor()
             cur.execute("SELECT config FROM plugin_registry WHERE identifier = 'vault'")
             row = cur.fetchone()

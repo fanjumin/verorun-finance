@@ -1,5 +1,9 @@
 # VeroRun Chinese Translation (English key -> Chinese value)
 ---
+'VeroScholar': '引源索骥'
+'VeroScholar Research Workbench': '引源索骥'
+'Literature Search': '文献检索'
+'Review Generator': '综述生成器'
 'app_name': '维洛智能'
 (HTTPS).: （HTTPS）。
 (No input content): （无输入内容）
@@ -138,6 +142,7 @@ Agent has been created: Agent 已创建
 Agent has been deleted: Agent 已删除
 Agent has been updated: Agent 已更新
 Agent name cannot be empty: Agent名称不能为空
+Alias is required: 别名必填
 AliApi data table initialization completed: AliApi 数据表初始化完成
 Alibaba API Management route test completed: 阿里巴巴API管理路由测试完成
 Alibaba AppKey and AppSecret must be configured: 阿里巴巴 AppKey 和 AppSecret 必须配置
@@ -285,6 +290,7 @@ Column Name cannot be empty: 栏目名称不能为空
 Comment cannot exceed 500 characters: 评论不超过500字
 Community: 社区
 Community Content: 社区内容
+'Community skills are temporarily disabled': '社区技能暂时关闭'
 Community Section/System Configuration/Operation Log: 社区板块/系统配置/操作日志
 Company: 公司
 Company Name: 企业名称/Company Name
@@ -596,6 +602,7 @@ Intelligent Agent Trends · Stock Market Research · Hermes Ecosystem: 智能体
 Internal server error: 服务器内部错误
 Internationalization Plan: 国际化方案
 'Invalid JSON. Expected': '无效的 JSON，应为'
+Invalid active value, must be 0 or 1: active 值无效，必须为 0 或 1
 Invalid JSON format returned by AI: AI返回的JSON格式无效
 Invalid Task Type or Missing Parameters: 无法调度的任务类型或缺少参数
 Invalid Token: 无效Token
@@ -743,6 +750,7 @@ Missing product ID: 缺少商品ID
 Missing purchase order ID: 缺少采购单 ID
 Missing required field: 缺少必填字段
 Missing state parameter: 缺少 state 参数
+'Missing system capability: {cap}': '缺少系统能力：{cap}'
 Missing theme.json file: 缺少 theme.json 文件
 Missing user message: 缺少用户消息
 Missing user_id: 缺少 user_id
@@ -793,6 +801,7 @@ New content has been synced with the knowledge base: 知识库已同步新内容
 New content pending review: 有新内容待审核
 New this month: 本月新增
 Nickname: 昵称
+Nickname cannot exceed 30 characters: 昵称不能超过 30 个字符
 Ningbo: 宁波
 Ningbo City: 宁波市
 Ningxia Hui Autonomous Region: 宁夏回族自治区
@@ -810,6 +819,7 @@ Ningxia Hui Autonomous Region: 宁夏回族自治区
 'Automatically Enter the Cognitive Graph': '自动进入认知图谱'
 'Basic Plan': '基础版方案'
 'Browse All': '浏览全部'
+'Changelog': '更新日志'
 'Comment posted successfully': '发布成功'
 'Confirm login on your phone': '在手机上确认登录'
 'Consensus or conflict with other Agents views': '与其他 Agent 的观点共识或冲突'
@@ -943,6 +953,7 @@ Notification: 通知
 Notification completed: 通知完成
 Notification result: 通知结果
 Notification synchronization completed: 通知同步完成
+Notification template does not exist: 通知模板不存在
 Notify administrator: 通知管理员
 Number of Keys: Key数
 Number of blocks: 块数
@@ -1041,6 +1052,7 @@ Picture uploaded successfully: 图片上传成功
 Plan: 方案
 'Plan rejected by user. Discussion ended.': '用户已拒绝方案，讨论结束。'
 Plan Generated: 方案已生成
+Plan/Subscriptions/Orders/Revenue: 套餐/订阅/订单/营收
 Plugin: 插件
 Plugin submission is not open yet: 插件提交功能暂未开放
 'Please enter execution steps as a JSON array.': '请以 JSON 数组格式输入执行步骤。'
@@ -1299,6 +1311,7 @@ Sub-task Summary Title: 子任务简要标题
 Subdomain Does Not Exist: 子域名不存在
 Subdomain and Display Name Cannot Be Empty: 子域名和显示名不能为空
 Submit: 提交
+'Submit Version': '提交版本'
 Submit for Review: 提交审核
 Submitting...: 提交中...
 Subscription reactivated: 订阅已重新激活
@@ -1393,6 +1406,7 @@ This order has not been shipped: 该订单尚未发货
 This payment method is not supported in the current market: 当前市场不支持该支付方式
 This phone number is already bound to another user: 该手机号已被其他用户绑定
 This procurement order has not been placed on 1688 yet: 该采购单尚未在 1688 下单
+'This skill is not supported on the current edition': '当前发行版不支持此技能'
 This year: 本年度
 Three: 三
 Tibet Autonomous Region: 西藏自治区
@@ -1512,6 +1526,9 @@ Verifying identity...: 验证身份中...
 VeroRun Weiluo Intelligence: VeroRun 维洛智能
 VeroRun Email Verification Code: VeroRun 邮箱验证码
 Version: 版本
+'Version History': '版本历史'
+'Version submitted for review': '版本已提交审核'
+'Versions': '版本数'
 Vietnam: 越南
 View: 查看
 View Cart: 查看购物车
@@ -1986,6 +2003,7 @@ stub confirm is disabled outside dev: stub 确认仅限开发模式
 'Basic': '基础版'
 'Basic Q&A': '基础问答'
 'Batch Management + Auto Listing': '批量管理 + 自动上架'
+'Become a Developer': '成为开发者'
 'Become': '成为'
 'Before & After': '改造前后'
 'Belongs To': '属于'
@@ -2097,6 +2115,7 @@ stub confirm is disabled outside dev: stub 确认仅限开发模式
 'Disk:': '磁盘：'
 'Display Name': '显示名称'
 'Display name can be changed in profile settings.': '显示名称可在个人资料设置中修改。'
+'Display name cannot exceed 30 characters': '显示名称不能超过 30 个字符'
 'Display name max 30 chars': '显示名称最多 30 个字符'
 'Display name required': '显示名称必填'
 'District/County': '区/县'
@@ -2138,6 +2157,7 @@ stub confirm is disabled outside dev: stub 确认仅限开发模式
 'Enterprise Verification Failed:': '企业认证失败：'
 'Enterprise Verified': '企业已验证'
 'Enterprises Served': '服务企业数'
+'Estimated Pending Payout': '预估待结算'
 'Expand': '展开'
 'Expired This Month': '本月到期'
 'Expires': '到期时间'
@@ -2336,6 +2356,7 @@ stub confirm is disabled outside dev: stub 确认仅限开发模式
 'Other login methods': '其他登录方式'
 'Our Clients': '我们的客户'
 'Our Story': '我们的故事'
+'Package': '包'
 'Page Not Found': '页面未找到'
 'Paid Users': '付费用户'
 'Parallel Execution + Self-Check': '并行执行 + 自检'
@@ -2354,8 +2375,10 @@ stub confirm is disabled outside dev: stub 确认仅限开发模式
 'Payment creation failed': '创建支付失败'
 'Pending': '待处理'
 'Pending Payment': '待支付'
+'Estimated Pending Payout': '预估待结算'
 'Pending Posts': '待发布'
 'Pending Review': '待审核'
+'Pending Submissions': '待审提交'
 'Pending Tickets': '待处理工单'
 'Perfect on Mobile & Desktop': '手机与电脑端完美适配'
 'Personal Info & Membership': '个人信息与会员'
@@ -2447,6 +2470,8 @@ stub confirm is disabled outside dev: stub 确认仅限开发模式
 'Register on Platform': '在平台注册'
 'Register | Login': '注册 | 登录'
 'Registered': '已注册'
+'Registered. Check your email for the verification link.': '注册成功，请查收邮件中的验证链接。'
+'Email verified! You are now a developer.': '邮箱验证成功，你已成为开发者。'
 'Registered Agents': '已注册 Agent'
 'Registered Users': '注册用户'
 'Registration failed, please retry': '注册失败，请重试'
@@ -2534,7 +2559,9 @@ stub confirm is disabled outside dev: stub 确认仅限开发模式
 'Starting at Pro': '专业版起'
 'Static Page, Cannot Update': '静态页面，无法更新'
 'Subject': '主题'
+'Submit': '提交'
 'Submit Failed': '提交失败'
+'Submitted': '已提交'
 'Submit Ticket': '提交工单'
 'Submit Tickets, Complaints & Suggestions': '提交工单、投诉与建议'
 'Submit Verification': '提交认证'
@@ -2569,6 +2596,7 @@ stub confirm is disabled outside dev: stub 确认仅限开发模式
 'Today Calls': '今日调用'
 'Today Usage': '今日用量'
 'Total API Keys': 'API 密钥总数'
+'Total Installs': '总安装量'
 'Total: ': '总计：'
 'Town/Street': '街道'
 'Transparent': '透明'
@@ -2614,6 +2642,7 @@ stub confirm is disabled outside dev: stub 确认仅限开发模式
 'Verified': '已验证'
 'Verified At': '验证时间'
 'Verify & Enable': '验证并启用'
+'Verify Email': '验证邮箱'
 'Verify Failed': '验证失败'
 'Verify Now': '立即验证'
 'Verifying...': '验证中...'
@@ -2842,6 +2871,7 @@ stub confirm is disabled outside dev: stub 确认仅限开发模式
 'Signed out all other devices': '已退出所有其他设备'
 'Street/road/alley + house number': '街道/路/巷 + 门牌号'
 'The QR code is valid for 5 minutes, resubmit after expiry': '二维码有效期为5分钟，过期需重新提交'
+'Third-party': '第三方'
 'Third-party binding': '第三方绑定'
 'Total:': '共'
 'Unable to get phone number': '无法获取手机号'
@@ -3099,6 +3129,8 @@ Fetching metadata: 正在获取元数据
 Imported: 已导入
 Please enter a GitHub repo URL: 请输入 GitHub 仓库地址
 # P1 订阅中心 UI 键（2026-08-22）
+'My Plugins': '我的插件'
+'My Submissions': '我的提交'
 'My Subscriptions': '我的订阅'
 'Browse': '浏览'
 'Change': '变更'
@@ -3485,7 +3517,11 @@ Please enter a GitHub repo URL: 请输入 GitHub 仓库地址
 'Deactivate license for': '停用许可证'
 'Deactivation failed': '停用失败'
 'Delete plugin from store?': '从商店删除此插件？'
+'Developer Center': '开发者中心'
+'Developer Name': '开发者名称'
+'Developer Registration': '开发者入驻'
 'Developer Reply': '开发者回复'
+'Developer Slug': '开发者标识'
 'Discount applied': '已应用折扣'
 'Discount code': '折扣码'
 'Download URL': '下载地址'
@@ -3515,8 +3551,11 @@ Please enter a GitHub repo URL: 请输入 GitHub 仓库地址
 'Newest': '最新'
 'No licenses activated yet': '尚未激活许可证'
 'No plugins in store': '商店暂无插件'
+'No plugins yet': '暂无插件'
 'No reviews yet': '暂无评论'
+'No submissions yet': '暂无提交记录'
 'No subscriptions': '暂无订阅'
+'No versions yet': '暂无版本'
 'One-time': '一次性'
 'Open in new tab': '在新标签页打开'
 'Official': '官方授权'
@@ -3529,6 +3568,8 @@ Please enter a GitHub repo URL: 请输入 GitHub 仓库地址
 'Please enter your review': '请输入您的评价'
 'Plugin ID': '插件 ID'
 'Plugin ID and License Key required': '需要插件 ID 和许可证密钥'
+'Plugin {slug} license is invalid': '插件 {slug} 许可无效'
+'Plugin {slug} version {version} does not satisfy {spec}': '插件 {slug} 版本 {version} 不满足 {spec}'
 'Plugin Store': '插件商店'
 'Plugin already licensed': '插件已授权'
 'Price Type': '价格类型'
@@ -3908,7 +3949,9 @@ Please enter a GitHub repo URL: 请输入 GitHub 仓库地址
 'Please try again later': '请稍后重试'
 'Search...': '搜索…'
 'Tax ID': '税号'
+'Verification Level': '验证级别'
 'Verification Status': '认证状态'
+'Verification Token': '验证令牌'
 '+ Add': '+ 添加'
 'Chinese': '中文'
 'Delete this translation?': '确定删除这条翻译吗？'
@@ -4050,3 +4093,66 @@ Please enter a GitHub repo URL: 请输入 GitHub 仓库地址
 'Congratulations! Your real name has been verified and your display name has been updated to {name}.': '恭喜您已通过实名认证，显示名已更新为 {name}。'
 'Related claim records will also be cleared.': '相关的领取记录也将一并清除。'
 'Notification content, supports HTML': '通知内容，支持HTML'
+
+# ── Notifications & Rewards admin module UI labels (en key → zh-CN) ──
+'Admin Test': '管理员测试'
+'All Users': '全部用户'
+'Campaign Notice': '活动通知'
+'Completion Reward Rule Management': '完成奖励规则管理'
+'Completion Reward Rules': '完成奖励规则'
+'Confirm Deletion Rule': '确认删除该规则'
+'Content Template': '内容模板'
+'Edit Rule': '编辑规则'
+'Enter a valid user ID': '请输入有效的用户ID'
+'Enter rule name': '请输入规则名称'
+'Event': '事件'
+'Event Notification': '事件通知'
+'Event Type': '事件类型'
+'Event_type, title_template, content_template are required': '事件类型、标题模板、内容模板均为必填项'
+'Failed to Send: ': '发送失败：'
+'Fill in Details': '完善资料'
+'Manual Push': '手动推送'
+'Manual Push Notification': '手动推送通知'
+'Myself Only': '仅自己'
+'New Rule': '新建规则'
+'New Template': '新建模板'
+'No Reward Rules': '暂无奖励规则'
+'Optional, e.g. /user/coupons': '可选，例如 /user/coupons'
+'Phone Verified': '手机已验证'
+'Progress': '进度'
+'Push Template Management': '推送模板管理'
+'Push Templates': '推送模板'
+'Redirect Link': '跳转链接'
+'Redirect Template': '跳转模板'
+'Required fields cannot be empty': '必填字段不能为空'
+'Required plugin {slug} is not enabled (currently {status})': '所需插件 {slug} 未启用（当前 {status}）'
+'Required plugin {slug} is not installed': '所需插件 {slug} 未安装'
+'Required skill {slug} does not exist': '所需技能 {slug} 不存在'
+'Required skill {slug} is unavailable': '所需技能 {slug} 不可用'
+'Reward': '奖励'
+'Reward Name': '奖励名称'
+'Reward Notification': '奖励通知'
+'Reward Type': '奖励类型'
+'Rule Name': '规则名称'
+'Rules': '规则'
+'Select Coupon': '选择优惠券'
+'Select Coupons': '选择优惠券'
+'Send Notification': '发送通知'
+'Send Test': '发送测试'
+'Sent ': '已发送 '
+'Set Avatar': '设置头像'
+'System Notification': '系统通知'
+'Target Users': '目标用户'
+'Test Notification Sent': '测试通知已发送'
+'Title and content are required': '标题和内容为必填项'
+'Total Rules': '规则总数'
+'Total Templates': '模板总数'
+'Trigger Condition': '触发条件'
+'Two Levels': '两级'
+'User-visible Name': '用户可见名称'
+'Verification Reward': '认证奖励'
+'templates': '个模板'
+'Skill available': '技能可用'
+'Skill unavailable': '技能不可用'
+'Skill dependencies': '技能依赖'
+'Requirements not met': '依赖未满足'

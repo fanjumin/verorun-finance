@@ -8,8 +8,10 @@
     ],
     "optional": {}
   },
-  "version": "2.5.3",
+  "version": "2.6.4",
   "description": "Unified Subscription Management — Pay-as-you-go feature marketplace with dual-environment payment routing (cn: Alipay/WeChat, intl: Stripe/PayPal)",
+  "tagline": "统一订阅与按需付费",
+  "tagline_subtitle": "国内支付宝/微信 · 海外 Stripe/PayPal",
   "author": "VeroRun",
   "min_app_version": "0.10.0",
   "agent_role": "finance",

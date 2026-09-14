@@ -67,7 +67,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-cn)}
 <div id="particles-bg"></div>
 {% include '_header.html' ignore missing %}
 {% if preview %}
-<div style="position:fixed;top:0;left:0;right:0;z-index:9999;background:#f0f8ff;border-bottom:2px solid #99c;text-align:center;padding:6px 16px;font-size:13px;color:#446">{{ _('🔍 Preview — Admin Only ·') }}<a href="/shop/{{ pid }}" style="color:#66e">{{ _('View Live Page →') }}</a>
+<div style="position:fixed;top:0;left:0;right:0;z-index:9999;background:#f0f8ff;border-bottom:2px solid #99c;text-align:center;padding:6px 16px;font-size:13px;color:#446">{{ _('🔍 Preview — Admin Only ·') }}<a href="/mall/{{ pid }}" style="color:#66e">{{ _('View Live Page →') }}</a>
 </div>
 {% endif %}
 <div __block_10__="" __block_11__="" class="detail-wrap" style="padding-top:70px">
@@ -82,9 +82,9 @@ var PREVIEW = {{ 'true' if preview else 'false' }};
 var pid = parseInt(location.pathname.split('/').pop());
 
 function loadDetail(){
-  var url = PREVIEW ? '/shop/api/admin/preview/'+pid : '/shop/api/products/'+pid;
+  var url = PREVIEW ? '/mall/api/admin/preview/'+pid : '/mall/api/products/'+pid;
   fetch(url,{headers:T?{"Authorization":"Bearer "+T}:{}}).then(function(r){
-    if(r.status===404){document.getElementById("detailContent").innerHTML='<div class="error-state"><div class="icon">🔍</div><div>{{ _('Product not found or unavailable') }}</div><a href="/shop" style="color:var(--accent);margin-top:12px;display:inline-block">← {{ _('Back to Mall') }}</a></div>';return Promise.reject()}
+    if(r.status===404){document.getElementById("detailContent").innerHTML='<div class="error-state"><div class="icon">🔍</div><div>{{ _('Product not found or unavailable') }}</div><a href="/mall" style="color:var(--accent);margin-top:12px;display:inline-block">← {{ _('Back to Mall') }}</a></div>';return Promise.reject()}
     return r.json()
   }).then(function(d){
     if(!d.success)return;var p=d.data;
@@ -96,12 +96,12 @@ function loadDetail(){
 }
 
 function loadRecommend(pid){
-  fetch("/shop/api/recommend?limit=6&exclude="+pid).then(function(r){return r.json()}).then(function(d){
+  fetch("/mall/api/recommend?limit=6&exclude="+pid).then(function(r){return r.json()}).then(function(d){
     if(!d.success||!d.data||!d.data.length)return;
     var h='<div style="font-size:17px;font-weight:700;margin:0 0 14px">{{ _('You may also like') }}</div>';
     h+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px">';
     d.data.forEach(function(it){
-      h+='<a href="/shop/'+it.id+'" style="background:var(--bg);border:1px solid var(--border);border-radius:12px;overflow:hidden;text-decoration:none;color:inherit;display:block;transition:transform .15s" onmouseover="this.style.transform=\'translateY(-3px)\'" onmouseout="this.style.transform=\'\'">';
+      h+='<a href="/mall/'+it.id+'" style="background:var(--bg);border:1px solid var(--border);border-radius:12px;overflow:hidden;text-decoration:none;color:inherit;display:block;transition:transform .15s" onmouseover="this.style.transform=\'translateY(-3px)\'" onmouseout="this.style.transform=\'\'">';
       h+='<div style="aspect-ratio:1;background:var(--bg) center/cover no-repeat'+(it.thumbnail?";background-image:url('"+it.thumbnail+"')":"")+'"></div>';
       h+='<div style="padding:8px 10px"><div style="font-size:13px;line-height:1.4;min-height:34px">'+esc(it.title)+'</div>';
       h+='<div style="margin-top:6px;color:var(--accent);font-weight:600">¥'+esc(it.price)+'</div></div></a>';
@@ -118,7 +118,7 @@ function applySeo(p){
   var md = document.querySelector('meta[name="description"]');
   if(md) md.content = desc;
   var canon = document.querySelector('link[rel="canonical"]');
-  if(canon && p.id) canon.href = location.origin + '/shop/' + p.id;
+  if(canon && p.id) canon.href = location.origin + '/mall/' + p.id;
   var ogt = document.querySelector('meta[property="og:title"]');
   if(ogt) ogt.content = mt;
   var ogd = document.querySelector('meta[property="og:description"]');
@@ -206,7 +206,7 @@ function renderDetail(p){
 
 var _detailSpecs=[], _detailSkus=[], _detailSelected={};
 function loadSpecsForDetail(pid){
-  fetch("/shop/api/products/"+pid+"/skus",{headers:T?{"Authorization":"Bearer "+T}:{}})
+  fetch("/mall/api/products/"+pid+"/skus",{headers:T?{"Authorization":"Bearer "+T}:{}})
     .then(function(r){return r.json()}).then(function(d){
       if(d.success)_detailSkus=d.data||[];
     });
@@ -253,7 +253,7 @@ function showToast(msg,type){
 function addToCart(id){
   if(!T){showToast("{{ _('Please log in first') }}","error");setTimeout(function(){location.href="/login?redirect="+encodeURIComponent(location.pathname)},500);return}
   var skuId=getSelectedSkuId();
-  fetch("/shop/api/cart/add",{method:"POST",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify({product_id:id,quantity:1,sku_id:skuId})})
+  fetch("/mall/api/cart/add",{method:"POST",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify({product_id:id,quantity:1,sku_id:skuId})})
     .then(function(r){return r.json()}).then(function(d){
       showToast(d.success?"✅ {{ _('Added to cart') }}":(d.error||"{{ _('Failed') }}"),d.success?"success":"error");
     });
@@ -263,7 +263,7 @@ function buyNow(id){
   if(!T){showToast("{{ _('Please log in first') }}","error");setTimeout(function(){location.href="/login?redirect="+encodeURIComponent(location.pathname)},500);return}
   var skuId=getSelectedSkuId();
   var btn=document.querySelector('.btn-primary');if(btn){btn.disabled=true;btn.textContent='{{ _('Creating order...') }}'}
-  fetch("/shop/api/checkout",{method:"POST",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify({items:[{product_id:id,quantity:1,price:0,title:"",sku_id:skuId}]})})
+  fetch("/mall/api/checkout",{method:"POST",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify({items:[{product_id:id,quantity:1,price:0,title:"",sku_id:skuId}]})})
     .then(function(r){
       if(!r.ok){return r.json().then(function(e){throw new Error(e.error||'{{ _('Request failed') }}')});}
       return r.json();
@@ -272,7 +272,7 @@ function buyNow(id){
       if(!d.success){throw new Error(d.error||'{{ _('Order failed') }}');}
       showToast("✅ {{ _('Order created, going to payment...') }}","success");
       var oid=d.data.order_id;
-      location.href="/shop/pay/"+oid;
+      location.href="/mall/pay/"+oid;
     })
     .catch(function(err){
       showToast(err.message||"{{ _('Order failed') }}","error");
@@ -282,11 +282,11 @@ function buyNow(id){
 
 function buyCloud(id){
   if(!T){showToast("{{ _('Please log in first') }}","error");return}
-  fetch("/shop/api/checkout",{method:"POST",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify({items:[{product_id:id,quantity:1}]})})
+  fetch("/mall/api/checkout",{method:"POST",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify({items:[{product_id:id,quantity:1}]})})
     .then(function(r){return r.json()}).then(function(d){
       if(d.success){
         showToast("✅ {{ _('Activation request submitted, will be activated after admin confirmation') }}","success");
-        setTimeout(function(){location.href="/shop/cloud"},1000);
+        setTimeout(function(){location.href="/mall/cloud"},1000);
       }else showToast(d.error||"{{ _('Activation failed') }}","error");
     });
 }

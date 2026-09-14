@@ -15,11 +15,13 @@ D3 决策确认: License 服务端是独立子服务，此处仅实现客户端�
 
 import os
 import json
+import re
 import hashlib
 import hmac
 import base64
 import socket
 import threading
+import traceback
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Tuple
@@ -775,31 +777,6 @@ class LicenseManager:
                 (plugin_id,)
             )
             conn.commit()
-
-
-# ── 开发者入驻占位接口（未来） ──────────────────────────────────────
-
-def submit_plugin(plugin_data: dict) -> dict:
-    """[未来] 开发者提交插件到商店审核（暂未开放，明确拒绝）
-
-    Args:
-        plugin_data: {
-            'identifier': str,       # 唯一标识
-            'name': str,             # 插件名称
-            'version': str,          # 当前版本
-            'description': str,      # 描述
-            'price_type': str,       # 'free' | 'onetime' | 'sub'
-            'price_amount': int,     # 金额（分），免费为 0
-            'price_interval': str,   # 'month' | 'year' (仅 sub)
-            'screenshots': list,     # 截图 URL
-            'readme_url': str,       # 文档 URL
-            'tags': list,            # 标签
-        }
-    Returns:
-        {'success': bool, 'plugin_id': str, 'error': str}
-    """
-    from i18n import _
-    return {'success': False, 'error': _('Plugin submission is not open yet')}
 
 
 # ── 模块级单例 ──────────────────────────────────────────────────────

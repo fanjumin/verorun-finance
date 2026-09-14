@@ -32,13 +32,35 @@ def issue_auth_session(user_id, phone, app_name, is_admin=False, role='user',
     """
     _run_login_precheck(scenario, user_id, phone, app_name, is_admin, role,
                         user_info, device_name, device_type)
+    # 从 admin_profiles 加载权限列表，注入 JWT（供插件级 _require_perm 校验）
+    permissions = _load_user_permissions(user_id)
     token = create_token(user_id, phone=phone, app_name=app_name,
-                         is_admin=is_admin, role=role)
+                         is_admin=is_admin, role=role, permissions=permissions)
     _write_user_session(user_id, token, device_name, device_type)
     return {'blocked': False, 'token': token,
             'user': {'id': user_id, 'phone': phone,
                      'is_admin': bool(is_admin), 'role': role,
+                     'permissions': permissions,
                      **(user_info or {})}}
+
+
+def _load_user_permissions(user_id):
+    """从 admin_profiles 加载用户权限列表（JSON 数组）。
+    非管理员或无 profile 时返回空列表。
+    """
+    import json
+    try:
+        from models import get_db
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT permissions FROM admin_profiles WHERE user_id=%s",
+                (user_id,)
+            ).fetchone()
+        if row and row.get('permissions'):
+            return json.loads(row['permissions'])
+    except Exception:
+        current_app.logger.exception('Failed to load user permissions')
+    return []
 
 
 def _run_login_precheck(scenario, user_id, phone, app_name, is_admin, role,
@@ -89,7 +111,14 @@ def set_sso_cookie(resp, token, app_name='main'):
     收窄到当前（admin 子）域，避免任一子域 XSS 读到管理员令牌。
     """
     main_domain = os.environ.get('DEPLOY_DOMAIN', '')
-    is_https = os.environ.get('DEPLOY_PROTOCOL', 'https') == 'https'
+    # D-11: secure 标记按真实请求协议判定（优先 X-Forwarded-Proto，其次 request.scheme），
+    # 避免纯 HTTP 部署下依赖 env DEPLOY_PROTOCOL 默认 https 导致 Secure cookie 被浏览器丢弃。
+    try:
+        from flask import request
+        proto = (request.headers.get('X-Forwarded-Proto') or request.scheme or '').lower()
+        is_https = proto == 'https'
+    except Exception:
+        is_https = os.environ.get('DEPLOY_PROTOCOL', 'https') == 'https'
     if app_name == 'admin':
         resp.set_cookie('sso_token', token, path='/', max_age=604800,
                         samesite='Lax', secure=is_https, httponly=True)

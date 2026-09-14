@@ -290,7 +290,7 @@ def docs_detail(cat_slug, slug):
 def legal_page(slug):
     """法律合规页面"""
     post = get_post_by_slug(slug)
-    if not post or post.get('audience') != 'public' or post.get('category') != '法律合规':
+    if not post or post.get('audience') != 'public' or post.get('category') not in ('法律合规', 'legal'):
         return render_template('cms_404.html'), 404
     return render_template('docs_detail.html', post=post)
 

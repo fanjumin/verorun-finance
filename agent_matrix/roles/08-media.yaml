@@ -1,0 +1,19 @@
+name: Media
+slug: media
+role_type: sub
+editions:
+  - official
+description: Multimodal media specialist — image understanding (recognition, OCR, diagram analysis) and image generation (text-to-image, covers, illustrations)
+domain: media
+managed_modules:
+  - image
+  - cover
+  - media_library
+provider_model_id: 0
+provider: siliconflow
+model_name: black-forest-labs/FLUX.1-pro
+capabilities:
+  - vision
+  - image
+is_system: true
+is_active: 1

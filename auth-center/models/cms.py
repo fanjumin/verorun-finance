@@ -152,7 +152,9 @@ def get_page_blocks(page: str):
     """Get all published blocks for a page, ordered by position."""
     with get_db() as conn:
         rows = conn.execute(
-            "SELECT * FROM cms_blocks WHERE page=%s AND is_published=1 ORDER BY position",
+            "SELECT * FROM cms_blocks WHERE page=%s AND is_published=1 "
+            "AND (extra_json::jsonb->>'deleted') IS DISTINCT FROM 'true' "
+            "ORDER BY position",
             (page,)
         ).fetchall()
         return [dict(r) for r in rows]

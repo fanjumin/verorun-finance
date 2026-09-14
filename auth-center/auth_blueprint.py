@@ -23,6 +23,10 @@ from routes.admin import admin_bp
 from routes.cms_admin import cms_admin_bp
 from routes.agents import agent_bp
 from routes.sessions import session_bp
+try:
+    from routes.comments import comments_bp
+except ImportError:
+    comments_bp = None
 
 
 def register_auth(app, exclude_blueprints=None):
@@ -33,7 +37,11 @@ def register_auth(app, exclude_blueprints=None):
         print(f'[DB] init_db warning: {e}')
     # Initialize authlib OAuth (via plugin)
     try:
-        from plugins.oauth_config.services.oauth_service import init_oauth
+        from shared.plugin_access import get_attr
+        init_oauth = get_attr('plugins.oauth_config.services.oauth_service', 'init_oauth',
+                              feature='auth_oauth_init')
+        if init_oauth is None:
+            raise RuntimeError('oauth_config plugin is not installed')
         init_oauth(app)
         print('[OAuth] ✅ 插件 OAuth 已初始化')
     except Exception as e:
@@ -45,9 +53,13 @@ def register_auth(app, exclude_blueprints=None):
         ('cms_admin', cms_admin_bp),
         ('agent', agent_bp),
         ('session', session_bp),
+        ('comments', comments_bp),  # D-07: 前台评论提交端点挂载到主站（admin 服务单独已注册）
     ]
     exclude = set(exclude_blueprints or [])
     for name, bp in all_bps:
+        # 防呆：蓝图 import 失败（如 comments_bp 曾缺 import）时跳过 None，避免 register_blueprint(None) 崩溃
+        if bp is None:
+            continue
         if name not in exclude:
             app.register_blueprint(bp)
     # ─── 插件系统由 PluginManager 统一管理 ───

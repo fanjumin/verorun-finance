@@ -6,8 +6,10 @@
     "required": [],
     "optional": {}
   },
-  "version": "1.4.3",
+  "version": "1.5.3",
   "description": "订单通知 — 下单/支付成功/发货/退款时自动发送站内信和邮件通知",
+  "tagline": "订单全流程自动通知",
+  "tagline_subtitle": "下单 · 支付 · 发货 · 退款，站内信与邮件",
   "author": "VeroRun",
   "min_app_version": "0.10.0",
   "agent_role": "finance",
@@ -40,17 +42,18 @@
     "stats": [
       {
         "key": "total_notifications",
-        "title": "通知总数",
+        "title": "Total Notifications",
+        "title_i18n_key": "Total Notifications",
         "type": "counter"
       },
       {
         "key": "today_notifications",
-        "title": "今日通知",
+        "title": "Today Notifications",
+        "title_i18n_key": "Today Notifications",
         "type": "counter"
       }
     ]
   },
-  "menu": null,
   "settings_schema": {
     "type": "object",
     "properties": {}

@@ -1,0 +1,19 @@
+name: Peer Auditor
+slug: peer_auditor
+role_type: sub
+editions:
+  - research-desktop
+description: Peer review specialist — novelty, ethics and rigor audit of drafts, pre-submission checklist
+domain: review
+managed_modules:
+  - veroscholar
+  - memory_engine
+capabilities:
+  - citation.verify
+  - lit.classify
+  - memory.extract
+provider: deepseek
+model_name: deepseek-v4-flash
+system_prompt: prompts/sub_peer_auditor_prompt.md
+is_system: true
+is_active: 1

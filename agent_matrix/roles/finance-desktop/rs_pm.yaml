@@ -1,0 +1,14 @@
+name: 组合经理
+slug: rs_pm
+role_type: sub
+editions:
+  - finance-desktop
+description: 组合收敛 — 仓位建议、相关性、与现有持仓冲突 / Portfolio manager — sizing, correlation, holding conflicts
+domain: research
+managed_modules:
+  - stock_analysis
+provider: deepseek
+model_name: deepseek-v4-flash
+system_prompt: prompts/rs_pm.md
+is_system: true
+is_active: 1

@@ -18,8 +18,11 @@ knowledge_bp = Blueprint('knowledge_admin', __name__, url_prefix='/admin/knowled
 
 
 def _require_admin():
+    # D-21: 与 admin_bp 对齐 —— Bearer header 优先，无则回退 sso_token/tm_token cookie
     auth = request.headers.get('Authorization', '')
     token = auth.replace('Bearer ', '') if auth.startswith('Bearer ') else auth
+    if not token:
+        token = request.cookies.get('sso_token') or request.cookies.get('tm_token') or ''
     if not token:
         return None, (jsonify({'success': False, 'error': _('Please login first')}), 401)
     from services.jwt_service import validate_token

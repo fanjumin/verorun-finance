@@ -6,7 +6,7 @@
     "required": [],
     "optional": {}
   },
-  "version": "1.5.2",
+  "version": "1.6.2",
   "category": "content",
   "tags": [
     "advertising",
@@ -17,6 +17,8 @@
   ],
   "icon": "ads",
   "description": "Ad Management — Ad placements, zones, impressions/clicks stats, and AI-ready APIs",
+  "tagline": "智能广告位管理，曝光点击全洞察",
+  "tagline_subtitle": "多广告位与分区 · 展示与点击统计 · AI 就绪 API",
   "author": "VeroRun",
   "min_app_version": "0.10.0",
   "dependencies": {},

@@ -89,6 +89,12 @@ try:
     app.plugins_dir = os.path.join(_SCRIPT_DIR, 'plugins')
     PluginManager(app)
     print('[PluginManager] ✅ Auth service plugin manager initialized')
+    # 技能注册中心（P0）：可用性求值 + 事件联动（开关关闭则回退旧行为）
+    try:
+        from plugin_manager.skill_registry import init_skill_registry
+        init_skill_registry(app.extensions.get('plugin_manager'))
+    except Exception as e:
+        print(f'[SkillRegistry] ⚠️ auth service init skipped: {e}')
 except Exception as e:
     print(f'[PluginManager] ⚠️ Auth service initialization failed: {e}')
 

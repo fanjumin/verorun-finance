@@ -19,8 +19,6 @@ analytics/models.py — Analytics 数据库 Schema + 完整 CRUD
 from i18n import _
 import os
 import logging
-import psycopg2
-import psycopg2.extras
 import sys
 import json
 import hashlib
@@ -30,64 +28,16 @@ import threading
 from datetime import datetime, timedelta
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'auth-center'))
 from services.deployment_config import deploy
-from plugins._base.db import get_raw_connection
+from plugins._base.db import get_pooled_connection
 from .ua_parser import BOT_PATTERNS  # BOT_PATTERNS 唯一真源（ua_parser.py）
 
 logger = logging.getLogger('analytics.models')
 
 # ─── 数据库（PG schema）─────────────────────────────────────────────────────
 
-# analytics 使用 PG schema analytics，不依赖主库
-_ANALYTICS_DB = None
-
-
-def _to_pg_sql(sql: str) -> str:
-    """将 SQLite 的 ? 占位符转换为 PG 的 %s，跳过字符串/标识符字面量内的 ?"""
-    out = []
-    i = 0
-    n = len(sql)
-    while i < n:
-        ch = sql[i]
-        if ch in ('"', "'"):
-            quote = ch
-            j = i + 1
-            while j < n:
-                if sql[j] == '\\':
-                    j += 2
-                    continue
-                if sql[j] == quote:
-                    j += 1
-                    break
-                j += 1
-            out.append(sql[i:j])
-            i = j
-        elif ch == '?':
-            out.append('%s')
-            i += 1
-        else:
-            out.append(ch)
-            i += 1
-    return ''.join(out)
-
-
-class _PgConnection:
-    """psycopg2 connection adapter with sqlite3-compatible interface."""
-    def __init__(self, conn):
-        self._conn = conn
-    def execute(self, sql, params=None):
-        cur = self._conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        if params is not None:
-            cur.execute(_to_pg_sql(sql), params)
-        else:
-            cur.execute(sql)
-        return cur
-    def commit(self):
-        self._conn.commit()
-    def rollback(self):
-        """公开回滚接口（替代外部直接访问私有 _conn）"""
-        self._conn.rollback()
-    def close(self):
-        self._conn.close()
+# analytics 使用 PG schema analytics，不依赖主库。
+# 统一走 plugins/_base/db.py 的 get_pooled_connection() 共享连接池
+# （_base.PgConnection 已内置 ?→%s 占位符转换与 RealDictCursor）。
 
 
 # ─── Schema ───────────────────────────────────────────────────────────────────
@@ -451,19 +401,18 @@ def set_db_func(func):
     _get_db = func
 
 def get_db():
-    """获取数据库连接（PG schema: analytics）"""
+    """获取数据库连接（PG schema: analytics），走共享连接池。
+
+    优先使用主应用注入的连接函数（set_db_func），否则从共享池借用；
+    调用方用完必须 close()（归还池）。
+    """
     _ensure_schema()
     if _get_db:
         return _get_db()
-    raw = get_raw_connection()
-    raw.autocommit = False
-    with raw.cursor() as cur:  # 上下文管理器自动关闭游标，避免游标泄漏
-        cur.execute("CREATE SCHEMA IF NOT EXISTS analytics")
-    raw.commit()
-    with raw.cursor() as cur:
-        cur.execute("SET search_path TO analytics")
-    raw.commit()
-    return _PgConnection(raw)
+    conn = get_pooled_connection()
+    conn.execute("CREATE SCHEMA IF NOT EXISTS analytics")
+    conn.execute("SET search_path TO analytics")
+    return conn
 
 
 # ─── 初始化 ─────────────────────────────────────────────────────────────────────
@@ -481,15 +430,13 @@ def _load_schema_sql() -> str:
     return SCHEMA_SQL
 
 
-def init_analytics_tables(db_path=None):
+def init_analytics_tables():
     """创建所有分析表（幂等，schema 唯一真源为 migrations/001_initial.sql）
 
     CREATE TABLE IF NOT EXISTS 仅建缺失表；对已存在的旧表追加
     ALTER TABLE ADD COLUMN IF NOT EXISTS 补齐新列（旧 schema 自愈）。
     """
-    global _ANALYTICS_DB, _schema_ready
-    if db_path:
-        _ANALYTICS_DB = db_path
+    global _schema_ready
     conn = get_db()
     sql = _load_schema_sql()
     try:
@@ -504,7 +451,9 @@ def init_analytics_tables(db_path=None):
         conn.rollback()
         _schema_ready = False
         logger.warning('Schema error: %s', e, exc_info=True)
-    conn.commit()
+    finally:
+        conn.commit()
+        conn.close()  # 归还连接池
     logger.info('PG schema analytics initialized (11 tables)')
 
 

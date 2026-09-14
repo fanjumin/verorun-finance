@@ -31,7 +31,6 @@ from .subscription import (
 )
 from .models_store import LicenseRecord, LicenseType, LicenseStatus, StorePlugin, PluginReview
 from .coupons import CouponManager, get_coupon_manager
-from .license import submit_plugin
 
 __all__ = [
     'PluginManager',
@@ -73,7 +72,6 @@ __all__ = [
     'CouponManager',
     'get_coupon_manager',
     'PluginReview',
-    'submit_plugin',
     'init_plugin_registry_table',
     'get_registry_db',
 ]

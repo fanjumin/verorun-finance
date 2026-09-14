@@ -1,0 +1,63 @@
+/* ── 技能审核管理：待审列表 / 通过 / 驳回（P0-1 轻量技能层治理）──
+   独立于 plugins_admin；数据走 /admin/plugins/skills/* API。 */
+window.l_skills_admin=function(){
+  document.getElementById("pt").textContent="{{ _('Skill Review') }}";
+  var mc=document.getElementById("mc");
+  mc.innerHTML='<div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;border-bottom:1px solid var(--bd);padding-bottom:8px">'+
+    '<button class="btn bp" id="skTabPending" onclick="switchSkillTab(\'pending\')">{{ _('Pending') }}</button>'+
+    '<button class="btn bo" id="skTabApproved" onclick="switchSkillTab(\'approved\')">{{ _('Approved') }}</button>'+
+    '<button class="btn bo" id="skTabRejected" onclick="switchSkillTab(\'rejected\')">{{ _('Rejected') }}</button>'+
+    '</div><div id="skillTabContent"></div>';
+  switchSkillTab('pending');
+};
+function switchSkillTab(status){
+  ['pending','approved','rejected'].forEach(function(t){
+    var b=document.getElementById('skTab'+t.charAt(0).toUpperCase()+t.slice(1));
+    if(b){b.className=t===status?'btn bp':'btn bo';}
+  });
+  var content=document.getElementById("skillTabContent");
+  if(!content){return;}
+  content.innerHTML='<div class="lo"><div class="s"></div>{{ _('Loading') }}...</div>';
+  fetch('/admin/plugins/skills/admin?status='+status,{headers:{"Authorization":"Bearer "+T}})
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if(!d.success){content.innerHTML='<div class="em">{{ _('Load failed') }}: '+esc(d.error||'')+'</div>';return;}
+      var skills=d.data||[];
+      if(skills.length===0){content.innerHTML='<div class="empty-state">{{ _('No skills') }}</div>';return;}
+      var h='<div style="display:flex;flex-direction:column;gap:10px">';
+      skills.forEach(function(s){
+        var auditBadge=(s.audit_status==='pass')?'<span class="bdg" style="background:rgba(63,185,80,.15);color:#3fb950">pass</span>':
+                        (s.audit_status==='reject')?'<span class="bdg" style="background:rgba(255,90,90,.15);color:#ff5a5a">reject</span>':
+                        '<span class="bdg" style="background:rgba(219,171,9,.15);color:#dbab09">manual</span>';
+        var note='';
+        try{var parsed=JSON.parse(s.audit_note||'[]');if(parsed.length){note=parsed.join('; ');}}catch(e){note=s.audit_note||'';}
+        h+='<div style="border:1px solid var(--bd);border-radius:8px;padding:14px;background:var(--bg2)">'+
+          '<div style="display:flex;justify-content:space-between;align-items:center">'+
+          '<div><strong>'+esc(s.name)+'</strong> <span style="color:var(--dim);font-size:12px">'+esc(s.identifier)+'</span> '+auditBadge+'</div>'+
+          '<div style="display:flex;gap:8px;align-items:center">'+
+          '<input class="in" id="skNote_'+s.id+'" placeholder="{{ _('note / reason') }}" style="width:180px">'+
+          '<button class="btn bp" onclick="reviewSkill('+s.id+',\'approve\')">{{ _('Approve') }}</button>'+
+          '<button class="btn br" onclick="reviewSkill('+s.id+',\'reject\')">{{ _('Reject') }}</button>'+
+          '</div></div>'+
+          '<div style="color:var(--text-muted);font-size:13px;margin-top:8px">'+esc(s.description||'')+'</div>'+
+          '<div style="color:var(--dim);font-size:12px;margin-top:6px">v'+esc(s.version||'')+' · author #'+esc(s.author_developer_id||0)+' · '+esc(s.created_at||'')+'</div>'+
+          (note?'<div style="color:#b5651d;font-size:12px;margin-top:4px">note: '+esc(note)+'</div>':'')+
+          '</div>';
+      });
+      h+='</div>';
+      content.innerHTML=h;
+    })
+    .catch(function(){content.innerHTML='<div class="em">{{ _('Load failed') }}</div>';});
+}
+function reviewSkill(id,action){
+  var input=document.getElementById('skNote_'+id);
+  var note=input?input.value.trim():'';
+  fetch('/admin/plugins/skills/admin/'+id+'/review',{method:"POST",
+    headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},
+    body:JSON.stringify({action:action,note:note})})
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if(!d.success){alert('{{ _('Failed') }}: '+d.error);return;}
+      switchSkillTab(action==='approve'?'approved':'rejected');
+    });
+}

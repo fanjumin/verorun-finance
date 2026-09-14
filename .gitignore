@@ -2,6 +2,7 @@
 __pycache__/
 *.py[cod]
 *.pyo
+venv/
 *.egg-info/
 dist/
 build/
@@ -124,11 +125,14 @@ node_modules/
 # Temp / sandbox
 tools/
 !veroguard/tools/
+!plugins/hr_recruit/tools/
 site/
 deploy/caddy/
 docs/*
 !docs/i18n-standard.md
 !docs/plugin-manifest.schema.json
+!docs/plugin-standard-v1.7.md
+!docs/stock-desktop-integration-contract.md
 
 # Local deploy diagnostics (not tracked — health scripts are tracked separately)
 deploy/check*.sh
@@ -171,6 +175,40 @@ full_check.txt
 
 # Runtime cache (rebuildable)
 .cache/
+.stock_deps/
+data/cache/
+
+# Pytest runtime cache (rebuildable)
+.pytest_cache/
 
 # Local docs (never commit)
 CONTRIBUTING.md
+TEST_PLAN_*.md
+
+# Local one-off test / diagnostic scripts, temp files & backups (root, never commit)
+/-LLM*.md
+/fetch_server_files.py
+/find_db_cfg.py
+/find_services.py
+/get_login_info.py
+/get_token_fixed*.py
+/inspect_server*.py
+/pv_body*.json
+/run_comprehensive_test.py
+/run_final*.py
+/run_full_test.py
+/server_backup/
+/test_results.json
+/test_ssh_connect.py
+
+# Local-only workflow/report artifacts (excluded from tracking)
+.github/MULTI-MACHINE-WORKFLOW.md
+deploy/VeroRun-Deploy-Report.html
+
+# ── D-06 修复：打包载荷泄漏物（凭据/git 历史/工具态目录），永不入库、永不随包分发 ──
+.openclaw/
+*.bundle
+*cookies*.json
+*.p12
+*.pfx
+.quarantine-*/

@@ -9,8 +9,10 @@
     ],
     "optional": {}
   },
-  "version": "1.3.2",
+  "version": "1.4.2",
   "description": "Slider Captcha — Puzzle generation + behavior analysis + rate limiting",
+  "tagline": "滑块验证码与行为风控",
+  "tagline_subtitle": "拼图生成 · 行为分析 · 限流防刷",
   "author": "VeroRun",
   "min_app_version": "0.10.0",
   "agent_role": "ops",
@@ -47,16 +49,19 @@
       {
         "key": "total_requests",
         "title": "Total Requests",
+        "title_i18n_key": "Total Requests",
         "type": "counter"
       },
       {
         "key": "pass_rate",
         "title": "Pass Rate",
+        "title_i18n_key": "Pass Rate",
         "type": "gauge"
       },
       {
         "key": "last_hour",
         "title": "Requests Last Hour",
+        "title_i18n_key": "Requests Last Hour",
         "type": "gauge"
       }
     ]
@@ -65,7 +70,8 @@
     "group": "Security & Compliance",
     "key": "captcha_stats",
     "icon": "keys",
-    "label": "Captcha Stats"
+    "label": "Captcha Stats",
+    "label_i18n_key": "Captcha Stats"
   },
   "admin_url": "",
   "settings_schema": {

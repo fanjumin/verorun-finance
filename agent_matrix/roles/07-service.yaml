@@ -1,6 +1,8 @@
 name: Service
 slug: service
 role_type: sub
+editions:
+  - official
 description: Customer service — FAQ, tickets, user guidance, notifications, communication channels, verification
 domain: service
 managed_modules:

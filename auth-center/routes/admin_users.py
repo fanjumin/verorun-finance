@@ -95,10 +95,15 @@ def user_status(uid):
     if err:
         return err
     data = request.get_json(force=True) or {}
-    active = data.get('active', 1)
+    # D-17: 严格入参 —— 必须显式携带 active，且取值合法（0/1/true/false），非法/缺失一律 400，
+    # 防止未知字段被静默忽略后按默认值 active=1 假成功
+    active = data.get('active')
+    if active is None or not isinstance(active, (bool, int)) or str(active) not in ('0', '1', 'True', 'False'):
+        return jsonify({'success': False, 'error': _('Invalid active value, must be 0 or 1')}), 400
+    active = 1 if active and str(active) != '0' else 0
     try:
         with get_db() as conn:
-            conn.execute('UPDATE users SET active=%s WHERE id=%s', (1 if active else 0, uid))
+            conn.execute('UPDATE users SET active=%s WHERE id=%s', (active, uid))
             conn.commit()
     except Exception as e:
         return jsonify({'success': False, 'error': _('Update failed')}), 500
@@ -114,7 +119,7 @@ def admin_verify_user(uid):
     data = request.get_json(force=True) or {}
     real_name = (data.get('real_name') or '').strip()
     if not real_name:
-        return jsonify({'success': False, 'error': _('Name cannot be empty"')}), 400
+        return jsonify({'success': False, 'error': _('Name cannot be empty')}), 400
     with get_db() as conn:
         user = conn.execute('SELECT id, is_real_name_verified FROM users WHERE id=%s', (uid,)).fetchone()
         if not user:
@@ -780,7 +785,7 @@ def default_avatars_list():
 ALL_PERMISSIONS = [
     {'key': 'users', 'label': _('User Management'), 'desc': _('View/Manage Regular Users')},
     {'key': 'content', 'label': _('Content Management'), 'desc': _('CMS/Community Content/Comment Review')},
-    {'key': 'finance', 'label': _('Financial Management'), 'desc': _('Plan/Subscriptions/Orders/Revenue"')},
+    {'key': 'finance', 'label': _('Financial Management'), 'desc': _('Plan/Subscriptions/Orders/Revenue')},
     {'key': 'system', 'label': _('System Settings'), 'desc': _('Community Section/System Configuration/Operation Log')},
     {'key': 'matrix', 'label': _('Agent Matrix'), 'desc': _('Manage Agent Matrix/Automatic Scheduling')},
     {'key': 'admins', 'label': _('Administrator Management'), 'desc': _('Manage Other Administrators (Only super_admin)')},
@@ -789,36 +794,29 @@ ALL_PERMISSIONS = [
 @admin_bp.route('/admins/permissions-list', methods=['GET'])
 def admin_permissions_list():
     """返回所有可用的权限定义（给前端勾选用）"""
+    admin, err = _require_admin()
+    if err:
+        return err
+    return jsonify({'success': True, 'data': ALL_PERMISSIONS})
+
+
 # RBAC: Permission-based middleware
 # =============================================
 
 def _require_permission(perm):
     """Verify the admin has a specific permission.
-       Usage: wrap around route logic after _require_admin().
+       Usage: decorate a route function; super_admin auto-passes.
     """
     def decorator(f):
         import functools
         @functools.wraps(f)
         def wrapper(*args, **kwargs):
-            admin, err = _require_admin()
+            admin, err = _require_admin(perm)
             if err:
                 return err
-            with get_db() as conn:
-                prof = conn.execute(
-                    'SELECT permissions, role FROM admin_profiles WHERE user_id=%s',
-                    (admin['user_id'],)
-                ).fetchone()
-            if not prof:
-                return jsonify({'success': False, 'error': _('Administrator configuration does not exist')}), 403
-            if prof['role'] == 'super_admin':
-                # super_admin has all permissions
-                return f(*args, **kwargs)
-            try:
-                perms = __import__('json').loads(prof['permissions'] or '[]')
-            except Exception:
-                perms = []
-            if perm not in perms:
-                return jsonify({'success': False, 'error': f'No "{perm}" permission'}), 403
+            return f(*args, **kwargs)
+        return wrapper
+    return decorator
 # User Agent Management (admin)
 # =============================================
 
@@ -1029,7 +1027,7 @@ def user_export():
     from flask import Response
     return Response(
         csv_content,
-        mimetype='text/csv; charset=utf-8',
+        mimetype='text/csv',
         headers={'Content-Disposition': 'attachment; filename=users_export.csv'}
     )
 # ── 客户管理 (Customer Management) ──

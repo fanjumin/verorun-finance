@@ -1,8 +1,8 @@
-// SMS Management — 短信插件管理面板
+// SMS Management — SMS plugin admin panel
 // 无 <script> 标签，遵循插件模板铁律 §12.11
 
 window.l_sms = function(){
-  document.getElementById("pt").textContent = "{{ _('sms_management') }}";
+  document.getElementById("pt").textContent = "{{ _('SMS Management') }}";
   var h='<div class="cd"><div id="sms-content"></div></div>';
   document.getElementById("mc").innerHTML = h;
   loadSmsMain();
@@ -11,21 +11,21 @@ window.l_sms = function(){
 function loadSmsMain(){
   var ct = document.getElementById("sms-content");
   ct.innerHTML = '<div class="cd" style="margin-bottom:12px">'+
-    '<div class="st">{{ _('sms_config') }}</div>'+
+    '<div class="st">{{ _('SMS Configuration') }}</div>'+
     '<div id="sms-config-form"></div>'+
     '</div>'+
-    '<div class="cd"><div class="st">{{ _('sms_templates') }}</div>'+
+    '<div class="cd"><div class="st">{{ _('SMS Templates') }}</div>'+
     '<div id="sms-templates-content"></div></div>'+
-    '<div class="cd" style="margin-top:12px"><div class="st">{{ _('test_send') }}</div>'+
+    '<div class="cd" style="margin-top:12px"><div class="st">{{ _('Test Send') }}</div>'+
     '<div class="g2" style="margin-top:8px">'+
-      '<div><div style="font-size:11px;color:var(--dim)">{{ _('country_region') }}</div>'+
+      '<div><div style="font-size:11px;color:var(--dim)">{{ _('Country / Region') }}</div>'+
         '<select class="sl" id="smsCountry" style="width:100%"></select></div>'+
-      '<div><div style="font-size:11px;color:var(--dim)">{{ _('phone') }}</div>'+
+      '<div><div style="font-size:11px;color:var(--dim)">{{ _('Phone') }}</div>'+
         '<input class="in" id="smsTestPhone" style="width:100%"></div>'+
-      '<div><div style="font-size:11px;color:var(--dim)">{{ _('test_code') }}</div>'+
+      '<div><div style="font-size:11px;color:var(--dim)">{{ _('Verification Code') }}</div>'+
         '<input class="in" id="smsTestCode" value="123456" style="width:100%"></div>'+
     '</div>'+
-    '<div style="margin-top:8px"><button class="btn bp" onclick="smsTestSend()">{{ _('send') }}</button> <span id="smsTestResult" style="margin-left:8px;font-size:12px"></span></div>'+
+    '<div style="margin-top:8px"><button class="btn bp" onclick="smsTestSend()">{{ _('Send') }}</button> <span id="smsTestResult" style="margin-left:8px;font-size:12px"></span></div>'+
     '</div>';
 
   loadSmsConfigForm();
@@ -50,7 +50,7 @@ function loadSmsConfigForm(){
       }else{
         h+='<input class="in" id="cf-'+k.key+'" value="'+safeVal+'" placeholder="'+ph+'" style="width:200px">';
       }
-      h+='<button class="btn bp bs" onclick="scfg(\''+k.key+'\')">{{ _('save') }}</button></div>';
+      h+='<button class="btn bp bs" onclick="scfg(\''+k.key+'\')">{{ _('Save') }}</button></div>';
     });
     document.getElementById("sms-config-form").innerHTML = h||'<div class="em">{{ _('No Config') }}</div>';
   }).catch(function(){});
@@ -58,18 +58,18 @@ function loadSmsConfigForm(){
 
 function loadSmsTemplates(){
   var ct = document.getElementById("sms-templates-content");
-  ct.innerHTML = '<div style="text-align:center;padding:12px;color:var(--dim)"><div class="s" style="display:inline-block"></div>{{ _('loading') }}...</div>';
+  ct.innerHTML = '<div style="text-align:center;padding:12px;color:var(--dim)"><div class="s" style="display:inline-block"></div>{{ _('Loading') }}...</div>';
   fetch("/admin/sms/templates", {headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
-    if(!d.success){ct.innerHTML='<div class="em">{{ _('load_failed') }}</div>';return}
-    var h='<div style="margin-bottom:12px"><button class="btn bp" onclick="showSmsForm()">+ {{ _('add_template') }}</button></div>';
-    h+='<div id="smsForm" style="display:none;margin-bottom:16px" class="cd"><div class="st" id="smsFormTitle">{{ _('add_template') }}</div>';
+    if(!d.success){ct.innerHTML='<div class="em">{{ _('Load Failed') }}</div>';return}
+    var h='<div style="margin-bottom:12px"><button class="btn bp" onclick="showSmsForm()">+ {{ _('Add Template') }}</button></div>';
+    h+='<div id="smsForm" style="display:none;margin-bottom:16px" class="cd"><div class="st" id="smsFormTitle">{{ _('Add Template') }}</div>';
     h+='<div class="g2">';
-    h+='<div><div style="font-size:11px;color:var(--dim)">{{ _('categories') }}</div><select class="sl" id="smsCat" style="width:100%"><option value="captcha">{{ _('verification_code') }}</option><option value="notice">{{ _('sms_notification') }}</option><option value="promo">{{ _('sms_promotion') }}</option></select></div>';
-    h+='<div><div style="font-size:11px;color:var(--dim)">{{ _('name') }}</div><input class="in" id="smsName" style="width:100%"></div>';
-    h+='<div><div style="font-size:11px;color:var(--dim)">{{ _('template_code') }}</div><input class="in" id="smsCode" placeholder="SMS_xxxxxxxxx" style="width:100%"></div>';
-    h+='<div><div style="font-size:11px;color:var(--dim)">{{ _('notes') }}</div><input class="in" id="smsNote" style="width:100%"></div>';
+    h+='<div><div style="font-size:11px;color:var(--dim)">{{ _('Categories') }}</div><select class="sl" id="smsCat" style="width:100%"><option value="captcha">{{ _('Verification Code') }}</option><option value="notice">{{ _('SMS Notification') }}</option><option value="promo">{{ _('SMS Promotion') }}</option></select></div>';
+    h+='<div><div style="font-size:11px;color:var(--dim)">{{ _('Name') }}</div><input class="in" id="smsName" style="width:100%"></div>';
+    h+='<div><div style="font-size:11px;color:var(--dim)">{{ _('Template Code') }}</div><input class="in" id="smsCode" placeholder="SMS_xxxxxxxxx" style="width:100%"></div>';
+    h+='<div><div style="font-size:11px;color:var(--dim)">{{ _('Notes') }}</div><input class="in" id="smsNote" style="width:100%"></div>';
     h+='</div>';
-    h+='<div style="margin-top:10px"><button class="btn bp" onclick="saveSmsTemplate()">{{ _('save') }}</button> <button class="btn bo" onclick="document.getElementById(\'smsForm\').style.display=\'none\'">{{ _('cancel') }}</button><input type="hidden" id="smsEditId" value=""></div></div>';
+    h+='<div style="margin-top:10px"><button class="btn bp" onclick="saveSmsTemplate()">{{ _('Save') }}</button> <button class="btn bo" onclick="document.getElementById(\'smsForm\').style.display=\'none\'">{{ _('Cancel') }}</button><input type="hidden" id="smsEditId" value=""></div></div>';
 
     var cats = d.data.categories;
     var order = ["captcha","notice","promo"];
@@ -77,21 +77,21 @@ function loadSmsTemplates(){
     order.forEach(function(k){
       var c = cats[k];
       if(!c||!c.items||!c.items.length) return;
-      h+='<div class="cd" style="margin-bottom:12px"><div class="st">'+c.title+' ('+c.items.length+')</div><table><tr><th>{{ _('name') }}</th><th>{{ _('template_code') }}</th><th>{{ _('notes') }}</th><th>{{ _('actions') }}</th></tr>';
+      h+='<div class="cd" style="margin-bottom:12px"><div class="st">'+c.title+' ('+c.items.length+')</div><table><tr><th>{{ _('Name') }}</th><th>{{ _('Template Code') }}</th><th>{{ _('Notes') }}</th><th>{{ _('Actions') }}</th></tr>';
       c.items.forEach(function(t){
         h+='<tr><td>'+esc(t.name)+'</td><td style="font-family:monospace;color:var(--accent)">'+esc(t.template_code)+'</td><td style="color:var(--dim)">'+esc(t.note)+'</td>';
-        h+='<td><button class="btn bo bs" onclick="editSmsTemplate('+t.id+',\''+t.category+'\',\''+esc(t.name)+'\',\''+esc(t.template_code)+'\',\''+esc(t.note)+'\')">{{ _('edit') }}</button> ';
-        h+='<button class="btn bo bs" onclick="deleteSmsTemplate('+t.id+')">{{ _('delete') }}</button></td></tr>';
+        h+='<td><button class="btn bo bs" onclick="editSmsTemplate('+t.id+',\''+t.category+'\',\''+esc(t.name)+'\',\''+esc(t.template_code)+'\',\''+esc(t.note)+'\')">{{ _('Edit') }}</button> ';
+        h+='<button class="btn bo bs" onclick="deleteSmsTemplate('+t.id+')">{{ _('Delete') }}</button></td></tr>';
       });
       h+='</table></div>';
     });
     h+='</div>';
     ct.innerHTML = h;
-  }).catch(function(){ct.innerHTML='<div class="em">{{ _('load_failed') }}</div>'});
+  }).catch(function(){ct.innerHTML='<div class="em">{{ _('Load Failed') }}</div>'});
 }
 
 function showSmsForm(){
-  document.getElementById("smsFormTitle").textContent = "{{ _('add_template') }}";
+  document.getElementById("smsFormTitle").textContent = "{{ _('Add Template') }}";
   document.getElementById("smsEditId").value = "";
   document.getElementById("smsCat").value = "captcha";
   document.getElementById("smsName").value = "";
@@ -108,18 +108,18 @@ function saveSmsTemplate(){
     template_code: document.getElementById("smsCode").value.trim(),
     note: document.getElementById("smsNote").value.trim()
   };
-  if(!data.name||!data.template_code){showToast("{{ _('Name and Template Code required') }}","error");return}
+  if(!data.name||!data.template_code){showToast("{{ _('Name and Template Code are required') }}","error");return}
   var url = editId ? "/admin/sms/templates/"+editId : "/admin/sms/templates";
   var method = editId ? "PUT" : "POST";
   fetch(url, {method:method, headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"}, body:JSON.stringify(data)})
   .then(function(r){return r.json()}).then(function(d){
-    if(d.success){showToast("{{ _('save_success') }}");document.getElementById("smsForm").style.display="none";loadSmsTemplates()}
-    else{showToast(d.error||"{{ _('save_failed') }}","error")}
+    if(d.success){showToast("{{ _('Saved Successfully') }}");document.getElementById("smsForm").style.display="none";loadSmsTemplates()}
+    else{showToast(d.error||"{{ _('Save Failed') }}","error")}
   }).catch(function(){showToast("{{ _('Request Failed') }}","error")});
 }
 
 function editSmsTemplate(id,cat,name,code,note){
-  document.getElementById("smsFormTitle").textContent = "{{ _('edit_template') }}";
+  document.getElementById("smsFormTitle").textContent = "{{ _('Edit Template') }}";
   document.getElementById("smsEditId").value = id;
   document.getElementById("smsCat").value = cat;
   document.getElementById("smsName").value = name;
@@ -129,11 +129,11 @@ function editSmsTemplate(id,cat,name,code,note){
 }
 
 function deleteSmsTemplate(id){
-  if(!confirm("{{ _('confirm_delete') }}?")) return;
+  if(!confirm("{{ _('Confirm Delete') }}?")) return;
   fetch("/admin/sms/templates/"+id, {method:"DELETE", headers:{"Authorization":"Bearer "+T}})
   .then(function(r){return r.json()}).then(function(d){
-    if(d.success){showToast("{{ _('delete_success') }}");loadSmsTemplates()}
-    else{showToast(d.error||"{{ _('delete_failed') }}","error")}
+    if(d.success){showToast("{{ _('Deleted Successfully') }}");loadSmsTemplates()}
+    else{showToast(d.error||"{{ _('Delete Failed') }}","error")}
   }).catch(function(){showToast("{{ _('Request Failed') }}","error")});
 }
 
@@ -142,10 +142,11 @@ function loadSmsCountries(){
     if(!d.success) return;
     var sel = document.getElementById("smsCountry");
     if(!sel) return;
+    var isZh = "{{ lang }}".indexOf('zh')===0;
     var h = '';
     d.data.forEach(function(c){
       var selected = c.dial=="+86" ? " selected" : "";
-      h += '<option value="'+c.dial+'"'+selected+'>'+c.flag+' '+c.dial+' '+c.name_en+'</option>';
+      h += '<option value="'+c.dial+'"'+selected+'>'+c.flag+' '+c.dial+' '+(isZh ? (c.name_zh||c.name_en) : c.name_en)+'</option>';
     });
     sel.innerHTML = h;
   }).catch(function(){});
@@ -156,11 +157,11 @@ function smsTestSend(){
   var phone = document.getElementById("smsTestPhone").value.trim();
   var code = document.getElementById("smsTestCode").value.trim();
   var resultEl = document.getElementById("smsTestResult");
-  if(!phone){ resultEl.textContent="{{ _('phone_required') }}"; return; }
-  resultEl.textContent="{{ _('sending') }}...";
+  if(!phone){ resultEl.textContent="{{ _('Phone number required') }}"; return; }
+  resultEl.textContent="{{ _('Sending...') }}...";
   fetch("/admin/sms/test-send", {method:"POST", headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"}, body:JSON.stringify({phone:phone, code:code, country_code:dial})})
   .then(function(r){return r.json()}).then(function(d){
-    if(d.success){ resultEl.innerHTML='<span style="color:var(--success)">{{ _('send_success') }}</span>'; }
+    if(d.success){ resultEl.innerHTML='<span style="color:var(--success)">{{ _('Sent Successfully') }}</span>'; }
     else{ resultEl.innerHTML='<span style="color:var(--danger)">'+(d.error||"{{ _('Send Failed') }}")+'</span>'; }
   }).catch(function(){ resultEl.innerHTML='<span style="color:var(--danger)">{{ _('Request Failed') }}</span>'; });
 }

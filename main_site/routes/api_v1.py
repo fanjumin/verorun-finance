@@ -14,11 +14,8 @@ from i18n import _
 # 创建蓝图
 api_v1_bp = Blueprint('api_v1', __name__, url_prefix='/api/v1')
 
-def api_ok(data=None):
-    return jsonify({'success': True, 'data': data})
-
-def api_err(msg, code=400):
-    return jsonify({'success': False, 'error': msg}), code
+# 统一响应契约（shared.http）：信封结构保持兼容，新增 code 业务码字段
+from shared.http import api_ok, api_err
 
 def get_current_user_id(token):
     """验证token并返回用户ID"""
@@ -352,7 +349,11 @@ def _get_chatbot_config():
         'float_button_text': ''
     }
     try:
-        from plugins.chatbot.models import get_all_configs
+        from shared.plugin_access import get_attr
+        get_all_configs = get_attr('plugins.chatbot.models', 'get_all_configs',
+                                   feature='chatbot_config')
+        if get_all_configs is None:
+            return defaults
         db_cfg = get_all_configs('chatbot')
         merged = {**defaults, **db_cfg}
         return merged
@@ -365,7 +366,10 @@ def _get_chatbot_config():
 def _get_chatbot_agent(agent_id):
     """从 chatbot 独立库 agent_registry 表读取绑定的 Agent 配置。"""
     try:
-        from plugins.chatbot.models import get_agent
+        from shared.plugin_access import get_attr
+        get_agent = get_attr('plugins.chatbot.models', 'get_agent', feature='chatbot_agent')
+        if get_agent is None:
+            return None
         return get_agent(agent_id)
     except Exception as e:
         import logging
@@ -402,6 +406,146 @@ def _route_agent_by_intent(intent):
         return None
 
 
+# ═══════════════════════════════════════════════════════════════
+# 统一引擎桥接（审计 P0-3 / B3-A）：主站对话改走 plugins.chatbot.service
+# - 服务端多轮：以 _visitor_id() 为归属键，service.answer 会复用同一会话
+# - 确定性转人工 / 统一 RAG / CSAT 归属（P1-4）均落在 plugin 侧
+# - 仅新增并行端点，不动 /api/v1/chat（douyin/tiktok 仍消费旧端点）
+# ═══════════════════════════════════════════════════════════════
+def _visitor_id():
+    """稳定的匿名访客标识（IP+UA 哈希），供统一引擎会话归属与 CSAT 归属用。"""
+    import hashlib
+    ip = request.remote_addr or 'unknown'
+    ua = request.headers.get('User-Agent', '')
+    return 'mfp_' + hashlib.sha1((ip + '|' + ua).encode('utf-8')).hexdigest()[:12]
+
+
+def _chatbot_service_ready():
+    from shared.plugin_access import get_attr
+    return get_attr('plugins.chatbot.service', 'answer',
+                    feature='main_site_chat') is not None
+
+
+def _advisor_sse_stream(message, visitor):
+    """把 service.answer 的流式回调实时转到既有 UI 的 SSE 契约（token/done/error/escalated）。
+
+    用 worker 线程跑同步的 answer()，主线程从队列中逐 token 产出，保证真流式。
+    """
+    import json as _json
+    from queue import Queue, Empty
+    q = Queue()
+    ctrl = {}
+    STOP = 'STOP'
+
+    def on_token(tok):
+        q.put({'type': 'token', 'content': tok})
+
+    def _run():
+        try:
+            from shared.plugin_access import get_attr
+            answer = get_attr('plugins.chatbot.service', 'answer',
+                              feature='main_site_chat')
+            ctrl['res'] = answer(message, channel='web', visitor_id=visitor,
+                                 on_token=on_token)
+        except Exception as e:  # noqa: BLE001 — 桥接层吞错并转成 SSE error
+            ctrl['err'] = str(e)
+        finally:
+            q.put(STOP)
+
+    threading.Thread(target=_run, daemon=True).start()
+    yield 'data: {"role":"assistant"}\n\n'
+    while True:
+        try:
+            ev = q.get(timeout=120)
+        except Empty:
+            yield 'data: {"type":"error","content":"AI request timeout"}\n\n'
+            yield 'data: [DONE]\n\n'
+            return
+        if ev is STOP:
+            break
+        yield 'data: ' + _json.dumps(ev, ensure_ascii=False) + '\n\n'
+    if ctrl.get('err') or not ctrl.get('res', {}).get('ok'):
+        yield 'data: ' + _json.dumps(
+            {'type': 'error',
+             'content': (ctrl.get('res') or {}).get('error') or 'AI request failed'},
+            ensure_ascii=False) + '\n\n'
+        yield 'data: [DONE]\n\n'
+        return
+    res = ctrl['res']
+    if res.get('handoff'):
+        yield 'data: ' + _json.dumps(
+            {'type': 'escalated', 'ticket_id': res.get('ticket_id'),
+             'message': res.get('handoff_reason') or ''},
+            ensure_ascii=False) + '\n\n'
+    yield 'data: ' + _json.dumps(
+        {'type': 'done', 'reply': res.get('reply') or '',
+         'session_id': res.get('thread_id') or '',
+         'handoff': bool(res.get('handoff')),
+         'references': res.get('references') or []},
+        ensure_ascii=False) + '\n\n'
+    yield 'data: [DONE]\n\n'
+
+
+@api_v1_bp.route('/chat/advisor', methods=['POST'])
+def advisor_chat():
+    """主站统一引擎流式对话（免登录，服务端多轮）。"""
+    cfg = _get_chatbot_config()
+    if cfg.get('enabled') == '0':
+        def _disabled():
+            yield 'data: {"type":"error","content":"AI Advisor is currently disabled"}\n\n'
+            yield 'data: [DONE]\n\n'
+        return Response(stream_with_context(_disabled()),
+                        mimetype='text/event-stream',
+                        headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
+    data = request.get_json() or {}
+    message = (data.get('message') or '').strip()
+    if not message and data.get('messages'):
+        for m in reversed(data['messages']):
+            if isinstance(m, dict) and m.get('role') == 'user' and m.get('content'):
+                message = str(m['content']).strip()
+                break
+    if not message:
+        return api_err('message is required', 400)
+    if not _chatbot_service_ready():
+        def _unavail():
+            yield 'data: {"type":"error","content":"AI Advisor is not available"}\n\n'
+            yield 'data: [DONE]\n\n'
+        return Response(stream_with_context(_unavail()),
+                        mimetype='text/event-stream',
+                        headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
+    return Response(stream_with_context(_advisor_sse_stream(message, _visitor_id())),
+                    mimetype='text/event-stream',
+                    headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
+
+
+@api_v1_bp.route('/chat/csat', methods=['POST'])
+def advisor_csat():
+    """主站统一引擎满意度评分：先服务端归属校验（P1-4），再写 plugin 会话。"""
+    data = request.get_json() or {}
+    thread_id = str(data.get('thread_id') or '')
+    try:
+        score = int(data.get('score'))
+    except (TypeError, ValueError):
+        return api_err('invalid score', 400)
+    if not thread_id or score < 1 or score > 5:
+        return api_err('invalid thread_id or score', 400)
+    from shared.plugin_access import get_attr
+    owned = get_attr('plugins.chatbot.threads', 'thread_owned',
+                     feature='main_site_csat')
+    record = get_attr('plugins.chatbot.threads', 'record_csat',
+                      feature='main_site_csat')
+    if owned is None or record is None:
+        return api_err('chatbot unavailable', 503)
+    visitor = _visitor_id()
+    if not owned(thread_id, visitor):
+        return api_err('unknown thread_id', 404)
+    try:
+        ok = record(thread_id, score)
+    except Exception as e:  # noqa: BLE001
+        return api_err(str(e), 500)
+    return api_ok({'thread_id': thread_id, 'score': score, 'recorded': bool(ok)})
+
+
 @api_v1_bp.route('/chat', methods=['POST'])
 def chat_stream():
     """流式AI对话接口（免登录）"""
@@ -429,6 +573,12 @@ def chat_stream():
 
     if not messages:
         return api_err('messages是必需的', 400)
+
+    # 提取用户首条消息作为 user_query（供意图分类/会话落库/会话ID使用）
+    user_query = next(
+        (m.get('content', '') for m in messages
+         if isinstance(m, dict) and m.get('role') in ('user',) and m.get('content')),
+        '')
 
     def generate():
         import logging
@@ -515,6 +665,7 @@ def chat_stream():
 
             engine = UnifiedLLM(config)
             full_reply = ''
+            retrieved_knowledge = []  # 本接口未做 RAG 检索；保持空列表（修复未定义引用）
 
             def _sse_event(event_type, **kwargs):
                 """SSE data line with proper JSON encoding to prevent XSS/protocol injection."""
@@ -536,7 +687,13 @@ def chat_stream():
             cleaned_reply = full_reply
             was_escalated = False
             try:
-                from plugins.chatbot.routes import parse_escalation_from_reply, create_ticket_from_chat
+                from shared.plugin_access import get_attr
+                parse_escalation_from_reply = get_attr('plugins.chatbot.routes', 'parse_escalation_from_reply',
+                                                       feature='chatbot_escalation')
+                create_ticket_from_chat = get_attr('plugins.chatbot.routes', 'create_ticket_from_chat',
+                                                   feature='chatbot_escalation')
+                if parse_escalation_from_reply is None or create_ticket_from_chat is None:
+                    raise RuntimeError('chatbot plugin is not installed')
                 cleaned_reply, ticket_data = parse_escalation_from_reply(full_reply)
                 if ticket_data and cfg.get('auto_escalate', '1') != '0':
                     was_escalated = True
@@ -563,8 +720,11 @@ def chat_stream():
                     session_id = hashlib.md5(
                         (user_query + str(datetime.now().timestamp())).encode()
                     ).hexdigest()[:16]
-                sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'plugins', 'chatbot'))
-                from stats import log_session
+                from shared.plugin_access import get_attr
+                log_session = get_attr('plugins.chatbot.stats', 'log_session',
+                                       feature='chatbot_log_session')
+                if log_session is None:
+                    raise RuntimeError('chatbot plugin is not installed')
                 log_session(session_id, user_query=user_query,
                             ai_reply=cleaned_reply, escalated=was_escalated,
                             intent=route_intent, sentiment=route_sentiment)
@@ -1185,8 +1345,9 @@ def save_feedback():
                 openid or '',  # contact (使用 openid)
                 'pending'
             ))
+            row = db.fetchone()
             db.commit()
-            feedback_id = _cur.fetchone()['id']
+            feedback_id = row['id'] if row else None
             return api_ok({'feedbackId': feedback_id, 'message': '反馈已保存'})
     except Exception as e:
         import logging

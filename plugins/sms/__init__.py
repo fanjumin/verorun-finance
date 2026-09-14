@@ -38,15 +38,19 @@ class SmsPlugin(BasePlugin):
         return self._config.get(key, default)
 
     def on_install(self, registry):
-        """安装时初始化独立 PG schema sms + 迁移历史数据"""
+        """安装时初始化独立 PG schema sms + 迁移历史数据 + 播种 i18n（幂等）"""
+        from i18n import seed_plugin_translations
         from .models import init_sms_db, migrate_from_main_db
+        seed_plugin_translations('sms', os.path.join(os.path.dirname(__file__), 'i18n'))
         init_sms_db()
         migrate_from_main_db()
         return True
 
     def on_enable(self, registry):
-        """启用时初始化数据库 + i18n（幂等）"""
+        """启用时初始化数据库 + 播种 i18n（幂等）"""
+        from i18n import seed_plugin_translations
         from .models import init_sms_db
+        seed_plugin_translations('sms', os.path.join(os.path.dirname(__file__), 'i18n'))
         init_sms_db()
         print(self.t('[SmsPlugin] ✅ SMS service plugin is enabled (sms schema)'))
         return True

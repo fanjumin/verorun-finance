@@ -49,11 +49,96 @@ def _cached_get(ttl=5):
         return wrapper
     return deco
 
-def _require_admin():
+# ═══ RBAC：admin 端点 → 模块权限 映射（D-04 修复） ═══
+# super_admin 自动全通过；admin/operator 需 admin_profiles.permissions 含对应权限。
+# 键为端点函数名（request.endpoint 末段），仅覆盖写操作与密钥读取端点，GET 只读列表放行。
+_ADMIN_ENDPOINT_PERM = {
+    # users 模块
+    'user_status': 'users', 'admin_verify_user': 'users',
+    'user_avatar_upload': 'users', 'user_avatar_default': 'users',
+    'user_agent_avatar_upload': 'users', 'user_agent_avatar_default': 'users',
+    'user_avatar_clear': 'users', 'user_agent_avatar_clear': 'users',
+    'admin_user_agent_status': 'users', 'admin_user_agent_create': 'users',
+    'user_export': 'users',
+    # content 模块
+    'review_post': 'content', 'admin_tickets_update': 'content',
+    'create_social_link': 'content', 'update_social_link': 'content',
+    'delete_social_link': 'content', 'reorder_social_links': 'content',
+    'update_brand_settings': 'content', 'upload_brand_logo': 'content',
+    'delete_brand_logo': 'content', 'upload_brand_favicon': 'content',
+    'delete_brand_favicon': 'content', 'upload_brand_logo_icon': 'content',
+    'delete_brand_logo_icon': 'content',
+    'admin_interests_create': 'content', 'admin_interests_update': 'content',
+    'admin_interests_delete': 'content',
+    'admin_downloads_create': 'content', 'admin_downloads_update': 'content',
+    'admin_downloads_delete': 'content', 'admin_downloads_reorder': 'content',
+    'media_library_upload': 'content', 'media_library_delete': 'content',
+    'media_library_push': 'content',
+    # system 模块（含平台密钥/Provider 密钥读取）
+    'api_key_list': 'system', 'revoke_key': 'system',
+    'provider_api_key_list': 'system', 'provider_api_key_create': 'system',
+    'provider_api_key_update': 'system', 'provider_api_key_delete': 'system',
+    'admin_create_domain': 'system', 'admin_update_domain': 'system',
+    'admin_delete_domain': 'system',
+    'admin_notif_templates_create': 'system', 'admin_notif_templates_update': 'system',
+    'admin_notif_templates_delete': 'system', 'admin_notif_send': 'system',
+    'admin_notif_test': 'system',
+    'admin_i18n_create': 'system', 'admin_i18n_update': 'system',
+    'admin_i18n_delete': 'system', 'admin_i18n_seed': 'system',
+    'update_provider': 'system',
+    'create_provider_model': 'system', 'update_provider_model': 'system',
+    'delete_provider_model': 'system',
+    'quota_set_user_tier': 'system', 'quota_reset_key': 'system',
+    'llm_quota_create': 'system', 'llm_quota_update': 'system',
+    'llm_quota_delete': 'system',
+    # matrix 模块
+    'agent_matrix_create': 'matrix', 'agent_matrix_update': 'matrix',
+    'agent_matrix_delete': 'matrix', 'agent_matrix_test': 'matrix',
+    # finance 模块
+    'admin_reward_rules_create': 'finance', 'admin_reward_rules_update': 'finance',
+    'admin_reward_rules_delete': 'finance',
+}
+
+
+def _resolve_admin_perm(perm=None):
+    """返回本次请求需要校验的权限 key；无则返回 None（只读/未映射端点放行）"""
+    if perm:
+        return perm
+    ep = (request.endpoint or '').split('.')[-1]
+    return _ADMIN_ENDPOINT_PERM.get(ep)
+
+
+def _enforce_admin_perm(admin_user_id, required_perm):
+    """RBAC 强制：super_admin 全通过；admin/operator 需 permissions 含 required_perm。"""
+    if not required_perm:
+        return None
+    try:
+        with get_db() as conn:
+            prof = conn.execute(
+                'SELECT role, permissions FROM admin_profiles WHERE user_id=%s',
+                (admin_user_id,)
+            ).fetchone()
+    except Exception:
+        prof = None
+    if prof and prof['role'] == 'super_admin':
+        return None
+    perms = []
+    if prof and prof['permissions']:
+        try:
+            perms = json.loads(prof['permissions']) or []
+        except Exception:
+            perms = []
+    if required_perm in perms:
+        return None
+    return jsonify({'success': False, 'error': 'No "%s" permission' % required_perm}), 403
+
+
+def _require_admin(perm=None):
     """鉴权守卫 — 与 agent_matrix/site_builder 版本对齐：
     1. 优先从 Authorization header 提取 token
     2. 无 header 时回退到 sso_token / tm_token cookie
     3. 使用 JWT is_admin 声明，不再冗余查询数据库
+    4. perm 显式传入或端点命中 _ADMIN_ENDPOINT_PERM 时执行 RBAC 权限校验
     """
     from services.jwt_service import validate_token
     auth = request.headers.get('Authorization', '')
@@ -63,6 +148,9 @@ def _require_admin():
     payload = validate_token(token) if token else None
     if not payload or not payload.get('is_admin'):
         return None, (jsonify({'success': False, 'error': _('Requires management permissions')}), 401)
+    perm_err = _enforce_admin_perm(payload['user_id'], _resolve_admin_perm(perm))
+    if perm_err:
+        return None, perm_err
     return {'user_id': payload['user_id'], 'nickname': ''}, None
 
 
@@ -78,10 +166,18 @@ def _log(admin_id, action, target_type="", target_id="", detail=""):
 
 @admin_bp.route('/logout', methods=['POST'])
 def admin_logout():
-    """管理员退出登录"""
+    """管理员退出登录（D-03：服务端吊销 token，旧 token 立即失效）"""
     admin, err = _require_admin()
     if err:
         return err
+    from services.jwt_service import revoke_token
+    token = request.headers.get('Authorization', '').replace('Bearer ', '') or \
+        request.cookies.get('sso_token') or request.cookies.get('tm_token') or ''
+    if token:
+        try:
+            revoke_token(token)
+        except Exception:
+            pass
     _log(admin['user_id'], 'logout', 'admin', '', chr(39)+chr(39))
     return jsonify({'success': True})
 

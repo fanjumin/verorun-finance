@@ -1,0 +1,240 @@
+# IM Gateway Plugin — 中文翻译
+plugin.name: IM 网关
+Channel Management: 频道管理
+IM Gateway: IM 网关
+Feishu: 飞书
+WeCom: 企业微信
+DingTalk: 钉钉
+Coming Soon: 即将推出
+Loading...: 加载中
+Config Loading: 配置加载中
+WeCom Config Loading: 企业微信配置加载中
+Load failed: 加载失败
+Unknown Error: 未知错误
+Request Failed: 请求失败
+Network error: 网络错误
+Highlight: 高亮
+Integration: 集成
+Enabled: 启用
+Enable WeCom Integration: 启用企业微信集成
+Currently Read from Env Vars: 当前从环境变量读取
+Not Saved to Database: 未保存到数据库
+Saved to Database: 已保存到数据库
+Config Reads DB First: 配置优先读取数据库
+Priority Read from DB Settings: 优先读取数据库设置
+Official Field Set per Channel: 每个频道的官方字段集合
+Extensible: 可扩展
+Admin: 管理员
+Admin Open ID: 管理员 Open ID
+Admin UIN: 管理员 UIN
+AgentId: AgentId
+App ID: 应用 ID
+App ID and App Secret Required: 请输入 App ID 和 App Secret
+App Key: 应用 Key
+App Secret: 应用密钥
+AppKey: AppKey
+AppSecret: AppSecret
+CorpId: CorpId
+EncodingAESKey: EncodingAESKey
+Encrypt Key: 加密 Key
+Enterprise: 企业
+Enterprise ID: 企业 ID
+Enterprise ID and Secret Required: 请输入企业 ID 和 Secret
+Secret: Secret
+Verification Token: 校验 Token
+Default Recipient: 默认接收人
+Callback: 回调
+Callback Token: 回调 Token
+Not Set: 未设置
+Show: 显示
+Hide: 隐藏
+Save Config: 保存配置
+Test Feishu Connection: 测试飞书连接
+Test WeCom Connection: 测试企业微信连接
+Test Not Supported Yet: 当前频道暂不支持测试
+Current Channel Does Not Support Test: 当前频道暂不支持测试
+Saving: 保存中
+Saved: 已保存
+Save failed: 保存失败
+Testing: 测试中
+Connection Successful: 连接成功
+Connection Failed: 连接失败
+Please Enter First: 请先输入
+Save Then Test: 后保存再测试
+Required: 不能为空
+Helper Function: 辅助函数
+Telegram: Telegram
+LINE: LINE
+Bot Token: Bot Token
+Webhook URL: Webhook URL
+Allow Group Chat: 允许群聊
+Channel Secret: Channel Secret
+Channel Access Token: Channel Access Token
+Channel configuration updated: 频道配置已更新
+# 统一社媒网关 (Phase 6)
+Social Channels: 社媒渠道
+Connect: 连接
+No connected accounts yet: 暂无已连接账号
+Channel: 频道
+Account: 账号
+Token Expires: Token 过期时间
+Revoke: 撤销
+Publish Test: 发布测试
+Text: 文本
+Image URL: 图片 URL
+Publish: 发布
+Connect failed: 连接失败
+Revoke this connected account?: 确定撤销该已连接账号？
+Sending: 发送中
+Published: 已发布
+Connect a social account to publish through the unified gateway: 连接社媒账号后即可通过统一网关发布内容
+Unsupported platform: 不支持的平台
+ENCRYPTION_KEY not configured; OAuth connect disabled: ENCRYPTION_KEY 未配置；OAuth 连接已禁用
+App credentials not configured for this platform: 该平台尚未配置应用凭据
+Missing code or state: 缺少 code 或 state
+Invalid state: 无效的 state
+No refresh token for this account: 该账号没有 refresh token
+This platform has no token refresh: 该平台不支持 token 刷新
+Account not found: 账号不存在
+channel and config are required: 缺少 channel 或 config
+Manual credential save not supported for this channel: 该渠道不支持手动保存凭据
+This channel has no configurable fields: 该渠道无可配置字段
+Unsupported config fields: 不支持的配置字段
+Token refresh failed, please try again later: Token 刷新失败，请稍后重试
+OAuth initialization failed: OAuth 初始化失败
+Save Account: 保存账号
+Account Key: 账号标识
+Configure WeChat OA AppID/AppSecret in system settings: 请在系统设置中配置微信公众号 AppID/AppSecret
+# UI 重构 & i18n 全覆盖 (2026-08-25)
+Credential Channels: 凭据渠道
+Detail: 详情
+Days Left: 剩余天数
+Expired: 已过期
+OAuth: OAuth
+Refresh: 刷新
+Refreshed: 已刷新
+Refreshing: 刷新中
+Set webhook callback to: 请将 webhook 回调地址设置为
+Webhook callback URL: Webhook 回调地址
+'Enable {channel} Integration': '启用{channel}集成'
+'{channel} Config Reads DB First': '{channel}配置优先读取数据库'
+'{channel} Config Loading': '{channel}配置加载中'
+X (Twitter): X（Twitter）
+LinkedIn: LinkedIn
+Reddit: Reddit
+Weibo: 微博
+Toutiao: 头条号
+Facebook: Facebook
+Instagram: Instagram
+WeChat OA: 微信公众号
+Telegram Channel: Telegram 频道
+# IM Gateway 适配器层消息 (2026-08-25)
+App ID and App Key cannot be empty: App ID 和 App Key 不能为空
+App ID and App Secret cannot be empty: App ID 和 App Secret 不能为空
+AppKey and AppSecret cannot be empty: AppKey 和 AppSecret 不能为空
+Bot Token cannot be empty: Bot Token 不能为空
+Channel Access Token cannot be empty: Channel Access Token 不能为空
+'Connection failed: {}': '连接失败: {}'
+DingTalk connection successful!: 钉钉连接成功！
+Download: 下载
+Enterprise ID and Secret cannot be empty: 企业 ID 和 Secret 不能为空
+Feishu App ID or App Secret is empty: 飞书 App ID 或 App Secret 为空
+Feishu channel is not configured: 飞书通道未配置
+Feishu connection successful!: 飞书连接成功！
+Feishu group chat_id is not configured: 飞书群 chat_id 未配置
+Feishu message sending failed: 飞书消息发送失败
+'Feishu returned error: {} (code={})': '飞书返回错误: {} (code={})'
+'Feishu token acquisition failed: {}': '飞书 Token 获取失败: {}'
+'File upload failed: {}': '上传文件失败: {}'
+File upload not supported: 暂不支持文件上传
+'Image upload failed: {}': '上传图片失败: {}'
+Media file: 媒体文件
+QQ Credentials Accepted (No Third-party API Called): QQ 凭据已接收（未调用第三方接口）
+'Telegram returned error: {}': 'Telegram 返回错误: {}'
+Unknown: 未知
+WeCom channel is not configured: 企业微信通道未配置
+WeCom connection successful!: 企业微信连接成功！
+WeCom push failed: 企业微信推送失败
+WeCom webhook_url is empty: 企业微信 webhook_url 为空
+"**{}**\n[Download file]({})": "**{}**\n[下载文件]({})"
+'Unsupported channel: {}': '不支持的渠道: {}'
+'DingTalk returned: {} (errcode={})': '钉钉返回: {} (errcode={})'
+'LINE Connected! Bot: {}': 'LINE 连接成功！机器人: {}'
+'LINE Response: {}': 'LINE 响应: {}'
+'Telegram Connected! Bot: {}': 'Telegram 连接成功！机器人: {}'
+'WeCom returned: {} (errcode={})': '企业微信返回: {} (errcode={})'
+'Channel {channel} does not support media push': '渠道 {channel} 不支持媒体推送'
+# 卡片式多层级管理 UI (Phase 2)
+Instant Messaging: 即时通讯
+Publishing: 内容发布
+Third-party Login: 第三方登录
+Developer Login: 开发者登录
+Configured: 已配置
+Not Configured: 未配置
+Configure: 配置
+Back: 返回
+Connected: 已连接
+Not Connected: 未连接
+Shared: 共享
+Manage: 管理
+Disabled: 已停用
+account(s): 个账号
+Connected Targets: 已连接目标
+No connected targets yet: 暂无已连接目标
+Connect a social account first: 请先连接社媒账号
+No login providers configured yet: 暂无已配置的登录提供方
+No developer API keys yet: 暂无开发者 API Key
+Provider: 提供方
+Status: 状态
+Key Prefix: Key 前缀
+Expires: 过期时间
+Name: 名称
+Select at least one channel: 请至少选择一个渠道
+Text or image is required: 请输入内容或图片
+Publish failed: 发布失败
+Set up the bot in Instant Messaging first, then only enter the target channel here: 请先在「即时通讯 → Telegram」配置 Bot，此处只需填写目标频道
+New API Key: 新建 API Key
+Key Type: Key 类型
+Expires (optional): 过期时间（可选）
+Generate: 生成
+Generating: 生成中
+Name is required: 名称必填
+API key generated - copy it now: API Key 已生成，请立即复制保存
+Manage API keys for programmatic access: 管理用于程序化访问的 API Key
+Revoke this API key?: 确定吊销该 API Key 吗？
+# Phase 5 — 第三方登录管理
+Configure OAuth providers for third-party login: 配置第三方登录 OAuth 提供方
+Client ID: Client ID
+Client Secret: Client Secret
+Scopes: 授权范围
+Redirect URI: 回调地址
+Leave blank to keep current: 留空则保留当前值
+Default: 默认
+Enable: 启用
+Disable: 停用
+Test: 测试
+# Phase 7 — 小程序开发账户（集中 mini_app_builder 登录）
+Access Token: Access Token
+Account Name: 账户名
+Account name cannot be empty: 账户名不能为空
+Active: 启用
+Add Account: 新增账户
+Cancel: 取消
+Channel ID: 频道 ID
+Create: 创建
+Delete: 删除
+Delete Failed: 删除失败
+Edit: 编辑
+Editing: 正在编辑
+LIFF accessToken: LIFF accessToken
+Login Method: 登录方式
+Mini-Program Developer Accounts: 小程序开发账户
+Mini-program platform developer credentials: 小程序平台开发者凭据
+No mini-program accounts yet: 暂无小程序开发账户
+Platform: 平台
+Save: 保存
+Test Failed: 测试失败
+Testing...: 测试中...
+This action cannot be undone: 该操作不可撤销
+tt.login()/wx.login() code: tt.login()/wx.login() code
+WebApp.initData: WebApp.initData

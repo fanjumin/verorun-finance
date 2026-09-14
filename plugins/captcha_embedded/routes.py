@@ -54,12 +54,12 @@ def captcha_generate():
 
     rate = check_rate_limit(ip)
     if not rate['allowed']:
-        return jsonify({'error': f'{_t("Too many attempts")}, retry in {rate["reset_after"]}s'}), 429
+        return jsonify({'error': _t('Too many attempts, retry in {seconds}s').format(seconds=rate['reset_after'])}), 429
 
     try:
         puzzle = generate_puzzle()
     except Exception as e:
-        return jsonify({'error': f'{_t("Puzzle generation failed")}: {e}'}), 500
+        return jsonify({'error': _t('Puzzle generation failed: {error}').format(error=e)}), 500
 
     token = generate_token(
         puzzle['hole']['x'], puzzle['hole']['y'],

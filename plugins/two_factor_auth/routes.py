@@ -297,15 +297,24 @@ def setup_init():
     if not row:
         return jsonify({'error': 'unauthorized'}), 401
     uid = row['user_id']
-    if row['init_used']:
-        # F-01：同一 setup_token 拒绝二次 init，防泄露令牌被反复用于生成密钥
-        return jsonify({'error': 'already initialized'}), 400
     svc = _get_service()
+    if row['init_used']:
+        # F-01-幂等：同一 setup_token 重复 init 不重新生成密钥——解密返回已暂存的
+        # pending 密钥，支撑设置页「打开即出码 + 刷新页面二维码不变」的 Authenticator 体验。
+        # 不生成新密钥，故不扩大令牌滥用面；pending 仍绑定该 setup_token，绑定成功即删除。
+        if not row['pending_secret']:
+            # 异常态（init_used 但 pending 为空）：拒绝，前端提示重新打开页面
+            return jsonify({'error': 'already initialized'}), 400
+        secret = svc.decrypt_secret(row['pending_secret'], row['pending_iv'], uid)
+        account = _resolve_account(uid)
+        uri = svc.get_provisioning_uri(secret, account)
+        qr = svc.generate_qr_code(uri)
+        return jsonify({'qr_code': qr, 'secret': secret, 'account': account})
+
     secret = svc.generate_secret()
     enc, iv = svc.encrypt_secret(secret, uid)
 
     # 重绑定中途放弃不得降级既有 2FA：待确认密钥只写 setup_tokens（0002 迁移加列）
-    # F-01：init 一次性——标记 init_used，后续相同 token 再 init 直接拒绝
     with get_two_factor_db() as conn:
         conn.execute(
             "UPDATE setup_tokens SET pending_secret=%s, pending_iv=%s, init_used=true "

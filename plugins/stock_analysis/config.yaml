@@ -2,5 +2,13 @@
 # ============================
 # LLM 由 VeroRun UnifiedLLM 统一管理，插件不保存 provider/model/key。
 # ── 数据源 ──
-DATA_PROVIDER: "sina"
+# DATA_PROVIDER 语义（阶段3 修正）：首选源覆盖。
+# 空值 = 完全按 gateway ROUTE 顺序（默认 kline: tushare→akshare→sina，quote/index: tencent，news: sina）。
+# 取值：sina / tencent / akshare / tushare（tushare 无 token 时探针自动裁剪，路由自动退化为 akshare→sina）。
+DATA_PROVIDER: ""
 DATA_CACHE_DIR: "./data/cache"
+# ── Tushare（可选升级，用户自备 token）──
+# 填入你自己的 Tushare token（tushare.pro 个人主页获取，无需向平台付费）。
+# 空 = 未配置，自动使用免费数据源（akshare→sina），功能不受影响。
+# 优先级：环境变量 TUSHARE_TOKEN > 此处。
+TUSHARE_TOKEN: ""

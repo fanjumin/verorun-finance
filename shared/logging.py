@@ -26,6 +26,21 @@ class JsonFormatter(logging.Formatter):
             'name': record.name,
             'msg': record.getMessage(),
         }
+        # 请求上下文（request_id / user_id），见 shared/observability
+        try:
+            from shared.observability import log_context
+            ctx = log_context()
+            if ctx.get('request_id'):
+                payload['request_id'] = ctx['request_id']
+            if ctx.get('user_id'):
+                payload['user_id'] = ctx['user_id']
+        except Exception:
+            pass
+        # extra 结构化字段：logger.info('msg', extra={'extra_order_no': x})
+        # 以 extra_ 前缀并入，避免覆盖核心键
+        for k, v in record.__dict__.items():
+            if k.startswith('extra_') and len(k) > len('extra_'):
+                payload[k[len('extra_'):]] = v
         if record.exc_info and record.exc_info[1]:
             payload['exc'] = self.formatException(record.exc_info)
         return json.dumps(payload, ensure_ascii=False)

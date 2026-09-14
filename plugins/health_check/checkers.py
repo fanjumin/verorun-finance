@@ -534,13 +534,19 @@ class ServerHealthCheck(BaseHealthCheck):
     severity = 'warning'
     description = 'CPU / Memory / Disk usage monitoring'
     sort_order = 30
-    config_defaults = {'cpu_threshold': 90, 'mem_threshold': 85, 'disk_threshold': 85}
+    config_defaults = {
+        'cpu_threshold': 90, 'mem_threshold': 85, 'disk_threshold': 85,
+        'swap_threshold': 50, 'proc_min': 4, 'proc_max': 25,
+    }
     config_schema = {
         'type': 'object',
         'properties': {
             'cpu_threshold': {'type': 'integer', 'default': 90, 'description': 'CPU alert threshold (%)'},
             'mem_threshold': {'type': 'integer', 'default': 85, 'description': 'Memory alert threshold (%)'},
             'disk_threshold': {'type': 'integer', 'default': 85, 'description': 'Disk alert threshold (%)'},
+            'swap_threshold': {'type': 'integer', 'default': 50, 'description': 'Swap usage alert threshold (%)'},
+            'proc_min': {'type': 'integer', 'default': 4, 'description': 'Min expected gunicorn/guardian process count'},
+            'proc_max': {'type': 'integer', 'default': 25, 'description': 'Max expected gunicorn/guardian process count'},
         }
     }
 
@@ -596,11 +602,47 @@ class ServerHealthCheck(BaseHealthCheck):
             du = -1
             detail['disk_error'] = str(e)
 
+        # Swap
+        try:
+            with open('/proc/meminfo') as f:
+                swap = {}
+                for line in f:
+                    p = line.split(':')
+                    if len(p) == 2:
+                        try: swap[p[0].strip()] = int(p[1].strip().replace(' kB', ''))
+                        except: pass
+            st, sf = swap.get('SwapTotal', 0), swap.get('SwapFree', 0)
+            swap_usage = round((st - sf) * 100 / st, 1) if st > 0 else 0
+            detail['swap_usage_pct'] = swap_usage
+            if swap_usage > self.config.get('swap_threshold', 50):
+                warnings.append(f'Swap {swap_usage}% > threshold')
+        except Exception as e:
+            swap_usage = -1
+            detail['swap_error'] = str(e)
+
+        # Process count (gunicorn / run_gunicorn / guardian)
+        try:
+            out = subprocess.check_output(
+                ['pgrep', '-fc', 'gunicorn|run_gunicorn|guardian'],
+                stderr=subprocess.DEVNULL,
+            ).decode().strip()
+            proc_count = int(out) if out else 0
+            detail['proc_count'] = proc_count
+            proc_min = self.config.get('proc_min', 4)
+            proc_max = self.config.get('proc_max', 25)
+            if proc_count < proc_min:
+                warnings.append(f'Process count {proc_count} < min {proc_min} (services down?)')
+            elif proc_count > proc_max:
+                warnings.append(f'Process count {proc_count} > max {proc_max} (runaway fork?)')
+        except Exception as e:
+            proc_count = -1
+            detail['proc_error'] = str(e)
+
         elapsed = int((time.time() - start) * 1000)
         detail['elapsed_ms'] = elapsed
         if not warnings:
             return CheckResult('passed', elapsed,
-                               f'CPU {cpu_usage}% | Memory {mem_usage}% | Disk {du}%', detail)
+                               f'CPU {cpu_usage}% | Memory {mem_usage}% | Swap {swap_usage}% | Disk {du}% | Proc {proc_count}', detail)
         return CheckResult('warning', elapsed, '; '.join(warnings), detail)
 
 

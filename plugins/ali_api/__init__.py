@@ -130,11 +130,12 @@ class AliApiPlugin(BasePlugin):
             logger.exception('[AliApi] Order listening exception')
 
     def register_agents(self):
-        """注册供应链 Agent（§4/§6.3）：从 plugin.json agents 声明读取，写入本地 agent_registry 表。"""
+        """注册供应链 Agent 能力到 business 角色 + 本地 agent_registry 表。"""
         try:
             import os as _os
             import json as _json
             from .models import upsert_agent
+            from agent_matrix.models import register_capability_to_role
 
             plugin_info = getattr(self, 'plugin_info', None)
             metadata = plugin_info.metadata if plugin_info else {}
@@ -142,6 +143,15 @@ class AliApiPlugin(BasePlugin):
             if not agents:
                 logger.info('[AliApi] plugin.json 无 agents 声明，跳过 Agent 注册')
                 return []
+
+            # 注册能力到 business 角色（03-business.yaml）
+            for agent in agents:
+                register_capability_to_role(
+                    domain='business',
+                    name=agent.get('name', ''),
+                    capabilities=agent.get('capabilities', []),
+                    description=f"{agent.get('name', '')} — {agent.get('domain', 'supply_chain')}",
+                )
 
             registered = []
             base_dir = _os.path.dirname(__file__)

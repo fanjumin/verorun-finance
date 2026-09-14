@@ -328,6 +328,17 @@ class StoreAPIClient:
                 sql += " AND (s.compatible_editions = '[]' OR s.compatible_editions LIKE %s)"
                 params.append(f'%"{DEPLOY_EDITION}"%')
 
+                # 阶段 3b：发行版插件白名单排除（本版 exclude 插件不在商店展示）
+                try:
+                    from agent_matrix.models import edition_plugin_excludes
+                    _excl = edition_plugin_excludes()
+                    if _excl:
+                        placeholders = ','.join(['%s'] * len(_excl))
+                        sql += f' AND s.identifier NOT IN ({placeholders})'
+                        params.extend(_excl)
+                except Exception:
+                    pass
+
                 # 排序
                 sort_map = {
                     'downloads': 's.downloads DESC',
@@ -377,8 +388,9 @@ class StoreAPIClient:
                         file_size, category, tags, min_app_version, depends_on,
                         screenshots, readme_url, tagline, tagline_i18n_key,
                         tagline_font_size, tagline_color, tagline_subtitle, tagline_subtitle_font_size,
-                        downloads, rating, review_count, readme_cache, enabled
-                    ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,1)
+                        downloads, rating, review_count, readme_cache, enabled,
+                        catalog_managed, is_official, developer_id, developer_org
+                    ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,1,%s,%s,%s,%s)
                     -- ★ ON CONFLICT: 更新商店侧管理的字段 + 展示资源 URL（icon_url/readme_url/
                     --    screenshots）。展示资源由发布工具自动生成真实 CDN URL，需随同步覆盖。
                     --    tagline 用 COALESCE 保护：目录有值才覆盖，AI 生成/手写的 tagline 得以保留。
@@ -413,7 +425,12 @@ class StoreAPIClient:
                         tagline_subtitle=COALESCE(NULLIF(excluded.tagline_subtitle,''), store_plugins.tagline_subtitle),
                         tagline_subtitle_font_size=COALESCE(NULLIF(excluded.tagline_subtitle_font_size,''), store_plugins.tagline_subtitle_font_size),
                         readme_cache=COALESCE(NULLIF(excluded.readme_cache,''), store_plugins.readme_cache),
+                        is_official=excluded.is_official,
+                        developer_id=excluded.developer_id,
+                        developer_org=COALESCE(NULLIF(excluded.developer_org,''), store_plugins.developer_org),
                         updated_at=NOW()
+                    -- ★ P0-A：catalog_managed=0 为直写条目（--local-only 兜底），sync 跳过覆盖防清除
+                    WHERE store_plugins.catalog_managed = 1
                 """, (
                     pdata.get('identifier', ''),
                     pdata.get('name', ''),
@@ -449,6 +466,11 @@ class StoreAPIClient:
                     pdata.get('rating', 0.0),
                     pdata.get('review_count', 0),
                     pdata.get('readme_cache', ''),
+                    # P0-A：目录同步条目标记 catalog_managed=1；is_official/developer_* 由 sync_all 归一化
+                    1,
+                    pdata.get('is_official', 1),
+                    pdata.get('developer_id', 0),
+                    pdata.get('developer_org', ''),
                 ))
                 conn.commit()
 
@@ -477,7 +499,15 @@ class StoreAPIClient:
             return 0
 
         plugins_data = catalog.get('plugins', [])
+        from .watermark import OFFICIAL_PLUGIN_IDS
         for pdata in plugins_data:
+            # P0-A：目录来源归一化 —— 官方白名单强制 is_official=1；
+            # 第三方条目由平台代发时写入 is_official=0 + developer_id/developer_org。
+            pdata = dict(pdata)
+            pdata['is_official'] = 1 if pdata.get('identifier') in OFFICIAL_PLUGIN_IDS \
+                                   else int(pdata.get('is_official', 0))
+            pdata.setdefault('developer_id', 0)
+            pdata.setdefault('developer_org', '')
             self._upsert_cache(pdata)
         # P0-2：记录本次同步时间戳（供 /health 与管理页观测）
         try:
@@ -505,10 +535,16 @@ class StoreAPIClient:
             return {}
 
         # 读取商店目录（本地缓存表 store_plugins，仅 enabled=1 上架项）
+        # P1 §5.3：第三方版本走 store_plugin_versions 多版本表，
+        # 取该插件最新 live 版本优先（官方插件无 versions 行时回退 store_plugins.version）。
         try:
             with get_registry_db() as conn:
                 rows = conn.execute(
-                    'SELECT identifier, version, min_app_version FROM store_plugins WHERE enabled=1'
+                    "SELECT sp.identifier, sp.version, sp.min_app_version, "
+                    "       (SELECT v.version FROM store_plugin_versions v "
+                    "        WHERE v.plugin_id = sp.identifier AND v.status = 'live' "
+                    "        ORDER BY v.id DESC LIMIT 1) AS live_version "
+                    "FROM store_plugins sp WHERE sp.enabled=1"
                 ).fetchall()
         except Exception as e:
             print(f'[StoreAPIClient] check_updates: 查询 store_plugins 失败: {e}，返回空结果')
@@ -520,7 +556,8 @@ class StoreAPIClient:
         skipped = 0
         for r in rows:
             identifier = r['identifier']
-            latest = r['version']
+            # P1 §5.3：第三方 live 版本优先；官方插件回退 store_plugins.version
+            latest = r.get('live_version') or r['version']
             installed = local_versions.get(identifier)
             if installed is None:
                 skipped += 1

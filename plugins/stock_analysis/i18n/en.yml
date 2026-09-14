@@ -13,3 +13,25 @@ Analyzing...: Analyzing...
 Signal: Signal
 Analysis failed: Analysis failed
 Request failed: Request failed
+Data sources: Data sources
+Watchlist: Watchlist
+Batch Analysis: Batch Analysis
+Add: Add
+Alias: Alias
+Run: Run
+Query: Query
+Total: Total
+Delete: Delete
+No watchlist items yet.: No watchlist items yet.
+No results.: No results.
+Running...: Running...
+Symbols (comma separated, empty = watchlist): Symbols (comma separated, empty = watchlist)
+Run ID: Run ID
+Stock code: Stock code
+Tushare Token: Tushare Token
+Data source environment: Data source environment
+akshare not installed: akshare is not installed; Beijing Stock Exchange and some data sources are unavailable
+Install akshare: Install akshare
+Installing...: Installing, this may take a few minutes...
+Install success: akshare installed successfully
+Install failed: akshare install failed

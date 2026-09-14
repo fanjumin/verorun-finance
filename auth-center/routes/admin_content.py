@@ -64,7 +64,7 @@ def contact_list():
 # =============================================
 # social_links CRUD — 后台社媒图标管理
 # =============================================
-@admin_bp.route('/admin/social-links', methods=['GET'])
+@admin_bp.route('/social-links', methods=['GET'])
 def get_social_links():
     admin, err = _require_admin()
     if err: return err
@@ -72,7 +72,7 @@ def get_social_links():
         rows = conn.execute('SELECT * FROM social_links ORDER BY sort_order ASC, id ASC').fetchall()
     return jsonify({'success': True, 'data': [dict(r) for r in rows]})
 
-@admin_bp.route('/admin/social-links', methods=['POST'])
+@admin_bp.route('/social-links', methods=['POST'])
 def create_social_link():
     admin, err = _require_admin()
     if err: return err
@@ -94,7 +94,7 @@ def create_social_link():
         _log(admin['user_id'], 'create', 'social_link', str(lid), f'Add Social Media Icon: {name}')
     return jsonify({'success': True, 'data': {'id': lid}})
 
-@admin_bp.route('/admin/social-links/<int:lid>', methods=['PUT'])
+@admin_bp.route('/social-links/<int:lid>', methods=['PUT'])
 def update_social_link(lid):
     admin, err = _require_admin()
     if err: return err
@@ -121,7 +121,7 @@ def update_social_link(lid):
         _log(admin['user_id'], 'update', 'social_link', str(lid), f'Update social media icon: {name}')
     return jsonify({'success': True})
 
-@admin_bp.route('/admin/social-links/<int:lid>', methods=['DELETE'])
+@admin_bp.route('/social-links/<int:lid>', methods=['DELETE'])
 def delete_social_link(lid):
     admin, err = _require_admin()
     if err: return err
@@ -134,7 +134,7 @@ def delete_social_link(lid):
         _log(admin['user_id'], 'delete', 'social_link', str(lid), f'Delete Social Media Icon: {row["name"]}')
     return jsonify({'success': True})
 
-@admin_bp.route('/admin/social-links/reorder', methods=['PUT'])
+@admin_bp.route('/social-links/reorder', methods=['PUT'])
 def reorder_social_links():
     admin, err = _require_admin()
     if err: return err

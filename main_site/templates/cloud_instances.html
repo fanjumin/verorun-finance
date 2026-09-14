@@ -50,12 +50,12 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-cn)}
 var T = '{{ token or "" }}';
 
 function loadInstances(){
-  if(!T){document.getElementById("cloudContent").innerHTML='<div class="empty-state"><div class="icon">🔒</div><div>{{ _('Please') }} <a href="/login?redirect=/shop/cloud">{{ _('Log In') }}</a></div></div>';return}
+  if(!T){document.getElementById("cloudContent").innerHTML='<div class="empty-state"><div class="icon">🔒</div><div>{{ _('Please') }} <a href="/login?redirect=/mall/cloud">{{ _('Log In') }}</a></div></div>';return}
   fetch("/cloud/instances",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
     if(!d.success)return;
     var instances=d.data||[], h="";
     if(!instances.length){
-      h='<div class="empty-state"><div class="icon">📭</div><div>{{ _('No cloud instances yet') }}</div><a href="/shop" style="color:var(--accent);margin-top:12px;display:inline-block">→ {{ translations['Go Buy Cloud Services'] }}</a></div>';
+      h='<div class="empty-state"><div class="icon">📭</div><div>{{ _('No cloud instances yet') }}</div><a href="/mall" style="color:var(--accent);margin-top:12px;display:inline-block">→ {{ translations['Go Buy Cloud Services'] }}</a></div>';
     }else{
       var stLabels={pending:'{{ translations['Pending Activation'] }}',provisioning:'{{ translations['Provisioning'] }}',running:'{{ translations['Running'] }}',stopped:'{{ translations['Stopped'] }}',terminated:'{{ translations['Terminated'] }}',failed:'{{ translations['Provision Failed'] }}'};
       instances.forEach(function(inst){

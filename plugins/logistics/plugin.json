@@ -6,7 +6,7 @@
     "required": [],
     "optional": {}
   },
-  "version": "1.4.2",
+  "version": "1.5.2",
   "category": "shop",
   "tags": [
     "logistics",
@@ -19,6 +19,8 @@
   "screenshots": [],
   "readme_url": "",
   "description": "Logistics Express — shipment tracking via Kdniao API with 600+ carriers",
+  "tagline": "快递物流轨迹查询",
+  "tagline_subtitle": "快递鸟 API · 600+ 快递公司覆盖",
   "author": "VeroRun",
   "min_app_version": "0.10.0",
   "agent_role": "business",

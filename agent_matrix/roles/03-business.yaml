@@ -2,7 +2,7 @@ name: Business
 slug: business
 role_type: sub
 editions:
-  - finance
+  - official
 description: Business manager — products, orders, supply chain, logistics, reviews, wishlist
 domain: business
 managed_modules:

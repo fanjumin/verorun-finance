@@ -9,7 +9,7 @@
     ],
     "optional": {}
   },
-  "version": "1.6.2",
+  "version": "1.7.3",
   "category": "social",
   "tags": [
     "social",
@@ -28,6 +28,8 @@
   "screenshots": [],
   "readme_url": "",
   "description": "Social Push — Multi-platform social content publishing (WeChat OA / Weibo / Toutiao) with publish history",
+  "tagline": "多平台社媒内容分发",
+  "tagline_subtitle": "微信公众号/微博/头条/Twitter/LinkedIn/Reddit/Telegram",
   "description_i18n_key": "plugin.description",
   "author": "VeroRun",
   "min_app_version": "0.10.0",

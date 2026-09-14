@@ -80,23 +80,23 @@ def handle_ai_agent(node_def: dict, input_data: dict) -> dict:
             model = config.get('model', 'qwen-turbo')
             provider = 'dashscope'
 
-    # 从 system_config 获取 API Key
+    # 从 system_config 获取 API Key；未配置时回退统一 LLM 网关
     api_key = _get_api_key(api_key_ref)
-    if not api_key:
-        return {'error': f'API Key [{api_key_ref}] not configured', 'success': False}
-
-    # 调用 DashScope API
     timeout = config.get('timeout', 120)
-    result = _call_dashscope(api_key, model, prompt, timeout=timeout)
-    return result
+    return _call_llm(prompt, api_key, model, timeout=timeout)
 
 
 def _get_api_key(key_ref: str) -> str:
-    """从 system_config 表获取 API Key"""
+    """从 system_config 表获取 API Key
+
+    注意：m.get_db() 让出的是 psycopg2 游标，execute() 按 DB-API 返回 None，
+    不能链式 .fetchone()（曾致 DAG ai 节点 AttributeError）。
+    """
     with m.get_db() as conn:
-        row = conn.execute(
+        conn.execute(
             "SELECT value FROM system_config WHERE key=%s", (key_ref,)
-        ).fetchone()
+        )
+        row = conn.fetchone()
         return row['value'] if row else ''
 
 
@@ -104,10 +104,11 @@ def _get_agent_from_db(agent_id: int) -> dict:
     """从 agents 表查询 Agent 配置"""
     try:
         with m.get_db() as conn:
-            row = conn.execute(
+            conn.execute(
                 "SELECT api_key_ref, model, provider FROM agents WHERE id=%s",
                 (agent_id,)
-            ).fetchone()
+            )
+            row = conn.fetchone()
             if row:
                 return {'api_key_ref': row['api_key_ref'], 'model': row['model'], 'provider': row['provider']}
     except Exception:
@@ -146,6 +147,45 @@ def _call_dashscope(api_key: str, model: str, prompt: str, timeout: int = 120) -
             }
     except Exception as e:
         return {'error': str(e), 'success': False}
+
+
+def _call_via_gateway(prompt: str) -> dict:
+    """统一 LLM 网关回退调用（无需 DashScope Key）。
+
+    场景：部署环境未配置 dashscope_text_key（_call_dashscope 不可用）时，
+    改走 agent_matrix.UnifiedLLM + system_config 的 ai_text_provider /
+    ai_text_model（与 shop_ai / cleaner_ai 同一约定，网关密钥已在
+    provider_api_keys 加密入库）。返回结构与 _call_dashscope 一致，
+    下游（handle_ai_agent / handle_ai_process）无需改动。
+    """
+    try:
+        with m.get_db() as conn:
+            conn.execute(
+                "SELECT key, value FROM system_config "
+                "WHERE key IN ('ai_text_provider', 'ai_text_model')")
+            rows = conn.fetchall()
+        cfg = {r['key']: (r['value'] or '').strip() for r in rows}
+        provider = cfg.get('ai_text_provider') or ''
+        model_name = cfg.get('ai_text_model') or ''
+        if not provider or not model_name:
+            return {'error': 'Unified gateway default model not configured '
+                             '(ai_text_provider/ai_text_model)', 'success': False}
+        from agent_matrix.engine import UnifiedLLM
+        text = UnifiedLLM().chat(
+            [{"role": "system", "content": "你是一个专业的AI助手。请严格按要求完成任务。"},
+             {"role": "user", "content": prompt}],
+            provider=provider, model=model_name, module='orchestrator',
+            temperature=0.7, max_tokens=4096)
+        return {'success': True, 'content': text or '', 'model': model_name, 'tokens': {}}
+    except Exception as e:
+        return {'error': f'Unified gateway call failed: {e}', 'success': False}
+
+
+def _call_llm(prompt: str, api_key: str, model: str, timeout: int = 120) -> dict:
+    """LLM 调用统一入口：有 DashScope Key 走原路径，否则回退统一网关。"""
+    if api_key:
+        return _call_dashscope(api_key, model, prompt, timeout=timeout)
+    return _call_via_gateway(prompt)
 
 
 # ============================================================
@@ -244,10 +284,10 @@ def handle_ai_process(node_def: dict, input_data: dict) -> dict:
 请以 JSON 格式输出，包含字段: {json.dumps(fields, ensure_ascii=False)}
 """
 
-    result = _call_dashscope(
+    result = _call_llm(
+        prompt,
         _get_api_key('dashscope_text_key'),
         config.get('model', 'qwen-turbo'),
-        prompt
     )
 
     if result.get('success'):
@@ -570,16 +610,14 @@ def _send_email(email_to: str, title: str, message: str) -> dict:
     """发送邮件（调用 Email 插件服务）"""
     if not email_to:
         return {'success': False, 'error': _('Email_to is empty')}
-    try:
-        from plugins.email.services import send_email as plugin_send_email
-        ok, msg = plugin_send_email(
-            to_addr=email_to,
-            subject=title,
-            body_text=message,
-        )
-        return {'success': ok, 'message': msg}
-    except Exception as e:
-        return {'success': False, 'error': str(e)}
+    from shared.plugin_access import call_plugin
+    ok, result = call_plugin('plugins.email.services', 'send_email',
+                             to_addr=email_to, subject=title, body_text=message,
+                             feature='workflow_email')
+    if not ok:
+        return {'success': False, 'error': 'email plugin is not installed or failed'}
+    sent, msg = result
+    return {'success': sent, 'message': msg}
 
 
 # ============================================================

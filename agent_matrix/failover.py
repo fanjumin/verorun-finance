@@ -54,12 +54,10 @@ def _now_str(ts):
 
 
 def _send_alert(message):
-    """发送兜底引擎告警（延迟导入 + 异常静默，绝不影响主链路）"""
-    try:
-        from plugins.health_check.alerter import send_notification
-        send_notification('internal', message, {})
-    except Exception as e:
-        logger.warning(f'[failover] send_notification failed: {e}')
+    """发送兜底引擎告警（经插件访问桥动态解析 + 异常静默，绝不影响主链路）"""
+    from shared.plugin_access import call_plugin
+    call_plugin('plugins.health_check.alerter', 'send_notification',
+                'internal', message, {}, feature='failover_alert')
 
 
 class CircuitBreaker:
@@ -251,7 +249,7 @@ class FallbackEngine:
         return out
 
     def call_with_failover(self, primary_cfg, fallback_cfgs, call_fn, request_id=''):
-        """非流式兜底：call_fn(cfg) -> response。主模型失败按序尝试兜底，全部失败抛出带主模型上下文的异常。"""
+        """非流式兜底：call_fn(cfg, is_fallback=False) -> response。主模型失败按序尝试兜底，全部失败抛出带主模型上下文的异常。"""
         last_err = None
         primary_err = None
         for idx, cfg in enumerate(self._candidates(primary_cfg, fallback_cfgs)):
@@ -259,7 +257,7 @@ class FallbackEngine:
             if not self.breaker.is_available(key):
                 continue
             try:
-                resp = call_fn(cfg)
+                resp = call_fn(cfg, idx > 0)  # idx>0 → fallback model
                 self.breaker.record_success(key)
                 self.health.record_success(cfg.get('provider', ''),
                                            cfg.get('model', ''), cfg.get('model_id', 0))
@@ -292,7 +290,8 @@ class FallbackEngine:
         raise RuntimeError('All models unavailable (circuit open)')
 
     def stream_with_failover(self, primary_cfg, fallback_cfgs, stream_call_fn, request_id=''):
-        """流式兜底：返回生成器。产出首个 chunk 前失败可切换；已产出后失败直接上抛（防重复）。"""
+        """流式兜底：返回生成器。产出首个 chunk 前失败可切换；已产出后失败直接上抛（防重复）。
+        stream_call_fn(cfg, is_fallback=False) 签名。"""
         def _iter():
             last_err = None
             primary_err = None
@@ -302,7 +301,7 @@ class FallbackEngine:
                     continue
                 started = False
                 try:
-                    stream = stream_call_fn(cfg)
+                    stream = stream_call_fn(cfg, idx > 0)  # idx>0 → fallback model
                     for chunk in stream:
                         if not started:
                             started = True

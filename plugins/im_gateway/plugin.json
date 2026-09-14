@@ -1,0 +1,73 @@
+{
+  "name": "IM Gateway",
+  "name_i18n_key": "plugin.name",
+  "identifier": "im_gateway",
+  "python_dependencies": {
+    "required": [],
+    "optional": {
+      "tweepy": "X 渠道弱依赖，缺失时自动降级（见 _ensure_deps）",
+      "praw": "Reddit 渠道弱依赖，缺失时自动降级（见 _ensure_deps）"
+    }
+  },
+  "version": "2.1.1",
+  "category": "system",
+  "tags": [
+    "im",
+    "gateway",
+    "feishu",
+    "wecom",
+    "notification",
+    "channel"
+  ],
+  "icon": "channels",
+  "description": "IM Gateway — Unified instant-messaging channel gateway (Feishu / WeCom / QQ / DingTalk), extensible to Telegram / LINE",
+  "tagline": "统一即时消息通道网关",
+  "tagline_subtitle": "飞书 · 企业微信 · QQ · 钉钉，可扩展 Telegram/LINE",
+  "author": "VeroRun",
+  "min_app_version": "0.10.0",
+  "agent_role": "service",
+  "capabilities": [
+    "im.channel.list",
+    "im.message.send",
+    "im.message.receive",
+    "im.account.bind"
+  ],
+  "dependencies": {},
+  "config": {},
+  "permissions": [
+    "api:read",
+    "api:write",
+    "network:request"
+  ],
+  "hooks": {
+    "provides": [
+      "im_gateway/send_message",
+      "im_gateway/push_media"
+    ],
+    "listens": []
+  },
+  "menu": {
+    "group": "System",
+    "key": "channels",
+    "icon": "channels",
+    "label": "IM Gateway"
+  },
+  "dashboard": {
+    "stats": [
+      {
+        "key": "total_channels",
+        "title": "频道总数",
+        "type": "counter"
+      },
+      {
+        "key": "enabled_channels",
+        "title": "已启用频道",
+        "type": "counter"
+      }
+    ]
+  },
+  "settings_schema": {
+    "type": "object",
+    "properties": {}
+  }
+}

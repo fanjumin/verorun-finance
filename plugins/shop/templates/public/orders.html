@@ -78,11 +78,11 @@ if(!T){T=localStorage.getItem('sso_token')||localStorage.getItem('tm_token')||lo
 
 var _ordersPage=1,_ordersPageSize=10;
 function loadOrders(){
-  if(!T){document.getElementById("ordersContent").innerHTML='<div class="empty-state"><div class="icon">🔒</div><div>{{ _('Please') }} <a href="/login?redirect=/shop/orders">{{ _('Log In') }}</a></div></div>';return}
-  fetch("/shop/api/orders?page="+_ordersPage+"&page_size="+_ordersPageSize,{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+  if(!T){document.getElementById("ordersContent").innerHTML='<div class="empty-state"><div class="icon">🔒</div><div>{{ _('Please') }} <a href="/login?redirect=/mall/orders">{{ _('Log In') }}</a></div></div>';return}
+  fetch("/mall/api/orders?page="+_ordersPage+"&page_size="+_ordersPageSize,{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
     if(!d.success)return;
     var os=d.data||[], total=d.total||0, h="";
-    if(!os.length){h='<div class="empty-state"><div class="icon">📭</div><div>{{ _('No orders yet') }}</div><a href="/shop" style="color:var(--accent);margin-top:12px;display:inline-block">→ {{ _('Go Shopping') }}</a></div>'}
+    if(!os.length){h='<div class="empty-state"><div class="icon">📭</div><div>{{ _('No orders yet') }}</div><a href="/mall" style="color:var(--accent);margin-top:12px;display:inline-block">→ {{ _('Go Shopping') }}</a></div>'}
     else{
       // Group by order_id
       var groups={};
@@ -156,7 +156,7 @@ function payOrder(oid, amount){
 function doPay(oid, method, amount){
   var content=document.getElementById("payAction");
   content.innerHTML='<div style="padding:24px"><div class="s"></div></div><div style="font-size:12px;color:var(--dim)">{{ _('Creating payment...') }}</div>';
-  fetch("/shop/api/pay/"+oid,{method:"POST",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify({method:method})})
+  fetch("/mall/api/pay/"+oid,{method:"POST",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify({method:method})})
     .then(function(r){return r.json()}).then(function(d){
       if(!d.success||!d.data){content.innerHTML='<div style="color:#f85149;padding:24px">{{ _('Payment creation failed') }}</div>';return}
       var data=d.data;
@@ -176,7 +176,7 @@ function doPay(oid, method, amount){
         if(typeof QRCode !== 'undefined'){
           new QRCode(qrDiv,{text:data.code_url,width:180,height:180});
         }else{
-          qrDiv.innerHTML='<img src="/shop/qr?data='+encodeURIComponent(data.code_url)+'" alt="QR" style="width:180px;height:180px">';
+          qrDiv.innerHTML='<img src="/mall/qr?data='+encodeURIComponent(data.code_url)+'" alt="QR" style="width:180px;height:180px">';
         }
         pollPayStatus(oid);
       }else if(method==='alipay' && data.qr_code){
@@ -191,7 +191,7 @@ function doPay(oid, method, amount){
         if(typeof QRCode !== 'undefined'){
           new QRCode(aqrDiv,{text:data.qr_code,width:180,height:180});
         }else{
-          aqrDiv.innerHTML='<img src="/shop/qr?data='+encodeURIComponent(data.qr_code)+'" alt="QR" style="width:180px;height:180px">';
+          aqrDiv.innerHTML='<img src="/mall/qr?data='+encodeURIComponent(data.qr_code)+'" alt="QR" style="width:180px;height:180px">';
         }
         pollPayStatus(oid);
       }else if(data.pay_url){
@@ -211,7 +211,7 @@ document.addEventListener('DOMContentLoaded', function(){
 });
 function pollPayStatus(oid){
   var pollTimer=setInterval(function(){
-    fetch("/shop/api/pay/status/"+oid,{headers:{"Authorization":"Bearer "+T}})
+    fetch("/mall/api/pay/status/"+oid,{headers:{"Authorization":"Bearer "+T}})
       .then(function(r){return r.json()}).then(function(d){
         if(d.success && d.data && d.data.status==='paid'){
           clearInterval(pollTimer);
@@ -227,7 +227,7 @@ function pollPayStatus(oid){
 function stubPay(oid){
   var content=document.getElementById("payAction");
   content.innerHTML='<div style="padding:24px"><div class="s"></div></div>';
-  fetch("/shop/api/pay/"+oid+"/stub-confirm",{method:"POST",headers:{"Authorization":"Bearer "+T}})
+  fetch("/mall/api/pay/"+oid+"/stub-confirm",{method:"POST",headers:{"Authorization":"Bearer "+T}})
     .then(function(r){return r.json()}).then(function(d){
       if(d.success){
         showToast("✅ {{ _('Payment successful (dev mode)') }}","success");
@@ -247,7 +247,7 @@ function cancelOrder(oid){
     cancelText: {{ _('Cancel') | tojson }}
   }).then(function(ok){
     if(!ok)return;
-    fetch("/shop/api/orders/"+oid+"/cancel",{method:"POST",headers:{"Authorization":"Bearer "+T}})
+    fetch("/mall/api/orders/"+oid+"/cancel",{method:"POST",headers:{"Authorization":"Bearer "+T}})
       .then(function(r){return r.json()}).then(function(d){
         if(d.success){showToast("✅ {{ _('Cancelled') }}","success");loadOrders()}
         else showToast(d.error||"{{ _('Cancel failed') }}","error");
@@ -295,7 +295,7 @@ function confirmReceipt(oid){
     cancelText: {{ _('Cancel') | tojson }}
   }).then(function(ok){
     if(!ok)return;
-    fetch("/shop/api/orders/"+oid+"/confirm-receipt",{method:"POST",headers:{"Authorization":"Bearer "+T}})
+    fetch("/mall/api/orders/"+oid+"/confirm-receipt",{method:"POST",headers:{"Authorization":"Bearer "+T}})
       .then(function(r){return r.json()}).then(function(d){
         if(d.success){showToast("✅ {{ _('Confirmed as received') }}","success");loadOrders()}
         else showToast(d.error||"{{ _('Operation failed') }}","error");
@@ -311,7 +311,7 @@ function requestRefund(oid){
     cancelText: {{ _('Cancel') | tojson }}
   }).then(function(reason){
     if(!reason||!reason.trim())return;
-    fetch("/shop/api/orders/"+oid+"/request-refund",{method:"POST",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify({reason:reason.trim()})})
+    fetch("/mall/api/orders/"+oid+"/request-refund",{method:"POST",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify({reason:reason.trim()})})
       .then(function(r){return r.json()}).then(function(d){
         if(d.success){showToast("✅ {{ _('Refund request submitted') }}","success");loadOrders()}
         else showToast(d.error||"{{ _('Operation failed') }}","error");
@@ -323,7 +323,7 @@ function trackOrder(oid){
   var modal=document.getElementById("trackModal"),content=document.getElementById("trackContent");
   content.innerHTML='<div style="text-align:center;padding:24px"><div class="s"></div></div>';
   modal.style.display="block";
-  fetch("/shop/orders/"+oid+"/track-user",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+  fetch("/mall/orders/"+oid+"/track-user",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
     if(!d.success||!d.data){content.innerHTML='<div style="color:#f85149;text-align:center;padding:24px">{{ _('Query failed') }}</div>';return}
     var data=d.data;
     var h='<div style="margin-bottom:10px;padding:10px 14px;background:rgba(255,255,255,.03);border-radius:10px;border:1px solid var(--border)">';

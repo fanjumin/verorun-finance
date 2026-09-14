@@ -1,6 +1,11 @@
 window.MARKET=window.MARKET||'{{ MARKET|default('cn') }}';
+/* v1.8 动态分类：注册表取数（_loadDistCats）与分类解析器（_categoryEmoji /
+   _catLabel / _catOptions / _CAT_GRADS / _catGrad / _CAT_ICONS / _catIcon）
+   已抽至共享 partial partials/plugins_store_dist.html —— 与用户版共用同一实现，
+   避免两套模板各自维护造成漂移。本文件仅保留消费点调用。 */
 window.l_plugins_store=function(){
   document.getElementById("pt").textContent="{{ _('Plugin Store') }}";
+  _loadDistCats(); /* v1.8：预取分类注册表（失败静默，前端回落内置 map） */
   var mc=document.getElementById("mc");
   mc.innerHTML='<div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;border-bottom:1px solid var(--bd);padding-bottom:8px">'+
     '<button class="btn bp" id="storeTabBrowse" onclick="switchStoreTab(\'browse\')">{{ _('Plugin Store') }}</button>'+
@@ -497,23 +502,8 @@ function renderStars(rating, count){
   return '<span style="color:#f0c040;font-size:14px;letter-spacing:1px">'+s+'</span>';
 }
 
-/* ★ 插件商店改造：分类 emoji 占位符 */
-function _categoryEmoji(category){
-  var map={
-    'marketing':'📣',
-    'supply-chain':'📦',
-    'supply_chain':'📦',
-    'content':'📝',
-    'tool':'🔧',
-    'ai_agent':'🤖',
-    'system':'⚙️',
-    'knowledge':'📚',
-    'social':'📱',
-    'shop':'🛒',
-    'other':'🧩'
-  };
-  return map[category]||'🧩';
-}
+/* v1.8：分类 emoji / 展示名（_catLabel）/ option 列表（_catOptions）解析器
+   已抽至共享 partial partials/plugins_store_dist.html（与用户版共用）。 */
 
 /* 图标加载失败兜底：渲染规范类别渐变 Banner（修复 inline onerror 中 p 未定义） */
 function _imgIconFallback(el, identifier, category){
@@ -549,30 +539,9 @@ function _colorBlockHtml(id,emoji,extraStyle){
   return '<div style="'+st+';display:flex;align-items:center;justify-content:center;font-size:2.5rem;background:'+_pluginColor(id)+';color:#fff">'+emoji+'</div>';
 }
 
-/* ── 规范类别渐变 Banner（方案 §2.1-2.3，前端实时生成，零静态图）── */
-var _CAT_GRADS={
-  'system':'linear-gradient(135deg,#4F6EF7,#1E2A78)',
-  'shop':'linear-gradient(135deg,#12B886,#0B7285)',
-  'content':'linear-gradient(135deg,#FF6B35,#E0316B)',
-  'ai_agent':'linear-gradient(135deg,#845EF7,#D6336C)',
-  'social':'linear-gradient(135deg,#22B8CF,#4C6EF5)',
-  'tools':'linear-gradient(135deg,#748FFC,#364FC7)',
-  'supply_chain':'linear-gradient(135deg,#F59F00,#E8590C)'
-};
-function _catGrad(cat){return _CAT_GRADS[cat]||_CAT_GRADS['system']}
-var _CAT_ICONS={
-  'system':'<rect x="3" y="4" width="18" height="14" rx="2"/><path d="M3 10h18"/>',
-  'shop':'<circle cx="9" cy="21" r="2"/><circle cx="20" cy="21" r="2"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/>',
-  'content':'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>',
-  'ai_agent':'<rect x="3" y="4" width="18" height="14" rx="2"/><path d="M12 8v5"/><path d="M9 11h6"/>',
-  'social':'<circle cx="12" cy="12" r="9"/>',
-  'tools':'<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94z"/>',
-  'supply_chain':'<path d="M3 21V8l7-4 7 4v10"/><rect x="3" y="8" width="18" height="6"/>'
-};
-function _catIcon(cat,size){
-  var p=_CAT_ICONS[cat]||'<circle cx="12" cy="12" r="9"/>';
-  return '<svg viewBox="0 0 24 24" width="'+size+'" height="'+size+'" fill="none" stroke="rgba(255,255,255,.92)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'+p+'</svg>';
-}
+/* v1.8：_CAT_GRADS / _catGrad / _CAT_ICONS / _catIcon 已抽至共享 partial
+   partials/plugins_store_dist.html（与用户版共用）。 */
+
 /* 生成 Banner：渐变底 + 居中图标 + 左上角宣传语，整卡可点进详情
    card=true 时按卡片缩略图做边缘出血（负 margin），其余上下文为普通块 */
 /* 字号下拉选项（14-28px 自由选择） */
@@ -879,7 +848,8 @@ function renderStoreAdminList(container){
     var plugins=d.data.plugins||[];
     var h='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">'+
       '<div style="display:flex;gap:8px;align-items:center"><span style="font-size:13px;color:var(--text-muted)">{{ _('Total') }}: '+plugins.length+'</span>'+
-      '<button class="btn bo bs" onclick="syncStoreCatalog()">🔄 {{ _('Sync Store') }}</button></div>'+
+      '<button class="btn bo bs" onclick="syncStoreCatalog()">🔄 {{ _('Sync Store') }}</button>'+
+      '<button class="btn bo bs" onclick="showCategoryAdmin()">🏷️ {{ _('Category Registry') }}</button></div>'+
       '<button class="btn bp bs" onclick="showStoreAdminForm(null)">{{ _('Add Plugin') }}</button></div>';
     if(plugins.length===0){
       h+='<div class="empty-state"><div style="margin-bottom:12px;font-size:40px">📦</div><div style="color:var(--dim)">{{ _('No plugins in store') }}</div></div>';
@@ -901,6 +871,7 @@ function renderStoreAdminList(container){
         '<td style="padding:10px 12px;text-align:center">'+
         '<button class="btn bo bs" style="margin-right:4px" onclick="showStoreAdminForm(\''+escAttr(p.identifier)+'\')">{{ _('Edit') }}</button>'+
         '<button class="btn bo bs" style="margin-right:4px" onclick="toggleStorePlugin(\''+escAttr(p.identifier)+'\')">'+(p.enabled?'{{ _('Unpublish') }}':'{{ _('Publish') }}')+'</button>'+
+        '<button class="btn bo bs" style="margin-right:4px" onclick="showDistributionAdmin(\''+escAttr(p.identifier)+'\')">🔀 {{ _('Distribution') }}</button>'+
         '<button class="btn bo bs" style="color:#f85149" onclick="deleteStorePlugin(\''+escAttr(p.identifier)+'\')">{{ _('Delete') }}</button>'+
         '</td></tr>';
     });
@@ -971,7 +942,7 @@ function _renderStoreForm(container, title, p){
     '<div><label style="display:block;font-size:12px;margin-bottom:4px">{{ _('Tagline Subtitle Font Size') }}</label><select class="in" id="sai_tagline_subtitle_font_size" style="width:100%">'+_fontSizeOptions(p.tagline_subtitle_font_size||'14px')+'</select></div>'+
     '<div><label style="display:block;font-size:12px;margin-bottom:4px">{{ _('Tagline Color') }}</label><input class="in" id="sai_tagline_color" type="color" value="'+(p.tagline_color||'#ffffff')+'" style="width:100%;height:34px;padding:2px"></div>'+
     '<div><label style="display:block;font-size:12px;margin-bottom:4px">{{ _('Version') }}</label><input class="in" id="sai_version" value="'+escAttr(p.version||'0.1.0')+'" style="width:100%"></div>'+
-    '<div><label style="display:block;font-size:12px;margin-bottom:4px">{{ _('Category') }}</label><select class="in" id="sai_category" style="width:100%"><option value="">-</option><option value="system"'+(p.category==='system'?' selected':'')+'>{{ _('System') }}</option><option value="shop"'+(p.category==='shop'?' selected':'')+'>{{ _('Shop') }}</option><option value="content"'+(p.category==='content'?' selected':'')+'>{{ _('Content') }}</option><option value="ai_agent"'+(p.category==='ai_agent'?' selected':'')+'>{{ _('AI Agent') }}</option><option value="social"'+(p.category==='social'?' selected':'')+'>{{ _('Social') }}</option><option value="tools"'+(p.category==='tools'?' selected':'')+'>{{ _('Tools') }}</option><option value="supply_chain"'+(p.category==='supply_chain'?' selected':'')+'>{{ _('Supply Chain') }}</option></select></div>'+
+    '<div><label style="display:block;font-size:12px;margin-bottom:4px">{{ _('Category') }}</label><select class="in" id="sai_category" style="width:100%">'+_catOptions(p.category)+'</select></div>'+
     '<div><label style="display:block;font-size:12px;margin-bottom:4px">{{ _('Price Type') }}</label><select class="in" id="sai_price_type" style="width:100%" onchange="var s=this.value===\'sub\';document.getElementById(\'sai_price_interval_row\').style.display=s?\'\':\'none\';document.getElementById(\'sai_price_calc_row\').style.display=s?\'\':\'none\'"><option value="free"'+(p.price_type==='free'?' selected':'')+'>{{ _('Free') }}</option><option value="onetime"'+(p.price_type==='onetime'?' selected':'')+'>{{ _('One-time') }}</option><option value="sub"'+(p.price_type==='sub'?' selected':'')+'>{{ _('Subscription') }}</option></select></div>'+
     '<div><label style="display:block;font-size:12px;margin-bottom:4px">{{ _('Price') }} - {{ _('Month') }} ({{ _('cents') }})</label><input class="in" id="sai_price" type="number" value="'+(p.price_amount||0)+'" style="width:100%"></div>'+
     '<div><label style="display:block;font-size:12px;margin-bottom:4px">{{ _('Price') }} - {{ _('Quarter') }} ({{ _('cents') }})</label><input class="in" id="sai_price_quarter" type="number" value="'+(p.price_quarter_fen||0)+'" style="width:100%"></div>'+
@@ -1193,3 +1164,8 @@ function _simpleMarkdown(md){
 
   return '<div style="line-height:1.7"><p style="margin:8px 0">'+html+'</p></div>';
 }
+
+/* v1.8 商店管理增补（动态分类注册表 + 动态分流规则）已抽至共享 partial
+   partials/plugins_store_dist.html —— admin.html 在 edition 分支之外无条件
+   include，官方版与用户版共用同一实现。面板内的「返回」按钮统一走 _distBack()，
+   由该文件按 edition 分派到 renderStoreAdminList（本文件）或轻量入口列表。 */

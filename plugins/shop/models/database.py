@@ -5,23 +5,28 @@ Shop Plugin — Database initialization
 All 11 shop tables in the `shop` PostgreSQL schema.
 Exact copy of auth-center/models/database.py init_shop_db().
 """
-import os
-import sys
-
-# Ensure auth-center is importable (仅当目录存在时插入，避免污染 sys.path)
-_AUTH_CENTER = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'auth-center')
-if os.path.isdir(_AUTH_CENTER) and _AUTH_CENTER not in sys.path:
-    sys.path.insert(0, _AUTH_CENTER)
-
-from models import get_db
+from contextlib import contextmanager
+from plugins._base.db import get_pooled_connection
 from plugin_manager.logger import get_plugin_logger
 
 logger = get_plugin_logger('shop')
 
 
+@contextmanager
+def get_shop_db():
+    """shop 插件独立数据库连接（PG schema: shop），走共享连接池（§9.1/§11.2）。
+
+    调用方使用 `with get_shop_db() as conn:`，退出自动 commit 并归还连接池。
+    """
+    with get_pooled_connection() as conn:
+        conn.execute("CREATE SCHEMA IF NOT EXISTS shop")
+        conn.execute("SET search_path TO shop")
+        yield conn
+
+
 def init_shop_db():
     """Create shop tables in shop schema."""
-    with get_db() as conn:
+    with get_shop_db() as conn:
         cur = conn.cursor()
         cur.execute("CREATE SCHEMA IF NOT EXISTS shop")
         cur.execute("""
@@ -297,14 +302,14 @@ def init_shop_db():
             "CREATE INDEX IF NOT EXISTS idx_rate_limits_rkey_ts ON shop.rate_limits(rkey, ts)"
         )
         # 4.2 第二批：商品搜索加速——pg_trgm GIN 索引（加速 LIKE '%xx%' 中缀匹配）
-        cur.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
+        cur.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm SCHEMA public")
         cur.execute(
             "CREATE INDEX IF NOT EXISTS idx_products_title_trgm "
-            "ON shop.products USING gin (title gin_trgm_ops)"
+            "ON shop.products USING gin (title public.gin_trgm_ops)"
         )
         cur.execute(
             "CREATE INDEX IF NOT EXISTS idx_products_subtitle_trgm "
-            "ON shop.products USING gin (subtitle gin_trgm_ops)"
+            "ON shop.products USING gin (subtitle public.gin_trgm_ops)"
         )
         conn.commit()
     logger.info('[ShopPlugin] shop schema initialized in PostgreSQL')

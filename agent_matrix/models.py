@@ -13,15 +13,15 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROLES_DIR = os.path.join(BASE_DIR, 'roles')
 
 # ── 发行版 edition 归一化（单一事实源：VR_EDITION / RELEASE_EDITION / DEPLOY_TYPE）──
-# 历史旧版名归一为现行版名：edu→research、pro→finance；
+# 历史旧版名归一为现行版名：edu/research→research-desktop、pro/finance→finance-desktop；
 # 其余（standard/official/空）视为全量版。
 def normalize_edition(e) -> str:
     """归一化版本标识（大小写不敏感）：旧名→现行版名，空→standard。"""
     e = (e or '').strip().lower()
-    if e in ('edu', 'research'):
-        return 'research'
-    if e in ('pro', 'finance'):
-        return 'finance'
+    if e in ('edu', 'research', 'research-desktop'):
+        return 'research-desktop'
+    if e in ('pro', 'finance', 'finance-desktop'):
+        return 'finance-desktop'
     return e or 'standard'
 
 
@@ -80,6 +80,98 @@ def is_service_enabled(name: str) -> bool:
     """服务是否启用：未声明（yaml 缺失 / 无 services 段 / 无该键）→ 默认 True（全开兜底）。"""
     return edition_services().get(name, True)
 
+
+def _parse_edition_flag(text, key):
+    """从 edition yaml 顶层读一个布尔开关（'key: true|false'）；未声明返回 None。"""
+    m = re.search(r'^%s:\s*(true|false)\s*$' % re.escape(key), text, re.M | re.I)
+    return (m.group(1).lower() == 'true') if m else None
+
+
+def edition_requires_license() -> bool:
+    """本发行版是否强制「许可证/订阅到期即锁」。
+
+    单一事实源：deploy/editions/<edition>.yaml 顶层 `license_enforcement`。
+    语义与 is_service_enabled() 的「缺省即全开」**刻意相反** —— 授权强制是产品商业
+    决策，未显式声明的版（official / research / 未设版本键的老部署）一律不启用，
+    否则一次改动会把所有发行版锁死。
+    桌面金融版显式置 true（2026-09-11 产品决策：订阅到期即锁，fail-closed）。
+    """
+    path = os.path.join(EDITIONS_DIR, f'{current_edition()}.yaml')
+    if not os.path.isfile(path):
+        return False
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            return bool(_parse_edition_flag(f.read(), 'license_enforcement'))
+    except OSError:
+        return False
+
+
+# ── Edition 插件白名单（deploy/editions/<edition>.yaml 的 plugins: include/exclude）──
+def _parse_edition_plugin_lists(text):
+    """从 edition yaml 提取 plugins: 段的 include/exclude 列表。
+
+    仅识别顶层 plugins: 下 include:/exclude: 块的 '  - item' 行，其余内容忽略。
+    """
+    lists = {'include': [], 'exclude': []}
+    section = None  # None | 'plugins' | 'include' | 'exclude'
+    for line in text.splitlines():
+        if not line.strip() or line.strip().startswith('#'):
+            continue
+        if re.match(r'^plugins:\s*$', line):
+            section = 'plugins'
+            continue
+        if line.startswith(' '):
+            m = re.match(r'^ +(\w+)\s*:\s*$', line)
+            if m:
+                if m.group(1) in lists:
+                    section = m.group(1)
+                else:
+                    section = 'plugins'
+                continue
+            li = re.match(r'^ +- +(.+)$', line)
+            if li and section in lists:
+                lists[section].append(li.group(1).strip())
+            continue
+        if re.match(r'^\w[\w_]*\s*:', line):
+            section = None
+    return lists
+
+
+def edition_plugin_lists() -> dict:
+    """当前 edition 的插件 include/exclude 白名单。
+
+    standard（未设 VR_EDITION 的老部署）语义与官方一致，归一为 official；
+    yaml 缺失 / 无 plugins 段 → 空列表（不排除任何插件）。
+    """
+    edition = current_edition()
+    if edition in ('', 'standard'):
+        edition = 'official'
+    path = os.path.join(EDITIONS_DIR, f'{edition}.yaml')
+    if not os.path.isfile(path):
+        return {'include': [], 'exclude': []}
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            return _parse_edition_plugin_lists(f.read())
+    except Exception:
+        return {'include': [], 'exclude': []}
+
+
+def edition_plugin_excludes() -> list:
+    """当前 edition 插件排除名单（插件列表隐藏 / enable 拒绝共用）。"""
+    return edition_plugin_lists().get('exclude', []) or []
+
+
+def edition_plugin_includes() -> list:
+    """当前 edition 的插件白名单。
+
+    ⚠️ 返回空列表 = 该发行版**未启用白名单语义**（standard/未设版本键的老部署，
+    或 yaml 缺 plugins 段）→ 调用方绝不能据此过滤，否则会把所有插件判为"本版不提供"。
+    服务器版由 sync-to-pro.yml 按 include 物理拷贝（空 include 直接 fail），
+    故运行时同样遵守 include 即为与该产物口径对齐。
+    """
+    return edition_plugin_lists().get('include', []) or []
+
+
 # ── 复用主应用 PostgreSQL 连接 ──
 sys.path.append(os.path.join(BASE_DIR, '..', 'auth-center', 'models'))
 from database import get_db, get_table_columns
@@ -129,22 +221,35 @@ def _to_int(val, default=0):
     return default
 
 
+def _role_dir_for_edition() -> str:
+    """当前发行版角色目录：agent_matrix/roles/<edition>/ 存在则用该子目录，
+    否则回退 roles/ 根（官方默认版）。方向版（research/finance/edge…）角色
+    目录各自独立，官方角色与方向版角色互不混载。"""
+    edition = current_edition()
+    if edition:
+        sub = os.path.join(ROLES_DIR, edition)
+        if os.path.isdir(sub):
+            return sub
+    return ROLES_DIR
+
+
 def _load_all_role_yamls():
-    """从 ROLES_DIR 加载所有 .yaml 文件，返回角色 dict 列表。"""
+    """从当前发行版角色目录加载所有 .yaml 文件，返回角色 dict 列表。"""
+    roles_dir = _role_dir_for_edition()
     roles = []
-    if not os.path.isdir(ROLES_DIR):
+    if not os.path.isdir(roles_dir):
         return roles
     _edition = _current_edition()
-    for fname in sorted(os.listdir(ROLES_DIR)):
+    for fname in sorted(os.listdir(roles_dir)):
         if not fname.endswith('.yaml') and not fname.endswith('.yml'):
             continue
-        fpath = os.path.join(ROLES_DIR, fname)
+        fpath = os.path.join(roles_dir, fname)
         try:
             with open(fpath, 'r', encoding='utf-8') as f:
                 raw = _parse_role_yaml(f.read())
             # edition 角色集过滤（editions 字段缺省 = 全版本包含）。
-            # research/finance 分版只加载归属角色；standard/official 全量。
-            if _edition in ('research', 'finance'):
+            # 方向版只加载归属角色；standard/official 全量。
+            if _edition in ('research', 'research-desktop', 'finance', 'finance-desktop'):
                 _owned = raw.get('editions') or []
                 if _owned and _edition not in _owned:
                     print(f'[RoleYAML] edition {_edition} skips role: {raw.get("slug")}')
@@ -1058,6 +1163,37 @@ def create_agent(data):
         conn.commit()
         return row[0]
 
+
+def register_capability_to_role(domain, name, capabilities, description='', system_prompt=''):
+    """将模块/插件的能力注册到已存在的 YAML 角色中（按 domain 匹配）。
+
+    不创建新 Agent，只扩展目标角色的 capabilities 字段。
+    匹配规则：agent_matrix 中 is_system=1 且 role_type='sub' 且 domain 匹配的角色。
+    无匹配角色时仅记录警告（未来可能由独立 YAML 编排接管）。
+    """
+    with get_db() as conn:
+        role = conn.execute(
+            "SELECT id, capabilities FROM agent_matrix WHERE domain=%s AND is_system=1 AND role_type='sub' LIMIT 1",
+            (domain,)
+        ).fetchone()
+        if not role:
+            print(f'[Capability] ⚠️ No system role found for domain={domain}, skipping {name}')
+            return False
+
+        existing = json.loads(role['capabilities'] or '[]')
+        if isinstance(capabilities, str):
+            capabilities = json.loads(capabilities)
+        new_caps = [c for c in capabilities if c not in existing]
+        if new_caps:
+            conn.execute(
+                "UPDATE agent_matrix SET capabilities=%s, updated_at=NOW() WHERE id=%s",
+                (json.dumps(existing + new_caps), role['id'])
+            )
+            conn.commit()
+            print(f'[Capability] ✅ Registered {len(new_caps)} capabilities to role domain={domain}')
+        else:
+            print(f'[Capability] ℹ️ No new capabilities for {name} on domain={domain}')
+        return True
 
 
 def update_agent(agent_id, data):

@@ -76,11 +76,11 @@ if [ -n "${VR_THREADS:-}" ]; then
 fi
 
 # ── Edition 服务门控（与 deploy/editions/*.yaml 单一事实源对齐）──
-# 桌面包裹版（finance / research，含旧名 pro）：容器内不启动用户向 Web 服务
+# 桌面包裹版（finance-desktop / research-desktop，含旧名 finance / research / pro）：容器内不启动用户向 Web 服务
 # （verorun-main/8081 + verorun-auth/8083），supervisord 对应 program 关闭自动启动。
 _edition_lc="$(echo "${VR_EDITION:-}" | tr '[:upper:]' '[:lower:]')"
 case "${_edition_lc}" in
-    finance|research|pro)
+    finance|research|pro|finance-desktop|research-desktop)
         echo "[EDITION] 桌面包裹版 ${_edition_lc}: disabling verorun-main/verorun-auth in supervisord"
         if awk '
             /^\[program:verorun-main\]/ || /^\[program:verorun-auth\]/ { target=1; print; next }

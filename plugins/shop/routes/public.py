@@ -5,13 +5,13 @@ import sys, os, json, logging
 
 logger = logging.getLogger(__name__)
 from flask import Blueprint, jsonify, request, render_template, make_response, redirect, current_app, session
-from models import get_db
+from ..models import get_db
 from services.jwt_service import validate_token
 from plugin_manager.event_bus import get_event_bus, EventName
 import secrets
 from datetime import datetime
 
-shop_public_bp = Blueprint('shop_public', __name__, url_prefix='/shop', static_folder='../static')
+shop_public_bp = Blueprint('shop_public', __name__, url_prefix='/mall', static_folder='../static')
 
 
 def _get_plugin_instance(name):
@@ -975,6 +975,44 @@ def track_order_user(oid):
 # =============================================
 # API: 发起支付
 # =============================================
+@shop_public_bp.route('/api/logistics/track', methods=['POST'])
+def logistics_track():
+    """E1: 物流公开查询端点（POST /mall/api/logistics/track）。
+    
+    供 orders-enhance.js 调用，返回标准化轨迹数组。
+    校验订单归属，防越权。
+    """
+    payload, err = _require_user()
+    if err:
+        return err
+    uid = payload['user_id']
+    data = request.get_json(silent=True) or {}
+    oid = str(data.get('order_id') or '')
+    if not oid:
+        return jsonify({'success': False, 'error': _('Missing order_id')}), 400
+    with get_db() as conn:
+        row = conn.execute(
+            'SELECT oi.*, ec.kdniao_code FROM order_items oi '
+            'LEFT JOIN express_companies ec ON oi.tracking_company=ec.code '
+            'WHERE oi.id=%s AND oi.user_id=%s', (oid, uid)
+        ).fetchone()
+        if not row:
+            return jsonify({'success': False, 'error': _('Order does not exist')}), 404
+        if not row.get('tracking_number'):
+            return jsonify({'success': True, 'track_no': '', 'items': [], 'empty_reason': 'not_shipped'})
+        shipper_code = row['kdniao_code'] or row['tracking_company']
+        logistic_code = row['tracking_number']
+    success, data, err_msg = False, {}, _('Logistics plugin is not enabled')
+    _logistics = _get_plugin_instance('logistics')
+    if _logistics:
+        success, data, err_msg = _logistics.query_track(shipper_code, logistic_code)
+    traces = data.get('traces', []) if success else []
+    items = [{'time': t.get('time', ''), 'node': t.get('node', '') or t.get('desc', ''),
+              'city': t.get('city', ''), 'state': 'current' if i == 0 and success else ''}
+             for i, t in enumerate(traces)]
+    return jsonify({'success': True, 'track_no': logistic_code, 'items': items})
+
+
 @shop_public_bp.route('/api/pay/<oid>', methods=['POST'])
 def api_pay_order(oid):
     """为订单创建支付（支持支付宝/微信）"""
@@ -1014,7 +1052,7 @@ def api_pay_order(oid):
                         notify_base = row[0]
             except Exception:
                 pass
-        shop_notify_url = notify_base.rstrip('/') + '/shop/api/pay/wechat-notify' if notify_base else ''
+        shop_notify_url = notify_base.rstrip('/') + '/mall/api/pay/wechat-notify' if notify_base else ''
         result = call_native_pay(oid, subject, int(round(total * 100)), notify_url=shop_notify_url)
         # 失败或未配置（fail-closed，不再 mock 假成功）
         return jsonify({'success': not result.get('error') and not result.get('stub'),

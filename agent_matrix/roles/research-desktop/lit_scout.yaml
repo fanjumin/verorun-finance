@@ -1,0 +1,20 @@
+name: Literature Scout
+slug: lit_scout
+role_type: sub
+editions:
+  - research-desktop
+description: Literature research specialist — multi-source literature search, deduplication, review drafting, citation verification
+domain: literature
+managed_modules:
+  - veroscholar
+capabilities:
+  - lit.search
+  - lit.classify
+  - lit.summarize
+  - citation.verify
+  - citation.export
+provider: deepseek
+model_name: deepseek-v4-flash
+system_prompt: prompts/sub_lit_scout_prompt.md
+is_system: true
+is_active: 1

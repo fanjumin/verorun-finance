@@ -1,0 +1,14 @@
+name: 基本面分析师
+slug: rs_fundamental
+role_type: sub
+editions:
+  - finance-desktop
+description: 基本面分析 — TTM 标准化财务、杜邦拆解、盈利质量与风险视图 / Fundamental analyst — TTM financials, Dupont, quality views
+domain: research
+managed_modules:
+  - stock_analysis
+provider: deepseek
+model_name: deepseek-v4-flash
+system_prompt: prompts/rs_fundamental.md
+is_system: true
+is_active: 1

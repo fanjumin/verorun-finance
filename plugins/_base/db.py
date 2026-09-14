@@ -39,7 +39,15 @@ class PgConnection:
     def execute(self, sql, params=None):
         if self._cur is None:
             self._cur = self._conn.cursor(cursor_factory=RealDictCursor)
-        self._cur.execute(_replace_placeholders(sql), params or ())
+        sql = _replace_placeholders(sql)
+        # DE-3 根因修复：`params or ()` 会把无参数场景也推进 psycopg2 的
+        # `%` 占位符解析路径 —— SQL 注释/字面量里的裸 `%`（如迁移注释中的
+        # `%q`）会被误当占位符而报 unsupported format character。
+        # 仅在显式传参时才做参数化绑定；无参数（None）直接执行，零插值。
+        if params is None:
+            self._cur.execute(sql)
+        else:
+            self._cur.execute(sql, params)
         return self._cur
 
     def commit(self):

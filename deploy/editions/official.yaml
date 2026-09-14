@@ -8,3 +8,14 @@ services:
   user_login: true
   user_console: true
   main_site: true
+plugins:
+  # 【2026-09-09 用户拍板】方向版/边缘版插件不适用于默认官方安装：
+  # iot_hub/ros_bridge/cogevolution_substrate 属未来边缘版；
+  # stock_analysis（金融版）/veroscholar（科研版）仅方向版。
+  # 运行时由 plugin_manager 消费 exclude（本地/商店列表隐藏 + enable 拒绝）。
+  exclude:
+    - iot_hub
+    - ros_bridge
+    - cogevolution_substrate
+    - stock_analysis
+    - veroscholar

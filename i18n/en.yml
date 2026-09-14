@@ -1,5 +1,9 @@
 # VeroRun English Translation (identity mapping)
 ---
+'VeroScholar': 'VeroScholar'
+'VeroScholar Research Workbench': 'VeroScholar Research Workbench'
+'Literature Search': 'Literature Search'
+'Review Generator': 'Review Generator'
 'app_name': 'VeroRun AI'
 (HTTPS).: (HTTPS).
 (No input content): (No input content)
@@ -669,6 +673,7 @@ Missing product ID: Missing product ID
 Missing purchase order ID: Missing purchase order ID
 Missing required field: Missing required field
 Missing state parameter: Missing state parameter
+'Missing system capability: {cap}': 'Missing system capability: {cap}'
 Missing theme.json file: Missing theme.json file
 Missing user message: Missing user message
 Missing user_id: Missing user_id
@@ -727,6 +732,7 @@ Ningxia Hui Autonomous Region: Ningxia Hui Autonomous Region
 'Automatically Enter the Cognitive Graph': 'Automatically Enter the Cognitive Graph'
 'Basic Plan': 'Basic Plan'
 'Browse All': 'Browse All'
+'Changelog': 'Changelog'
 'Comment posted successfully': 'Comment posted successfully'
 'Confirm login on your phone': 'Confirm login on your phone'
 'Consensus or conflict with other Agents views': 'Consensus or conflict with other Agents views'
@@ -934,6 +940,7 @@ Pending delivery: Pending delivery
 Pending payment: Pending payment
 Pending posts: Pending posts
 Pending processing: Pending processing
+'Pending Review': 'Pending Review'
 Pending review: Pending review
 Pending shipment: Pending shipment
 Pending tickets: Pending tickets
@@ -1183,6 +1190,7 @@ Sub-task Summary Title: Sub-task Summary Title
 Subdomain Does Not Exist: Subdomain Does Not Exist
 Subdomain and Display Name Cannot Be Empty: Subdomain and Display Name Cannot Be Empty
 Submit: Submit
+'Submit Version': 'Submit Version'
 Submit for Review: Submit for Review
 Subscription reactivated: Subscription reactivated
 Success: Success
@@ -1270,6 +1278,7 @@ This order has not been shipped: This order has not been shipped
 This payment method is not supported in the current market: This payment method is not supported in the current market
 This phone number is already bound to another user: This phone number is already bound to another user
 This procurement order has not been placed on 1688 yet: This procurement order has not been placed on 1688 yet
+'This skill is not supported on the current edition': 'This skill is not supported on the current edition'
 This year: This year
 Three: Three
 Tibet Autonomous Region: Tibet Autonomous Region
@@ -1376,6 +1385,9 @@ Verifying identity...: Verifying identity...
 VeroRun Weiluo Intelligence: VeroRun Weiluo Intelligence
 VeroRun Email Verification Code: VeroRun Email Verification Code
 Version: Version
+'Version History': 'Version History'
+'Version submitted for review': 'Version submitted for review'
+'Versions': 'Versions'
 Vietnam: Vietnam
 View Cart: View Cart
 View Domain Configuration Guide →: View Domain Configuration Guide →
@@ -1866,6 +1878,7 @@ stub confirm is disabled outside dev: stub confirm is disabled outside dev
 'Basic': 'Basic'
 'Basic Q&A': 'Basic Q&A'
 'Batch Management + Auto Listing': 'Batch Management + Auto Listing'
+'Become a Developer': 'Become a Developer'
 'Become': 'Become'
 'Before & After': 'Before & After'
 'Belongs To': 'Belongs To'
@@ -1927,6 +1940,7 @@ stub confirm is disabled outside dev: stub confirm is disabled outside dev
 'Collect → AI Optimize → Publish': 'Collect → AI Optimize → Publish'
 'Community Content': 'Community Content'
 'Community Mgmt Agent': 'Community Mgmt Agent'
+'Community skills are temporarily disabled': 'Community skills are temporarily disabled'
 'Company': 'Company'
 'Company Address': 'Company Address'
 'Company Name': 'Company Name'
@@ -2032,6 +2046,7 @@ stub confirm is disabled outside dev: stub confirm is disabled outside dev
 'Edit': 'Edit'
 'Edit Address': 'Edit Address'
 'Email': 'Email'
+'Email verified! You are now a developer.': 'Email verified! You are now a developer.'
 'Email Management': 'Email Management'
 'Email Subject': 'Email Subject'
 'Email Verified': 'Email Verified'
@@ -2051,6 +2066,7 @@ stub confirm is disabled outside dev: stub confirm is disabled outside dev
 'Enterprise Verification Failed:': 'Enterprise Verification Failed:'
 'Enterprise Verified': 'Enterprise Verified'
 'Enterprises Served': 'Enterprises Served'
+'Estimated Pending Payout': 'Estimated Pending Payout'
 'Expand': 'Expand'
 'Expired This Month': 'Expired This Month'
 'Expires': 'Expires'
@@ -2274,6 +2290,7 @@ stub confirm is disabled outside dev: stub confirm is disabled outside dev
 'Our Clients': 'Our Clients'
 'Our Story': 'Our Story'
 'Overview': 'Overview'
+'Package': 'Package'
 'Page Not Found': 'Page Not Found'
 'Paid': 'Paid'
 'Paid Users': 'Paid Users'
@@ -2294,8 +2311,10 @@ stub confirm is disabled outside dev: stub confirm is disabled outside dev
 'Payment creation failed': 'Payment creation failed'
 'Pending': 'Pending'
 'Pending Payment': 'Pending Payment'
+'Estimated Pending Payout': 'Estimated Pending Payout'
 'Pending Posts': 'Pending Posts'
 'Pending Review': 'Pending Review'
+'Pending Submissions': 'Pending Submissions'
 'Pending Tickets': 'Pending Tickets'
 'Perfect on Mobile & Desktop': 'Perfect on Mobile & Desktop'
 'Permanent': 'Permanent'
@@ -2399,6 +2418,7 @@ stub confirm is disabled outside dev: stub confirm is disabled outside dev
 'Register on Platform': 'Register on Platform'
 'Register | Login': 'Register | Login'
 'Registered': 'Registered'
+'Registered. Check your email for the verification link.': 'Registered. Check your email for the verification link.'
 'Registered Agents': 'Registered Agents'
 'Registered Capital': 'Registered Capital'
 'Registered Users': 'Registered Users'
@@ -2497,7 +2517,9 @@ stub confirm is disabled outside dev: stub confirm is disabled outside dev
 'Status': 'Status'
 'Sub Agent': 'Sub Agent'
 'Subject': 'Subject'
+'Submit': 'Submit'
 'Submit Failed': 'Submit Failed'
+'Submitted': 'Submitted'
 'Submit Ticket': 'Submit Ticket'
 'Submit Tickets, Complaints & Suggestions': 'Submit Tickets, Complaints & Suggestions'
 'Submit Verification': 'Submit Verification'
@@ -2544,6 +2566,7 @@ stub confirm is disabled outside dev: stub confirm is disabled outside dev
 'Total': 'Total'
 'Total API Keys': 'Total API Keys'
 'Total Calls': 'Total Calls'
+'Total Installs': 'Total Installs'
 'Total Users': 'Total Users'
 'Total: ': 'Total: '
 'Town/Street': 'Town/Street'
@@ -2596,6 +2619,7 @@ stub confirm is disabled outside dev: stub confirm is disabled outside dev
 'Verified': 'Verified'
 'Verified At': 'Verified At'
 'Verify & Enable': 'Verify & Enable'
+'Verify Email': 'Verify Email'
 'Verify Failed': 'Verify Failed'
 'Verify Now': 'Verify Now'
 'Verifying...': 'Verifying...'
@@ -2842,6 +2866,7 @@ stub confirm is disabled outside dev: stub confirm is disabled outside dev
 'Signed out all other devices': 'Signed out all other devices'
 'Street/road/alley + house number': 'Street/road/alley + house number'
 'The QR code is valid for 5 minutes, resubmit after expiry': 'The QR code is valid for 5 minutes, resubmit after expiry'
+'Third-party': 'Third-party'
 'Third-party binding': 'Third-party binding'
 'Total:': 'Total:'
 'Unable to get phone number': 'Unable to get phone number'
@@ -3166,6 +3191,8 @@ Fetching metadata: Fetching metadata
 Imported: Imported
 Please enter a GitHub repo URL: Please enter a GitHub repo URL
 # P1 subscription center UI keys (2026-08-22)
+'My Plugins': 'My Plugins'
+'My Submissions': 'My Submissions'
 'My Subscriptions': 'My Subscriptions'
 'Browse': 'Browse'
 'Change': 'Change'
@@ -3552,7 +3579,11 @@ Please enter a GitHub repo URL: Please enter a GitHub repo URL
 'Deactivate license for': 'Deactivate license for'
 'Deactivation failed': 'Deactivation failed'
 'Delete plugin from store?': 'Delete plugin from store?'
+'Developer Center': 'Developer Center'
+'Developer Name': 'Developer Name'
+'Developer Registration': 'Developer Registration'
 'Developer Reply': 'Developer Reply'
+'Developer Slug': 'Developer Slug'
 'Discount applied': 'Discount applied'
 'Discount code': 'Discount code'
 'Download URL': 'Download URL'
@@ -3582,8 +3613,11 @@ Please enter a GitHub repo URL: Please enter a GitHub repo URL
 'Newest': 'Newest'
 'No licenses activated yet': 'No licenses activated yet'
 'No plugins in store': 'No plugins in store'
+'No plugins yet': 'No plugins yet'
 'No reviews yet': 'No reviews yet'
+'No submissions yet': 'No submissions yet'
 'No subscriptions': 'No subscriptions'
+'No versions yet': 'No versions yet'
 'One-time': 'One-time'
 'Open in new tab': 'Open in new tab'
 'Official': 'Official'
@@ -3598,6 +3632,8 @@ Please enter a GitHub repo URL: Please enter a GitHub repo URL
 'Plugin ID and License Key required': 'Plugin ID and License Key required'
 'Plugin Store': 'Plugin Store'
 'Plugin already licensed': 'Plugin already licensed'
+'Plugin {slug} license is invalid': 'Plugin {slug} license is invalid'
+'Plugin {slug} version {version} does not satisfy {spec}': 'Plugin {slug} version {version} does not satisfy {spec}'
 'Price Type': 'Price Type'
 'Price: High to Low': 'Price: High to Low'
 'Price: Low to High': 'Price: Low to High'
@@ -3975,7 +4011,9 @@ Please enter a GitHub repo URL: Please enter a GitHub repo URL
 'Please try again later': 'Please try again later'
 'Search...': 'Search...'
 'Tax ID': 'Tax ID'
+'Verification Level': 'Verification Level'
 'Verification Status': 'Verification Status'
+'Verification Token': 'Verification Token'
 '+ Add': '+ Add'
 'Chinese': 'Chinese'
 'Delete this translation?': 'Delete this translation?'
@@ -4133,3 +4171,66 @@ Please enter a GitHub repo URL: Please enter a GitHub repo URL
 'Congratulations! Your real name has been verified and your display name has been updated to {name}.': 'Congratulations! Your real name has been verified and your display name has been updated to {name}.'
 'Related claim records will also be cleared.': 'Related claim records will also be cleared.'
 'Notification content, supports HTML': 'Notification content, supports HTML'
+
+# ── Notifications & Rewards admin module UI labels (en source keys, identity) ──
+'Admin Test': 'Admin Test'
+'All Users': 'All Users'
+'Campaign Notice': 'Campaign Notice'
+'Completion Reward Rule Management': 'Completion Reward Rule Management'
+'Completion Reward Rules': 'Completion Reward Rules'
+'Confirm Deletion Rule': 'Confirm Deletion Rule'
+'Content Template': 'Content Template'
+'Edit Rule': 'Edit Rule'
+'Enter a valid user ID': 'Enter a valid user ID'
+'Enter rule name': 'Enter rule name'
+'Event': 'Event'
+'Event Notification': 'Event Notification'
+'Event Type': 'Event Type'
+'Event_type, title_template, content_template are required': 'Event_type, title_template, content_template are required'
+'Failed to Send: ': 'Failed to Send: '
+'Fill in Details': 'Fill in Details'
+'Manual Push': 'Manual Push'
+'Manual Push Notification': 'Manual Push Notification'
+'Myself Only': 'Myself Only'
+'New Rule': 'New Rule'
+'New Template': 'New Template'
+'No Reward Rules': 'No Reward Rules'
+'Optional, e.g. /user/coupons': 'Optional, e.g. /user/coupons'
+'Phone Verified': 'Phone Verified'
+'Progress': 'Progress'
+'Push Template Management': 'Push Template Management'
+'Push Templates': 'Push Templates'
+'Redirect Link': 'Redirect Link'
+'Redirect Template': 'Redirect Template'
+'Required fields cannot be empty': 'Required fields cannot be empty'
+'Required plugin {slug} is not enabled (currently {status})': 'Required plugin {slug} is not enabled (currently {status})'
+'Required plugin {slug} is not installed': 'Required plugin {slug} is not installed'
+'Required skill {slug} does not exist': 'Required skill {slug} does not exist'
+'Required skill {slug} is unavailable': 'Required skill {slug} is unavailable'
+'Reward': 'Reward'
+'Reward Name': 'Reward Name'
+'Reward Notification': 'Reward Notification'
+'Reward Type': 'Reward Type'
+'Rule Name': 'Rule Name'
+'Rules': 'Rules'
+'Select Coupon': 'Select Coupon'
+'Select Coupons': 'Select Coupons'
+'Send Notification': 'Send Notification'
+'Send Test': 'Send Test'
+'Sent ': 'Sent '
+'Set Avatar': 'Set Avatar'
+'System Notification': 'System Notification'
+'Target Users': 'Target Users'
+'Test Notification Sent': 'Test Notification Sent'
+'Title and content are required': 'Title and content are required'
+'Total Rules': 'Total Rules'
+'Total Templates': 'Total Templates'
+'Trigger Condition': 'Trigger Condition'
+'Two Levels': 'Two Levels'
+'User-visible Name': 'User-visible Name'
+'Verification Reward': 'Verification Reward'
+'templates': 'templates'
+'Skill available': 'Skill available'
+'Skill unavailable': 'Skill unavailable'
+'Skill dependencies': 'Skill dependencies'
+'Requirements not met': 'Requirements not met'

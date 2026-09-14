@@ -71,12 +71,22 @@
 {% include 'plugins/site_domains/templates/admin_sitedomains.html' ignore missing %}
 {% include 'plugins/logistics/templates/admin_logistics.html' ignore missing %}
 {% include 'plugins/coupons/templates/admin_coupons.html' ignore missing %}
+{% include 'plugins/iot_hub/templates/iot_admin.html' ignore missing %}
 {% include 'plugins/currency_converter/templates/currency_admin.html' ignore missing %}
 {% include 'plugins/mini_app_builder/admin_templates/admin_devaccounts.html' ignore missing %}
 {% include 'plugins/memory_engine/templates/memory_admin.html' ignore missing %}
 {% include 'plugins/cogevolution_substrate/templates/cogevolution_admin.html' ignore missing %}
+{% include 'plugins/ros_bridge/templates/ros_admin.html' ignore missing %}
 {% include 'partials/plugins_admin.html' %}
+{% include 'partials/skills_admin.html' %}
+{% if edition == 'official' %}
 {% include 'partials/plugins_store.html' %}
+{% else %}
+{% include 'partials/plugins_store_user.html' %}
+{% endif %}
+{# v1.8：动态分类注册表 + 动态分流规则（官方版 / 用户版共用实现）。
+   刻意置于 edition 分支之外 —— 管理功能不应受商店版式分支影响。 #}
+{% include 'partials/plugins_store_dist.html' %}
 {% include 'partials/site_settings.html' %}
 {% include 'plugins/mini_app_builder/admin_templates/mini_apps.html' ignore missing %}
 {% include 'plugins/mini_app_builder/admin_templates/admin_publish.html' ignore missing %}

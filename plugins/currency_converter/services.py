@@ -16,11 +16,30 @@ import sys
 from typing import Optional, Dict, Tuple
 from datetime import datetime, timezone
 
-import httpx
+try:  # 可选导入：缺 httpx 时降级为「抓不到新汇率」，而不是整个插件 setup 失败
+    import httpx
+    _HAS_HTTPX = True
+    _HTTPX_IMPORT_ERROR: Optional[BaseException] = None
+except ImportError as _e:  # noqa: PERF203
+    httpx = None  # type: ignore[assignment]
+    _HAS_HTTPX = False
+    _HTTPX_IMPORT_ERROR = _e
 
 from .models import get_db, init_db
 
 logger = logging.getLogger(__name__)
+
+
+def _httpx_available_or_warn(context: str) -> bool:
+    """外网抓取前置检查：httpx 缺失时告警一次并返回 False（调用方按「该源不可用」处理）。"""
+    if _HAS_HTTPX:
+        return True
+    logger.warning(
+        '[CurrencyConverter] %s 跳过：httpx 未安装（%s）。'
+        '已缓存/库内汇率仍可用；需安装依赖后重启才能拉取新汇率：pip install "httpx>=0.27.0,<1.0"',
+        context, _HTTPX_IMPORT_ERROR,
+    )
+    return False
 
 # ── 内存缓存 ────────────────────────────────────────────
 
@@ -73,6 +92,8 @@ def _check_cache() -> bool:
 async def fetch_rates_from_frankfurter() -> Optional[Dict[str, float]]:
     """主源: Frankfurter API (欧洲央行数据, 免费, ~30+ 币种)"""
     url = f'https://api.frankfurter.dev/v1/latest?from={_BASE_CURRENCY}'  # Q5: 官方主域名 .dev，v1 路径实测为 /v1/latest
+    if not _httpx_available_or_warn('fetch_rates_from_frankfurter'):
+        return None
     try:
         # 修复 FX-D1: follow_redirects=True（frankfurter 对 from= 参数返回 301）
         async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
@@ -91,6 +112,8 @@ async def fetch_rates_from_frankfurter() -> Optional[Dict[str, float]]:
 async def fetch_rates_from_open_er() -> Optional[Dict[str, float]]:
     """备用源: Open Exchange Rate API (免费, ~170 币种)"""
     url = f'https://open.er-api.com/v6/latest/{_BASE_CURRENCY}'
+    if not _httpx_available_or_warn('fetch_rates_from_open_er'):
+        return None
     try:
         # 修复 FX-D1: follow_redirects=True（frankfurter 对 from= 参数返回 301）
         async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:

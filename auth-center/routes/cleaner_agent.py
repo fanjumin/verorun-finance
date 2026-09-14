@@ -13,12 +13,15 @@ from models import get_db
 cleaner_bp = Blueprint('cleaner', __name__, url_prefix='/admin/cleaner')
 
 CLEANER_AGENT_NAME = 'Data Cleaner Agent'
-CLEANER_AGENT_DOMAIN = 'cleaner'
+CLEANER_AGENT_DOMAIN = 'content'  # 归属到 content 角色 (02-content.yaml)
 
 
 def _require_admin():
+    # D-21: 与 admin_bp 对齐 —— Bearer header 优先，无则回退 sso_token/tm_token cookie
     auth = request.headers.get('Authorization', '')
     token = auth.replace('Bearer ', '') if auth.startswith('Bearer ') else auth
+    if not token:
+        token = request.cookies.get('sso_token') or request.cookies.get('tm_token') or ''
     if not token:
         return None, (jsonify({'success': False, 'error': _('Please login first')}), 401)
     from services.jwt_service import validate_token
@@ -443,26 +446,17 @@ def _merge_entry(old_entry: dict, new_title: str, new_content: str, new_keywords
 
 
 def auto_register_sub_agent():
-    """Auto-register Cleaner Agent as a matrix sub-agent (idempotent)"""
+    """将 Cleaner 能力注册到 content 角色（幂等，不创建独立 Agent）。"""
     try:
         from agent_matrix import models as am_models
-        existing = am_models.list_agents(domain=CLEANER_AGENT_DOMAIN, active_only=False)
-        if existing:
-            return  # Already registered
-        am_models.create_agent({
-            'name': CLEANER_AGENT_NAME,
-            'role_type': 'sub',
-            'domain': CLEANER_AGENT_DOMAIN,
-            'managed_modules': json.dumps(['knowledge']),
-            'capabilities': json.dumps(['text_clean', 'content_classify', 'dedup']),
-            'description': 'Clean raw content into structured knowledge entries (dedup + classify + save to knowledge base)',
-            'provider': 'deepseek',
-            'model_name': '',
-            'is_active': 1,
-        })
-        print(f'[CleanerAgent] ✅ Automatically registered as a matrix sub-agent')
+        am_models.register_capability_to_role(
+            domain=CLEANER_AGENT_DOMAIN,
+            name=CLEANER_AGENT_NAME,
+            capabilities=['text_clean', 'content_classify', 'dedup'],
+            description='Clean raw content into structured knowledge entries (dedup + classify + save to knowledge base)',
+        )
     except Exception as e:
-        print(f'[CleanerAgent] Auto-registration skipped: {e}')
+        print(f'[CleanerAgent] ⚠️ 能力注册失败: {e}')
 
 
 # =============================================

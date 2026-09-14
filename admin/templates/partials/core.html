@@ -145,6 +145,25 @@ function goPlugin(key,embedUrl){
 
 // ── Plugin Bridges: 插件内联渲染函数 ──
 
+// Two-Factor Auth Plugin Bridge (R1: JWT 不进 URL，先换短期 setup_token 再开 iframe)
+window.l_two_factor_setup = function(){
+  document.getElementById("pt").textContent={{ _('Two-Factor Authentication') | tojson }};
+  document.getElementById("mc").innerHTML='<div class="lo"><div class="s"></div>{{ _('Loading...') }}</div>';
+  fetch("/plugin/two_factor_auth/setup-token", {
+    method:"POST", headers:{"Authorization":"Bearer "+T}
+  }).then(function(r){
+    if(!r.ok){ document.getElementById("mc").innerHTML='<div class="em">{{ _('2FA setup unavailable, please retry') }}</div>'; return Promise.reject(); }
+    return r.json();
+  }).then(function(d){
+    if(!d.token){ document.getElementById("mc").innerHTML='<div class="em">{{ _('2FA setup unavailable, please retry') }}</div>'; return; }
+    var ifr=document.createElement('iframe');
+    ifr.style.cssText='width:100%;height:calc(100vh - 70px);border:none;background:#050508';
+    ifr.src='/plugin/two_factor_auth/setup-page?setup_token='+encodeURIComponent(d.token)+'&done='+encodeURIComponent('/admin/');
+    document.getElementById("mc").innerHTML='';
+    document.getElementById("mc").appendChild(ifr);
+  }).catch(function(){});
+};
+
 // Coupon Plugin Bridge
 window.l_shop_coupons=function(){window.l_coupons_plugin()};
 window.l_coupons_plugin=function(){

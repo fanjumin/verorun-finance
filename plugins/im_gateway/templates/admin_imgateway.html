@@ -1,0 +1,1213 @@
+// ============================================================
+// IM Gateway Plugin — 频道管理前端（迁移自 partials/channels.html + partials/tickets.html）
+// 依赖全局工具：T(token)、esc()、escAttr()（由 admin core 提供）
+// 注意：本文件为裸 JS，由 admin.html 外层统一 script 标签包裹，切勿在此再加 script 标签
+// ============================================================
+window.l_channels=function(){
+  document.getElementById('pt').textContent='{{ _('IM Gateway') }}';
+
+  // 5-tab 分类导航（卡片式管理 UI）
+  var tabs=[
+    ['im','{{ _('Instant Messaging') }}'],
+    ['social','{{ _('Social Channels') }}'],
+    ['publish','{{ _('Publishing') }}'],
+    ['login','{{ _('Third-party Login') }}'],
+    ['developer','{{ _('Developer Login') }}'],
+  ];
+  var h='<div class="cd"><div class="st">{{ _('IM Gateway') }}</div>';
+  h+='<div style="display:flex;gap:4px;margin-bottom:20px;overflow-x:auto">';
+  tabs.forEach(function(t){
+    var sel=t[0]==='im';
+    var style=sel?'background:var(--accent);color:#fff':'';
+    h+='<button id="ov-tab-'+t[0]+'" class="btn bs" style="'+style+'" onclick="_ovSwitchTab(\''+t[0]+'\')">'+esc(t[1])+'</button>';
+  });
+  h+='</div>';
+  h+='<div id="ov-body">{{ _('Loading...') }}...</div>';
+  h+='</div>';
+  document.getElementById('mc').innerHTML=h;
+  _ovFetch();
+}
+
+// ============================
+// 卡片式管理框架 — 数据源 GET /admin/channels/overview
+// ============================
+var _ovData=null;   // overview 聚合缓存
+var _ovTab='im';    // 当前 tab
+var _ovTabs=['im','social','publish','login','developer'];
+
+function _ovBody(){return document.getElementById('ov-body');}
+
+function _ovChannelLabel(ch){
+  var m={feishu:'{{ _('Feishu') }}',wecom:'{{ _('WeCom') }}',qq:'QQ',dingtalk:'{{ _('DingTalk') }}',telegram:'{{ _('Telegram') }}',line:'{{ _('LINE') }}'};
+  return m[ch]||ch;
+}
+
+function _ovSocialLabel(ch){
+  var m={twitter:'{{ _('X (Twitter)') }}',linkedin:'{{ _('LinkedIn') }}',reddit:'{{ _('Reddit') }}',weibo:'{{ _('Weibo') }}',toutiao:'{{ _('Toutiao') }}',facebook:'{{ _('Facebook') }}',instagram:'{{ _('Instagram') }}',wechat_oa:'{{ _('WeChat OA') }}',telegram_channel:'{{ _('Telegram Channel') }}'};
+  return m[ch]||ch;
+}
+
+function _ovSwitchTab(tab){
+  _ovTab=tab;
+  _ovTabs.forEach(function(t){
+    var el=document.getElementById('ov-tab-'+t);
+    if(!el)return;
+    if(t===tab){el.style.background='var(--accent)';el.style.color='#fff';}
+    else{el.style.background='';el.style.color='';}
+  });
+  _ovRender();
+}
+
+function _ovFetch(){
+  var b=_ovBody(); if(!b)return;
+  b.innerHTML='<div class="lo"><div class="s"></div>{{ _('Loading...') }}...</div>';
+  fetch('/admin/channels/overview',{headers:{'Authorization':'Bearer '+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success){
+      var b=_ovBody();if(b)b.innerHTML='<div class="cd"><div class="em">{{ _('Load failed') }}: '+esc(d.error||'{{ _('Unknown Error') }}')+'</div></div>';
+      return;
+    }
+    _ovData=d.data||{};
+    _ovRender();
+  }).catch(function(){
+    var b=_ovBody();if(b)b.innerHTML='<div class="cd"><div class="em">{{ _('Network error') }}</div></div>';
+  })
+}
+
+function _ovRender(){
+  if(_ovTab==='im'){_ovRenderIm();return;}
+  if(_ovTab==='social'){_ovRenderSocial();return;}
+  if(_ovTab==='publish'){_ovRenderPublish();return;}
+  if(_ovTab==='login'){_ovRenderLogin();return;}
+  _ovRenderDeveloper();
+}
+
+function _ovBack(){_ovFetch();}
+
+// ── 即时通讯 tab ──
+function _ovRenderIm(){
+  var b=_ovBody(); if(!b)return;
+  var im=_ovData.im||[];
+  var h='<div class="st">{{ _('Instant Messaging') }}</div>';
+  h+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px">';
+  im.forEach(function(c){
+    var on=c.enabled===1;
+    var configured=Object.keys(c.config||{}).length>0;
+    var badge=on?'<span class="bdg on">{{ _('Enabled') }}</span>':'<span class="bdg off">{{ _('Disabled') }}</span>';
+    var hint=configured?'<span style="color:var(--green)">{{ _('Configured') }}</span>':'<span style="color:var(--dim)">{{ _('Not Configured') }}</span>';
+    h+='<div class="cd" style="display:flex;flex-direction:column;gap:8px">';
+    h+='<div style="display:flex;justify-content:space-between;align-items:center">';
+    h+='<span style="font-weight:600">'+esc(_ovChannelLabel(c.channel))+'</span>'+badge;
+    h+='</div>';
+    h+='<div style="font-size:12px">'+hint+'</div>';
+    h+='<div style="display:flex;gap:6px;margin-top:auto">';
+    h+='<button class="btn bs" onclick="_ovImConfig(\''+c.channel+'\')">{{ _('Configure') }}</button>';
+    h+='</div></div>';
+  });
+  h+='</div>';
+  b.innerHTML=h;
+}
+
+function _ovImConfig(ch){
+  _chCurrentTab=ch;   // _chSave/_chGetValue/_chToggleSecret 依赖
+  var b=_ovBody(); if(!b)return;
+  b.innerHTML='<div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">';
+  b.innerHTML+='<button class="btn bs bo" onclick="_ovBack()">← {{ _('Back') }}</button>';
+  b.innerHTML+='<span style="font-weight:600">'+esc(_ovChannelLabel(ch))+'</span></div>';
+  b.innerHTML+='<div id="ch-body"></div>';
+  if(ch==='wecom'){_wcLoadTab();}else{_chLoadGenericTab(ch);}
+}
+
+// ── 社媒 tab ──
+function _ovRenderSocial(){
+  var b=_ovBody(); if(!b)return;
+  var social=_ovData.social||[];
+  var h='<div class="st">{{ _('Social Channels') }}</div>';
+  h+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px">';
+  social.forEach(function(c){
+    var badge,btn;
+    if(c.shared_from){
+      badge='<span class="bdg pd">{{ _('Shared') }}</span>';
+      btn='<button class="btn bs" onclick="_ovImConfig(\'telegram\')">{{ _('Manage') }}</button>';
+    }else if(c.connected){
+      badge='<span class="bdg on">{{ _('Connected') }}</span>';
+      btn='<button class="btn bs" onclick="_ovSocialDetail(\''+c.channel+'\')">{{ _('Manage') }}</button>';
+    }else{
+      badge='<span class="bdg off">{{ _('Not Connected') }}</span>';
+      btn='<button class="btn bs" onclick="_ovSocialConnect(\''+c.channel+'\')">{{ _('Connect') }}</button>';
+    }
+    var sub='';
+    if(c.accounts&&c.accounts.length){
+      var hd=c.accounts[0].handle||'';
+      sub='<span style="font-size:12px;color:var(--dim)">'+esc(String(c.accounts.length))+' {{ _('account(s)') }}'+(hd?' · '+esc(hd):'')+'</span>';
+    }
+    h+='<div class="cd" style="display:flex;flex-direction:column;gap:8px">';
+    h+='<div style="display:flex;justify-content:space-between;align-items:center">';
+    h+='<span style="font-weight:600">'+esc(_ovSocialLabel(c.channel))+'</span>'+badge;
+    h+='</div>';
+    if(sub)h+='<div>'+sub+'</div>';
+    h+='<div style="display:flex;gap:6px;margin-top:auto">'+btn+'</div></div>';
+  });
+  h+='</div>';
+  b.innerHTML=h;
+}
+
+function _ovSocialConnect(ch){
+  // client_credential 渠道（wechat_oa / telegram_channel）→ 手动存号表单；其余 → OAuth 授权
+  var credFields=_clientCredentialFields||{};
+  var credHints=_clientCredentialHints||{};
+  if(credFields[ch]||credHints[ch]){_ovSocialCredentialForm(ch);return;}
+  fetch('/admin/channels/oauth/connect?platform='+ch,{headers:{'Authorization':'Bearer '+T}}).then(function(r){return r.json()}).then(function(d){
+    if(d.success&&d.authorize_url){window.open(d.authorize_url,'_blank');}
+    else{alert(d.error||'{{ _('Connect failed') }}');}
+  }).catch(function(e){alert('{{ _('Network error') }}');})
+}
+
+function _ovSocialCredentialForm(ch){
+  var b=_ovBody(); if(!b)return;
+  b.innerHTML='<div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">';
+  b.innerHTML+='<button class="btn bs bo" onclick="_ovBack()">← {{ _('Back') }}</button>';
+  b.innerHTML+='<span style="font-weight:600">'+esc(_ovSocialLabel(ch))+'</span></div>';
+  b.innerHTML+='<div id="ch-body"></div>';
+  _socialShowClientCredential(ch);
+}
+
+function _ovSocialDetail(ch){
+  var b=_ovBody(); if(!b)return;
+  var item=null;
+  (_ovData.social||[]).forEach(function(c){if(c.channel===ch)item=c;});
+  var accts=(item&&item.accounts)||[];
+  var h='<div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">';
+  h+='<button class="btn bs bo" onclick="_ovBack()">← {{ _('Back') }}</button>';
+  h+='<span style="font-weight:600">'+esc(_ovSocialLabel(ch))+'</span></div>';
+  if(accts.length===0){
+    h+='<div class="em">{{ _('No connected accounts yet') }}</div>';
+    h+='<div style="text-align:center"><button class="btn bs" onclick="_ovSocialConnect(\''+ch+'\')">{{ _('Connect') }}</button></div>';
+    b.innerHTML=h;return;
+  }
+  h+='<table class="tbl" style="width:100%;border-collapse:collapse;font-size:13px">';
+  h+='<tr><th style="text-align:left;padding:6px">{{ _('Account') }}</th><th style="text-align:left;padding:6px">{{ _('Token Expires') }}</th><th style="padding:6px"></th></tr>';
+  accts.forEach(function(a){
+    var days='—',dayColor='var(--dim)';
+    if(a.token_expires_at){
+      var dl=Math.floor((new Date(String(a.token_expires_at).replace(' ','T'))-Date.now())/86400000);
+      if(!isNaN(dl)){days=String(dl);dayColor=dl<0?'var(--rose)':(dl<7?'#f5a623':'var(--dim)');}
+    }
+    h+='<tr><td style="padding:6px">'+esc(a.handle||'')+'</td>';
+    h+='<td style="padding:6px">'+(a.token_expires_at?esc(a.token_expires_at):'—')+' <span style="color:'+dayColor+'">('+days+'d)</span></td>';
+    h+='<td id="acc-ops-'+a.id+'" style="padding:6px;white-space:nowrap">';
+    h+='<button class="btn bs" onclick="_ovSocialRefresh('+a.id+')" style="margin-right:6px">{{ _('Refresh') }}</button>';
+    h+='<button class="btn bs" onclick="_ovSocialRevoke('+a.id+')">{{ _('Revoke') }}</button>';
+    h+='</td></tr>';
+  });
+  h+='</table>';
+  b.innerHTML=h;
+}
+
+function _ovSocialRefresh(id){
+  var cell=document.getElementById('acc-ops-'+id);
+  if(!cell)return;
+  var old=cell.innerHTML;
+  cell.innerHTML='<span style="color:var(--cyan)">{{ _('Refreshing') }}...</span>';
+  fetch('/admin/channels/oauth/refresh/'+id,{method:'POST',headers:{'Authorization':'Bearer '+T}}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){setTimeout(_ovBack,800);}
+    else{cell.innerHTML=old;alert(d.error||'{{ _('Unknown Error') }}');}
+  }).catch(function(e){cell.innerHTML=old;alert('{{ _('Network error') }}');})
+}
+
+function _ovSocialRevoke(id){
+  if(!confirm('{{ _('Revoke this connected account?') }}'))return;
+  fetch('/admin/channels/oauth/revoke/'+id,{method:'POST',headers:{'Authorization':'Bearer '+T}}).then(function(r){return r.json()}).then(function(d){
+    _ovBack();
+  }).catch(function(e){alert('{{ _('Network error') }}');})
+}
+
+// ── 发布 tab（多选渠道，一发多平台）──
+function _ovRenderPublish(){
+  var b=_ovBody(); if(!b)return;
+  var pub=_ovData.publish||{};
+  var targets=pub.targets||[];
+  var h='<div class="st">{{ _('Publishing') }}</div>';
+  h+='<div style="font-size:12px;color:var(--dim);margin-bottom:8px">{{ _('Connected Targets') }} ('+String(pub.connected_count||0)+')</div>';
+  if(targets.length===0){
+    h+='<div style="color:var(--dim);font-size:13px">{{ _('No connected targets yet') }} — {{ _('Connect a social account first') }}</div>';
+  }else{
+    // 目标渠道多选卡片
+    h+='<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px">';
+    targets.forEach(function(ch){
+      h+='<label style="display:flex;align-items:center;gap:6px;border:1px solid var(--bd);border-radius:8px;padding:6px 10px;cursor:pointer">';
+      h+='<input type="checkbox" id="pub-ch-'+ch+'" checked style="cursor:pointer">';
+      h+='<span style="font-size:13px">'+esc(_ovSocialLabel(ch))+'</span></label>';
+    });
+    h+='</div>';
+    h+='<div class="cdf">';
+    h+='<div style="font-size:13px;color:var(--dim);margin-bottom:5px">{{ _('Text') }}</div>';
+    h+='<textarea id="soc-test-text" class="in" style="width:100%;min-height:70px;margin-bottom:10px"></textarea>';
+    h+='<div style="font-size:13px;color:var(--dim);margin-bottom:5px">{{ _('Image URL') }}</div>';
+    h+='<input id="soc-test-img" class="in" type="text" style="width:100%;margin-bottom:10px">';
+    h+='<button class="btn bp" onclick="_ovPublish()">{{ _('Publish') }}</button>';
+    h+='<div id="soc-msg" style="margin-top:10px"></div>';
+    h+='</div>';
+  }
+  b.innerHTML=h;
+}
+
+function _ovPublish(){
+  var msg=document.getElementById('soc-msg');
+  if(!msg)return;
+  var targets=(_ovData&&_ovData.publish&&_ovData.publish.targets)||[];
+  var channels=[];
+  targets.forEach(function(ch){
+    var el=document.getElementById('pub-ch-'+ch);
+    if(el&&el.checked)channels.push(ch);
+  });
+  if(channels.length===0){alert('{{ _('Select at least one channel') }}');return;}
+  var payload={};
+  var text=document.getElementById('soc-test-text').value.trim();
+  var img=document.getElementById('soc-test-img').value.trim();
+  if(text)payload['text']=text;
+  if(img)payload['image_url']=img;
+  if(!Object.keys(payload).length){alert('{{ _('Text or image is required') }}');return;}
+  msg.innerHTML='<span style="color:var(--cyan)">{{ _('Sending') }}...</span>';
+  fetch('/admin/channels/oauth/publish-test',{method:'POST',headers:{'Authorization':'Bearer '+T,'Content-Type':'application/json'},body:JSON.stringify({channels:channels,payload:payload})}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success){
+      msg.innerHTML='<span style="color:var(--rose)">{{ _('Publish failed') }}: '+esc(d.error||'{{ _('Unknown Error') }}')+'</span>';
+      return;
+    }
+    var h='<div style="font-size:13px;margin-top:6px">';
+    Object.keys(d.data||{}).forEach(function(ch){
+      var r=d.data[ch]||{};
+      var ok=!!r.success;
+      h+='<div style="margin-bottom:4px">'+esc(_ovSocialLabel(ch))+': <span style="color:'+(ok?'var(--green)':'var(--rose)')+'">'+(ok?'✓':'✗')+'</span>';
+      if(!ok&&r.error)h+=' <span style="color:var(--rose)">'+esc(r.error)+'</span>';
+      h+='</div>';
+    });
+    h+='</div>';
+    msg.innerHTML=h;
+  }).catch(function(e){msg.innerHTML='<span style="color:var(--rose)">{{ _('Network error') }}</span>';})
+}
+
+// ── 第三方登录 tab（Phase 5：提供方卡片 + 凭据管理 + 启用停用 + 授权测试）──
+function _ovRenderLogin(){
+  var b=_ovBody(); if(!b)return;
+  var providers=_ovData.login||[];
+  var h='<div class="st">{{ _('Third-party Login') }}</div>';
+  h+='<div style="font-size:12px;color:var(--dim);margin-bottom:12px">{{ _('Configure OAuth providers for third-party login') }}</div>';
+  if(providers.length===0){
+    h+='<div class="em">{{ _('No login providers configured yet') }}</div>';
+  }else{
+    h+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">';
+    providers.forEach(function(p){
+      var badge=p.is_enabled?'<span class="bdg on">{{ _('Enabled') }}</span>':'<span class="bdg off">{{ _('Disabled') }}</span>';
+      var hint=p.configured?'<span style="color:var(--green)">{{ _('Configured') }}</span>':'<span style="color:var(--dim)">{{ _('Not Configured') }}</span>';
+      h+='<div class="cd" style="display:flex;flex-direction:column;gap:8px">';
+      h+='<div style="display:flex;justify-content:space-between;align-items:center">';
+      h+='<span style="font-weight:600">'+esc(p.display_name||p.provider)+'</span>'+badge;
+      h+='</div>';
+      h+='<div style="font-size:12px">'+hint+'</div>';
+      h+='<div style="display:flex;gap:6px;margin-top:auto;flex-wrap:wrap">';
+      h+='<button class="btn bs" onclick="_ovLoginConfig(\''+p.provider+'\')">{{ _('Configure') }}</button>';
+      if(p.configured){
+        if(p.is_enabled){
+          h+='<button class="btn bs" onclick="_ovLoginToggle(\''+p.provider+'\',0)">{{ _('Disable') }}</button>';
+        }else{
+          h+='<button class="btn bs" onclick="_ovLoginToggle(\''+p.provider+'\',1)">{{ _('Enable') }}</button>';
+        }
+        h+='<button class="btn bs" onclick="_ovLoginAuthorize(\''+p.provider+'\')">{{ _('Test') }}</button>';
+      }
+      h+='</div></div>';
+    });
+    h+='</div>';
+  }
+  b.innerHTML=h;
+}
+
+function _ovLoginItem(provider){
+  var item=null;
+  (_ovData.login||[]).forEach(function(p){if(p.provider===provider)item=p;});
+  return item;
+}
+
+function _ovLoginConfig(provider){
+  var item=_ovLoginItem(provider); if(!item)return;
+  var b=_ovBody(); if(!b)return;
+  var scopesPlaceholder=item.default_scopes?'{{ _('Default') }}: '+esc(item.default_scopes):'';
+  b.innerHTML='<div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">';
+  b.innerHTML+='<button class="btn bs bo" onclick="_ovRenderLogin()">← {{ _('Back') }}</button>';
+  b.innerHTML+='<span style="font-weight:600">'+esc(item.display_name||provider)+'</span></div>';
+  b.innerHTML+='<div class="cdf" style="max-width:540px">';
+  b.innerHTML+='<div style="font-size:13px;color:var(--dim);margin-bottom:5px">{{ _('Client ID') }}</div>';
+  b.innerHTML+='<input id="lg-client-id" class="in" type="text" value="'+escAttr(item.client_id||'')+'" style="width:100%;margin-bottom:10px">';
+  b.innerHTML+='<div style="font-size:13px;color:var(--dim);margin-bottom:5px">{{ _('Client Secret') }}</div>';
+  b.innerHTML+='<input id="lg-client-secret" class="in" type="password" placeholder="'+(item.client_secret_masked?'{{ _('Leave blank to keep current') }}':'')+'" style="width:100%;margin-bottom:10px">';
+  b.innerHTML+='<div style="font-size:13px;color:var(--dim);margin-bottom:5px">{{ _('Scopes') }}</div>';
+  b.innerHTML+='<input id="lg-scopes" class="in" type="text" value="'+escAttr(item.scopes||'')+'" placeholder="'+scopesPlaceholder+'" style="width:100%;margin-bottom:10px">';
+  b.innerHTML+='<div style="font-size:13px;color:var(--dim);margin-bottom:5px">{{ _('Redirect URI') }}</div>';
+  b.innerHTML+='<input id="lg-redirect" class="in" type="text" value="'+escAttr(item.redirect_uri||'')+'" style="width:100%;margin-bottom:10px">';
+  b.innerHTML+='<label class="srv" style="margin:4px 0 14px"><input type="checkbox" id="lg-enable"'+(item.is_enabled?' checked':'')+'><span>{{ _('Enabled') }}</span></label>';
+  b.innerHTML+='<div style="display:flex;gap:10px;flex-wrap:wrap">';
+  b.innerHTML+='<button class="btn bp" onclick="_ovLoginSave(\''+provider+'\')">{{ _('Save Config') }}</button>';
+  b.innerHTML+='</div>';
+  b.innerHTML+='<div id="lg-msg" style="margin-top:10px"></div>';
+  b.innerHTML+='</div>';
+}
+
+function _ovLoginSave(provider){
+  var msg=document.getElementById('lg-msg');
+  if(!msg)return;
+  var body={
+    provider:provider,
+    client_id:(document.getElementById('lg-client-id')||{}).value?document.getElementById('lg-client-id').value.trim():'',
+    client_secret:(document.getElementById('lg-client-secret')||{}).value?document.getElementById('lg-client-secret').value.trim():'',
+    scopes:(document.getElementById('lg-scopes')||{}).value?document.getElementById('lg-scopes').value.trim():'',
+    redirect_uri:(document.getElementById('lg-redirect')||{}).value?document.getElementById('lg-redirect').value.trim():'',
+    is_enabled:document.getElementById('lg-enable')?document.getElementById('lg-enable').checked:false
+  };
+  msg.innerHTML='<span style="color:var(--cyan)">{{ _('Saving') }}...</span>';
+  fetch('/admin/channels/login/providers/save',{method:'POST',headers:{'Authorization':'Bearer '+T,'Content-Type':'application/json'},body:JSON.stringify(body)}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){
+      msg.innerHTML='<span style="color:var(--green)">{{ _('Saved') }}</span>';
+      setTimeout(_ovRenderLogin,700);
+    }else{
+      msg.innerHTML='<span style="color:var(--rose)">'+esc(d.error||'{{ _('Unknown Error') }}')+'</span>';
+    }
+  }).catch(function(e){msg.innerHTML='<span style="color:var(--rose)">{{ _('Network error') }}</span>';})
+}
+
+function _ovLoginToggle(provider,on){
+  fetch('/admin/channels/login/providers/enable',{method:'POST',headers:{'Authorization':'Bearer '+T,'Content-Type':'application/json'},body:JSON.stringify({provider:provider,is_enabled:on})}).then(function(r){return r.json()}).then(function(d){
+    _ovRenderLogin();
+  }).catch(function(e){alert('{{ _('Network error') }}');})
+}
+
+function _ovLoginAuthorize(provider){
+  fetch('/admin/channels/login/authorize/'+provider,{headers:{'Authorization':'Bearer '+T}}).then(function(r){return r.json()}).then(function(d){
+    if(d.success&&d.authorize_url){window.open(d.authorize_url,'_blank');}
+    else{alert(d.error||'{{ _('Connect failed') }}');}
+  }).catch(function(e){alert('{{ _('Network error') }}');})
+}
+
+// ── 开发者登录 tab（Phase 4 + Phase 7：API Key + 小程序开发账户两块）──
+function _ovRenderDeveloper(){
+  var b=_ovBody(); if(!b)return;
+  var keys=_ovData.developer||[];
+  var h='<div class="st">{{ _('Developer Login') }}</div>';
+
+  // ── 上块：API Key 管理 ──
+  h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">';
+  h+='<div style="font-size:12px;color:var(--dim)">{{ _('Manage API keys for programmatic access') }}</div>';
+  h+='<button class="btn bs" onclick="_ovDevForm()">+ {{ _('New API Key') }}</button>';
+  h+='</div>';
+  h+='<div id="dev-form"></div>';
+  if(keys.length===0){
+    h+='<div class="em">{{ _('No developer API keys yet') }}</div>';
+  }else{
+    // 卡片网格，与其余 tab（im / social / login）视觉对齐
+    h+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px">';
+    keys.forEach(function(k){
+      var statusHtml=(k.status==='active')?'<span class="bdg on">'+esc(k.status||'')+'</span>':'<span class="bdg off">'+esc(k.status||'')+'</span>';
+      h+='<div class="cd" style="display:flex;flex-direction:column;gap:8px">';
+      h+='<div style="display:flex;justify-content:space-between;align-items:center;gap:8px">';
+      h+='<span style="font-weight:600;font-size:13px">'+esc(k.name||k.key_prefix||'-')+'</span>';
+      h+=statusHtml;
+      h+='</div>';
+      h+='<div style="font-size:12px"><code style="color:var(--accent)">'+esc(k.key_prefix||'')+'</code> · '+esc(k.key_type||'')+'</div>';
+      h+='<div style="font-size:12px;color:var(--dim)">{{ _('Expires') }}: '+(k.expire_at?esc(k.expire_at):'—')+'</div>';
+      h+='<div style="display:flex;gap:6px;margin-top:auto">';
+      if(k.status==='active'){h+='<button class="btn bs" onclick="_ovDevRevoke('+k.id+')">{{ _('Revoke') }}</button>';}
+      h+='</div></div>';
+    });
+    h+='</div>';
+  }
+
+  // ── 下块：小程序开发账户（Phase 7，集中 mini_app_builder 登录）──
+  h+='<div class="st" style="margin-top:24px">{{ _('Mini-Program Developer Accounts') }}</div>';
+  h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">';
+  h+='<div style="font-size:12px;color:var(--dim)">{{ _('Mini-program platform developer credentials') }}</div>';
+  h+='<button class="btn bs" onclick="_ovMiniForm()">+ {{ _('Add Account') }}</button>';
+  h+='</div>';
+  h+='<div id="mini-form"></div>';
+  h+='<div id="mini-list"></div>';
+  b.innerHTML=h;
+  _ovRenderMiniList();
+}
+
+function _ovRenderMiniList(){
+  var el=document.getElementById('mini-list');
+  if(!el)return;
+  var items=_ovData.miniapp||[];
+  if(items.length===0){
+    el.innerHTML='<div class="em">{{ _('No mini-program accounts yet') }}</div>';
+    return;
+  }
+  // 卡片网格，与其余 tab（im / social / login）视觉对齐
+  var h='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px">';
+  items.forEach(function(m){
+    var methodLabel=_ovMiniMethodLabel(m.method_type);
+    var statusHtml=(m.is_active===1)?'<span class="bdg on">{{ _('Active') }}</span>':'<span class="bdg off">{{ _('Disabled') }}</span>';
+    h+='<div class="cd" style="display:flex;flex-direction:column;gap:8px">';
+    h+='<div style="display:flex;justify-content:space-between;align-items:center;gap:8px">';
+    h+='<code style="color:var(--accent);font-size:12px;font-weight:600">'+esc(m.platform)+'</code>';
+    h+=statusHtml;
+    h+='</div>';
+    h+='<div style="font-size:13px;font-weight:500">'+esc(m.account_name)+'</div>';
+    h+='<div style="font-size:12px;color:var(--dim)">{{ _('App ID') }}: '+(m.app_id?esc(m.app_id):'-')+'</div>';
+    h+='<div style="font-size:12px;color:var(--dim)">{{ _('Login Method') }}: '+methodLabel+'</div>';
+    h+='<div style="display:flex;gap:6px;margin-top:auto;flex-wrap:wrap">';
+    h+='<button class="btn bs" onclick="_ovMiniEdit('+m.id+')">{{ _('Edit') }}</button> ';
+    h+='<button class="btn bs" onclick="_ovMiniTest('+m.id+',this)">{{ _('Test') }}</button> ';
+    h+='<button class="btn bs" style="color:#f85149" onclick="_ovMiniDelete('+m.id+',\''+escAttr(m.account_name)+'\')">{{ _('Delete') }}</button>';
+    h+='</div></div>';
+  });
+  h+='</div>';
+  el.innerHTML=h;
+}
+
+function _ovMiniMethodLabel(type){
+  var map={code:'{{ _('tt.login()/wx.login() code') }}',initdata:'{{ _('WebApp.initData') }}',accesstoken:'{{ _('LIFF accessToken') }}'};
+  return map[type]||'—';
+}
+
+function _ovDevForm(){
+  var b=document.getElementById('dev-form');
+  if(!b)return;
+  var h='<div class="cdf" style="border:1px solid var(--bd);border-radius:8px;padding:14px;margin-bottom:14px">';
+  h+='<div style="font-size:13px;color:var(--dim);margin-bottom:5px">{{ _('Name') }}</div>';
+  h+='<input id="dev-name" class="in" type="text" placeholder="My App" style="width:100%;margin-bottom:10px">';
+  h+='<div style="font-size:13px;color:var(--dim);margin-bottom:5px">{{ _('Key Type') }}</div>';
+  h+='<select id="dev-type" class="in" style="width:100%;margin-bottom:10px">';
+  h+='<option value="user">user</option><option value="agent">agent</option><option value="provider">provider</option>';
+  h+='</select>';
+  h+='<div style="font-size:13px;color:var(--dim);margin-bottom:5px">{{ _('Expires (optional)') }}</div>';
+  h+='<input id="dev-expire" class="in" type="datetime-local" style="width:100%;margin-bottom:10px">';
+  h+='<button class="btn bp" onclick="_ovDevIssue()">{{ _('Generate') }}</button>';
+  h+='<div id="dev-msg" style="margin-top:10px"></div>';
+  h+='</div>';
+  b.innerHTML=h;
+}
+
+function _ovDevIssue(){
+  var msg=document.getElementById('dev-msg');
+  if(!msg)return;
+  var name=document.getElementById('dev-name').value.trim();
+  var keyType=document.getElementById('dev-type').value;
+  var expire=document.getElementById('dev-expire').value;
+  if(!name){alert('{{ _('Name is required') }}');return;}
+  var expireIso=null;
+  if(expire){expireIso=new Date(expire).toISOString();}
+  msg.innerHTML='<span style="color:var(--cyan)">{{ _('Generating') }}...</span>';
+  fetch('/admin/channels/developer/keys/issue',{method:'POST',headers:{'Authorization':'Bearer '+T,'Content-Type':'application/json'},body:JSON.stringify({name:name,key_type:keyType,expire_at:expireIso})}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success){
+      msg.innerHTML='<span style="color:var(--rose)">'+esc(d.error||'{{ _('Unknown Error') }}')+'</span>';
+      return;
+    }
+    msg.innerHTML='<div style="background:rgba(0,245,255,0.06);border:1px solid var(--cyan);border-radius:8px;padding:12px;margin-top:6px">';
+    msg.innerHTML+='<div style="font-size:13px;color:var(--green);margin-bottom:6px">{{ _('API key generated - copy it now') }}</div>';
+    msg.innerHTML+='<code style="display:block;word-break:break-all;background:#111;padding:8px;border-radius:6px;color:#7ff0ff;font-size:12px">'+esc(d.raw_key||'')+'</code>';
+    msg.innerHTML+='</div>';
+  }).catch(function(e){msg.innerHTML='<span style="color:var(--rose)">{{ _('Network error') }}</span>';})
+}
+
+function _ovDevRevoke(id){
+  if(!confirm('{{ _('Revoke this API key?') }}'))return;
+  fetch('/admin/channels/developer/keys/revoke/'+id,{method:'POST',headers:{'Authorization':'Bearer '+T}}).then(function(r){return r.json()}).then(function(d){
+    _ovBack();
+  }).catch(function(e){alert('{{ _('Network error') }}');})
+}
+
+// ── 小程序开发账户 CRUD（Phase 7：集中 mini_app_builder 登录）──
+var _ovMiniEditId=null;
+
+function _ovMiniForm(){
+  var b=document.getElementById('mini-form');
+  if(!b)return;
+  _ovMiniEditId=null;
+  // 单列 cdf 卡片，与第三方 OAuth 登录表单 (_ovLoginConfig) 一致
+  b.innerHTML='<div class="cdf" style="max-width:540px">'+_ovMiniFields(null)+'</div>';
+}
+
+function _ovMiniEdit(id){
+  var item=null;
+  (_ovData.miniapp||[]).forEach(function(m){if(m.id===id)item=m;});
+  if(!item)return;
+  var b=document.getElementById('mini-form');
+  if(!b)return;
+  _ovMiniEditId=id;
+  b.innerHTML='<div class="cdf" style="max-width:540px"><div style="font-size:12px;color:var(--dim);margin-bottom:8px">{{ _('Editing') }}: <code style="color:var(--accent)">'+esc(item.account_name)+'</code></div>'+_ovMiniFields(item)+'</div>';
+}
+
+function _ovMiniFields(m){
+  m=m||{};
+  var sel='';
+  ['douyin','toutiao','wechat','telegram','line'].forEach(function(p){
+    sel+='<option value="'+p+'"'+(m.platform===p?' selected':'')+'>'+p+'</option>';
+  });
+  // 敏感字段留空保持原值，与 OAuth 表单文案统一
+  var blank="{{ _('Leave blank to keep current') }}";
+  function f(id,label,val,ph,type){
+    type=type||'text';
+    return '<div style="font-size:13px;color:var(--dim);margin-bottom:5px">'+label+'</div><input id="'+id+'" class="in" type="'+type+'" value="'+escAttr(val||'')+'" placeholder="'+ph+'" style="width:100%;margin-bottom:10px">';
+  }
+  var h='<div style="font-size:13px;color:var(--dim);margin-bottom:5px">{{ _('Platform') }} *</div>';
+  h+='<select id="mini-platform" class="in" style="width:100%;margin-bottom:10px">'+sel+'</select>';
+  h+=f('mini-name','{{ _('Account Name') }} *',m.account_name,'my_account','text');
+  h+=f('mini-appid','{{ _('App ID') }}',m.app_id,'App ID','text');
+  h+=f('mini-appsecret','{{ _('App Secret') }}',m.app_secret,blank,'password');
+  h+=f('mini-bottoken','{{ _('Bot Token') }}',m.bot_token,blank,'password');
+  h+=f('mini-channelid','{{ _('Channel ID') }}',m.channel_id,'Channel ID','text');
+  h+=f('mini-channelsc','{{ _('Channel Secret') }}',m.channel_secret,blank,'password');
+  h+=f('mini-accesstoken','{{ _('Access Token') }}',m.access_token,blank,'password');
+  // 启用开关：视觉与 OAuth 表单一致，后端仍提交 is_active（不改表）
+  h+='<label class="srv" style="margin:4px 0 14px"><input type="checkbox" id="mini-active"'+(m.is_active===1||m.is_active===undefined?' checked':'')+'><span>{{ _('Enabled') }}</span></label>';
+  h+='<div style="display:flex;gap:10px;flex-wrap:wrap">';
+  h+='<button class="btn bp" onclick="_ovMiniSave()">{{ _('Save Config') }}</button>';
+  h+='<button class="btn bs bo" onclick="_ovMiniCancel()">← {{ _('Back') }}</button>';
+  h+='</div><div id="mini-msg" style="margin-top:10px"></div>';
+  return h;
+}
+
+function _ovMiniCollect(){
+  var name=document.getElementById('mini-name')?document.getElementById('mini-name').value.trim():'';
+  if(!name){alert('{{ _('Account name cannot be empty') }}');return null;}
+  var body={
+    platform:document.getElementById('mini-platform')?document.getElementById('mini-platform').value:'',
+    account_name:name,
+    app_id:document.getElementById('mini-appid')?document.getElementById('mini-appid').value.trim():'',
+    app_secret:document.getElementById('mini-appsecret')?document.getElementById('mini-appsecret').value.trim():'',
+    bot_token:document.getElementById('mini-bottoken')?document.getElementById('mini-bottoken').value.trim():'',
+    channel_id:document.getElementById('mini-channelid')?document.getElementById('mini-channelid').value.trim():'',
+    channel_secret:document.getElementById('mini-channelsc')?document.getElementById('mini-channelsc').value.trim():'',
+    access_token:document.getElementById('mini-accesstoken')?document.getElementById('mini-accesstoken').value.trim():'',
+    is_active:document.getElementById('mini-active')&&document.getElementById('mini-active').checked?1:0
+  };
+  var sensitive=['app_secret','bot_token','channel_secret','access_token'];
+  sensitive.forEach(function(k){if(!body[k]){delete body[k];}});
+  return body;
+}
+
+function _ovMiniSave(){
+  var msg=document.getElementById('mini-msg');
+  if(!msg)return;
+  var body=_ovMiniCollect();
+  if(!body)return;
+  var editing=_ovMiniEditId!==null;
+  var url=editing?'/admin/channels/miniapp-accounts/'+_ovMiniEditId:'/admin/channels/miniapp-accounts/';
+  var method=editing?'PUT':'POST';
+  msg.innerHTML='<span style="color:var(--cyan)">{{ _('Saving') }}...</span>';
+  fetch(url,{method:method,headers:{'Authorization':'Bearer '+T,'Content-Type':'application/json'},body:JSON.stringify(body)}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){
+      msg.innerHTML='<span style="color:var(--green)">{{ _('Saved') }}</span>';
+      setTimeout(function(){_ovMiniCancel();_ovBack();},700);
+    }else{
+      msg.innerHTML='<span style="color:var(--rose)">'+esc(d.error||'{{ _('Unknown Error') }}')+'</span>';
+    }
+  }).catch(function(){msg.innerHTML='<span style="color:var(--rose)">{{ _('Network error') }}</span>';});
+}
+
+function _ovMiniCancel(){
+  var b=document.getElementById('mini-form');
+  if(b)b.innerHTML='';
+  _ovMiniEditId=null;
+}
+
+function _ovMiniDelete(id,name){
+  if(!confirm('{{ _('Delete') }} '+esc(name)+'？{{ _('This action cannot be undone') }}'))return;
+  fetch('/admin/channels/miniapp-accounts/'+id,{method:'DELETE',headers:{'Authorization':'Bearer '+T}}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){_ovBack();}
+    else{alert(d.error||'{{ _('Delete Failed') }}');}
+  }).catch(function(){alert('{{ _('Network error') }}');});
+}
+
+function _ovMiniTest(id,btn){
+  if(btn){btn.disabled=true;btn.textContent='{{ _('Testing...') }}';}
+  fetch('/admin/channels/miniapp-accounts/'+id+'/test',{method:'POST',headers:{'Authorization':'Bearer '+T}}).then(function(r){return r.json()}).then(function(d){
+    if(btn){btn.disabled=false;btn.textContent='{{ _('Test') }}';}
+    if(d.success){alert(d.message||'{{ _('Connected') }}');}
+    else{alert(d.error||'{{ _('Test Failed') }}');}
+  }).catch(function(){
+    if(btn){btn.disabled=false;btn.textContent='{{ _('Test') }}';}
+    alert('{{ _('Test Failed') }}');
+  });
+}
+
+// ============================
+// {{ _('Channel Management') }} — l_channels
+// ============================
+var _chCurrentTab='feishu';
+var _chSecrets={}; // {feishu: {app_secret: 'real', ...}}
+var _wcSecrets={}; // {wecom: {secret: 'real', ...}}
+function _chBody(){return document.getElementById('ch-body');}
+
+function _chToggleSecret(ch, key){
+  var el=document.getElementById('ch-f-'+ch+'-'+key);
+  if(!el)return;
+  var isMasked=el.type==='password';
+  el.type=isMasked?'text':'password';
+  var btn=document.getElementById('ch-f-'+ch+'-'+key+'-btn');
+  if(btn)btn.textContent=isMasked?'{{ _('Hide') }}':'{{ _('Show') }}';
+}
+
+function _chLoadTab(ch){
+  _chCurrentTab=ch;
+  // tab {{ _('Highlight') }}
+  document.querySelectorAll('.ch-tab').forEach(function(t){t.classList.remove('sel')});
+  var tabEl=document.getElementById('ch-tab-'+ch);
+  if(tabEl)tabEl.classList.add('sel');
+
+  if(ch==='wecom'){ _wcLoadTab(); return; }
+  if(ch==='social'){ _socialLoadTab(); return; }
+  _chLoadGenericTab(ch);
+}
+
+function _chLoadGenericTab(ch){
+  var labelMap={feishu:'{{ _('Feishu') }}',qq:'QQ',dingtalk:'{{ _('DingTalk') }}'};
+  var channelLabel=labelMap[ch]||ch;
+  var b=_chBody(); if(!b)return;
+  b.innerHTML='<div class="lo">'+'{{ _('{channel} Config Loading') }}'.replace('{channel}', channelLabel)+'...</div>';
+  fetch('/admin/channels/'+ch,{headers:{'Authorization':'Bearer '+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success||!d.data){
+      var b=_chBody(); if(b)b.innerHTML='<div class="cd"><div class="em">{{ _('Load failed') }}: '+(d.error||'{{ _('Unknown Error') }}')+'</div></div>';
+      return;
+    }
+    var cfg=d.data.config||{};
+    var env=d.data.from_env||{};
+    var isOn=d.data.is_enabled===1;
+
+    var h='';
+    h+='<div class="cdf"><label class="srv"><input type="checkbox" id="ch-enable" onchange="_chToggleEnable()"'+(isOn?' checked':'')+'><span>'+'{{ _('Enable {channel} Integration') }}'.replace('{channel}', channelLabel)+'</span></label></div>';
+
+    if(env&&Object.keys(env).length>0){
+      h+='<div class="inf" style="margin:12px 0;padding:10px 14px;background:rgba(0,245,255,0.06);border-left:3px solid var(--cyan);border-radius:6px;font-size:13px;color:#8b8b8b;">';
+      h+='<div style="color:var(--cyan);margin-bottom:6px;">{{ _('Currently Read from Env Vars') }}（{{ _('Not Saved to Database') }}）</div>';
+      Object.keys(env).forEach(function(k){
+        h+='<div style="margin:2px 0"><code style="color:#e0e0e0">'+esc(k)+'</code>: '+esc(env[k])+'</div>';
+      });
+      h+='</div>';
+    }else if(isOn){
+      h+='<div class="inf" style="margin:12px 0;padding:10px 14px;background:rgba(0,255,159,0.06);border-left:3px solid var(--green);border-radius:6px;font-size:13px;color:#8b8b8b;">';
+      h+='<span style="color:var(--green)">{{ _('Saved to Database') }}</span> — '+'{{ _('{channel} Config Reads DB First') }}'.replace('{channel}', channelLabel);
+      h+='</div>';
+    }
+
+    h+='<div class="cdf">';
+    // {{ _('Official Field Set per Channel') }}（{{ _('Extensible') }}）
+    var fieldsMap={
+      feishu:[
+        ['app_id','{{ _('App ID') }}','text',cfg.app_id||env.app_id||''],
+        ['app_secret','{{ _('App Secret') }}','password',cfg.app_secret||''],
+        ['admin_open_id','{{ _('Admin Open ID') }}','text',cfg.admin_open_id||env.admin_open_id||''],
+        ['verification_token','{{ _('Verification Token') }}','password',cfg.verification_token||''],
+        ['encrypt_key','{{ _('Encrypt Key') }}','password',cfg.encrypt_key||''],
+      ],
+      qq:[
+        ['app_id','{{ _('App ID') }}','text',cfg.app_id||env.app_id||''],
+        ['app_key','{{ _('App Key') }}','password',cfg.app_key||''],
+        ['admin_uin','{{ _('Admin UIN') }}','text',cfg.admin_uin||env.admin_uin||''],
+      ],
+      dingtalk:[
+        ['app_key','{{ _('AppKey') }}','text',cfg.app_key||env.app_key||''],
+        ['app_secret','{{ _('AppSecret') }}','password',cfg.app_secret||''],
+        ['agent_id','{{ _('AgentId') }}','text',cfg.agent_id||env.agent_id||''],
+        ['corp_id','{{ _('CorpId') }}','text',cfg.corp_id||env.corp_id||''],
+      ],
+      telegram:[
+        ['bot_token','{{ _('Bot Token') }}','password',cfg.bot_token||''],
+        ['webhook_url','{{ _('Webhook URL') }}','text',cfg.webhook_url||env.webhook_url||''],
+        ['allow_groups','{{ _('Allow Group Chat') }}','text',cfg.allow_groups||'false'],
+      ],
+      line:[
+        ['channel_secret','{{ _('Channel Secret') }}','password',cfg.channel_secret||''],
+        ['access_token','{{ _('Channel Access Token') }}','password',cfg.access_token||''],
+        ['webhook_url','{{ _('Webhook URL') }}','text',cfg.webhook_url||env.webhook_url||''],
+      ],
+    };
+    var fields=fieldsMap[ch]||[
+      ['app_id','{{ _('App ID') }}','text',cfg.app_id||env.app_id||''],
+      ['app_secret','{{ _('App Secret') }}','password',cfg.app_secret||''],
+    ];
+    fields.forEach(function(f){
+      var key=f[0], label=f[1], type=f[2], val=f[3];
+      h+='<label style="display:block;margin-bottom:14px">';
+      h+='<div style="font-size:13px;color:#8b8b8b;margin-bottom:5px">'+esc(label)+'</div>';
+      h+='<div style="display:flex;gap:8px;align-items:center">';
+      h+='<input type="'+type+'" id="ch-f-'+ch+'-'+key+'" value="'+escAttr(val)+'" class="in" style="flex:1;min-width:0" placeholder="'+(type==='password'?'{{ _('Not Set') }}':'')+'">';
+      if(type==='password'){
+        h+='<button id="ch-f-'+ch+'-'+key+'-btn" class="btn bs" onclick="_chToggleSecret(\''+ch+'\',\''+key+'\')" style="white-space:nowrap">{{ _('Show') }}</button>';
+      }
+      h+='</div></label>';
+    });
+    h+='</div>';
+
+    h+='<div class="cdf" style="margin-top:20px;display:flex;gap:10px;flex-wrap:wrap">';
+    h+='<button class="btn bp" onclick="_chSave()">{{ _('Save Config') }}</button>';
+    if(ch==='feishu'){
+      h+='<button class="btn bs" onclick="_chTest()">{{ _('Test Feishu Connection') }}</button>';
+    }else{
+      h+='<button class="btn bs" disabled style="opacity:0.5;cursor:not-allowed">{{ _('Test Not Supported Yet') }}</button>';
+    }
+    h+='</div>';
+    h+='<div id="ch-msg" style="margin-top:12px"></div>';
+
+    var b=_chBody(); if(b)b.innerHTML=h;
+    _chSecrets[ch]=_chSecrets[ch]||{};
+    if(cfg.app_secret)_chSecrets[ch].app_secret=cfg.app_secret;
+    if(cfg.verification_token)_chSecrets[ch].verification_token=cfg.verification_token;
+  }).catch(function(){
+    var b=_chBody(); if(b)b.innerHTML='<div class="cd"><div class="em">{{ _('Request Failed') }}</div></div>';
+  })
+}
+
+function _chToggleEnable(){
+  // handled at save time
+}
+
+function _chGetValue(key){
+  var el=document.getElementById('ch-f-'+_chCurrentTab+'-'+key);
+  return el?el.value.trim():'';
+}
+
+function _chSave(){
+  if(_chCurrentTab==='wecom'){ _wcSave(); return; }
+  var config={};
+  var fieldKeys={
+    feishu:['app_id','app_secret','admin_open_id','verification_token','encrypt_key'],
+    qq:['app_id','app_key','admin_uin'],
+    dingtalk:['app_key','app_secret','agent_id','corp_id'],
+    telegram:['bot_token','webhook_url','allow_groups'],
+    line:['channel_secret','access_token','webhook_url'],
+  };
+  var keys=fieldKeys[_chCurrentTab]||['app_id','app_secret'];
+  keys.forEach(function(k){
+    var v=_chGetValue(k);
+    if(v.indexOf('●')>=0){
+      if(_chSecrets[_chCurrentTab]&&_chSecrets[_chCurrentTab][k])v=_chSecrets[_chCurrentTab][k];
+      else v='';
+    }
+    config[k]=v;
+  });
+  var enabled=document.getElementById('ch-enable')?document.getElementById('ch-enable').checked:false;
+  var body={config:config,is_enabled:enabled};
+
+  var msg=document.getElementById('ch-msg');
+  msg.innerHTML='<span style="color:var(--cyan)">{{ _('Saving') }}...</span>';
+
+  fetch('/admin/channels/'+_chCurrentTab,{
+    method:'PUT',
+    headers:{'Authorization':'Bearer '+T,'Content-Type':'application/json'},
+    body:JSON.stringify(body)
+  }).then(function(r){return r.json()}).then(function(d){
+    if(d.success){
+      msg.innerHTML='<span style="color:var(--green)">'+esc(d.message||'{{ _('Saved') }}')+'</span>';
+      _chSecrets[_chCurrentTab]={};
+      var secretKeys=fieldKeys[_chCurrentTab]||[];
+      secretKeys.forEach(function(k){
+        var v=_chGetValue(k);
+        if(v&&v.indexOf('●')<0)_chSecrets[_chCurrentTab][k]=v;
+      });
+    }else{
+      msg.innerHTML='<span style="color:var(--rose)">'+esc(d.error||'{{ _('Save failed') }}')+'</span>';
+    }
+  }).catch(function(e){
+    msg.innerHTML='<span style="color:var(--rose)">{{ _('Network error') }}</span>';
+  })
+}
+
+function _chTest(){
+  if(_chCurrentTab!=='feishu'){
+    alert('{{ _('Current Channel Does Not Support Test') }}');
+    return;
+  }
+  var appId=_chGetValue('app_id');
+  var appSecret=_chGetValue('app_secret');
+  if(appSecret.indexOf('●')>=0){
+    if(_chSecrets[_chCurrentTab]&&_chSecrets[_chCurrentTab].app_secret)appSecret=_chSecrets[_chCurrentTab].app_secret;
+    else{alert('{{ _('Please Enter First') }} App Secret {{ _('Save Then Test') }}');return}
+  }
+  if(!appId||!appSecret){alert({{ _('App ID and App Secret Required') | tojson }});return}
+  var msg=document.getElementById('ch-msg');
+  msg.innerHTML='<span style="color:var(--cyan)">{{ _('Testing') }}...</span>';
+
+  fetch('/admin/channels/'+_chCurrentTab+'/test',{
+    method:'POST',
+    headers:{'Authorization':'Bearer '+T,'Content-Type':'application/json'},
+    body:JSON.stringify({app_id:appId,app_secret:appSecret})
+  }).then(function(r){return r.json()}).then(function(d){
+    if(d.success){
+      msg.innerHTML='<span style="color:var(--green)">'+esc(d.message||'{{ _('Connection Successful') }}')+'</span>';
+    }else{
+      msg.innerHTML='<span style="color:var(--rose)">'+esc(d.error||'{{ _('Connection Failed') }}')+'</span>';
+    }
+  }).catch(function(e){
+    msg.innerHTML='<span style="color:var(--rose)">{{ _('Network error') }}</span>';
+  })
+}
+
+// ============================
+// {{ _('WeCom') }} Tab {{ _('Helper Function') }}
+// ============================
+function _wcToggleSecret(key){
+  var el=document.getElementById('wc-f-'+key);
+  if(!el)return;
+  var isMasked=el.type==='password';
+  el.type=isMasked?'text':'password';
+  var btn=document.getElementById('wc-f-'+key+'-btn');
+  if(btn)btn.textContent=isMasked?'{{ _('Hide') }}':'{{ _('Show') }}';
+}
+
+function _wcLoadTab(){
+  var b=_chBody(); if(!b)return;
+  b.innerHTML='<div class="lo">{{ _('WeCom Config Loading') }}...</div>';
+  fetch('/admin/channels/wecom',{headers:{'Authorization':'Bearer '+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success||!d.data){
+      var b=_chBody(); if(b)b.innerHTML='<div class="cd"><div class="em">{{ _('Load failed') }}: '+(d.error||'{{ _('Unknown Error') }}')+'</div></div>';
+      return;
+    }
+    var cfg=d.data.config||{};
+    var env=d.data.from_env||{};
+    var isOn=d.data.is_enabled===1;
+
+    var h='';
+    h+='<div class="cdf"><label class="srv"><input type="checkbox" id="wc-enable" onchange="_wcToggleEnable()"'+(isOn?' checked':'')+'><span>{{ _('Enable WeCom Integration') }}</span></label></div>';
+
+    if(env&&Object.keys(env).length>0){
+      h+='<div class="inf" style="margin:12px 0;padding:10px 14px;background:rgba(0,245,255,0.06);border-left:3px solid var(--cyan);border-radius:6px;font-size:13px;color:#8b8b8b;">';
+      h+='<div style="color:var(--cyan);margin-bottom:6px;">{{ _('Currently Read from Env Vars') }}（{{ _('Not Saved to Database') }}）</div>';
+      Object.keys(env).forEach(function(k){
+        h+='<div style="margin:2px 0"><code style="color:#e0e0e0">'+esc(k)+'</code>: '+esc(env[k])+'</div>';
+      });
+      h+='</div>';
+    }else if(isOn){
+      h+='<div class="inf" style="margin:12px 0;padding:10px 14px;background:rgba(0,255,159,0.06);border-left:3px solid var(--green);border-radius:6px;font-size:13px;color:#8b8b8b;">';
+      h+='<span style="color:var(--green)">{{ _('Saved to Database') }}</span> — {{ _('Priority Read from DB Settings') }}';
+      h+='</div>';
+    }
+
+    h+='<div class="cdf">';
+    var fields=[
+      ['corp_id','{{ _('Enterprise ID') }}','text',cfg.corp_id||env.corp_id||''],
+      ['agent_id','{{ _('AgentId') }}','text',cfg.agent_id||env.agent_id||''],
+      ['secret','{{ _('Secret') }}','password',cfg.secret||''],
+      ['touser','{{ _('Default Recipient') }}','text',cfg.touser||env.touser||''],
+      ['token','{{ _('Callback Token') }}','password',cfg.token||''],
+      ['encoding_aes_key','{{ _('EncodingAESKey') }}','password',cfg.encoding_aes_key||''],
+    ];
+    fields.forEach(function(f){
+      var key=f[0], label=f[1], type=f[2], val=f[3];
+      h+='<label style="display:block;margin-bottom:14px">';
+      h+='<div style="font-size:13px;color:#8b8b8b;margin-bottom:5px">'+esc(label)+'</div>';
+      h+='<div style="display:flex;gap:8px;align-items:center">';
+      h+='<input type="'+type+'" id="wc-f-'+key+'" value="'+escAttr(val)+'" class="in" style="flex:1;min-width:0" placeholder="'+(type==='password'?'{{ _('Not Set') }}':'')+'">';
+      if(type==='password'){
+        h+='<button id="wc-f-'+key+'-btn" class="btn bs" onclick="_wcToggleSecret(\''+key+'\')" style="white-space:nowrap">{{ _('Show') }}</button>';
+      }
+      h+='</div></label>';
+    });
+    h+='</div>';
+
+    h+='<div class="cdf" style="margin-top:20px;display:flex;gap:10px;flex-wrap:wrap">';
+    h+='<button class="btn bp" onclick="_wcSave()">{{ _('Save Config') }}</button>';
+    h+='<button class="btn bs" onclick="_wcTest()">{{ _('Test WeCom Connection') }}</button>';
+    h+='</div>';
+    h+='<div id="wc-msg" style="margin-top:12px"></div>';
+
+    var b=_chBody(); if(b)b.innerHTML=h;
+
+    if(cfg.secret)_wcSecrets.wecom={secret:cfg.secret};
+    if(cfg.token)_wcSecrets.wecom=_wcSecrets.wecom||{};
+    if(cfg.token)_wcSecrets.wecom.token=cfg.token;
+    if(cfg.encoding_aes_key)_wcSecrets.wecom=_wcSecrets.wecom||{};
+    if(cfg.encoding_aes_key)_wcSecrets.wecom.encoding_aes_key=cfg.encoding_aes_key;
+  }).catch(function(e){
+    var b=_chBody(); if(b)b.innerHTML='<div class="cd"><div class="em">{{ _('Network error') }}: '+e.message+'</div></div>';
+  })
+}
+
+function _wcToggleEnable(){}
+
+function _wcGetValue(key){
+  var el=document.getElementById('wc-f-'+key);
+  return el?el.value.trim():'';
+}
+
+function _wcSave(){
+  var config={};
+  ['corp_id','agent_id','secret','touser','token','encoding_aes_key'].forEach(function(k){
+    var v=_wcGetValue(k);
+    if(v.indexOf('●')>=0){
+      if(_wcSecrets.wecom&&_wcSecrets.wecom[k])v=_wcSecrets.wecom[k];
+      else v='';
+    }
+    config[k]=v;
+  });
+  var enabled=document.getElementById('wc-enable')?document.getElementById('wc-enable').checked:false;
+  var body={config:config,is_enabled:enabled};
+
+  var msg=document.getElementById('wc-msg');
+  msg.innerHTML='<span style="color:var(--cyan)">{{ _('Saving') }}...</span>';
+
+  fetch('/admin/channels/wecom',{
+    method:'PUT',
+    headers:{'Authorization':'Bearer '+T,'Content-Type':'application/json'},
+    body:JSON.stringify(body)
+  }).then(function(r){return r.json()}).then(function(d){
+    if(d.success){
+      msg.innerHTML='<span style="color:var(--green)">'+esc(d.message||'{{ _('Saved') }}')+'</span>';
+      _wcSecrets.wecom={};
+      ['secret','token','encoding_aes_key'].forEach(function(k){
+        var v=_wcGetValue(k);
+        if(v&&v.indexOf('●')<0)_wcSecrets.wecom[k]=v;
+      });
+    }else{
+      msg.innerHTML='<span style="color:var(--rose)">'+esc(d.error||'{{ _('Save failed') }}')+'</span>';
+    }
+  }).catch(function(e){
+    msg.innerHTML='<span style="color:var(--rose)">{{ _('Network error') }}</span>';
+  })
+}
+
+function _wcTest(){
+  var corpId=_wcGetValue('corp_id');
+  var secret=_wcGetValue('secret');
+  if(secret.indexOf('●')>=0){
+    if(_wcSecrets.wecom&&_wcSecrets.wecom.secret)secret=_wcSecrets.wecom.secret;
+    else{alert('{{ _('Please Enter First') }} Secret {{ _('Save Then Test') }}');return}
+  }
+  if(!corpId||!secret){alert({{ _('Enterprise ID and Secret Required') | tojson }});return}
+  var msg=document.getElementById('wc-msg');
+  msg.innerHTML='<span style="color:var(--cyan)">{{ _('Testing') }}...</span>';
+
+  fetch('/admin/channels/wecom/test',{
+    method:'POST',
+    headers:{'Authorization':'Bearer '+T,'Content-Type':'application/json'},
+    body:JSON.stringify({corp_id:corpId,secret:secret})
+  }).then(function(r){return r.json()}).then(function(d){
+    if(d.success){
+      msg.innerHTML='<span style="color:var(--green)">'+esc(d.message||'{{ _('Connection Successful') }}')+'</span>';
+    }else{
+      msg.innerHTML='<span style="color:var(--rose)">'+esc(d.error||'{{ _('Connection Failed') }}')+'</span>';
+    }
+  }).catch(function(e){
+    msg.innerHTML='<span style="color:var(--rose)">{{ _('Network error') }}</span>';
+  })
+}
+
+// ============================
+// 统一社媒网关 — {{ _('Social Channels') }}（Phase 6 追加）
+// ============================
+var _socialPlatforms=[
+  ['twitter','{{ _('X (Twitter)') }}'],
+  ['linkedin','{{ _('LinkedIn') }}'],
+  ['reddit','{{ _('Reddit') }}'],
+  ['weibo','{{ _('Weibo') }}'],
+  ['toutiao','{{ _('Toutiao') }}'],
+  ['facebook','{{ _('Facebook') }}'],
+  ['instagram','{{ _('Instagram') }}'],
+  ['wechat_oa','{{ _('WeChat OA') }}'],
+  ['telegram_channel','{{ _('Telegram Channel') }}'],
+];
+// OAuth 授权类平台
+var _socialOAuthPlatforms=[
+  ['twitter','{{ _('X (Twitter)') }}'],
+  ['linkedin','{{ _('LinkedIn') }}'],
+  ['reddit','{{ _('Reddit') }}'],
+  ['weibo','{{ _('Weibo') }}'],
+  ['toutiao','{{ _('Toutiao') }}'],
+  ['facebook','{{ _('Facebook') }}'],
+  ['instagram','{{ _('Instagram') }}'],
+];
+// client_credential 凭据类渠道
+var _socialCredPlatforms=[
+  ['wechat_oa','{{ _('WeChat OA') }}'],
+  ['telegram_channel','{{ _('Telegram Channel') }}'],
+];
+
+// client_credential 渠道：手动存号表单字段（key → 标签 → 输入类型）
+var _clientCredentialFields={
+  'telegram_channel':[
+    ['telegram_bot_token','{{ _('Bot Token') }}','password'],
+    ['telegram_channel','{{ _('Channel') }}','text']
+  ]
+};
+// client_credential 渠道：无需本插件存号，仅给出配置引导
+var _clientCredentialHints={
+  'wechat_oa':'{{ _('Configure WeChat OA AppID/AppSecret in system settings') }}',
+  'telegram_channel':'{{ _('Set up the bot in Instant Messaging first, then only enter the target channel here') }}'
+};
+
+function _socialLoadTab(){
+  var b=_chBody(); if(!b)return;
+  b.innerHTML='<div class="lo">{{ _('Loading...') }}...</div>';
+  _socialFetchAccounts();
+}
+
+function _socialFetchAccounts(){
+  var b=_chBody(); if(!b)return;
+  fetch('/admin/channels/oauth/accounts',{headers:{'Authorization':'Bearer '+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success){
+      var b=_chBody(); if(b)b.innerHTML='<div class="cd"><div class="em">{{ _('Load failed') }}: '+esc(d.error||'{{ _('Unknown Error') }}')+'</div></div>';
+      return;
+    }
+    var accts=d.data||[];
+    var h='';
+    h+='<div class="st">{{ _('Social Channels') }}</div>';
+    h+='<div class="inf" style="margin:10px 0;padding:10px 14px;background:rgba(0,245,255,0.06);border-left:3px solid var(--cyan);border-radius:6px;font-size:13px;color:#8b8b8b;">';
+    h+='{{ _('Connect a social account to publish through the unified gateway') }}</div>';
+
+    // 平台连接按钮（OAuth 授权 / 凭据渠道分组）
+    h+='<div style="margin-bottom:6px;font-size:12px;color:#8b8b8b">{{ _('OAuth') }}</div>';
+    h+='<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">';
+    _socialOAuthPlatforms.forEach(function(p){
+      h+='<button class="btn bs" onclick="_socialConnect(\''+p[0]+'\')">'+esc(p[1])+' — {{ _('Connect') }}</button>';
+    });
+    h+='</div>';
+    h+='<div style="margin-bottom:6px;font-size:12px;color:#8b8b8b">{{ _('Credential Channels') }}</div>';
+    h+='<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px">';
+    _socialCredPlatforms.forEach(function(p){
+      h+='<button class="btn bs" onclick="_socialConnect(\''+p[0]+'\')">'+esc(p[1])+' — {{ _('Connect') }}</button>';
+    });
+    h+='</div>';
+
+    // 已连接账号列表
+    if(accts.length===0){
+      h+='<div style="color:#8b8b8b;font-size:13px">{{ _('No connected accounts yet') }}</div>';
+    }else{
+      h+='<table class="tbl" style="width:100%;border-collapse:collapse;font-size:13px">';
+      h+='<tr><th style="text-align:left;padding:6px">{{ _('Channel') }}</th><th style="text-align:left;padding:6px">{{ _('Account') }}</th><th style="text-align:left;padding:6px">{{ _('Token Expires') }}</th><th style="text-align:left;padding:6px">{{ _('Days Left') }}</th><th style="padding:6px"></th></tr>';
+      accts.forEach(function(a){
+        var days='—', dayColor='#8b8b8b';
+        if(a.token_expires_at){
+          var dl=Math.floor((new Date(String(a.token_expires_at).replace(' ','T'))-Date.now())/86400000);
+          if(!isNaN(dl)){
+            days=String(dl);
+            dayColor=dl<0?'var(--rose)':(dl<7?'#f5a623':'#8b8b8b');
+          }
+        }
+        h+='<tr><td style="padding:6px">'+esc(a.channel)+'</td>';
+        h+='<td style="padding:6px">'+esc(a.handle||a.account_key||'')+'</td>';
+        h+='<td style="padding:6px">'+(a.token_expires_at?esc(a.token_expires_at):'—')+'</td>';
+        h+='<td style="padding:6px;color:'+dayColor+'">'+days+'</td>';
+        h+='<td id="acc-ops-'+a.id+'" style="padding:6px;white-space:nowrap">';
+        h+='<button class="btn bs" onclick="_socialRefresh('+a.id+')" style="margin-right:6px">{{ _('Refresh') }}</button>';
+        h+='<button class="btn bs" onclick="_socialRevoke('+a.id+')">{{ _('Revoke') }}</button>';
+        h+='</td></tr>';
+      });
+      h+='</table>';
+    }
+
+    // 发布测试入口
+    h+='<div class="st" style="margin-top:24px">{{ _('Publish Test') }}</div>';
+    h+='<div class="cdf">';
+    h+='<div style="font-size:13px;color:#8b8b8b;margin-bottom:5px">{{ _('Channel') }}</div>';
+    h+='<select id="soc-test-ch" class="in" style="width:100%;margin-bottom:10px">';
+    _socialPlatforms.forEach(function(p){h+='<option value="'+p[0]+'">'+esc(p[1])+'</option>'});
+    h+='</select>';
+    h+='<div style="font-size:13px;color:#8b8b8b;margin-bottom:5px">{{ _('Text') }}</div>';
+    h+='<textarea id="soc-test-text" class="in" style="width:100%;min-height:70px;margin-bottom:10px"></textarea>';
+    h+='<div style="font-size:13px;color:#8b8b8b;margin-bottom:5px">{{ _('Image URL') }}</div>';
+    h+='<input id="soc-test-img" class="in" type="text" style="width:100%;margin-bottom:10px">';
+    h+='<button class="btn bp" onclick="_socialTest()">{{ _('Publish') }}</button>';
+    h+='<div id="soc-msg" style="margin-top:10px"></div>';
+    h+='</div>';
+
+    var b=_chBody(); if(b)b.innerHTML=h;
+  }).catch(function(e){
+    var b=_chBody(); if(b)b.innerHTML='<div class="cd"><div class="em">{{ _('Network error') }}</div></div>';
+  })
+}
+
+function _socialConnect(platform){
+  if(_clientCredentialFields[platform]||_clientCredentialHints[platform]){ _socialShowClientCredential(platform); return; }
+  fetch('/admin/channels/oauth/connect?platform='+platform,{headers:{'Authorization':'Bearer '+T}}).then(function(r){return r.json()}).then(function(d){
+    if(d.success&&d.authorize_url){ window.open(d.authorize_url,'_blank'); }
+    else{ alert(d.error||'{{ _('Connect failed') }}'); }
+  }).catch(function(e){ alert('{{ _('Network error') }}'); })
+}
+
+// client_credential 渠道：渲染手动存号表单或配置引导
+function _socialShowClientCredential(platform){
+  var hint=_clientCredentialHints[platform];
+  var fields=_clientCredentialFields[platform]||[];
+  var h='<div class="st" style="margin-top:6px">'+esc(platform)+' — {{ _('Save Account') }}</div>';
+  if(hint){
+    h+='<div class="inf" style="margin:10px 0;padding:10px 14px;background:rgba(0,245,255,0.06);border-left:3px solid var(--cyan);border-radius:6px;font-size:13px;color:#8b8b8b;">'+hint+'</div>';
+  }
+  if(fields.length){
+    h+='<div class="cdf">';
+    h+='<div style="font-size:13px;color:#8b8b8b;margin-bottom:5px">{{ _('Account Key') }}</div>';
+    h+='<input id="cc-account-key" class="in" value="default" style="width:100%;margin-bottom:10px">';
+    fields.forEach(function(f){
+      h+='<div style="font-size:13px;color:#8b8b8b;margin-bottom:5px">'+esc(f[1])+'</div>';
+      h+='<input id="cc-'+f[0]+'" class="in" type="'+f[2]+'" style="width:100%;margin-bottom:10px">';
+    });
+    h+='<button class="btn bp" onclick="_socialSaveAccount(\''+platform+'\')">{{ _('Save Account') }}</button>';
+    h+='<div id="cc-msg" style="margin-top:10px"></div>';
+    h+='</div>';
+  }
+  var b=_chBody(); if(b)b.innerHTML=h;
+}
+
+function _socialSaveAccount(platform){
+  var config={};
+  var fields=_clientCredentialFields[platform]||[];
+  fields.forEach(function(f){ var el=document.getElementById('cc-'+f[0]); if(el)config[f[0]]=el.value; });
+  var accountKey=(document.getElementById('cc-account-key')||{}).value||'default';
+  var msg=document.getElementById('cc-msg');
+  msg.innerHTML='<span style="color:var(--cyan)">{{ _('Saving') }}...</span>';
+  fetch('/admin/channels/oauth/accounts',{
+    method:'POST',
+    headers:{'Authorization':'Bearer '+T,'Content-Type':'application/json'},
+    body:JSON.stringify({channel:platform,account_key:accountKey,config:config})
+  }).then(function(r){return r.json()}).then(function(d){
+    if(d.success){ msg.innerHTML='<span style="color:var(--green)">{{ _('Saved') }}</span>'; _socialLoadTab(); }
+    else{ msg.innerHTML='<span style="color:var(--rose)">'+esc(d.error||'{{ _('Unknown Error') }}')+'</span>'; }
+  }).catch(function(e){
+    msg.innerHTML='<span style="color:var(--rose)">{{ _('Network error') }}</span>';
+  })
+}
+
+function _socialRevoke(id){
+  if(!confirm('{{ _('Revoke this connected account?') }}'))return;
+  fetch('/admin/channels/oauth/revoke/'+id,{method:'POST',headers:{'Authorization':'Bearer '+T}}).then(function(r){return r.json()}).then(function(d){
+    _socialLoadTab();
+  }).catch(function(e){ alert('{{ _('Network error') }}'); })
+}
+
+function _socialRefresh(id){
+  var cell=document.getElementById('acc-ops-'+id);
+  if(!cell)return;
+  var oldHtml=cell.innerHTML;
+  cell.innerHTML='<span style="color:var(--cyan)">{{ _('Refreshing') }}...</span>';
+  fetch('/admin/channels/oauth/refresh/'+id,{method:'POST',headers:{'Authorization':'Bearer '+T}}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){
+      cell.innerHTML='<span style="color:var(--green)">{{ _('Refreshed') }}</span>';
+      setTimeout(_socialFetchAccounts, 1000);
+    }else{
+      cell.innerHTML=oldHtml;
+      alert(d.error||'{{ _('Unknown Error') }}');
+    }
+  }).catch(function(e){
+    cell.innerHTML=oldHtml;
+    alert('{{ _('Network error') }}');
+  })
+}
+
+function _socialTest(){
+  var ch=document.getElementById('soc-test-ch').value;
+  var text=document.getElementById('soc-test-text').value;
+  var img=document.getElementById('soc-test-img').value;
+  var msg=document.getElementById('soc-msg');
+  msg.innerHTML='<span style="color:var(--cyan)">{{ _('Sending') }}...</span>';
+  fetch('/admin/channels/oauth/publish-test',{
+    method:'POST',
+    headers:{'Authorization':'Bearer '+T,'Content-Type':'application/json'},
+    body:JSON.stringify({channel:ch,payload:{title:text,body:text,image_url:img}})
+  }).then(function(r){return r.json()}).then(function(d){
+    var item=(d.data||{})[ch]||{};
+    if(item.success){
+      msg.innerHTML='<span style="color:var(--green)">{{ _('Published') }}</span>'+(item.url?' '+esc(item.url):'');
+    }else{
+      msg.innerHTML='<span style="color:var(--rose)">'+esc(item.error||d.error||'{{ _('Unknown Error') }}')+'</span>';
+    }
+  }).catch(function(e){
+    msg.innerHTML='<span style="color:var(--rose)">{{ _('Network error') }}</span>';
+  })
+}

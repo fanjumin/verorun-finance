@@ -1,6 +1,8 @@
 name: Builder
 slug: builder
 role_type: sub
+editions:
+  - official
 description: Site building expert — site creation, theme config, domain binding, page design
 domain: site_builder
 managed_modules:

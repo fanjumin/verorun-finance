@@ -1,0 +1,240 @@
+# IM Gateway Plugin — English translations (source is English, identity mapping)
+plugin.name: IM Gateway
+Channel Management: Channel Management
+IM Gateway: IM Gateway
+Feishu: Feishu
+WeCom: WeCom
+DingTalk: DingTalk
+Coming Soon: Coming Soon
+Loading...: Loading...
+Config Loading: Config Loading
+WeCom Config Loading: WeCom Config Loading
+Load failed: Load failed
+Unknown Error: Unknown Error
+Request Failed: Request Failed
+Network error: Network error
+Highlight: Highlight
+Integration: Integration
+Enabled: Enabled
+Enable WeCom Integration: Enable WeCom Integration
+Currently Read from Env Vars: Currently Read from Env Vars
+Not Saved to Database: Not Saved to Database
+Saved to Database: Saved to Database
+Config Reads DB First: Config Reads DB First
+Priority Read from DB Settings: Priority Read from DB Settings
+Official Field Set per Channel: Official Field Set per Channel
+Extensible: Extensible
+Admin: Admin
+Admin Open ID: Admin Open ID
+Admin UIN: Admin UIN
+AgentId: AgentId
+App ID: App ID
+App ID and App Secret Required: App ID and App Secret Required
+App Key: App Key
+App Secret: App Secret
+AppKey: AppKey
+AppSecret: AppSecret
+CorpId: CorpId
+EncodingAESKey: EncodingAESKey
+Encrypt Key: Encrypt Key
+Enterprise: Enterprise
+Enterprise ID: Enterprise ID
+Enterprise ID and Secret Required: Enterprise ID and Secret Required
+Secret: Secret
+Verification Token: Verification Token
+Default Recipient: Default Recipient
+Callback: Callback
+Callback Token: Callback Token
+Not Set: Not Set
+Show: Show
+Hide: Hide
+Save Config: Save Config
+Test Feishu Connection: Test Feishu Connection
+Test WeCom Connection: Test WeCom Connection
+Test Not Supported Yet: Test Not Supported Yet
+Current Channel Does Not Support Test: Current Channel Does Not Support Test
+Telegram: Telegram
+LINE: LINE
+Bot Token: Bot Token
+Webhook URL: Webhook URL
+Allow Group Chat: Allow Group Chat
+Channel Secret: Channel Secret
+Channel Access Token: Channel Access Token
+Channel configuration updated: Channel configuration updated
+Saving: Saving
+Saved: Saved
+Save failed: Save failed
+Testing: Testing
+Connection Successful: Connection Successful
+Connection Failed: Connection Failed
+Please Enter First: Please Enter First
+Save Then Test: Save Then Test
+Required: Required
+Helper Function: Helper Function
+# Unified social gateway (Phase 6)
+Social Channels: Social Channels
+Connect: Connect
+No connected accounts yet: No connected accounts yet
+Channel: Channel
+Account: Account
+Token Expires: Token Expires
+Revoke: Revoke
+Publish Test: Publish Test
+Text: Text
+Image URL: Image URL
+Publish: Publish
+Connect failed: Connect failed
+Revoke this connected account?: Revoke this connected account?
+Sending: Sending
+Published: Published
+Connect a social account to publish through the unified gateway: Connect a social account to publish through the unified gateway
+Unsupported platform: Unsupported platform
+ENCRYPTION_KEY not configured; OAuth connect disabled: ENCRYPTION_KEY not configured; OAuth connect disabled
+App credentials not configured for this platform: App credentials not configured for this platform
+Missing code or state: Missing code or state
+Invalid state: Invalid state
+No refresh token for this account: No refresh token for this account
+This platform has no token refresh: This platform has no token refresh
+Account not found: Account not found
+channel and config are required: channel and config are required
+Manual credential save not supported for this channel: Manual credential save not supported for this channel
+This channel has no configurable fields: This channel has no configurable fields
+Unsupported config fields: Unsupported config fields
+Token refresh failed, please try again later: Token refresh failed, please try again later
+OAuth initialization failed: OAuth initialization failed
+Save Account: Save Account
+Account Key: Account Key
+Configure WeChat OA AppID/AppSecret in system settings: Configure WeChat OA AppID/AppSecret in system settings
+# UI redesign & i18n coverage (2026-08-25)
+Credential Channels: Credential Channels
+Detail: Detail
+Days Left: Days Left
+Expired: Expired
+OAuth: OAuth
+Refresh: Refresh
+Refreshed: Refreshed
+Refreshing: Refreshing
+Set webhook callback to: Set webhook callback to
+Webhook callback URL: Webhook callback URL
+'Enable {channel} Integration': 'Enable {channel} Integration'
+'{channel} Config Reads DB First': '{channel} Config Reads DB First'
+'{channel} Config Loading': '{channel} Config Loading'
+X (Twitter): X (Twitter)
+LinkedIn: LinkedIn
+Reddit: Reddit
+Weibo: Weibo
+Toutiao: Toutiao
+Facebook: Facebook
+Instagram: Instagram
+WeChat OA: WeChat OA
+Telegram Channel: Telegram Channel
+# IM Gateway adapter layer messages (2026-08-25)
+App ID and App Key cannot be empty: App ID and App Key cannot be empty
+App ID and App Secret cannot be empty: App ID and App Secret cannot be empty
+AppKey and AppSecret cannot be empty: AppKey and AppSecret cannot be empty
+Bot Token cannot be empty: Bot Token cannot be empty
+Channel Access Token cannot be empty: Channel Access Token cannot be empty
+'Connection failed: {}': 'Connection failed: {}'
+DingTalk connection successful!: DingTalk connection successful!
+Download: Download
+Enterprise ID and Secret cannot be empty: Enterprise ID and Secret cannot be empty
+Feishu App ID or App Secret is empty: Feishu App ID or App Secret is empty
+Feishu channel is not configured: Feishu channel is not configured
+Feishu connection successful!: Feishu connection successful!
+Feishu group chat_id is not configured: Feishu group chat_id is not configured
+Feishu message sending failed: Feishu message sending failed
+'Feishu returned error: {} (code={})': 'Feishu returned error: {} (code={})'
+'Feishu token acquisition failed: {}': 'Feishu token acquisition failed: {}'
+'File upload failed: {}': 'File upload failed: {}'
+File upload not supported: File upload not supported
+'Image upload failed: {}': 'Image upload failed: {}'
+Media file: Media file
+QQ Credentials Accepted (No Third-party API Called): QQ Credentials Accepted (No Third-party API Called)
+'Telegram returned error: {}': 'Telegram returned error: {}'
+Unknown: Unknown
+WeCom channel is not configured: WeCom channel is not configured
+WeCom connection successful!: WeCom connection successful!
+WeCom push failed: WeCom push failed
+WeCom webhook_url is empty: WeCom webhook_url is empty
+"**{}**\n[Download file]({})": "**{}**\n[Download file]({})"
+'Unsupported channel: {}': 'Unsupported channel: {}'
+'DingTalk returned: {} (errcode={})': 'DingTalk returned: {} (errcode={})'
+'LINE Connected! Bot: {}': 'LINE Connected! Bot: {}'
+'LINE Response: {}': 'LINE Response: {}'
+'Telegram Connected! Bot: {}': 'Telegram Connected! Bot: {}'
+'WeCom returned: {} (errcode={})': 'WeCom returned: {} (errcode={})'
+'Channel {channel} does not support media push': 'Channel {channel} does not support media push'
+# Card-based multi-level management UI (Phase 2)
+Instant Messaging: Instant Messaging
+Publishing: Publishing
+Third-party Login: Third-party Login
+Developer Login: Developer Login
+Configured: Configured
+Not Configured: Not Configured
+Configure: Configure
+Back: Back
+Connected: Connected
+Not Connected: Not Connected
+Shared: Shared
+Manage: Manage
+Disabled: Disabled
+account(s): account(s)
+Connected Targets: Connected Targets
+No connected targets yet: No connected targets yet
+Connect a social account first: Connect a social account first
+No login providers configured yet: No login providers configured yet
+No developer API keys yet: No developer API keys yet
+Provider: Provider
+Status: Status
+Key Prefix: Key Prefix
+Expires: Expires
+Name: Name
+Select at least one channel: Select at least one channel
+Text or image is required: Text or image is required
+Publish failed: Publish failed
+Set up the bot in Instant Messaging first, then only enter the target channel here: Set up the bot in Instant Messaging first, then only enter the target channel here
+New API Key: New API Key
+Key Type: Key Type
+Expires (optional): Expires (optional)
+Generate: Generate
+Generating: Generating
+Name is required: Name is required
+API key generated - copy it now: API key generated - copy it now
+Manage API keys for programmatic access: Manage API keys for programmatic access
+Revoke this API key?: Revoke this API key?
+# Phase 5 — Third-party login provider management
+Configure OAuth providers for third-party login: Configure OAuth providers for third-party login
+Client ID: Client ID
+Client Secret: Client Secret
+Scopes: Scopes
+Redirect URI: Redirect URI
+Leave blank to keep current: Leave blank to keep current
+Default: Default
+Enable: Enable
+Disable: Disable
+Test: Test
+# Phase 7 — Mini-Program developer accounts (centralized from mini_app_builder)
+Access Token: Access Token
+Account Name: Account Name
+Account name cannot be empty: Account name cannot be empty
+Active: Active
+Add Account: Add Account
+Cancel: Cancel
+Channel ID: Channel ID
+Create: Create
+Delete: Delete
+Delete Failed: Delete Failed
+Edit: Edit
+Editing: Editing
+LIFF accessToken: LIFF accessToken
+Login Method: Login Method
+Mini-Program Developer Accounts: Mini-Program Developer Accounts
+Mini-program platform developer credentials: Mini-program platform developer credentials
+No mini-program accounts yet: No mini-program accounts yet
+Platform: Platform
+Save: Save
+Test Failed: Test Failed
+Testing...: Testing...
+This action cannot be undone: This action cannot be undone
+tt.login()/wx.login() code: tt.login()/wx.login() code
+WebApp.initData: WebApp.initData

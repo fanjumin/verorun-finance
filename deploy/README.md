@@ -51,23 +51,9 @@ VeroRun is distributed through two repositories — pick the one that matches yo
 
 ### Official Edition（官方版）
 
-The Official Edition is a **private, licensed deployment** of `verorun-code` reserved for
-official sites / enterprise customization. It MUST be deployed only with `install-official.sh`,
-which lives in `deploy/` of `verorun-code` and is NOT exported to `verorun-pro`.
-
-```bash
-git clone git@github.com:fanjumin/verorun-code.git /tmp/verorun-official
-cd /tmp/verorun-official
-sudo bash deploy/install-official.sh install your-domain.com
-```
-
-> ⚠️ **NEVER run `install.sh` on an official server** — it pulls the public `verorun-pro`.
-> After a correct official install:
-> - `.env` contains `VR_EDITION=official` — `install.sh` refuses to run on such a server
-> - `git remote -v` points to `verorun-code` (SSH)
-> - `deploy/` no longer contains `install.sh` / `install-code.sh` / `uninstall.sh`
-> - `git log` shows a `verorun-code` dev commit, **not** a `Sync from verorun-code` commit
->   (a `Sync from...` commit means the code actually came from `verorun-pro` via CI sync)
+Official Edition（官方版）是 `verorun-code` **私有仓库**的授权部署形态，仅通过官方渠道
+（SSH 访问私有仓库 + 独立部署入口）进行，**本文档不覆盖其部署方式**。
+普通用户请使用本仓库（`verorun-pro`）中的 `install.sh` 即可。
 
 ## Quick Install (One Command)
 
@@ -90,6 +76,14 @@ curl -fsSL https://raw.githubusercontent.com/fanjumin/verorun-pro/master/deploy/
 curl -fsSL https://raw.githubusercontent.com/fanjumin/verorun-pro/master/deploy/install.sh | sudo env INSTALL_TYPE=website bash -s -- install your-domain.com
 ```
 
+> **HTTPS 证书：** `website` 类型在**真实终端（TTY）**下会自动询问 Let's Encrypt 邮箱并签发证书；
+> **无 TTY（CI / 纯管道）且未传 `--ssl-email` 时自动跳过签发，降级为 HTTP**（SSO 无 Secure 标记）。
+> 无 TTY 环境要拿 HTTPS，需显式传邮箱：
+>
+> ```bash
+> curl -fsSL https://raw.githubusercontent.com/fanjumin/verorun-pro/master/deploy/install.sh | sudo env INSTALL_TYPE=website bash -s -- install your-domain.com --ssl-email you@example.com
+> ```
+
 **Supported INSTALL_TYPE values:**
 
 | Value | DEPLOY_TYPE | Description | Old Script |
@@ -101,12 +95,32 @@ curl -fsSL https://raw.githubusercontent.com/fanjumin/verorun-pro/master/deploy/
 
 > `install-code.sh` is preserved as an independent shortcut for Team (code) deployments (full plugins).
 
+**中国内地网络提示：** `install.sh` 默认 `GIT_REPO=https://github.com/fanjumin/verorun-pro.git`
+（HTTPS 公开仓，浅克隆 `--depth 1`）；仅 `development`（SSH `git@github.com:fanjumin/verorun-code.git`）
+与 `educational`（HTTPS verorun-edu）类型切换仓库。内地服务器直连 GitHub 传输易中途被掐断
+（`fetch-pack: unexpected disconnect`）——HTTPS 克隆会自动回退到
+ghfast.top / ghproxy.net 镜像；也可改用 gitee 源
+（`GIT_REPO=git@gitee.com:fanjumin/verorun-code.git`，需配置 deploy key）、本地 bundle
+中继或加大重试参数（`GIT_CLONE_ATTEMPTS` / `GIT_TIMEOUT`），详见下方 Troubleshooting 的
+「中国内地网络：安装克隆 GitHub 失败」小节。另请确保部署脚本为 2026-08-27 之后版本
+（旧版克隆参数为 60s × 2 次，新版默认 120s × 3 次并含多项修复）。
+
+
 ### Educational Edition（教育版）
 
 ```bash
 # One-command edu install (no domain, edu license code required)
 curl -fsSL https://raw.githubusercontent.com/fanjumin/verorun-edu/master/deploy/install.sh | sudo env INSTALL_TYPE=educational bash
 ```
+
+> **部署码（EDU_CODE）：** 有真实终端（TTY）时会交互式提示输入部署码（ED-XXXX）。
+> **无 TTY（CI / 纯管道）时必须显式传 `EDU_CODE`**，否则脚本尝试从 `/dev/tty` 读取会失败退出：
+>
+> ```bash
+> curl -fsSL https://raw.githubusercontent.com/fanjumin/verorun-edu/master/deploy/install.sh \
+>   | sudo env INSTALL_TYPE=educational EDU_CODE=ED-XXXX bash
+> ```
+> 测试部署码 `TEST-DEV-0001` / `EDU-TEST-0001` 仅放行开发/测试环境，不用于生产。
 
 > **common.sh 同步依赖（audit F-02）：** 教育版一键安装从 `verorun-edu` 拉取
 > `deploy/lib/common.sh`，其校验哈希 `EDU_COMMON_SHA256` 与 `verorun-pro` 的
@@ -191,6 +205,12 @@ On a fresh install (`install` mode), the script:
 8. **Nginx** — Configures reverse proxy for main domain + subdomains
 9. **Start services** — Starts all systemd services and Nginx
 10. **Database migration + seed** — In `install` mode the script auto-runs `init_db` migration and seeds initial data (admin account, subscription plans, products), so the deployment is fully usable right after install
+
+> **关于 `verorun-guardian`：** 非官方版（标准版）若缺少 Nuitka 编译产物
+> `veroguard/dist/verorun-guardian.bin`（`dist/` 不入库，标准版安装后必然缺失），
+> 脚本只写 unit 文件但**不 enable**（避免 systemd 崩溃循环），此时实际启动的服务为
+> **4 个**（main / auth / admin / health）。补齐二进制后手动启用：
+> `sudo systemctl enable --now verorun-guardian`。
 
 If no domain is provided, steps 7-9 are skipped and can be run later with `configure-domain`. Steps 1-6 and 10 always run.
 
@@ -278,6 +298,15 @@ Internet
 | `yourdomain.com` | 8081 | `auth_server:app` | Main site, unified login, OAuth, user APIs |
 | `platform.yourdomain.com` | 8083 | `main_site:app` | User console, subscriptions |
 | `agent.yourdomain.com` | 8084 | `admin:app` | Admin panel, plugin management |
+
+### LAN / Professional 模式（无域名）
+
+- 单 server 代理：`/admin/` → :8084、`/auth/`、`/subscribe` → :8083、`/` → :8081；
+  用户登录/控制台入口为 `http://<内网IP>/login`。
+- 内置插件：email / sms / im_gateway / site_domains / `_base`（共享依赖）随安装稀疏检出
+  （2026-08-30 F-1/F-1a 修复），"Bundled plugin tables" 建表步骤可正常执行，管理员可直接在后台启用这三个内置插件。
+- HTTPS 补齐（可选）：`sudo bash deploy/intranet/setup_lan_selfsigned.sh`
+  （生成 IP-SAN 自签证书 + 启用 nginx 443 + 置 `DEPLOY_PROTOCOL=https`；成功路径退出码 0 并打印访问地址与重启服务提示）。
 
 ### File Locations
 
@@ -446,6 +475,52 @@ sudo bash deploy/install.sh update
 
 ---
 
+### 中国内地网络：安装克隆 GitHub 失败（fetch-pack unexpected disconnect）
+
+内地服务器直连 `git@github.com:fanjumin/verorun-code.git` 拉取约 60MB 仓库（约 9500 个对象）时，
+常见 `fetch-pack: unexpected disconnect while reading sideband packet`：日志已出现
+`remote: Enumerating objects … Counting 100%` 说明 SSH 认证与仓库访问均正常，是**传输中途被
+国际链路/GFW 掐断**，属网络层问题，而非脚本或权限问题。
+
+处置（按推荐顺序）：
+
+1. **换 gitee 源**（国内直连，推荐）：在服务器生成密钥并把公钥加入 gitee 仓库「部署公钥」后：
+
+   ```bash
+   sudo env GIT_REPO=git@gitee.com:fanjumin/verorun-code.git bash deploy/install.sh install
+   ```
+
+2. **本地 bundle 中继**（无外网环境最稳；2026-08-30 已在内网两台机器实测，一次成功）：
+   在任一可访问仓库的机器上打包，上传到目标服务器后建立本地裸仓，让安装器直接使用：
+
+   ```bash
+   git bundle create verorun-code.bundle refs/heads/master                # 约 62MB
+   git clone --bare verorun-code.bundle /home/guxiao/verorun-code.git     # 服务器上建本地源
+   sudo env GIT_REPO=/home/guxiao/verorun-code.git bash deploy/install.sh install
+   ```
+
+3. **加大重试参数后低峰期重试**（`GIT_CLONE_ATTEMPTS` / `GIT_TIMEOUT` 可用环境变量覆盖，
+   默认 120s × 3 次；2026-08-27 `316ec5c8` 之前的旧版脚本为 60s × 2 次，对 60MB 级仓库
+   明显不足，请先更新部署脚本）：
+
+   ```bash
+   sudo env GIT_CLONE_ATTEMPTS=5 GIT_TIMEOUT=300 bash deploy/install.sh install
+   ```
+
+4. **预克隆**：先手动把仓库克隆到 `APP_HOME`，安装器检测到已有 `.git` 会走
+   `fetch/reset` 路径，跳过克隆步骤：
+
+   ```bash
+   git clone --depth 1 git@gitee.com:fanjumin/verorun-code.git /home/guxiao/verorun
+   sudo bash deploy/install.sh install
+   ```
+
+注意：失败提示中的 `https_proxy` 仅对 HTTPS 协议克隆生效；`git@github.com` 走 SSH 22 端口，
+如需经代理克隆应使用
+`GIT_SSH_COMMAND="ssh -o ProxyCommand='nc -X connect -x <代理>:<端口> %h %p'"`，或改用
+HTTPS + token 克隆。
+
+
 ## Manual Step-by-Step Installation
 
 If the automated script fails, you can follow these manual steps.
@@ -563,7 +638,7 @@ sudo nginx -t && sudo systemctl restart nginx
 
 ## Release Signing（发布签名）
 
-`deploy/lib/common.sh` 被三个入口脚本（`install.sh` / `install-code.sh` / `install-official.sh`）
+`deploy/lib/common.sh` 被入口脚本（`install.sh` / `install-code.sh`）
 在 curl|bash 一键安装时远程拉取，并通过内嵌的 SHA-256 pin 校验，防止 CDN / 仓库投毒。
 
 **每次修改 `deploy/lib/common.sh` 后必须重新回填哈希**，否则发布后一键安装会因校验失败而损坏：

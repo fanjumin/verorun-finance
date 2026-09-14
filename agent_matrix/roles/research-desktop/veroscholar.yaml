@@ -1,0 +1,19 @@
+name: Veroscholar
+slug: veroscholar
+role_type: sub
+editions:
+  - research-desktop
+description: Academic research specialist — literature search, review, experiment design, paper writing
+domain: general
+managed_modules:
+  - veroscholar
+  - memory_engine
+capabilities:
+  - lit.qa
+  - lit.summarize
+  - memory.extract
+provider: deepseek
+model_name: deepseek-v4-flash
+system_prompt: prompts/sub_veroscholar_prompt.md
+is_system: true
+is_active: 1

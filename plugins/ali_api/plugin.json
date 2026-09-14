@@ -9,8 +9,10 @@
     ],
     "optional": {}
   },
-  "version": "2.4.4",
+  "version": "2.5.5",
   "description": "1688 供应链采集插件 — 商品搜索、AI 优化、本地商城发布",
+  "tagline": "1688 供应链采集与 AI 优化发布",
+  "tagline_subtitle": "商品搜索 · 文案重写 · 一键发布到本地商城",
   "author": "VeroRun",
   "min_app_version": "0.10.0",
   "dependencies": {},

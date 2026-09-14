@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Shop Scheduler — P2 弃单挽回：扫描超时未支付订单并发站内信提醒"""
-from models import get_db
+from .models import get_db
 from plugin_manager.logger import get_plugin_logger
 
 logger = get_plugin_logger('shop')
@@ -53,7 +53,7 @@ def scan_abandoned_orders():
                     )
                     create_notification(
                         r['user_id'], 'shop_abandon_cart', title, content,
-                        link_url=f"/shop/pay/{r['oid']}"
+                        link_url=f"/mall/pay/{r['oid']}"
                     )
                     conn.execute(
                         'UPDATE shop.order_items SET abandon_reminded_at=NOW() WHERE id=%s',

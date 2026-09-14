@@ -65,6 +65,26 @@ def inject_deploy():
     return dict(deploy=deploy, edition=_os.environ.get('VR_EDITION', ''))
 
 
+# ══ 可观测性：request_id 注入与响应头 ══
+# INT-004 接线：访问日志经统一 get_logger 输出（LOG_FILE 设置时落 JSON，自动并入 request_id/user_id）
+from shared.logging import get_logger as _get_logger
+_access_logger = _get_logger('verorun.access')
+
+
+@app.before_request
+def _inject_request_id():
+    from shared.observability import init_request_id
+    init_request_id()
+
+
+@app.after_request
+def _attach_request_id_header(response):
+    from shared.observability import current_request_id
+    response.headers['X-Request-Id'] = current_request_id()
+    _access_logger.info('%s %s -> %s', request.method, request.path, response.status_code)
+    return response
+
+
 # ══ i18n 国际化注入 ══
 from i18n import _, get_lang, get_all_translations, resolve_locale
 import os as _os
@@ -144,6 +164,7 @@ app.jinja_loader = jinja2.ChoiceLoader([
     jinja2.FileSystemLoader(os.path.join(os.path.dirname(__file__), '..', 'plugins', 'analytics', 'templates')),
     jinja2.FileSystemLoader(os.path.join(os.path.dirname(__file__), '..', 'plugins', 'ads', 'templates')),
     jinja2.FileSystemLoader(os.path.join(os.path.dirname(__file__), '..', 'plugins', 'shop', 'templates', 'admin')),
+    jinja2.FileSystemLoader(os.path.join(os.path.dirname(__file__), '..', 'plugins', 'shop', 'templates')),
 ])
 
 app.config['TEMPLATES_AUTO_RELOAD'] = False
@@ -191,23 +212,32 @@ except Exception as e:
 # ===== 自动续费引擎（插件订阅体系，唯一调度入口）=====
 # 订阅系统已整体迁移至 plugins/subscription（subscription schema），
 # 调度由插件 SUBSCRIPTION_JOBS 的 4 个任务接管。
-try:
-    from plugins.subscription.scheduler import run_renewal_scan, run_dunning_scan, check_expired_subscriptions, cleanup_old_orders
-    from plugin_manager.subscription import run_plugin_sub_scan, run_plugin_sub_grace_scan
-    from apscheduler.schedulers.background import BackgroundScheduler
-    _renew_sched = BackgroundScheduler(timezone='Asia/Shanghai')
-    _renew_sched.add_job(run_renewal_scan, 'cron', hour=2, minute=0)                 # 每日 02:00 扫描到期代扣
-    _renew_sched.add_job(check_expired_subscriptions, 'cron', hour=2, minute=30)     # 每日 02:30 过期标记
-    _renew_sched.add_job(run_dunning_scan, 'cron', hour=3, minute=0)                 # 每日 03:00 dunning 重试
-    _renew_sched.add_job(cleanup_old_orders, 'cron', hour=3, minute=30)              # 每日 03:30 清理旧订单
-    _renew_sched.add_job(run_plugin_sub_scan, 'cron', hour=2, minute=15)             # 每日 02:15 插件订阅到期扫描
-    _renew_sched.add_job(run_plugin_sub_grace_scan, 'cron', hour=3, minute=15)       # 每日 03:15 插件订阅宽限期锁定
-    _renew_sched.start()
-    print('[Subscription] ✅ 插件订阅自动续费调度已启动（02:00 续费 / 02:15 插件到期 / 02:30 过期 / 03:00 dunning / 03:15 插件宽限 / 03:30 清理）')
-except ImportError:
-    print('[Subscription] ⚠️ APScheduler 未安装，订阅调度跳过')
-except Exception as e:
-    print(f'[Subscription] ⚠️ 订阅调度启动失败: {e}')
+from shared.plugin_access import optional_import as _plugin_import
+
+_sched_mod = _plugin_import('plugins.subscription.scheduler', feature='subscription_scheduler')
+if _sched_mod is None:
+    print('[Subscription] ❌ 订阅插件缺失（plugins/subscription），自动续费/dunning/过期标记引擎未启动，需人工介入')
+else:
+    try:
+        run_renewal_scan = _sched_mod.run_renewal_scan
+        run_dunning_scan = _sched_mod.run_dunning_scan
+        check_expired_subscriptions = _sched_mod.check_expired_subscriptions
+        cleanup_old_orders = _sched_mod.cleanup_old_orders
+        from plugin_manager.subscription import run_plugin_sub_scan, run_plugin_sub_grace_scan
+        from apscheduler.schedulers.background import BackgroundScheduler
+        _renew_sched = BackgroundScheduler(timezone='Asia/Shanghai')
+        _renew_sched.add_job(run_renewal_scan, 'cron', hour=2, minute=0)                 # 每日 02:00 扫描到期代扣
+        _renew_sched.add_job(check_expired_subscriptions, 'cron', hour=2, minute=30)     # 每日 02:30 过期标记
+        _renew_sched.add_job(run_dunning_scan, 'cron', hour=3, minute=0)                 # 每日 03:00 dunning 重试
+        _renew_sched.add_job(cleanup_old_orders, 'cron', hour=3, minute=30)              # 每日 03:30 清理旧订单
+        _renew_sched.add_job(run_plugin_sub_scan, 'cron', hour=2, minute=15)             # 每日 02:15 插件订阅到期扫描
+        _renew_sched.add_job(run_plugin_sub_grace_scan, 'cron', hour=3, minute=15)       # 每日 03:15 插件订阅宽限期锁定
+        _renew_sched.start()
+        print('[Subscription] ✅ 插件订阅自动续费调度已启动（02:00 续费 / 02:15 插件到期 / 02:30 过期 / 03:00 dunning / 03:15 插件宽限 / 03:30 清理）')
+    except ImportError:
+        print('[Subscription] ⚠️ APScheduler 未安装，订阅调度跳过')
+    except Exception as e:
+        print(f'[Subscription] ⚠️ 订阅调度启动失败: {e}')
 
 init_cms_tables()
 
@@ -216,8 +246,16 @@ try:
     from version import __version__
     app.version = __version__
     app.plugins_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'plugins')
-    pm = PluginManager(app)
+    # 蓝图必须先注册：即使 PluginManager 初始化失败，/admin/plugins/* 也不可被
+    # /admin/<path:subpath> SPA 兜底吞掉（死锁事故教训：静默失败导致商店 API 返回 HTML）。
     app.register_blueprint(plugin_bp)
+    pm = PluginManager(app)
+    # 技能注册中心（P0）：可用性求值 + 事件联动 + 注入器注册（开关关闭则回退旧行为）
+    try:
+        from plugin_manager.skill_registry import init_skill_registry
+        init_skill_registry(pm)
+    except Exception:
+        pass
     # captcha_bp 由插件 plugins/captcha_embedded 的 register_routes() 挂载（mount_all_routes）
     # 启动期挂载全部已安装插件（含 disabled）的路由，运行时由门卫按启用状态放行/拦截，
     # 从而实现后台启用/禁用插件免重启（Flask 3 运行时无法动态注册蓝图）。
@@ -284,35 +322,117 @@ _SHOP_PRODUCTS_STATIC = os.path.join(os.path.dirname(__file__), '..', 'plugins',
 os.makedirs(_SHOP_PRODUCTS_STATIC, exist_ok=True)
 BRAND_STATIC = os.path.join(os.path.dirname(__file__), '..', 'static', 'brand')
 
-# ══ 独立部署：订阅过期锁定（客户端模式，仅锁定后台管理页面） ══
-if os.environ.get('APP_MODE', 'main') == 'client':
+# ══ 授权到期锁定（独立部署客户端 ∨ 显式声明强制的发行版）══
+# 2026-09-11 产品决策：桌面金融版「订阅到期即锁」，一律 fail-closed。
+# 触发条件不能只看 APP_MODE：桌面包裹版由 Electron 注入 VR_EDITION=finance-desktop 而
+# APP_MODE 取默认 'main'（见 local-core-manager.nativeCoreEnv 未设 APP_MODE），
+# 旧条件在此形态下恒为假 → 到期不锁（R2 复测 N-04 的根因）。
+def _official_dev_exempt():
+    """唯一豁免口：私有仓库的官方签名凭证有效 **且** 显式打开开发开关。
+
+    客户仓库永远没有 official_token.json(.sig)，伪造 VR_EDITION=official 也过不了
+    Ed25519 验签（plugin_manager/license.py:_verify_official_token 的 fail-closed 设计）
+    → 不构成商业绕过；只解决开发者本机被锁的问题。
+    """
+    if os.environ.get('VERORUN_DEV_UNLICENSED', '').strip() != '1':
+        return False
+    try:
+        from plugin_manager.license import _verify_official_token
+        return bool(_verify_official_token())
+    except Exception:
+        return False
+
+
+def _license_enforced():
+    if os.environ.get('APP_MODE', 'main') == 'client':
+        return True
+    try:
+        from agent_matrix.models import edition_requires_license
+        requires = bool(edition_requires_license())
+    except Exception as e:            # 判定不了就按不强制（否则核心起不来）
+        print(f'[License] ⚠️ edition 强制判定失败（按不强制处理）: {e}')
+        return False
+    return requires and not _official_dev_exempt()
+
+
+# 锁定期间仍放行的路径前缀（登录/静态/续费页/授权自查/健康检查等）
+_LICENSE_WHITELIST = (
+    '/admin/login', '/admin/logout', '/admin/static/', '/admin/renew',
+    '/admin/api/auth/refresh', '/admin/api/license-status', '/admin/api/license-refresh',
+    '/admin/api/check-update', '/admin/api/update-status', '/admin/login/send-code',
+    '/api/subscription', '/api/admin/first-password-set',
+    '/login', '/reset-password', '/static/', '/health', '/favicon', '/themes/',
+)
+
+_LICENSE_ENFORCED = _license_enforced()
+_ls = None
+if _LICENSE_ENFORCED:
     try:
         from services.license_service import LicenseService as _LicenseService
         _ls = _LicenseService()
-
-        @app.before_request
-        def _check_subscription():
-            """订阅过期时，管理后台页面跳转到续费页"""
-            # 只锁定 /admin 开头的页面请求，不锁定 API
-            path = request.path
-            if not path.startswith('/admin'):
-                return None
-            # 静态文件不锁定
-            if path.startswith('/admin/static/'):
-                return None
-            # 续费页不锁定
-            if path == '/admin/renew' or path.startswith('/api/subscription'):
-                return None
-            # 仅检查页面路由（HTML展示），API调用不锁定
-            if path.startswith('/admin/') and not path.startswith('/admin/api'):
-                if not _ls.check_admin_access():
-                    return redirect('/admin/renew')
-            return None
-        print('[License] ✅ 订阅过期检查已启用（客户端模式）')
+        print('[License] ✅ 订阅到期检查已启用（独立部署授权强制）')
     except Exception as e:
-        print(f'[License] ⚠️ 订阅检查未启用: {e}')
+        _ls = None
+        # fail-closed：授权服务不可用 ≠ 放行。原先这里只 print 后继续跑，
+        # 等于"依赖装不上就把锁拆掉"。
+        print(f'[License] ❌ 授权服务初始化失败，管理后台按 fail-closed 锁定: {e}')
+
+    def _license_denied_payload():
+        return {'success': False, 'data': None, 'error': 'subscription_expired',
+                'message': '订阅已到期或未激活，请续费后继续使用'}, 403
+
+    @app.before_request
+    def _check_subscription():
+        """到期即锁：页面跳续费页，API/插件端点返回 403（不再只锁 /admin 页面）。"""
+        path = request.path
+        if not path.startswith('/admin'):
+            return None
+        if any(path == w or path.startswith(w) for w in _LICENSE_WHITELIST):
+            return None
+        if _ls is None:
+            if path.startswith('/admin/static'):
+                return None
+            return _license_denied_payload()
+        if _ls.check_admin_access():
+            return None
+        # 插件业务端点前缀是 /admin/<plugin>/...（如 /admin/stock-analysis/api/kline）：
+        # 旧实现用 not path.startswith('/admin/api') 一刀切豁免，这些端点既没被豁免
+        # 也没被锁 → 到期后仍可白嫖。这里按"是否页面导航请求"区分响应形态。
+        accept = request.headers.get('Accept', '')
+        wants_html = ('text/html' in accept
+                      or request.method == 'GET' and not request.is_json
+                      and not any(seg in path for seg in ('/api/', '/api')))
+        if wants_html and not path.startswith('/admin/api'):
+            return redirect('/admin/renew')
+        return _license_denied_payload()
+
+    @app.route('/admin/renew')
+    def admin_renew_page():
+        """续费/授权状态页（模板 renew.html 早已存在但全仓无路由 → 锁定后跳转会 404）。"""
+        status = (_ls.get_status() if _ls else
+                  {'valid': False, 'status': 'unknown', 'days_remaining': 0,
+                   'message': '授权服务不可用，请联系供应方', 'cached_at': '', 'needs_refresh': False})
+        return render_template('renew.html', license=status)
+
+    @app.route('/admin/api/license-refresh', methods=['POST'])
+    def admin_license_refresh_api():
+        """主动重新校验授权（renew.html 的「重新验证」按钮调本端点；此前亦无实现）。"""
+        if _ls is None:
+            return jsonify({'success': False, 'error': 'license service unavailable'}), 503
+        try:
+            status = _ls.refresh()
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)[:200]}), 502
+        return jsonify({'success': bool(status.get('valid')), 'data': status})
+
+    @app.route('/admin/api/license-status', methods=['GET'])
+    def admin_license_status_api():
+        """只读授权状态（不触发外网心跳，供桌面端展示剩余天数）。"""
+        if _ls is None:
+            return jsonify({'success': False, 'error': 'license service unavailable'}), 503
+        return jsonify({'success': True, 'data': _ls.get_status()})
 else:
-    print('[License] 主服务器模式，跳过订阅过期检查')
+    print('[License] 本发行版未启用授权强制（APP_MODE=%s）' % os.environ.get('APP_MODE', 'main'))
 
 # ══ 域名白名单：仅允许配置的域名访问管理后台 ══
 @app.before_request
@@ -345,6 +465,38 @@ def _check_admin_domain():
         pass  # 数据库不可用时放行，避免锁死
     return None
 
+
+# ══ D-20: 服务端 Origin 校验 — 阻止跨站写请求（浏览器 CSRF + 非浏览器脚本伪造） ══
+@app.before_request
+def _csrf_origin_guard():
+    """对 /admin 写请求做 Origin 校验：非浏览器客户端（无 Origin）放行；
+    浏览器跨站请求（Origin 与当前 Host/主域不符）返回 403。登录类端点豁免。"""
+    if request.method in ('GET', 'HEAD', 'OPTIONS'):
+        return None
+    path = request.path
+    if (not path.startswith('/admin')) or path == '/admin/login' or path.startswith('/admin/login'):
+        return None
+    if path.startswith('/admin/static/') or path.startswith('/api/auth/'):
+        return None
+    origin = request.headers.get('Origin')
+    if not origin:
+        return None
+    host = (request.host or '').split(':')[0].lower()
+    dom = os.environ.get('DEPLOY_DOMAIN', '').strip().lower()
+    allowed = {host}
+    if dom:
+        allowed.add(dom)
+    try:
+        netloc_host = origin.split('://', 1)[-1].split('/')[0].split(':')[0].lower()
+    except Exception:
+        netloc_host = ''
+    if netloc_host in allowed:
+        return None
+    if dom and netloc_host.endswith('.' + dom):
+        return None
+    return jsonify({'success': False, 'error': 'Forbidden: cross-origin request rejected'}), 403
+
+
 @app.route('/')
 def index():
     return redirect('/admin/login')
@@ -361,7 +513,9 @@ def admin_page():
     payload = validate_token(token) if token else None
     if not payload or not payload.get('is_admin'):
         return redirect('/admin/login')
-    resp = make_response(render_template('admin.html', sso_token=token))
+    from agent_matrix.models import current_edition
+    resp = make_response(render_template('admin.html', sso_token=token,
+                                         edition=current_edition()))
     resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
     resp.headers['Pragma'] = 'no-cache'
     resp.headers['Expires'] = '0'
@@ -410,8 +564,19 @@ def admin_login_page():
 
 @app.route('/admin/logout')
 def admin_logout():
-    """退出登录 — 清除服务端 HttpOnly cookie 后跳转登录页"""
+    """退出登录 — 服务端吊销 token（D-03）后清除 cookie，跳转登录页"""
     from flask import make_response
+    from services.jwt_service import validate_token, revoke_token
+    token = request.args.get('token') or request.headers.get('Authorization', '').replace('Bearer ', '')
+    if not token:
+        token = request.cookies.get('sso_token') or request.cookies.get('tm_token') or request.cookies.get('token')
+    if token:
+        payload = validate_token(token)
+        if payload:
+            try:
+                revoke_token(token)
+            except Exception:
+                pass
     resp = make_response(redirect('/admin/login'))
     for cn in ('sso_token', 'tm_token', 'token'):
         resp.set_cookie(cn, '', path='/', max_age=0)
@@ -440,7 +605,8 @@ def admin_login_action():
 
     # ── IP 限流 ──
     now = int(_time_module.time())
-    attempt_key = f'admin_login_{ip}'
+    # D-16: 组合键 = IP + 账号，避免单一 IP 下攻击者轮询不同账号触发全 IP 锁定时误伤其他管理员
+    attempt_key = f'admin_login_{ip}|{(username or "").strip().lower()}'
     with _admin_login_lock:
         attempts = _admin_login_attempts.get(attempt_key, {'count': 0, 'first': now, 'banned_until': 0})
         if attempts.get('banned_until', 0) > now:
@@ -496,7 +662,7 @@ def admin_login_action():
             with _admin_login_lock:
                 attempts['count'] += 1
                 _admin_login_attempts[attempt_key] = attempts
-            return jsonify({'success': False, 'error': 'Account not found or not an admin account'}), 400
+            return jsonify({'success': False, 'error': '验证码错误或账号无效'}), 400
 
         user = dict(user)
         # Query admin role
@@ -535,14 +701,14 @@ def admin_login_action():
                 attempts['banned_until'] = now + 1800
             _admin_login_attempts[attempt_key] = attempts
         _log_admin_action(None, 'login_failed', ip, f'user={username} not_found')
-        return jsonify({'success': False, 'error': 'Account not found or not an admin account'}), 400
+        return jsonify({'success': False, 'error': '账号或密码错误'}), 400
 
     stored = user['password_hash']
     if not stored:
         with _admin_login_lock:
             attempts['count'] += 1
             _admin_login_attempts[attempt_key] = attempts
-        return jsonify({'success': False, 'error': '该账号未设置密码，请使用验证码登录'}), 400
+        return jsonify({'success': False, 'error': '账号或密码错误'}), 400
 
     pw_ok = False
     parts = stored.split(':')
@@ -566,7 +732,7 @@ def admin_login_action():
                 attempts['banned_until'] = now + 1800
             _admin_login_attempts[attempt_key] = attempts
         _log_admin_action(user['id'], 'login_failed', ip, f'user={username} bad_password')
-        return jsonify({'success': False, 'error': '密码错误'}), 400
+        return jsonify({'success': False, 'error': '账号或密码错误'}), 400
 
     with _admin_login_lock:
         _admin_login_attempts.pop(attempt_key, None)
@@ -585,6 +751,39 @@ def admin_login_action():
     _log_admin_action(user['id'], 'login_success', ip, f'user={username} client={client_type}')
 
     return _make_login_response(token, client_type)
+
+
+@app.route('/admin/api/auth/refresh', methods=['POST'])
+def admin_api_refresh_token():
+    """桌面/移动端 JWT 续签端点（admin 服务自足，finance 版 8083 停用后刷新链路仍可用）。
+
+    与 /auth/refresh 等价：旧 token 换新（scenario='refresh'，2FA 插件不拦截续期）。
+    Token 提取：Authorization: Bearer 优先，body {'token': ...} 兜底。
+    响应结构沿用 {success, data:{token}}，兼容桌面端 401 自动续签拦截器。
+    """
+    from services.jwt_service import validate_token
+    data = request.get_json(force=True, silent=True) or {}
+    old_token = (data.get('token') or '').strip()
+    auth = request.headers.get('Authorization', '')
+    if auth.startswith('Bearer '):
+        old_token = auth[7:].strip()
+
+    payload = validate_token(old_token)
+    if not payload:
+        return jsonify({'success': False, 'error': 'Invalid or expired token'}), 401
+
+    _res = issue_auth_session(
+        payload['user_id'], payload.get('phone'),
+        app_name=payload.get('app_name', 'main'),
+        is_admin=payload.get('is_admin', False),
+        role=payload.get('role', 'user'),
+        device_name='Token Refresh', device_type='desktop',
+        scenario='refresh')
+    # D-15: 可选轮换 —— JWT_REFRESH_ROTATE=1 时吊销旧 token（默认保留多会话并存）
+    if os.environ.get('JWT_REFRESH_ROTATE') == '1':
+        from services.jwt_service import revoke_token
+        revoke_token(old_token)
+    return jsonify({'success': True, 'data': {'token': _res['token']}})
 
 
 def _make_login_response(token, client_type):
@@ -645,7 +844,8 @@ def admin_send_code():
             user = conn.execute('SELECT id FROM users WHERE phone=%s AND is_admin=1', (target,)).fetchone()
 
     if not user:
-        return jsonify({'success': False, 'error': 'Account not found or not an admin account'}), 400
+        # D-12: 统一兜底文案，避免通过 send-code 探测账号是否为管理员
+        return jsonify({'success': False, 'error': '发送失败，请检查账号后重试'}), 400
 
     if market == 'intl':
         # 邮箱验证码：存表 + 发邮件
@@ -656,16 +856,18 @@ def admin_send_code():
                 (target, code, 'login', expires_at))
             conn.commit()
 
-        try:
-            from plugins.email.services import send_email
-            send_email(
-                to_addr=target,
-                subject='VeroRun Admin Login Code',
-                body_text=f'Your verification code is: {code}\n\nValid for 5 minutes.\n\nIf you did not request this, please ignore.'
-            )
+        from shared.plugin_access import call_plugin
+        ok, _res = call_plugin(
+            'plugins.email.services', 'send_email',
+            to_addr=target,
+            subject='VeroRun Admin Login Code',
+            body_text=f'Your verification code is: {code}\n\nValid for 5 minutes.\n\nIf you did not request this, please ignore.',
+            feature='admin_login_code',
+        )
+        if ok:
             print(f'[Admin] Email code sent to {target}')
-        except Exception as e:
-            print(f'[Admin] Email send failed: {e} (stub: {code})')
+        else:
+            print(f'[Admin] Email unavailable/failed, code stubbed in log: {code}')
         return jsonify({'success': True, 'message': '验证码已发送到邮箱'})
     else:
         # 短信验证码：委托给 /auth/sms/send
@@ -852,7 +1054,9 @@ def admin_spa_catchall(subpath):
     payload = validate_token(token) if token else None
     if not payload or not payload.get('is_admin'):
         return redirect('/admin/login')
-    resp = make_response(render_template('admin.html', sso_token=token))
+    from agent_matrix.models import current_edition
+    resp = make_response(render_template('admin.html', sso_token=token,
+                                         edition=current_edition()))
     resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
     resp.headers['Pragma'] = 'no-cache'
     resp.headers['Expires'] = '0'

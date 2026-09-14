@@ -52,14 +52,24 @@ class EnterpriseVerifyPlugin(BasePlugin):
         return True
 
     def register_agents(self):
-        """注册 OCR + 审核 Agent（§4.1）：从 plugin.json agents 声明 + prompt 文件写入本地 agent_registry。"""
+        """注册 OCR + 审核 Agent 能力到 service 角色 + 本地 agent_registry。"""
         try:
+            from agent_matrix.models import register_capability_to_role
             plugin_info = getattr(self, 'plugin_info', None)
             metadata = getattr(plugin_info, 'metadata', {}) or {}
             agents = metadata.get('agents', [])
             if not agents:
                 logger.info('plugin.json 无 agents 声明，跳过 Agent 注册')
                 return []
+
+            # 注册能力到 service 角色（07-service.yaml）
+            for agent in agents:
+                register_capability_to_role(
+                    domain='service',
+                    name=agent.get('name', ''),
+                    capabilities=agent.get('capabilities', []),
+                    description=f"{agent.get('name', '')} — {agent.get('domain', 'enterprise_verify')}",
+                )
             registered = []
             base_dir = os.path.dirname(__file__)
             for agent in agents:

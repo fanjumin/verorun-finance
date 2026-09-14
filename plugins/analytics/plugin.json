@@ -8,8 +8,10 @@
     ],
     "optional": {}
   },
-  "version": "1.10.2",
+  "version": "1.11.3",
   "description": "Analytics Middleware & Dashboard — Server-side Cookieless Analytics",
+  "tagline": "服务端无 Cookie 流量分析",
+  "tagline_subtitle": "PV/UV · 实时在线 · 地域与设备洞察",
   "author": "VeroRun",
   "min_app_version": "0.10.0",
   "agent_role": "content",

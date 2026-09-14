@@ -51,6 +51,12 @@ def _log(admin_id, action, target_type='', target_id='', detail=''):
     _l(admin_id, action, target_type, target_id, detail)
 
 
+def _check_pub_permission(action: str):
+    """P6 权限门禁：无权限返回 403 响应，有权限返回 None。"""
+    from .services.permissions import check_permission
+    return check_permission(action)
+
+
 def _get_main_db():
     """主库只读连接（system_config / cms_posts）"""
     from models import get_db
@@ -113,8 +119,9 @@ def check_config():
             ).fetchall()
         cfg = {r['key']: r['value'] for r in rows}
 
-        # 发布渠道：社媒账号以账号表为准（数据库表单化管理）
-        from .models import has_account_configured, get_active_account_raw, account_to_config
+        # 发布渠道：社媒账号权威源 = im_gateway channel_accounts（check-config 改读网关账号状态）
+        from .models import get_active_account_raw, account_to_config
+        from .services.accounts import has_active_account
 
         # Base domestic platforms
         platforms = [
@@ -122,22 +129,22 @@ def check_config():
                 'id': 'wechat',
                 'name': _('WeChat Official Account'),
                 'icon': '💬',
-                'configured': has_account_configured('wechat'),
-                'fields_needed': [] if has_account_configured('wechat') else ['AppID', 'AppSecret'],
+                'configured': has_active_account('wechat'),
+                'fields_needed': [] if has_active_account('wechat') else ['AppID', 'AppSecret'],
             },
             {
                 'id': 'weibo',
                 'name': _('Weibo'),
                 'icon': '📢',
-                'configured': has_account_configured('weibo'),
-                'fields_needed': [] if has_account_configured('weibo') else ['App Key', 'Access Token'],
+                'configured': has_active_account('weibo'),
+                'fields_needed': [] if has_active_account('weibo') else ['App Key', 'Access Token'],
             },
             {
                 'id': 'toutiao',
                 'name': _('Toutiao'),
                 'icon': '📰',
-                'configured': has_account_configured('toutiao'),
-                'fields_needed': [] if has_account_configured('toutiao') else ['App ID', 'Access Token'],
+                'configured': has_active_account('toutiao'),
+                'fields_needed': [] if has_active_account('toutiao') else ['App ID', 'Access Token'],
             },
         ]
 
@@ -240,22 +247,24 @@ def get_content_types():
 
 @social_bp.route('/generate', methods=['POST'])
 def generate_content():
-    """Generate article content using AI."""
+    """Generate article content using AI（长文/短文模式）。"""
     admin, err = _require_admin()
     if err:
         return err
     data = request.get_json(force=True) or {}
     topic = data.get('topic', '').strip()
     content_type = data.get('content_type', 'article')
+    content_mode = data.get('content_mode', 'short')  # 'short' | 'long'
     temperature = data.get('temperature', 0.7)
 
     if not topic:
         return jsonify({'success': False, 'error': _('Enter a topic')}), 400
 
     try:
-        from services.ai_content_generator import generate_article
-        result = generate_article(topic, content_type, temperature)
-        _log(admin['user_id'], 'social_generate', 'social', '', f'Type: {content_type}, Topic: {topic}')
+        from .services.ai import ai_generate_content
+        result = ai_generate_content(topic, content_mode, content_type, temperature)
+        _log(admin['user_id'], 'social_generate', 'social', '',
+             f'Mode: {content_mode}, Type: {content_type}, Topic: {topic}')
         return jsonify({'success': True, 'data': result})
     except Exception as e:
         logger.exception('AI generate failed')
@@ -312,15 +321,140 @@ def generate_image():
 
 
 # =============================================
+# 内容草稿（P2：长文/短文暂存，发布时读入）
+# =============================================
+
+def _draft_to_dict(r):
+    return {
+        'id': r['id'],
+        'title': r['title'],
+        'mode': r['mode'],
+        'body': r['body'],
+        'body_html': r['body_html'],
+        'summary': r['summary'],
+        'media': json.loads(r['media_json'] or '[]'),
+        'cover_image_url': r['cover_url'],
+        'targets': json.loads(r['target_json'] or '[]'),
+        'schedule_at': str(r['schedule_at']) if r.get('schedule_at') else '',
+        'created_at': str(r['created_at']) if r.get('created_at') else '',
+    }
+
+
+@social_bp.route('/drafts', methods=['GET'])
+def list_drafts():
+    """列表：长短文草稿（当前 admin 的草稿优先，可按模式过滤）。"""
+    admin, err = _require_admin()
+    if err:
+        return err
+    mode = request.args.get('mode', '')
+    admin_id = admin['user_id']
+    sql = "SELECT * FROM content_drafts"
+    conds, params = [], []
+    if mode in ('short', 'long'):
+        conds.append("mode=%s")
+        params.append(mode)
+    conds.append("(admin_id=%s OR admin_id IS NULL)")
+    params.append(admin_id)
+    sql += " WHERE " + " AND ".join(conds)
+    sql += " ORDER BY updated_at DESC, id DESC LIMIT 100"
+    with get_sp_db() as conn:
+        rows = conn.execute(sql, params).fetchall()
+    return jsonify({'success': True, 'data': [_draft_to_dict(r) for r in rows]})
+
+
+@social_bp.route('/draft', methods=['POST'])
+def save_draft():
+    """保存草稿（无 id 新建，有 id 更新）。返回 {id}。"""
+    admin, err = _require_admin()
+    if err:
+        return err
+    perr = _check_pub_permission('write')
+    if perr:
+        return perr
+    data = request.get_json(force=True) or {}
+    draft_id = data.get('id')
+    title = (data.get('title') or '').strip()[:120]
+    mode = data.get('mode', 'short') if data.get('mode') in ('short', 'long') else 'short'
+    body = data.get('body') or ''
+    body_html = data.get('body_html') or ''
+    summary = (data.get('summary') or '')[:100]
+    media = data.get('media') or []
+    cover_url = data.get('cover_image_url') or ''
+    targets = data.get('targets') or []
+    schedule_at = data.get('schedule_at') or None
+    admin_id = admin['user_id']
+
+    media_json = json.dumps(media, ensure_ascii=False)
+    target_json = json.dumps(targets, ensure_ascii=False)
+
+    with get_sp_db() as conn:
+        if draft_id:
+            conn.execute(
+                """UPDATE content_drafts SET title=%s, mode=%s, body=%s, body_html=%s,
+                   summary=%s, media_json=%s, cover_url=%s, target_json=%s, schedule_at=%s,
+                   admin_id=%s, updated_at=NOW() WHERE id=%s""",
+                (title, mode, body, body_html, summary, media_json, cover_url,
+                 target_json, schedule_at, admin_id, draft_id)
+            )
+        else:
+            cur = conn.execute(
+                """INSERT INTO content_drafts
+                   (title, mode, body, body_html, summary, media_json, cover_url,
+                    target_json, schedule_at, admin_id)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+                (title, mode, body, body_html, summary, media_json, cover_url,
+                 target_json, schedule_at, admin_id)
+            )
+            draft_id = cur.fetchone()['id']
+        conn.commit()
+
+    _log(admin_id, 'social_save_draft', 'social', str(draft_id), f'{mode}: {title or "(untitled)"}')
+    return jsonify({'success': True, 'data': {'id': draft_id}})
+
+
+@social_bp.route('/draft/<int:draft_id>', methods=['GET', 'DELETE'])
+def draft_item(draft_id):
+    """读取单个草稿 / 删除草稿。"""
+    admin, err = _require_admin()
+    if err:
+        return err
+    if request.method == 'DELETE':
+        perr = _check_pub_permission('write')
+        if perr:
+            return perr
+    admin_id = admin['user_id']
+    with get_sp_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM content_drafts WHERE id=%s AND (admin_id=%s OR admin_id IS NULL)",
+            (draft_id, admin_id)
+        ).fetchone()
+        if not row:
+            return jsonify({'success': False, 'error': _('Draft not found')}), 404
+        if request.method == 'DELETE':
+            conn.execute("DELETE FROM content_drafts WHERE id=%s", (draft_id,))
+            conn.commit()
+            _log(admin_id, 'social_delete_draft', 'social', str(draft_id))
+            return jsonify({'success': True})
+    return jsonify({'success': True, 'data': _draft_to_dict(row)})
+
+
+# =============================================
 # 发布到多平台
 # =============================================
 
 @social_bp.route('/publish', methods=['POST'])
 def publish_content():
-    """Publish content to one or more platforms."""
+    """Publish content to one or more platforms.
+
+    P4 扩展：支持定时发布（schedule_at）。非空 schedule_at 时任务入队，
+    由 scheduler 每分钟扫描派发；为空时立即发布（保留原同步链路）。
+    """
     admin, err = _require_admin()
     if err:
         return err
+    perr = _check_pub_permission('publish')
+    if perr:
+        return perr
     data = request.get_json(force=True) or {}
     title = data.get('title', '').strip()
     body = data.get('body', '').strip()
@@ -331,11 +465,37 @@ def publish_content():
     platforms = data.get('platforms', ['wechat'])  # list of platform ids
     auto_publish = data.get('auto_publish', False)
     subreddit = data.get('subreddit', '').strip()  # Reddit 目标板块（可选）
+    schedule_at = data.get('schedule_at', '').strip() or None  # P4 定时发布
 
     if not title or not body:
         return jsonify({'success': False, 'error': _('Title and Body cannot be empty')}), 400
 
     admin_id = admin['user_id']
+
+    # P4：定时发布 → 入队（draft 无则直接内联 payload）
+    if schedule_at:
+        try:
+            from datetime import datetime
+            sched = datetime.fromisoformat(schedule_at.replace('Z', '+00:00'))
+        except Exception:
+            return jsonify({'success': False, 'error': _('Invalid schedule time')}), 400
+
+        from .services.queue import enqueue
+        queued = []
+        for platform in platforms:
+            payload = {
+                'title': title, 'body': body, 'body_html': body_html,
+                'summary': summary, 'cover_image_url': cover_image_url,
+                'auto_publish': auto_publish, 'subreddit': subreddit,
+            }
+            task = enqueue(channel=platform, payload=payload, schedule_at=sched,
+                           admin_id=admin_id)
+            queued.append({'platform': platform, 'queue_id': task['id'],
+                           'status': 'pending', 'schedule_at': schedule_at})
+        _log(admin_id, 'social_schedule_publish', 'social', '',
+             f'{len(platforms)} task(s) @ {schedule_at}')
+        return jsonify({'success': True, 'data': {'queued': queued}})
+
     results = []
 
     for platform in platforms:
@@ -354,6 +514,76 @@ def publish_content():
         results.append(result)
 
     return jsonify({'success': True, 'data': {'results': results}})
+
+
+# ── P4：发布队列列表 / 取消 ──
+
+@social_bp.route('/queue', methods=['GET'])
+def queue_list():
+    """发布队列列表（可按状态过滤）。"""
+    admin, err = _require_admin()
+    if err:
+        return err
+    status = request.args.get('status', '').strip()
+    limit = request.args.get('limit', 50)
+    offset = request.args.get('offset', 0)
+    from .services.queue import list_tasks
+    tasks = list_tasks(status=status, limit=limit, offset=offset)
+    return jsonify({'success': True, 'data': {'tasks': tasks}})
+
+
+@social_bp.route('/queue/<int:task_id>/cancel', methods=['POST'])
+def queue_cancel(task_id):
+    """取消 pending 发布任务。"""
+    admin, err = _require_admin()
+    if err:
+        return err
+    perr = _check_pub_permission('write')
+    if perr:
+        return perr
+    from .services.queue import cancel_task
+    ok = cancel_task(task_id)
+    if not ok:
+        return jsonify({'success': False,
+                        'error': _('Only pending tasks can be cancelled')}), 400
+    _log(admin['user_id'], 'social_cancel_queue', 'social', str(task_id))
+    return jsonify({'success': True})
+
+
+# ── P7：发布历史 ──
+
+@social_bp.route('/history', methods=['GET'])
+def publish_history():
+    """发布历史列表（读 social_push_logs，分页/平台过滤）。"""
+    admin, err = _require_admin()
+    if err:
+        return err
+    platform = request.args.get('platform', '').strip()
+    limit = request.args.get('limit', 50)
+    offset = request.args.get('offset', 0)
+    sql = "SELECT * FROM social_push_logs"
+    params = []
+    conds = []
+    if platform:
+        conds.append("platform=%s")
+        params.append(platform)
+    if conds:
+        sql += " WHERE " + " AND ".join(conds)
+    sql += " ORDER BY id DESC LIMIT %s OFFSET %s"
+    params += [int(limit), int(offset)]
+    with get_sp_db() as conn:
+        rows = conn.execute(sql, params).fetchall()
+    out = []
+    for r in rows:
+        out.append({
+            'id': r['id'], 'platform': r['platform'],
+            'content_type': r['content_type'], 'title': r['title'],
+            'summary': r['summary'], 'status': r['status'],
+            'media_id': r['media_id'], 'publish_id': r.get('publish_id', ''),
+            'error_msg': r['error_msg'],
+            'created_at': str(r['created_at']) if r.get('created_at') else '',
+        })
+    return jsonify({'success': True, 'data': {'items': out}})
 
 
 def _load_config_for_provider(provider_name: str) -> dict:
@@ -484,14 +714,54 @@ def _publish_to_platform(platform, title, body, body_html, summary, author,
 
     if platform == 'wechat':
         return _publish_wechat(title, body_html, summary, author, cover_image_url, auto_publish, admin_id)
-    elif platform == 'weibo':
-        return _publish_weibo(title, body, cover_image_url, admin_id)
     elif platform == 'toutiao':
         return _publish_toutiao(title, body_html, summary, cover_image_url, admin_id)
-    elif platform in ('twitter', 'linkedin', 'reddit', 'telegram'):
+    elif platform in ('twitter', 'weibo', 'telegram'):
+        # P1：三平台先行切换走 im_gateway 网关发布（账号/token 统一来自网关）
+        return _publish_via_gateway(platform, title, body, summary, cover_image_url, admin_id)
+    elif platform in ('linkedin', 'reddit'):
         return _publish_via_provider(platform, title, body, summary, cover_image_url, '', admin_id, **kwargs)
     else:
         return {'platform': platform, 'status': 'failed', 'error': f'Unsupported platform: {platform}'}
+
+
+def _publish_via_gateway(platform, title, body, summary, cover_image_url, admin_id):
+    """Publish via im_gateway gateway.publish()（P1：twitter / weibo / telegram）。
+
+    返回 social_push 既有契约；同步写 social_push_logs 与 admin 审计。
+    """
+    try:
+        from .services.publisher import publish_multi, to_social_result
+
+        payload = {
+            'title': title or '',
+            'body': body or '',
+            'summary': summary or '',
+            'image_url': cover_image_url or '',
+            'link_url': '',
+        }
+        result = publish_multi([platform], payload).get(platform, {})
+        mapped = to_social_result(platform, result, title)
+
+        with get_sp_db() as conn:
+            conn.execute(
+                """INSERT INTO social_push_logs
+                   (platform, content_type, title, summary, article_json, media_id, status, admin_id, error_msg)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (platform, 'post', title, (summary or body)[:100],
+                 json.dumps({'body': (body or '')[:500], 'cover_url': cover_image_url},
+                            ensure_ascii=False),
+                 mapped.get('media_id', ''), mapped['status'], admin_id,
+                 mapped.get('error', ''))
+            )
+            conn.commit()
+
+        _log(admin_id, 'social_publish_gateway', 'social', mapped.get('media_id', ''),
+             f'{platform}: {title}')
+        return mapped
+    except Exception as e:
+        logger.exception(f'{platform} gateway publish failed')
+        return {'platform': platform, 'status': 'failed', 'error': str(e)}
 
 
 def _publish_wechat(title, body_html, summary, author, cover_image_url, auto_publish, admin_id):

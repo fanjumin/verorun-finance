@@ -9,16 +9,67 @@
     <link rel="stylesheet" href="/static/css/themes.css">
     <style>
         /* §15.6：禁止硬编码色值，一律使用 design-system 变量 */
-        body { background: var(--bg-card); color: var(--text); font-family: system-ui, sans-serif; }
-        .container { max-width: 520px; margin: 32px auto; padding: 24px; }
-        .qr-box { background: var(--card-bg); border:1px solid var(--border); padding: 16px; border-radius: 8px; text-align:center; display:inline-block; }
-        .code-grid { display:flex; flex-wrap:wrap; gap:8px; margin:16px 0; }
-        .code-item { background: var(--card-bg); color: var(--text); border:1px solid var(--border); padding:6px 10px; border-radius:4px; font-family:monospace; }
-        .btn { padding:8px 16px; border:none; border-radius:6px; cursor:pointer; }
+        body { background: var(--bg-card); color: var(--text); font-family: system-ui, sans-serif; margin:0; }
+        .container { max-width: 480px; margin: 0 auto; padding: 28px 20px 40px; }
+
+        /* ── 步骤指示器（Authenticator 式 1→2→3）── */
+        .steps { display:flex; justify-content:center; gap:8px; margin: 6px 0 24px; }
+        .step { display:flex; align-items:center; gap:6px; color: var(--text-dim); font-size:13px; }
+        .step .dot { width:22px; height:22px; border-radius:50%; border:2px solid var(--border);
+                     display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:600; }
+        .step.active { color: var(--text); }
+        .step.active .dot { border-color: var(--accent); color: var(--accent); }
+        .step.done .dot { border-color: var(--success); color: var(--success); }
+        .step-sep { width:26px; height:1px; background: var(--border); margin-top:11px; }
+
+        h2 { text-align:center; margin: 0 0 6px; font-size:20px; }
+        .sub { text-align:center; color: var(--text-dim); font-size:13px; margin: 0 0 20px; }
+
+        /* ── 扫码区 ── */
+        .qr-card { text-align:center; padding: 20px; border:1px solid var(--border);
+                   border-radius: 12px; background: var(--card-bg); margin-bottom: 14px; }
+        .qr-card img { width:220px; height:220px; display:block; margin: 0 auto; }
+        .account { text-align:center; font-family:monospace; font-size:14px; color: var(--text); margin-top:12px; }
+        .link { color: var(--accent); cursor:pointer; font-size:13px; text-decoration:none; display:block; text-align:center; margin: 6px 0; }
+        .key-panel { text-align:center; margin: 10px 0 16px; }
+        .key-panel code { display:inline-block; font-family:monospace; font-size:13px; letter-spacing:1px;
+                          word-break:break-all; background: var(--card-bg); border:1px solid var(--border);
+                          padding:8px 12px; border-radius:6px; margin-bottom:8px; }
+
+        /* ── 输码区 ── */
+        .verify-panel { margin-top: 8px; }
+        .code-row { text-align:center; margin: 12px 0; }
+        input.code { font-size:24px; letter-spacing:8px; padding:10px; width:220px; text-align:center;
+                     border:1px solid var(--border); border-radius:8px; background: var(--card-bg);
+                     color: var(--text); box-sizing:border-box; }
+        input.code:focus { outline:none; border-color: var(--accent); }
+        .countdown { text-align:center; color: var(--text-dim); font-size:12px; margin: 4px 0 12px; min-height:16px; }
+        .old-code-group { text-align:center; margin: 10px 0; }
+        .old-code-group input { font-size:18px; letter-spacing:6px; padding:8px; width:200px; text-align:center;
+                                border:1px solid var(--border); border-radius:8px; background: var(--card-bg); color: var(--text); }
+
+        /* ── 按钮 ── */
+        .btn { padding:10px 20px; border:none; border-radius:8px; cursor:pointer; font-size:14px; font-weight:600; }
         .btn-primary { background: var(--accent); color:#fff; }
-        .btn-success { background: var(--success); color:#fff; }
-        .muted { color: var(--text-dim); font-size:13px; }
-        input.code { font-size:22px; letter-spacing:6px; padding:8px; width:200px; text-align:center; }
+        .btn-success { background: var(--success); color:#fff; width:100%; padding:12px; }
+        .btn-ghost { background: transparent; border:1px solid var(--border); color: var(--text); }
+        .btn-row { display:flex; gap:10px; justify-content:center; margin: 12px 0; }
+
+        /* ── 恢复码 ── */
+        .recovery-hint { text-align:center; color: var(--text-dim); font-size:13px; margin: 6px 0 14px; }
+        .code-grid { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin: 14px 0; }
+        .code-item { background: var(--card-bg); color: var(--text); border:1px solid var(--border);
+                     padding:8px 12px; border-radius:6px; font-family:monospace; font-size:14px; }
+
+        .error { color: var(--danger); font-size:13px; text-align:center; min-height:18px; margin-top:10px; }
+        .msg { text-align:center; font-size:13px; min-height:18px; margin-top:10px; }
+
+        /* ── 打印：仅输出恢复码 ── */
+        @media print {
+            body * { visibility:hidden; }
+            #recoveryPanel, #recoveryPanel * { visibility:visible; }
+            #recoveryPanel { position:absolute; left:0; top:0; width:100%; }
+        }
     </style>
     <script>
         // §15.6 主题同步铁律（iframe 例外页允许 <script>）
@@ -38,34 +89,62 @@
     </script>
 </head>
 <body>
-    <div class="container" id="app">
-        <h2 id="title">Two-Factor Authentication</h2>
-        <div id="step1">
-            <p id="t-scan">Scan QR Code</p>
-            <div class="qr-box"><img id="qrImg" src="" alt="QR" width="200" height="200"></div>
-            <p class="muted" id="t-manual">或手动输入密钥：</p>
-            <div id="manualKey" style="margin:8px 0;font-family:monospace;word-break:break-all;"></div>
-            <button class="btn btn-primary" onclick="initSetup()">Initialize</button>
+    <div class="container">
+        <!-- 步骤指示器 -->
+        <div class="steps" id="steps">
+            <div class="step active" id="s1"><span class="dot">1</span><span id="t-step1">Scan</span></div>
+            <div class="step-sep"></div>
+            <div class="step" id="s2"><span class="dot">2</span><span id="t-step2">Verify</span></div>
+            <div class="step-sep"></div>
+            <div class="step" id="s3"><span class="dot">3</span><span id="t-step3">Save</span></div>
         </div>
-        <div id="step2" style="display:none;">
-            <p id="t-enter">Enter 6-digit code</p>
-            <input id="codeInput" class="code" type="text" maxlength="6" inputmode="numeric" placeholder="123456">
-            <br><br>
-            <!-- F-01：已启用 2FA 用户重绑定需先输入旧码确认（服务端校验通过后才覆盖） -->
-            <div id="oldCodeGroup" style="display:none;">
+
+        <!-- Step 1：扫码区（常驻，二维码生成后保持可见直到绑定完成） -->
+        <div id="scanPanel">
+            <h2 id="title">Two-Factor Authentication</h2>
+            <p class="sub" id="t-scan">Scan QR Code</p>
+            <div class="qr-card">
+                <img id="qrImg" src="" alt="QR" width="220" height="220">
+                <div class="account" id="accountLabel"></div>
+            </div>
+            <a class="link" id="toggleKey">Can't scan? Enter the setup key manually</a>
+            <div class="key-panel" id="keyPanel" style="display:none;">
+                <div><code id="manualKey"></code></div>
+                <button class="btn btn-ghost" id="copyKeyBtn">Copy secret key</button>
+            </div>
+        </div>
+
+        <!-- Step 2：输码区（与扫码区同页，二维码保持可见） -->
+        <div class="verify-panel" id="verifyPanel" style="display:none;">
+            <p class="sub" id="t-enter">Enter 6-digit code</p>
+            <div class="code-row">
+                <input id="codeInput" class="code" type="text" maxlength="6" inputmode="numeric"
+                       autocomplete="one-time-code" placeholder="123456" autofocus>
+            </div>
+            <p class="countdown" id="countdown"></p>
+            <div class="old-code-group" id="oldCodeGroup" style="display:none;">
                 <p id="t-oldcode">Enter your current 2FA code to confirm the change</p>
                 <input id="oldCodeInput" class="code" type="text" maxlength="6" inputmode="numeric" placeholder="123456">
-                <br><br>
             </div>
-            <button class="btn btn-success" onclick="verifySetup()">Enable 2FA</button>
+            <button class="btn btn-success" id="verifyBtn">Enable 2FA</button>
+            <p class="error" id="msg"></p>
         </div>
-        <div id="step3" style="display:none;">
-            <h3 id="t-recovery">Save Your Recovery Codes</h3>
-            <p class="muted" id="t-recovery-hint">请离线保存，每个仅可用一次。</p>
+
+        <!-- Step 3：恢复码 -->
+        <div id="recoveryPanel" style="display:none;">
+            <h2 id="t-recovery">Save Your Recovery Codes</h2>
+            <p class="recovery-hint" id="t-recovery-hint">Store offline; each code works once.</p>
             <div id="recoveryBox" class="code-grid"></div>
-            <button class="btn btn-primary" onclick="finish()">Done</button>
+            <div class="btn-row">
+                <button class="btn btn-ghost" id="copyAllBtn">Copy all recovery codes</button>
+                <button class="btn btn-ghost" id="printBtn">Print recovery codes</button>
+            </div>
+            <div style="text-align:center; margin-top:14px;">
+                <button class="btn btn-primary" id="doneBtn">Done</button>
+            </div>
         </div>
-        <p id="msg" class="muted"></p>
+
+        <p class="msg" id="loadingMsg">Loading...</p>
     </div>
 
     <script>
@@ -73,12 +152,19 @@
         var T = {
             title: {{ _('Two-Factor Authentication')|tojson }},
             scan: {{ _('Scan QR Code')|tojson }},
-            manual: {{ _('Or enter this key manually:')|tojson }},
-            init: {{ _('Initialize')|tojson }},
+            stepScan: {{ _('Scan')|tojson }},
+            stepVerify: {{ _('Verify')|tojson }},
+            stepSave: {{ _('Save')|tojson }},
+            toggleKey: {{ _("Can't scan? Enter the setup key manually")|tojson }},
+            copyKey: {{ _('Copy secret key')|tojson }},
+            keyCopied: {{ _('Secret key copied')|tojson }},
             enter: {{ _('Enter 6-digit code')|tojson }},
             enable: {{ _('Enable 2FA')|tojson }},
+            countdown: {{ _('Verification code refreshes every {s} seconds')|tojson }},
             recovery: {{ _('Save Your Recovery Codes')|tojson }},
             rhint: {{ _('Store offline; each code works once.')|tojson }},
+            copyAll: {{ _('Copy all recovery codes')|tojson }},
+            print: {{ _('Print recovery codes')|tojson }},
             done: {{ _('Done')|tojson }},
             copy: {{ _('Copy')|tojson }},
             copied: {{ _('Copied')|tojson }},
@@ -87,22 +173,10 @@
             success: {{ _('2FA enabled')|tojson }},
             oldCode: {{ _('Enter your current 2FA code to confirm the change')|tojson }},
             alreadyInit: {{ _('Already initialized, please reopen the setup page')|tojson }},
-            setupLocked: {{ _('Setup locked, please try again later')|tojson }}
+            setupLocked: {{ _('Setup locked, please try again later')|tojson }},
+            sessionExpired: {{ _('Session expired, please reopen the setup page')|tojson }},
+            loading: {{ _('Loading...')|tojson }}
         };
-
-        function applyText(){
-            document.getElementById('title').textContent = T.title;
-            document.getElementById('t-scan').textContent = T.scan;
-            document.getElementById('t-manual').textContent = T.manual;
-            document.getElementById('t-enter').textContent = T.enter;
-            document.getElementById('t-oldcode').textContent = T.oldCode;
-            document.getElementById('t-recovery').textContent = T.recovery;
-            document.getElementById('t-recovery-hint').textContent = T.rhint;
-            document.querySelector('#step1 .btn-primary').textContent = T.init;
-            document.querySelector('#step2 .btn-success').textContent = T.enable;
-            document.querySelector('#step3 .btn-primary').textContent = T.done;
-        }
-        applyText();
 
         // 从 URL 读取短期 setup_token（门户经 /setup-token 换取，不再暴露长期登录 JWT）
         function getToken(){
@@ -112,8 +186,39 @@
             return {'Content-Type':'application/json', 'Authorization':'Bearer ' + getToken()};
         }
         function setMsg(s){ document.getElementById('msg').textContent = s; }
+        function setLoading(on){
+            var el = document.getElementById('loadingMsg');
+            el.style.display = on ? 'block' : 'none';
+        }
+        function updateSteps(active){
+            var m = {1:'s1',2:'s2',3:'s3'};
+            for(var i=1;i<=3;i++){
+                var el = document.getElementById(m[i]);
+                el.classList.remove('active');
+                if(i < active) el.classList.add('done');
+            }
+            document.getElementById(m[active]).classList.add('active');
+        }
 
+        // ── 倒计时：TOTP 周期 30s，与 pyotp 时间基准（epoch 秒）对齐 ──
+        function tickCountdown(){
+            var el = document.getElementById('countdown');
+            if(!el) return;
+            var remain = 30 - (Math.floor(Date.now()/1000) % 30);
+            el.textContent = T.countdown.replace('{s}', remain);
+        }
+        var _countdownStarted = false;
+        function startCountdown(){
+            if(_countdownStarted) return;
+            _countdownStarted = true;
+            tickCountdown();
+            setInterval(tickCountdown, 1000);
+        }
+
+        // ── 自动初始化：打开页面即生成并显示二维码（Authenticator 式）──
         async function initSetup(){
+            setLoading(true);
+            setMsg('');
             try{
                 const res = await fetch('/plugin/two_factor_auth/setup/init', {
                     method:'POST', headers: authHeaders()
@@ -121,58 +226,165 @@
                 const data = await res.json();
                 if(!res.ok){
                     if(res.status === 400 && data.error === 'already initialized'){
-                        // F-01：同一 setup_token 仅可 init 一次，需重新进入设置页获取新令牌
+                        setLoading(false);
                         setMsg(T.alreadyInit);
                         return;
                     }
+                    if(res.status === 401){
+                        setLoading(false);
+                        setMsg(T.sessionExpired);
+                        return;
+                    }
+                    setLoading(false);
                     setMsg(T.errInit);
                     return;
                 }
+                setLoading(false);
                 document.getElementById('qrImg').src = 'data:image/png;base64,' + data.qr_code;
                 document.getElementById('manualKey').textContent = data.secret;
-                document.getElementById('step1').style.display='none';
-                document.getElementById('step2').style.display='block';
-            }catch(e){ setMsg(T.errInit); }
-        }
-
-        async function verifySetup(){
-            const code = document.getElementById('codeInput').value.trim();
-            const oldCode = document.getElementById('oldCodeInput').value.trim();
-            const body = {code};
-            if(oldCode){ body.confirm_old_code = oldCode; }
-            const res = await fetch('/plugin/two_factor_auth/setup/verify', {
-                method:'POST', headers: authHeaders(),
-                body: JSON.stringify(body)
-            });
-            const data = await res.json();
-            if(res.ok && data.success){
-                document.getElementById('step2').style.display='none';
-                document.getElementById('step3').style.display='block';
-                const box = document.getElementById('recoveryBox');
-                box.innerHTML = '';
-                (data.recovery_codes||[]).forEach(function(c){
-                    const span = document.createElement('span');
-                    span.className='code-item';
-                    span.textContent = c;
-                    box.appendChild(span);
-                });
-                setMsg(T.success);
-            }else if(res.status === 429){
-                setMsg(T.setupLocked);
-            }else if(res.status === 400 && data.error === 'old code required'){
-                // F-01：账户已启用 2FA，需先输入当前动态码确认升级
-                document.getElementById('oldCodeGroup').style.display='block';
-                document.getElementById('oldCodeInput').focus();
-                setMsg('');
-            }else{
-                setMsg(T.errVerify);
+                document.getElementById('accountLabel').textContent = data.account || '';
+                updateSteps(2);
+                document.getElementById('verifyPanel').style.display = 'block';
+                document.getElementById('codeInput').focus();
+                startCountdown();
+            }catch(e){
+                setLoading(false);
+                setMsg(T.errInit);
             }
         }
 
-        function finish(){
-            var done = {{ done|tojson }};
-            window.location.href = done;
+        // ── 密钥手动输入切换 + 复制 ──
+        document.getElementById('toggleKey').addEventListener('click', function(){
+            var panel = document.getElementById('keyPanel');
+            panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+        });
+        document.getElementById('copyKeyBtn').addEventListener('click', function(){
+            var key = document.getElementById('manualKey').textContent;
+            if(navigator.clipboard && navigator.clipboard.writeText){
+                navigator.clipboard.writeText(key).then(function(){
+                    var b = document.getElementById('copyKeyBtn');
+                    var old = b.textContent;
+                    b.textContent = T.keyCopied;
+                    setTimeout(function(){ b.textContent = old; }, 1500);
+                }).catch(function(){});
+            }else{
+                // 降级：选中文本复制
+                var range = document.createRange();
+                range.selectNode(document.getElementById('manualKey'));
+                var sel = window.getSelection();
+                sel.removeAllRanges(); sel.addRange(range);
+                document.execCommand('copy');
+                sel.removeAllRanges();
+            }
+        });
+
+        // ── 校验绑定 ──
+        async function verifySetup(){
+            const code = document.getElementById('codeInput').value.trim();
+            const oldCode = document.getElementById('oldCodeInput').value.trim();
+            const btn = document.getElementById('verifyBtn');
+            if(!code){ return; }
+            setMsg('');
+            btn.disabled = true;
+            const body = {code};
+            if(oldCode){ body.confirm_old_code = oldCode; }
+            try{
+                const res = await fetch('/plugin/two_factor_auth/setup/verify', {
+                    method:'POST', headers: authHeaders(),
+                    body: JSON.stringify(body)
+                });
+                const data = await res.json();
+                if(res.ok && data.success){
+                    document.getElementById('verifyPanel').style.display = 'none';
+                    document.getElementById('scanPanel').style.display = 'none';
+                    document.getElementById('recoveryPanel').style.display = 'block';
+                    updateSteps(3);
+                    const box = document.getElementById('recoveryBox');
+                    box.innerHTML = '';
+                    (data.recovery_codes||[]).forEach(function(c){
+                        const span = document.createElement('span');
+                        span.className = 'code-item';
+                        span.textContent = c;
+                        box.appendChild(span);
+                    });
+                }else if(res.status === 429){
+                    setMsg(T.setupLocked);
+                }else if(res.status === 400 && data.error === 'old code required'){
+                    // 已启用 2FA 重绑定：先输当前动态码确认
+                    document.getElementById('oldCodeGroup').style.display = 'block';
+                    document.getElementById('oldCodeInput').focus();
+                }else if(res.status === 401){
+                    setMsg(T.errVerify);
+                }else{
+                    setMsg((data && data.error) || T.errVerify);
+                }
+            }catch(e){
+                setMsg(T.errVerify);
+            }
+            btn.disabled = false;
         }
+
+        // 输入满 6 位自动校验（Authenticator 式即时体验）
+        document.getElementById('codeInput').addEventListener('input', function(e){
+            var v = e.target.value.trim();
+            if(v.length === 6){ verifySetup(); }
+        });
+        document.getElementById('codeInput').addEventListener('keydown', function(e){
+            if(e.key === 'Enter') verifySetup();
+        });
+        document.getElementById('verifyBtn').addEventListener('click', verifySetup);
+        document.getElementById('oldCodeInput').addEventListener('keydown', function(e){
+            if(e.key === 'Enter') verifySetup();
+        });
+
+        // ── 恢复码：复制全部 / 打印 ──
+        document.getElementById('copyAllBtn').addEventListener('click', function(){
+            var codes = Array.from(document.querySelectorAll('#recoveryBox .code-item'))
+                            .map(function(s){ return s.textContent; });
+            var text = codes.join('\n');
+            var b = this;
+            if(navigator.clipboard && navigator.clipboard.writeText){
+                navigator.clipboard.writeText(text).then(function(){
+                    var old = b.textContent;
+                    b.textContent = T.copied;
+                    setTimeout(function(){ b.textContent = old; }, 1500);
+                }).catch(function(){});
+            }else{
+                var ta = document.createElement('textarea');
+                ta.value = text; document.body.appendChild(ta);
+                ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+            }
+        });
+        document.getElementById('printBtn').addEventListener('click', function(){
+            window.print();
+        });
+        document.getElementById('doneBtn').addEventListener('click', function(){
+            var done = {{ done|tojson }};
+            // 跳出 iframe 到顶层跳转，避免 iframe 内加载完整 admin 导致嵌套递归
+            (window.top || window).location.href = done;
+        });
+
+        // ── 启动：自动初始化 ──
+        document.addEventListener('DOMContentLoaded', function(){
+            document.title = T.title;
+            document.getElementById('title').textContent = T.title;
+            document.getElementById('t-step1').textContent = T.stepScan;
+            document.getElementById('t-step2').textContent = T.stepVerify;
+            document.getElementById('t-step3').textContent = T.stepSave;
+            document.getElementById('t-scan').textContent = T.scan;
+            document.getElementById('t-enter').textContent = T.enter;
+            document.getElementById('t-oldcode').textContent = T.oldCode;
+            document.getElementById('t-recovery').textContent = T.recovery;
+            document.getElementById('t-recovery-hint').textContent = T.rhint;
+            document.getElementById('toggleKey').textContent = T.toggleKey;
+            document.getElementById('copyKeyBtn').textContent = T.copyKey;
+            document.getElementById('copyAllBtn').textContent = T.copyAll;
+            document.getElementById('printBtn').textContent = T.print;
+            document.getElementById('doneBtn').textContent = T.done;
+            document.getElementById('verifyBtn').textContent = T.enable;
+            document.getElementById('loadingMsg').textContent = T.loading;
+            initSetup();
+        });
     </script>
 </body>
 </html>

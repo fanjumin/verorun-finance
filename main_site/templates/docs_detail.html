@@ -60,7 +60,7 @@
 <h1>{{ post.title }}</h1>
 <div class="meta">
     {% if post.author %}<span>👤 {{ post.author }}</span>{% endif %}
-    <span>📅 {{ (post.published_at or post.created_at)[:10] }}</span>
+    {% set doc_date = post.published_at or post.created_at %}<span>📅 {{ doc_date[:10] if doc_date is string else doc_date.strftime('%Y-%m-%d') }}</span>
 </div>
 <div class="meta-divider"></div>
 </div>
@@ -77,7 +77,7 @@
     </div>
   {% endif %}
   {% if post.updated_at and post.updated_at != post.created_at %}
-  <p style="font-size:11px;color:var(--text-muted);margin-top:12px">{{ _('📝 Last Updated：{{ post.updated_at[:10] }}') }}</p>
+  <p style="font-size:11px;color:var(--text-muted);margin-top:12px">{{ _('📝 Last Updated') }}：{{ post.updated_at[:10] if post.updated_at is string else post.updated_at.strftime('%Y-%m-%d') }}</p>
   {% endif %}
 </div>
 <footer class="footer">

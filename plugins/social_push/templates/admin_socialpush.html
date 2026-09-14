@@ -31,8 +31,9 @@ window.l_social=function(){
   socialTab(0);
 };
 
-var socArticle={title:"",summary:"",body_html:""};
+var socArticle={title:"",summary:"",body_html:"",body:"",mode:"short"};
 var socCoverUrl="";
+var socDraftId=null;
 
 function socialTab(n){
   document.querySelectorAll('[id^="soc-t"]').forEach(function(e){e.className="btn bo"});
@@ -51,10 +52,14 @@ function socialEditor(){
   h+='<select class="sl" id="socPlatform" style="flex:1" onchange="socialUpdateContentTypes()"><option value="wechat">{{ _('WeChat OA Articles') }}</option><option value="weibo">{{ _('Weibo') }}</option><option value="twitter">{{ _('X (Twitter)') }}</option><option value="linkedin">{{ _('LinkedIn') }}</option><option value="reddit">{{ _('Reddit') }}</option><option value="telegram">{{ _('Telegram Channel') }}</option></select></div>';
   h+='<div class="fl"><div style="font-size:11px;color:var(--dim);width:60px">{{ _('Type') }}</div>';
   h+='<select class="sl" id="socType" style="flex:1"><option value="article">{{ _('Article') }}</option><option value="announcement">{{ _('Notification') }}</option><option value="promotion">{{ _('Promote') }}</option></select></div>';
+  h+='<div class="fl"><div style="font-size:11px;color:var(--dim);width:60px">{{ _('Mode') }}</div>';
+  h+='<select class="sl" id="socMode" style="flex:1" onchange="socialUpdateContentTypes()"><option value="short">{{ _('Short Post') }}</option><option value="long">{{ _('Long Article') }}</option></select></div>';
   h+='<div class="fl"><div style="font-size:11px;color:var(--dim);width:60px">{{ _('Theme') }}</div><input class="in" id="socTopic" placeholder={{ _('Enter Topic, e.g. AI Transform Finance') | tojson }} style="flex:1"></div>';
   h+='<div style="margin-top:8px;display:flex;gap:8px">';
   h+='<button class="btn bp" onclick="socialGen()">🤖 AI {{ _('Generate') }}</button>';
-  h+='<button class="btn bo" onclick="socialClearEditor()">{{ _('Clear') }}</button></div></div>';
+  h+='<button class="btn bo" onclick="socialClearEditor()">{{ _('Clear') }}</button>';
+  h+='<button class="btn bo" onclick="socialSaveDraft()">💾 {{ _('Save Draft') }}</button>';
+  h+='<button class="btn bo" onclick="socialLoadDraft()">📂 {{ _('Load Draft') }}</button></div></div>';
   h+='<button class="btn bo" onclick="socialImportFromCMS()">📥 {{ _('Import from CMS') }}</button>';
 
   h+='<div class="cd" style="margin-top:12px"><div class="st">{{ _('Content') }}</div>';
@@ -67,6 +72,15 @@ function socialEditor(){
   h+='</div>';
 
   document.getElementById("socContent").innerHTML=h;
+  // 恢复已保存的 短文/长文 模式
+  var modeSel=document.getElementById("socMode");
+  if(modeSel){
+    var longOk=(document.getElementById("socPlatform").value==="wechat"||document.getElementById("socPlatform").value==="linkedin");
+    if(socArticle.mode==="long"&&longOk)modeSel.value="long";
+    else modeSel.value="short";
+    socArticle.mode=modeSel.value;
+    socialUpdateContentTypes();
+  }
 }
 
 
@@ -140,40 +154,100 @@ function socialUpdateContentTypes(){
   var platform=document.getElementById("socPlatform").value;
   var typeSel=document.getElementById("socType");
   var summaryRow=document.getElementById("socSummaryRow");
-  if(platform==="weibo"||platform==="twitter"||platform==="reddit"||platform==="telegram"){
-    if(platform==="twitter") typeSel.innerHTML='<option value="tweet">{{ _('Tweet') }}</option>';
-    else if(platform==="reddit") typeSel.innerHTML='<option value="link">{{ _('Link Post') }}</option><option value="text">{{ _('Text Post') }}</option>';
-    else if(platform==="telegram") typeSel.innerHTML='<option value="message">{{ _('Channel Message') }}</option>';
-    else typeSel.innerHTML='<option value="post">{{ _('Post') }}</option>';
-    if(summaryRow)summaryRow.style.display="none";
-  }else if(platform==="linkedin"){
-    typeSel.innerHTML='<option value="article">{{ _('Article') }}</option><option value="post">{{ _('Post') }}</option>';
-    if(summaryRow)summaryRow.style.display="flex";
-  }else{
+  var modeSel=document.getElementById("socMode");
+  if(modeSel)socArticle.mode=modeSel.value;
+  // 长文支持平台：公众号/头条/LinkedIn；短文：其余
+  var longOk=(platform==="wechat"||platform==="linkedin");
+  if(modeSel){
+    if(!longOk)modeSel.value="short";
+    socArticle.mode=modeSel.value;
+  }
+  var mode=socArticle.mode||"short";
+  if(mode==="long"){
     typeSel.innerHTML='<option value="article">{{ _('Article') }}</option><option value="announcement">{{ _('Notification') }}</option><option value="promotion">{{ _('Promote') }}</option>';
     if(summaryRow)summaryRow.style.display="flex";
-  }
+  }else if(platform==="twitter"){typeSel.innerHTML='<option value="tweet">{{ _('Tweet') }}</option>';if(summaryRow)summaryRow.style.display="none";}
+  else if(platform==="reddit"){typeSel.innerHTML='<option value="link">{{ _('Link Post') }}</option><option value="text">{{ _('Text Post') }}</option>';if(summaryRow)summaryRow.style.display="none";}
+  else if(platform==="telegram"){typeSel.innerHTML='<option value="message">{{ _('Channel Message') }}</option>';if(summaryRow)summaryRow.style.display="none";}
+  else if(platform==="weibo"){typeSel.innerHTML='<option value="post">{{ _('Post') }}</option>';if(summaryRow)summaryRow.style.display="none";}
+  else if(platform==="linkedin"){typeSel.innerHTML='<option value="article">{{ _('Article') }}</option><option value="post">{{ _('Post') }}</option>';if(summaryRow)summaryRow.style.display="flex";}
+  else{typeSel.innerHTML='<option value="article">{{ _('Article') }}</option><option value="announcement">{{ _('Notification') }}</option><option value="promotion">{{ _('Promote') }}</option>';if(summaryRow)summaryRow.style.display="flex";}
 }
 
 function socialClearEditor(){
   document.getElementById("socTitle").value="";
   document.getElementById("socSummary").value="";
   document.getElementById("socBody").value="";
+  socDraftId=null;
 }
 
 function socialGen(){
   var topic=document.getElementById("socTopic").value.trim();
   var type=document.getElementById("socType").value;
+  var modeSel=document.getElementById("socMode");
+  var mode=modeSel?modeSel.value:"short";
   if(!topic){showToast("{{ _('Enter a topic') }}","error");return}
   document.getElementById("socContent").innerHTML='<div class="lo"><div class="s"></div>AI {{ _('Generating') }}...</div>';
-  fetch("/admin/social/generate",{method:"POST",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify({topic:topic,content_type:type})})
+  fetch("/admin/social/generate",{method:"POST",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify({topic:topic,content_type:type,content_mode:mode})})
     .then(function(r){return r.json()}).then(function(d){
       if(!d.success){document.getElementById("socContent").innerHTML='<div class="em">'+esc(d.error||"{{ _('Generation Failed') }}")+'</div>';return}
       var a=d.data;
-      socArticle={title:a.title||"",summary:a.summary||"",body_html:a.body_html||""};
+      socArticle={title:a.title||"",summary:a.summary||"",body_html:a.body_html||"",body:a.body||a.summary||"",mode:mode};
+      socDraftId=null;
       socialEditor();
       showToast("{{ _('Generation complete') }}","success");
     }).catch(function(){document.getElementById("socContent").innerHTML='<div class="em">{{ _('Request Failed') }}</div>'});
+}
+
+// ── 草稿保存/加载（P2）──
+function socialSaveDraft(){
+  var title=document.getElementById("socTitle").value.trim();
+  var body=document.getElementById("socBody").value;
+  var summary=document.getElementById("socSummary").value.trim();
+  var modeSel=document.getElementById("socMode");
+  var mode=modeSel?modeSel.value:"short";
+  if(!title&&!body){showToast("{{ _('Nothing to save') }}","error");return}
+  fetch("/admin/social/draft",{method:"POST",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify({id:socDraftId,title:title,body:body,body_html:body,summary:summary,mode:mode,cover_image_url:socCoverUrl||"",targets:[],media:[]})})
+    .then(function(r){return r.json()}).then(function(d){
+      if(!d.success){showToast(d.error||"{{ _('Save Draft Failed') }}","error");return}
+      socDraftId=d.data.id;
+      showToast("{{ _('Draft Saved') }} #"+socDraftId,"success");
+    }).catch(function(){showToast("{{ _('Request Failed') }}","error")});
+}
+
+function socialLoadDraft(){
+  fetch("/admin/social/drafts",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success||!d.data){showToast("{{ _('Load failed') }}","error");return}
+    var drafts=d.data;
+    if(!drafts.length){showToast("{{ _('No Draft') }}","error");return}
+    var el=document.getElementById("socCmsImportList");
+    if(el){
+      var h='<div class="st" style="font-size:12px">{{ _('Select') }} {{ _('Draft') }}</div><table><tr><th>{{ _('Title') }}</th><th>{{ _('Mode') }}</th><th>{{ _('Time') }}</th><th>{{ _('Actions') }}</th></tr>';
+      drafts.forEach(function(x){
+        h+='<tr><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;font-weight:600">'+esc(x.title||"(untitled)")+'</td>';
+        h+='<td>'+(x.mode==="long"?("{{ _('Long Article') }}"):("{{ _('Short Post') }}"))+'</td>';
+        h+='<td style="font-size:10px;color:var(--dim)">'+(x.updated_at||x.created_at||"").slice(0,16)+'</td>';
+        h+='<td><button class="btn bo bs" onclick="socialLoadOneDraft('+x.id+')">{{ _('Load') }}</button></td></tr>';
+      });
+      h+='</table>';
+      el.style.display="block";
+      el.innerHTML=h;
+    }
+  }).catch(function(){showToast("{{ _('Request Failed') }}","error")});
+}
+
+function socialLoadOneDraft(id){
+  fetch("/admin/social/draft/"+id,{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success||!d.data){showToast("{{ _('Load failed') }}","error");return}
+    var x=d.data;
+    socArticle={title:x.title||"",summary:x.summary||"",body_html:x.body_html||x.body||"",body:x.body||"",mode:x.mode||"short"};
+    socCoverUrl=x.cover_image_url||"";
+    socDraftId=id;
+    socialEditor();
+    showToast("{{ _('Draft Loaded') }}","success");
+    var el=document.getElementById("socCmsImportList");
+    if(el)el.style.display="none";
+  }).catch(function(){showToast("{{ _('Request Failed') }}","error")});
 }
 
 // ── Tab 1: {{ _('Add Image') }} ──

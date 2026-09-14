@@ -2,10 +2,10 @@
   "identifier": "two_factor_auth",
   "name": "Two-Factor Authentication",
   "name_i18n_key": "Two-Factor Authentication",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "基于 TOTP 的双因素认证（2FA），兼容 Google/Microsoft Authenticator，支持恢复码与操作审计。",
   "author": "VeroRun",
-  "min_app_version": "0.59.3",
+  "min_app_version": "0.10.0",
   "agent_role": "service",
   "capabilities": [
     "two_factor.setup",

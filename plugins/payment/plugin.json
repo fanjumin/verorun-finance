@@ -8,7 +8,7 @@
     ],
     "optional": {}
   },
-  "version": "1.5.0",
+  "version": "1.6.0",
   "category": "shop",
   "tags": [
     "payment",
@@ -23,6 +23,8 @@
   "screenshots": [],
   "readme_url": "",
   "description": "Payment Gateway — Alipay/WeChat/Stripe/PayPal configuration management (independent PG schema)",
+  "tagline": "多支付渠道统一接入",
+  "tagline_subtitle": "支付宝 · 微信 · Stripe · PayPal 配置管理",
   "author": "VeroRun",
   "min_app_version": "0.10.0",
   "agent_role": "finance",

@@ -19,9 +19,11 @@ agent_bp = Blueprint('agent', __name__, url_prefix='/agent')
 
 
 def _require_auth():
-    """Extract and validate JWT from Authorization header"""
+    """Extract and validate JWT from Authorization header, fallback to SSO cookie (D-21)"""
     auth = request.headers.get('Authorization', '')
     token = auth.replace('Bearer ', '') if auth.startswith('Bearer ') else auth
+    if not token:
+        token = request.cookies.get('sso_token') or request.cookies.get('tm_token') or ''
     payload = validate_token(token)
     if not payload:
         return None, (jsonify({'success': False, 'error': _('Not logged in or token expired')}), 401)

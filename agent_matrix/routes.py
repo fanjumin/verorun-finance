@@ -106,19 +106,46 @@ def _error(message, code=400):
     return jsonify({'success': False, 'error': message}), code
 
 
+def _ai_license_enforced():
+    """AI 侧授权强制判定：与 admin/app.py 同一口径（client ∨ edition 声明强制）。
+
+    旧条件只看 APP_MODE，桌面包裹版（APP_MODE 默认 main、VR_EDITION=finance-desktop）
+    直接 return None → 到期后 AI/Agent 功能照常可用，与"到期即锁"口径冲突。
+    """
+    if os.environ.get('APP_MODE', 'main') == 'client':
+        return True
+    try:
+        from agent_matrix.models import edition_requires_license
+        if not edition_requires_license():
+            return False
+    except Exception:
+        return False
+    # 开发豁免：私有仓库官方签名凭证 + 显式开关（与 admin 侧同一条件）
+    if os.environ.get('VERORUN_DEV_UNLICENSED', '').strip() == '1':
+        try:
+            from plugin_manager.license import _verify_official_token
+            if _verify_official_token():
+                return False
+        except Exception:
+            pass
+    return True
+
+
 def _check_ai_access():
     """
     检查 AI 功能是否可用（独立部署订阅过期检查）
-    仅在客户端模式（APP_MODE=client）生效
+    仅在客户端模式（APP_MODE=client）或发行版显式声明强制时生效
     返回 None 表示可用，返回 Response 表示已过期
     P1-F02: 改为 fail-closed，无法确认授权状态时返回 503
     """
-    if os.environ.get('APP_MODE', 'main') != 'client':
+    if not _ai_license_enforced():
         return None
     try:
         from services.license_service import LicenseService
         ls = LicenseService()
-        if not ls.check_ai_access():
+        # 强制场景用 check_admin_access()（未配置/未知一律拒绝）；
+        # 原 check_ai_access() 在 status=unknown 时 return True，属 fail-open。
+        if not ls.check_admin_access():
             return jsonify({
                 'success': False,
                 'error': _('Subscription expired, AI features unavailable'),
@@ -651,7 +678,17 @@ def chat_tool():
 
         elif intent == 'ads':
             # 广告管理 → 直接调用插件 AI 工具
-            import plugins.ads.ai_tools as ads_ai
+            from shared.plugin_access import optional_import
+            ads_ai = optional_import('plugins.ads.ai_tools', feature='agent_intent_ads')
+            if ads_ai is None:
+                return _success({
+                    'session_id': session_id,
+                    'summary': '❌ Ads plugin is not installed or enabled',
+                    'sub_task_results': [],
+                    'actions': [],
+                    'status': 'ok',
+                    'intent': intent,
+                })
             action = args.get('action', '')
             # 代码推断 action（LLM 不一定正确返回）
             if not action:
@@ -732,9 +769,16 @@ def chat_tool():
             action = args.get('action', 'preview')
             prompt_identifier = args.get('prompt_identifier', '')
             try:
-                from plugins.site_builder.models import get_prompt as _get_prompt, list_prompts as _list_prompts
-                from plugins.site_builder.engine import SiteBuilderEngine
-                engine = SiteBuilderEngine()
+                from shared.plugin_access import get_attr
+                _get_prompt = get_attr('plugins.site_builder.models', 'get_prompt',
+                                       feature='agent_site_build')
+                _list_prompts = get_attr('plugins.site_builder.models', 'list_prompts',
+                                         feature='agent_site_build')
+                _engine_cls = get_attr('plugins.site_builder.engine', 'SiteBuilderEngine',
+                                       feature='agent_site_build')
+                if _get_prompt is None or _list_prompts is None or _engine_cls is None:
+                    raise RuntimeError('Site Builder plugin is not installed or enabled')
+                engine = _engine_cls()
 
                 # 获取提示词模板
                 if prompt_identifier:
@@ -1029,8 +1073,8 @@ def dispatch_task():
     if not agent_config['is_active']:
         return _error(_('Target Agent is disabled'))
 
-    # ── Creative Agent special path: direct API call ──
-    if agent_config.get('domain') == 'creative':
+    # ── Creative/Media Agent special path: direct API call (media 为合并后角色，兼容遗留 creative) ──
+    if agent_config.get('domain') in ('media', 'creative'):
         action = data.get('action', 'generate_image')
         params = data.get('params', {})
 
@@ -1661,8 +1705,8 @@ def matrix_dashboard():
     recent = _m().get_recent_tasks(limit=10)
     agents = _m().list_agents(active_only=True)
 
-    # 科研版兜底：拒绝展示商务/电商域 Agent
-    if _m()._current_edition() == 'research':
+    # 科研桌面版兜底：拒绝展示商务/电商域 Agent
+    if _m()._current_edition() in ('research', 'research-desktop'):
         agents = [a for a in agents
                   if a.get('domain') not in ('business', 'finance')]
 

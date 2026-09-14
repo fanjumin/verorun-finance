@@ -1,0 +1,392 @@
+/* ══════════════════════════════════════════════════════════════════════
+   v1.8 商店「动态分类 + 动态分流」共享实现（官方版 / 用户版共用）
+   对应标准 docs/plugin-standard-v1.8.md §18.1 / §18.2
+   端点：GET  /admin/plugins/store/categories                     （注册表，只读）
+         POST /admin/plugins/store/categories                     （注册表，管理员 upsert）
+         GET  /admin/plugins/store/admin/distribution/<identifier>（分流规则，读）
+         PUT  /admin/plugins/store/admin/distribution/<identifier>（分流规则，写）
+   说明：本文件由 admin.html 在 edition 分支**之外**无条件 include，因此
+         plugins_store.html（official）与 plugins_store_user.html（其余版本）
+         共用同一份实现，避免两套模板各自维护造成漂移。
+         两表均落在商店库、与 store_plugins 严格 1:1 / 无 CHECK 约束；
+         未配置任何规则时全链路行为与 v1.7 完全一致（空表等价性）。
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ── 分类注册表：取数（GET /admin/plugins/store/categories）──────────────
+   前端**必须保留内置 map 作为 fallback**：端点不可用 / 尚未加载完成时，
+   _categoryEmoji / _catGrad / _catIcon / _catLabel 一律回落内置 7 类，
+   不崩不空白（标准 §14.7.1–14.7.3、§18.1）。 */
+window._DIST_CATS=[];
+window._DIST_EMOJI={};
+window._DIST_GRAD={};
+window._DIST_ICON={};
+window._DIST_LABEL={};
+window._distCatsPromise=null;
+function _loadDistCats(force){
+  if(window._distCatsPromise&&!force){return window._distCatsPromise}
+  var p=fetch("/admin/plugins/store/categories",{headers:{"Authorization":"Bearer "+T}})
+    .then(function(r){return r.json()})
+    .then(function(d){
+      var m=(d&&d.success&&d.data&&d.data.map)||{};
+      window._DIST_EMOJI=m.emoji||{};
+      window._DIST_GRAD=m.grad||{};
+      window._DIST_ICON=m.icon||{};
+      window._DIST_LABEL=m.label||{};
+      window._DIST_CATS=(d&&d.success&&d.data&&d.data.categories)||[];
+      return window._DIST_CATS;
+    })
+    .catch(function(){
+      window._DIST_CATS=[];
+      window._DIST_EMOJI={};
+      window._DIST_GRAD={};
+      window._DIST_ICON={};
+      window._DIST_LABEL={};
+      return [];
+    });
+  window._distCatsPromise=p;
+  return p;
+}
+
+/* ★ 插件商店改造：分类 emoji 占位符
+   v1.8：优先取分类注册表（plugin_categories.emoji），未命中回落内置 map。
+   注：内置 map 同时保留 'tool'（历史笔误键）与 'tools'（规范枚举键），
+   后者缺失曾导致 category='tools' 的插件横幅恒为 🧩。 */
+function _categoryEmoji(category){
+  if(window._DIST_EMOJI&&window._DIST_EMOJI[category]){return window._DIST_EMOJI[category]}
+  var map={
+    'marketing':'📣',
+    'supply-chain':'📦',
+    'supply_chain':'📦',
+    'content':'📝',
+    'tool':'🔧',
+    'tools':'🔧',
+    'ai_agent':'🤖',
+    'system':'⚙️',
+    'knowledge':'📚',
+    'social':'📱',
+    'shop':'🛒',
+    'other':'🧩'
+  };
+  return map[category]||'🧩';
+}
+
+/* v1.8 动态分类：展示名（注册表 label 优先 → 内置 7 类 i18n → 原 key） */
+function _catLabel(k){
+  if(window._DIST_LABEL&&window._DIST_LABEL[k]){return window._DIST_LABEL[k]}
+  var m={
+    'system':'{{ _('System') }}',
+    'shop':'{{ _('Shop') }}',
+    'content':'{{ _('Content') }}',
+    'ai_agent':'{{ _('AI Agent') }}',
+    'social':'{{ _('Social') }}',
+    'tools':'{{ _('Tools') }}',
+    'supply_chain':'{{ _('Supply Chain') }}'
+  };
+  return m[k]||k;
+}
+
+/* v1.8 动态分类：<option> 列表 = 内置 7 类 ∪ 注册表（enabled=1），去重保序 */
+function _catOptions(cur){
+  var all=[],seen={};
+  var builtin=['system','shop','content','ai_agent','social','tools','supply_chain'];
+  builtin.forEach(function(k){seen[k]=1;all.push(k)});
+  (window._DIST_CATS||[]).forEach(function(c){
+    if(c&&c.key&&!seen[c.key]){seen[c.key]=1;all.push(c.key)}
+  });
+  var h='<option value="">-</option>';
+  all.forEach(function(k){
+    h+='<option value="'+escAttr(k)+'"'+(cur===k?' selected':'')+'>'+esc(_catLabel(k))+'</option>';
+  });
+  return h;
+}
+
+/* ── 规范类别渐变 Banner（方案 §2.1-2.3，前端实时生成，零静态图）── */
+var _CAT_GRADS={
+  'system':'linear-gradient(135deg,#4F6EF7,#1E2A78)',
+  'shop':'linear-gradient(135deg,#12B886,#0B7285)',
+  'content':'linear-gradient(135deg,#FF6B35,#E0316B)',
+  'ai_agent':'linear-gradient(135deg,#845EF7,#D6336C)',
+  'social':'linear-gradient(135deg,#22B8CF,#4C6EF5)',
+  'tools':'linear-gradient(135deg,#748FFC,#364FC7)',
+  'supply_chain':'linear-gradient(135deg,#F59F00,#E8590C)'
+};
+/* v1.8：注册表渐变优先（grad_from/grad_to），未命中回落内置配色，再回落 system */
+function _catGrad(cat){
+  var g=window._DIST_GRAD&&window._DIST_GRAD[cat];
+  if(g&&g.length>=2&&g[0]){return 'linear-gradient(135deg,'+g[0]+','+(g[1]||g[0])+')'}
+  return _CAT_GRADS[cat]||_CAT_GRADS['system'];
+}
+var _CAT_ICONS={
+  'system':'<rect x="3" y="4" width="18" height="14" rx="2"/><path d="M3 10h18"/>',
+  'shop':'<circle cx="9" cy="21" r="2"/><circle cx="20" cy="21" r="2"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/>',
+  'content':'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>',
+  'ai_agent':'<rect x="3" y="4" width="18" height="14" rx="2"/><path d="M12 8v5"/><path d="M9 11h6"/>',
+  'social':'<circle cx="12" cy="12" r="9"/>',
+  'tools':'<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94z"/>',
+  'supply_chain':'<path d="M3 21V8l7-4 7 4v10"/><rect x="3" y="8" width="18" height="6"/>'
+};
+/* v1.8：注册表 icon_svg（24x24 内联片段）优先，未命中回落内置 7 枚 */
+function _catIcon(cat,size){
+  var p=(window._DIST_ICON&&window._DIST_ICON[cat])||_CAT_ICONS[cat]||'<circle cx="12" cy="12" r="9"/>';
+  return '<svg viewBox="0 0 24 24" width="'+size+'" height="'+size+'" fill="none" stroke="rgba(255,255,255,.92)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'+p+'</svg>';
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   管理面板：动态分类注册表 + 动态分流规则
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* 面板内「返回」统一出口。
+   管理面板**仅在官方版可达** —— 其全部端点由 _require_store_admin() 守卫
+   （官方版 ∧ super_admin，VR-SEC-014），非官方版一律 403，故用户版不提供入口
+   （见 plugins_store_user.html 的 l_plugins_store 注释）。
+   因此 renderStoreAdminList 必然已由 plugins_store.html 定义（官方版组合）；
+   此处仍保留存在性判定，使模板组合变化时降级而非硬崩。 */
+function _distBack(){
+  if(typeof renderStoreAdminList==='function'){return renderStoreAdminList()}
+  if(typeof l_plugins_store==='function'){return l_plugins_store()}
+}
+
+/* ── 分类注册表：列表 ─────────────────────────────────────────────── */
+function showCategoryAdmin(){
+  var mc=document.getElementById("subview")||document.getElementById("mc");
+  mc.innerHTML='<div class="lo"><div class="s"></div>{{ _('Loading') }}...</div>';
+  _loadDistCats(true).then(function(cats){
+    cats=cats||[];
+    var h='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">'+
+      '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">'+
+      '<span style="font-size:13px;color:var(--text-muted)">{{ _('Category Registry') }}: '+cats.length+'</span>'+
+      '<span style="font-size:11px;color:var(--dim)">{{ _('built-in categories cannot be deleted; disable to hide them from selection') }}</span></div>'+
+      '<div style="display:flex;gap:8px">'+
+      '<button class="btn bp bs" onclick="showCategoryForm(\'\')">{{ _('Add Category') }}</button>'+
+      '<button class="btn bo bs" onclick="_distBack()">{{ _('Back') }}</button></div></div>';
+    if(cats.length===0){
+      h+='<div class="em">{{ _('Category registry unavailable; built-in 7 categories are still effective') }}</div>';
+      mc.innerHTML=h;return
+    }
+    h+='<table style="width:100%;font-size:13px">'+
+      '<tr><th style="text-align:left;padding:8px 12px">key</th>'+
+      '<th style="text-align:left;padding:8px 12px">{{ _('Name') }}</th>'+
+      '<th style="text-align:center;padding:8px 12px">emoji</th>'+
+      '<th style="text-align:left;padding:8px 12px">{{ _('Gradient') }}</th>'+
+      '<th style="text-align:center;padding:8px 12px">{{ _('Order') }}</th>'+
+      '<th style="text-align:center;padding:8px 12px">{{ _('Status') }}</th>'+
+      '<th style="text-align:center;padding:8px 12px">{{ _('Actions') }}</th></tr>';
+    cats.forEach(function(c){
+      var gf=c.grad_from||'',gt=c.grad_to||gf;
+      var swatch=gf?('<span style="display:inline-block;width:34px;height:14px;border-radius:3px;vertical-align:-2px;background:linear-gradient(135deg,'+gf+','+(gt||gf)+')"></span> '):'';
+      h+='<tr>'+
+        '<td style="padding:10px 12px;font-family:monospace;font-size:12px">'+esc(c.key)+
+          (c.builtin?' <span class="bdg" style="font-size:10px">{{ _('Built-in') }}</span>':'')+'</td>'+
+        '<td style="padding:10px 12px;font-weight:600">'+esc(c.label||c.key)+'</td>'+
+        '<td style="padding:10px 12px;text-align:center;font-size:16px">'+esc(c.emoji||'🧩')+'</td>'+
+        '<td style="padding:10px 12px;white-space:nowrap">'+swatch+
+          '<span style="font-size:11px;color:var(--dim);font-family:monospace">'+esc(gf)+' → '+esc(gt||gf)+'</span></td>'+
+        '<td style="padding:10px 12px;text-align:center">'+esc(String(c.sort_order==null?100:c.sort_order))+'</td>'+
+        '<td style="padding:10px 12px;text-align:center">'+
+          (c.enabled?'<span class="bdg on">{{ _('Enabled') }}</span>':'<span class="bdg off">{{ _('Disabled') }}</span>')+'</td>'+
+        '<td style="padding:10px 12px;text-align:center;white-space:nowrap">'+
+        '<button class="btn bo bs" style="margin-right:4px" onclick="showCategoryForm(\''+escAttr(c.key)+'\')">{{ _('Edit') }}</button>'+
+        '<button class="btn bo bs" onclick="toggleCategoryEnabled(\''+escAttr(c.key)+'\','+(c.enabled?0:1)+')">'+(c.enabled?'{{ _('Disable') }}':'{{ _('Enable') }}')+'</button>'+
+        '</td></tr>';
+    });
+    h+='</table>';
+    mc.innerHTML=h;
+  });
+}
+
+/* ── 分类注册表：新增 / 编辑表单 ───────────────────────────────────── */
+function showCategoryForm(key){
+  var c={key:'',label:'',label_i18n_key:'',emoji:'',icon_svg:'',grad_from:'#3b82f6',grad_to:'#8b5cf6',
+         default_tagline:'',sort_order:100,enabled:1,builtin:0};
+  if(key){
+    (window._DIST_CATS||[]).forEach(function(x){if(x&&x.key===key){c=x}});
+  }
+  var isEdit=!!key;
+  var mc=document.getElementById("subview")||document.getElementById("mc");
+  var h='<div style="max-width:680px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'+
+    '<div style="font-size:15px;font-weight:600">🏷️ '+(isEdit?'{{ _('Edit Category') }}':'{{ _('Add Category') }}')+'</div>'+
+    '<button class="btn bo bs" onclick="showCategoryAdmin()">{{ _('Back') }}</button></div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">'+
+    '<div><label style="display:block;font-size:12px;margin-bottom:4px">key * <span style="font-size:10px;color:var(--dim)">[a-z0-9_]</span></label>'+
+      '<input class="in" id="sci_key" value="'+escAttr(c.key||'')+'"'+(isEdit?' readonly style="width:100%;opacity:.6"':' style="width:100%"')+'></div>'+
+    '<div><label style="display:block;font-size:12px;margin-bottom:4px">{{ _('Name') }}</label>'+
+      '<input class="in" id="sci_label" value="'+escAttr(c.label||'')+'" style="width:100%"></div>'+
+    '<div><label style="display:block;font-size:12px;margin-bottom:4px">emoji</label>'+
+      '<input class="in" id="sci_emoji" value="'+escAttr(c.emoji||'')+'" placeholder="🧩" style="width:100%"></div>'+
+    '<div><label style="display:block;font-size:12px;margin-bottom:4px">{{ _('Order') }}</label>'+
+      '<input class="in" id="sci_sort" type="number" value="'+(c.sort_order==null?100:c.sort_order)+'" style="width:100%"></div>'+
+    '<div><label style="display:block;font-size:12px;margin-bottom:4px">{{ _('Gradient From') }}</label>'+
+      '<input class="in" id="sci_gf" type="color" value="'+(c.grad_from||'#3b82f6')+'" style="width:100%;height:34px;padding:2px"></div>'+
+    '<div><label style="display:block;font-size:12px;margin-bottom:4px">{{ _('Gradient To') }}</label>'+
+      '<input class="in" id="sci_gt" type="color" value="'+(c.grad_to||'#8b5cf6')+'" style="width:100%;height:34px;padding:2px"></div>'+
+    '<div style="grid-column:1/3"><label style="display:block;font-size:12px;margin-bottom:4px">{{ _('Default Tagline') }} '+
+      '<span style="font-size:10px;color:var(--dim)">{{ _('shown on the card banner when the plugin has no tagline') }}</span></label>'+
+      '<input class="in" id="sci_tagline" value="'+escAttr(c.default_tagline||'')+'" style="width:100%"></div>'+
+    '<div style="grid-column:1/3"><label style="display:block;font-size:12px;margin-bottom:4px">icon_svg '+
+      '<span style="font-size:10px;color:var(--dim)">{{ _('inner SVG markup only, 24x24 viewBox') }}</span></label>'+
+      '<textarea class="in" id="sci_icon" style="width:100%;min-height:64px;font-family:monospace;font-size:12px">'+esc(c.icon_svg||'')+'</textarea></div>'+
+    '<div><label style="display:block;font-size:12px;margin-bottom:4px">{{ _('Status') }}</label>'+
+      '<select class="in" id="sci_enabled" style="width:100%">'+
+      '<option value="1"'+(c.enabled?' selected':'')+'>{{ _('Enabled') }}</option>'+
+      '<option value="0"'+(!c.enabled?' selected':'')+'>{{ _('Disabled') }}</option></select></div>'+
+    '</div>'+
+    '<div style="display:flex;gap:12px;margin-top:12px">'+
+    '<button class="btn bp" onclick="saveCategoryForm()">💾 {{ _('Save') }}</button>'+
+    '<button class="btn bo" onclick="showCategoryAdmin()">{{ _('Cancel') }}</button>'+
+    '</div><div id="catAdminResult" style="margin-top:12px"></div></div>';
+  mc.innerHTML=h;
+}
+
+function saveCategoryForm(){
+  var key=(document.getElementById("sci_key").value||'').trim().toLowerCase();
+  if(!/^[a-z0-9_]+$/.test(key)){
+    showToast("{{ _('Key must contain only lowercase letters, digits, underscores') }}","error");return
+  }
+  var body={
+    key:key,
+    label:document.getElementById("sci_label").value.trim(),
+    label_i18n_key:'',
+    emoji:document.getElementById("sci_emoji").value.trim(),
+    grad_from:document.getElementById("sci_gf").value,
+    grad_to:document.getElementById("sci_gt").value,
+    default_tagline:document.getElementById("sci_tagline").value.trim(),
+    icon_svg:document.getElementById("sci_icon").value.trim(),
+    sort_order:parseInt(document.getElementById("sci_sort").value)||100,
+    enabled:parseInt(document.getElementById("sci_enabled").value)
+  };
+  var box=document.getElementById("catAdminResult");
+  box.innerHTML='<div class="lo"><div class="s"></div></div>';
+  fetch("/admin/plugins/store/categories",{method:"POST",
+        headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify(body)})
+    .then(function(r){return r.json()}).then(function(d){
+      if(d.success){showToast("{{ _('Saved') }}","success");showCategoryAdmin()}
+      else{box.innerHTML='<span style="color:#f85149">❌ '+esc(d.error||'')+'</span>'}
+    }).catch(function(){box.innerHTML='<span style="color:#f85149">❌ {{ _('Network error') }}</span>'});
+}
+
+/* 启用 / 停用（POST 为 upsert，故回写其余字段以免被清空） */
+function toggleCategoryEnabled(key,enabled){
+  var c={};
+  (window._DIST_CATS||[]).forEach(function(x){if(x&&x.key===key){c=x}});
+  var body={
+    key:key,label:c.label||'',label_i18n_key:'',emoji:c.emoji||'',
+    grad_from:c.grad_from||'#3b82f6',grad_to:c.grad_to||'#8b5cf6',
+    default_tagline:c.default_tagline||'',icon_svg:c.icon_svg||'',
+    sort_order:(c.sort_order==null?100:c.sort_order),enabled:enabled
+  };
+  fetch("/admin/plugins/store/categories",{method:"POST",
+        headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify(body)})
+    .then(function(r){return r.json()}).then(function(d){
+      if(d.success){showToast("{{ _('Status updated') }}","success");showCategoryAdmin()}
+      else{showToast(d.error||"{{ _('Failed') }}","error")}
+    }).catch(function(){showToast("{{ _('Network error') }}","error")});
+}
+
+/* ── 分流规则：按插件编辑（与 store_plugins 严格 1:1）──────────────── */
+
+/* 防御式列表归一化：端点若返回 JSON 文本列（如 '["finance"]'）也能解析。
+   后端已归一化为数组，此处为 defense-in-depth，兼容未升级的部署。 */
+function _distList(v){
+  if(v==null){return []}
+  if(Object.prototype.toString.call(v)==='[object Array]'){return v}
+  if(typeof v==='string'){
+    try{
+      var a=JSON.parse(v);
+      return Object.prototype.toString.call(a)==='[object Array]'?a:[];
+    }catch(e){return []}
+  }
+  return [];
+}
+
+function _catCheckboxes(selected){
+  var sel={};
+  _distList(selected).forEach(function(k){sel[k]=1});
+  var all=[],seen={};
+  var builtin=['system','shop','content','ai_agent','social','tools','supply_chain'];
+  builtin.forEach(function(k){seen[k]=1;all.push(k)});
+  (window._DIST_CATS||[]).forEach(function(c){if(c&&c.key&&!seen[c.key]){seen[c.key]=1;all.push(c.key)}});
+  return all.map(function(k){
+    return '<label style="display:inline-flex;align-items:center;gap:4px;margin:0 14px 6px 0;font-size:12px">'+
+      '<input type="checkbox" class="sdc_cat" value="'+escAttr(k)+'"'+(sel[k]?' checked':'')+'> '+esc(_catLabel(k))+'</label>';
+  }).join('');
+}
+
+function _splitCsv(id){
+  var el=document.getElementById(id);
+  if(!el){return []}
+  return el.value.split(',').map(function(s){return s.trim()}).filter(function(s){return !!s});
+}
+
+function showDistributionAdmin(identifier){
+  var mc=document.getElementById("subview")||document.getElementById("mc");
+  mc.innerHTML='<div class="lo"><div class="s"></div>{{ _('Loading') }}...</div>';
+  Promise.all([
+    _loadDistCats(true),
+    fetch("/admin/plugins/store/admin/distribution/"+encodeURIComponent(identifier),
+          {headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()})
+  ]).then(function(res){
+    var d=res[1];
+    if(!d||!d.success){mc.innerHTML='<div class="em">{{ _('Load failed') }}: '+esc((d&&d.error)||'')+'</div>';return}
+    var r=d.data||{};
+    var ch=r.channel||'stable';
+    var chOpt=['stable','beta','canary'].map(function(v){
+      return '<option value="'+v+'"'+(ch===v?' selected':'')+'>'+v+'</option>'}).join('');
+    var h='<div style="max-width:780px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'+
+      '<div style="font-size:15px;font-weight:600">🔀 {{ _('Distribution Rule') }} '+
+      '<span style="font-family:monospace;font-size:12px;color:var(--dim)">'+esc(identifier)+'</span></div>'+
+      '<button class="btn bo bs" onclick="_distBack()">{{ _('Back') }}</button></div>'+
+      '<div style="padding:10px;background:var(--bg-secondary);border-radius:8px;font-size:12px;color:var(--dim);margin-bottom:14px">'+
+      '{{ _('Empty dimension = not filtered, falls back to deploy/editions yaml') }}<br>'+
+      '{{ _('Priority chain') }}: hidden &gt; DB rule &gt; yaml &gt; compatible_editions</div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">'+
+      '<div><label style="display:block;font-size:12px;margin-bottom:4px">{{ _('Store Visibility') }}</label>'+
+        '<select class="in" id="sdr_hidden" style="width:100%">'+
+        '<option value="0"'+(!r.hidden?' selected':'')+'>{{ _('Visible') }}</option>'+
+        '<option value="1"'+(r.hidden?' selected':'')+'>{{ _('Hidden') }}</option></select></div>'+
+      '<div><label style="display:block;font-size:12px;margin-bottom:4px">{{ _('Release Channel') }}</label>'+
+        '<select class="in" id="sdr_channel" style="width:100%">'+chOpt+'</select></div>'+
+      '<div><label style="display:block;font-size:12px;margin-bottom:4px">{{ _('Applicable Editions') }} '+
+        '<span style="font-size:10px;color:var(--dim)">{{ _('comma separated; empty = all editions') }}</span></label>'+
+        '<input class="in" id="sdr_editions" value="'+escAttr(_distList(r.editions).join(', '))+'" placeholder="finance, research, official" style="width:100%"></div>'+
+      '<div><label style="display:block;font-size:12px;margin-bottom:4px">{{ _('Applicable Profiles') }} '+
+        '<span style="font-size:10px;color:var(--dim)">{{ _('comma separated; empty = all environments') }}</span></label>'+
+        '<input class="in" id="sdr_profiles" value="'+escAttr(_distList(r.profiles).join(', '))+'" placeholder="cn-public-icp, overseas-intranet" style="width:100%"></div>'+
+      '<div><label style="display:block;font-size:12px;margin-bottom:4px">{{ _('Priority') }}</label>'+
+        '<input class="in" id="sdr_priority" type="number" value="'+(r.priority==null?100:r.priority)+'" style="width:100%"></div>'+
+      '<div><label style="display:block;font-size:12px;margin-bottom:4px">{{ _('Note') }}</label>'+
+        '<input class="in" id="sdr_note" maxlength="500" value="'+escAttr(r.note||'')+'" style="width:100%"></div>'+
+      '<div style="grid-column:1/3"><label style="display:block;font-size:12px;margin-bottom:6px">{{ _('Categories') }}</label>'+
+        '<div style="padding:8px;border:1px solid var(--bd);border-radius:6px">'+_catCheckboxes(r.categories)+'</div></div>'+
+      '</div>'+
+      '<div style="display:flex;gap:12px;margin-top:12px">'+
+      '<button class="btn bp" onclick="saveDistributionForm(\''+escAttr(identifier)+'\')">💾 {{ _('Save') }}</button>'+
+      '<button class="btn bo" onclick="_distBack()">{{ _('Cancel') }}</button>'+
+      '</div><div id="distAdminResult" style="margin-top:12px"></div></div>';
+    mc.innerHTML=h;
+  }).catch(function(){mc.innerHTML='<div class="em">{{ _('Network error') }}</div>'});
+}
+
+function saveDistributionForm(identifier){
+  var cats=[];
+  var boxes=document.querySelectorAll('.sdc_cat');
+  for(var i=0;i<boxes.length;i++){ if(boxes[i].checked){ cats.push(boxes[i].value); } }
+  var body={
+    hidden:document.getElementById("sdr_hidden").value==='1',
+    channel:document.getElementById("sdr_channel").value,
+    editions:_splitCsv("sdr_editions"),
+    profiles:_splitCsv("sdr_profiles"),
+    categories:cats,
+    priority:parseInt(document.getElementById("sdr_priority").value)||100,
+    note:document.getElementById("sdr_note").value.trim()
+  };
+  var box=document.getElementById("distAdminResult");
+  box.innerHTML='<div class="lo"><div class="s"></div></div>';
+  fetch("/admin/plugins/store/admin/distribution/"+encodeURIComponent(identifier),
+        {method:"PUT",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify(body)})
+    .then(function(r){return r.json()}).then(function(d){
+      if(d.success){showToast("{{ _('Saved') }}","success");showDistributionAdmin(identifier)}
+      else{box.innerHTML='<span style="color:#f85149">❌ '+esc(d.error||'')+'</span>'}
+    }).catch(function(){box.innerHTML='<span style="color:#f85149">❌ {{ _('Network error') }}</span>'});
+}

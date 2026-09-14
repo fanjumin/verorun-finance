@@ -7,3 +7,15 @@ Invalid or expired token: Invalid or expired token
 Token not found or already used: Token not found or already used
 Suspicious activity detected: Suspicious activity detected
 Position mismatch: Position mismatch
+Captcha Statistics: Captcha Statistics
+Captcha Stats: Captcha Stats
+Total Requests: Total Requests
+Pass Rate: Pass Rate
+Requests Last Hour: Requests Last Hour
+Avg Risk Score: Avg Risk Score
+Top IP Fails: Top IP Fails
+No statistics available: No statistics available
+Loading...: Loading...
+Load failed: Load failed
+'Too many attempts, retry in {seconds}s': 'Too many attempts, retry in {seconds}s'
+'Puzzle generation failed: {error}': 'Puzzle generation failed: {error}'

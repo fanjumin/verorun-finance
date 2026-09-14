@@ -6,7 +6,7 @@
     "required": [],
     "optional": {}
   },
-  "version": "1.4.2",
+  "version": "1.5.3",
   "category": "system",
   "tags": [
     "verification",
@@ -20,6 +20,8 @@
   "screenshots": [],
   "readme_url": "",
   "description": "Enterprise Verification — OCR business license recognition + AI auto-audit",
+  "tagline": "营业执照 OCR 与 AI 审核",
+  "tagline_subtitle": "证件识别 · 智能审核 · KYC 风控",
   "author": "VeroRun",
   "min_app_version": "0.10.0",
   "dependencies": {},

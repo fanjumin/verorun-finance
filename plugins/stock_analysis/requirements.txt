@@ -1,3 +1,7 @@
 pyyaml>=6.0
+numpy>=2.0
 pandas>=2.0
 requests>=2.31
+tushare>=1.4.0
+# optional 备源（阶段3，延迟导入，缺装不影响主链路）：
+# akshare>=1.14.0

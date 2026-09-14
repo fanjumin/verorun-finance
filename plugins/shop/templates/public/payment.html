@@ -64,7 +64,7 @@ function showStatus(msg,type){
 
 // 加载订单信息
 function loadOrder(){
-  fetch('/shop/api/orders',{headers:{'Authorization':'Bearer '+T}})
+  fetch('/mall/api/orders',{headers:{'Authorization':'Bearer '+T}})
     .then(function(r){return r.json()})
     .then(function(d){
       if(!d.success)return;
@@ -82,7 +82,7 @@ function doPay(){
   var btn=document.getElementById('payBtn');
   btn.disabled=true;btn.textContent='{{ _('Processing...') }}';
   showStatus('{{ _('Creating payment...') }}','info');
-  fetch('/shop/api/pay/'+OID,{
+  fetch('/mall/api/pay/'+OID,{
     method:'POST',
     headers:{'Authorization':'Bearer '+T,'Content-Type':'application/json'},
     body:JSON.stringify({method:'alipay'})
@@ -95,7 +95,7 @@ function doPay(){
       showStatus('{{ _('Please scan with Alipay to pay') }}','info');
       btn.style.display='none';
       var qrHtml='<div style="text-align:center;margin-top:12px">'
-        +'<img src="/shop/qr?data='+encodeURIComponent(d.data.qr_code)+'" alt="QR" style="width:200px;height:200px;background:#fff;padding:8px;border-radius:8px">'
+        +'<img src="/mall/qr?data='+encodeURIComponent(d.data.qr_code)+'" alt="QR" style="width:200px;height:200px;background:#fff;padding:8px;border-radius:8px">'
         +'<div style="font-size:12px;color:var(--muted);margin-top:10px">⏳ {{ _('Payment successful, auto-confirming...') }}</div></div>';
       document.getElementById('payAmount').insertAdjacentHTML('afterend', qrHtml);
       pollPayStatus();
@@ -117,7 +117,7 @@ function doPay(){
 // 轮询支付状态
 function pollPayStatus(){
   var timer=setInterval(function(){
-    fetch('/shop/api/pay/status/'+OID,{headers:{'Authorization':'Bearer '+T}})
+    fetch('/mall/api/pay/status/'+OID,{headers:{'Authorization':'Bearer '+T}})
       .then(function(r){return r.json()})
       .then(function(d){
         if(d.success&&d.data&&d.data.status==='paid'){

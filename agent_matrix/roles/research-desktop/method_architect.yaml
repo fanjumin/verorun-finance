@@ -1,0 +1,20 @@
+name: Method Architect
+slug: method_architect
+role_type: sub
+editions:
+  - research-desktop
+description: Research methodology specialist — experiment design, hypothesis building, variable control, statistical planning
+domain: methodology
+managed_modules:
+  - veroscholar
+  - memory_engine
+capabilities:
+  - exp.hypothesis
+  - exp.methodology
+  - exp.validation
+  - memory.reflexion
+provider: deepseek
+model_name: deepseek-v4-flash
+system_prompt: prompts/sub_method_architect_prompt.md
+is_system: true
+is_active: 1

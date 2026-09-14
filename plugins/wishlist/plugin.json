@@ -6,8 +6,10 @@
     "required": [],
     "optional": {}
   },
-  "version": "1.6.3",
+  "version": "1.7.3",
   "description": "收藏/心愿单 — 用户收藏商品、管理心愿清单",
+  "tagline": "商品收藏与心愿清单",
+  "tagline_subtitle": "收藏/取消 · 列表管理 · 跨端同步",
   "author": "VeroRun",
   "min_app_version": "0.10.0",
   "agent_role": "business",
@@ -54,7 +56,6 @@
       }
     ]
   },
-  "menu": null,
   "settings_schema": {
     "type": "object",
     "properties": {

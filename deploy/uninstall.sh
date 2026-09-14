@@ -31,6 +31,21 @@ if [ "$(id -u)" -ne 0 ]; then
     echo -e "${FAIL} Please run with sudo: sudo bash deploy/uninstall.sh"
     exit 1
 fi
+
+# U-5 fix (2026-08-30 audit): edition-aware guard. install.sh already refuses to run on
+# official servers (VR_EDITION=official); uninstall.sh had no such check, so a single
+# command could silently wipe an official (paid/production) deployment. Mirror the guard.
+# To uninstall an official server deliberately, set FORCE_UNINSTALL=1.
+if [ -f "${APP_HOME}/.env" ] && grep -q "^VR_EDITION=official" "${APP_HOME}/.env" 2>/dev/null; then
+    if [ "${FORCE_UNINSTALL:-0}" = "1" ]; then
+        echo -e "${WARN} FORCE_UNINSTALL=1 - proceeding on OFFICIAL edition (guard bypassed)"
+    else
+        echo -e "${FAIL} This server is the OFFICIAL edition (VR_EDITION=official in ${APP_HOME}/.env)."
+        echo -e "${FAIL} The standard uninstaller must not run here - use the official channel/support."
+        echo -e "${INFO} To uninstall anyway (removes ALL data & services): sudo env FORCE_UNINSTALL=1 bash $0"
+        exit 1
+    fi
+fi
 # 审计 P0②：uninstall 可能从 APP_HOME 内执行，rm -rf 删除 cwd 后
 # 后续 sudo -u postgres psql 无法 exec（could not find own program executable）。
 # 固定到 / 根目录，彻底消除 cwd 依赖。
@@ -78,6 +93,10 @@ rm -f /etc/nginx/sites-enabled/verorun.conf
 # 卸载必须把这些一并清掉，否则后续安装 nginx -t 可能被残留配置破坏。
 rm -f /etc/nginx/sites-enabled/verorun.conf.* /etc/nginx/sites-available/verorun.conf.* 2>/dev/null || true
 rm -f /etc/nginx/sites-enabled/verorun-*.conf /etc/nginx/sites-available/verorun-*.conf 2>/dev/null || true
+# U-2 fix (2026-08-30 one-click uninstall verification): legacy installs used
+# *.verorun-suffixed nginx backups (e.g. default.bak.verorun); STD-2 prefix globs
+# did not cover them, so they survived uninstall. Clean them up as well.
+rm -f /etc/nginx/sites-available/*.verorun /etc/nginx/sites-enabled/*.verorun 2>/dev/null || true
 if systemctl is-active --quiet nginx 2>/dev/null; then
     systemctl reload nginx 2>/dev/null || true
     echo "  nginx reloaded"
@@ -130,9 +149,20 @@ for _pat in "${APP_HOME}/venv/bin/gunicorn" "run_gunicorn.py" "health_check.sh" 
     _pids=$(pgrep -f "${_pat}" 2>/dev/null | grep -vwE "^(${_mypid}|${_myppid})$" || true)
     if [ -n "${_pids}" ]; then
         echo "  leftover '${_pat}': ${_pids}"
-        if ! echo "${_pids}" | xargs -r kill 2>/dev/null; then
-            sleep 2
-            pgrep -f "${_pat}" 2>/dev/null | grep -vwE "^(${_mypid}|${_myppid})$" | xargs -r kill -9 2>/dev/null || true
+        echo "${_pids}" | xargs -r kill 2>/dev/null || true
+        # U-4 fix (2026-08-30 .104 old-gen uninstall): SIGTERM delivered != process gone;
+        # slow-exiting daemons (old guardian graceful shutdown) were flagged by Verify
+        # as INCOMPLETE. Wait for real exit (up to ~5s), escalate to -9 only on survival.
+        _w=0
+        while [ "${_w}" -lt 10 ]; do
+            _alive=$(pgrep -f "${_pat}" 2>/dev/null | grep -vwE "^(${_mypid}|${_myppid})$" || true)
+            [ -z "${_alive}" ] && break
+            sleep 0.5
+            _w=$((_w + 1))
+        done
+        _alive=$(pgrep -f "${_pat}" 2>/dev/null | grep -vwE "^(${_mypid}|${_myppid})$" || true)
+        if [ -n "${_alive}" ]; then
+            echo "${_alive}" | xargs -r kill -9 2>/dev/null || true
             echo -e "${WARN} force-killed leftover: ${_pat}"
         fi
     fi
@@ -155,10 +185,23 @@ done_step "Config files removed"
 
 step "Verify"
 _issue=0
-if pgrep -f "${APP_HOME}" >/dev/null 2>&1; then
-    echo -e "${FAIL} VeroRun processes still running"
-    _issue=1
-fi
+    # U-1 fix (2026-08-30 uninstall verification): Verify used bare `pgrep -f "${APP_HOME}"`;
+    # when any ancestor in the invocation chain has the APP_HOME absolute path in its
+    # cmdline (absolute-path wrappers, `tail -f <APP_HOME>/logs/...` monitors), it matches
+    # the caller instead of real leftovers and false-reports INCOMPLETE though cleanup
+    # actually finished. Aligned with STD-1: only explicit VeroRun process patterns,
+    # excluding the uninstall process tree.
+    _verify_proc=0
+    for _vpat in "${APP_HOME}/venv/bin/gunicorn" "run_gunicorn.py" "health_check.sh" "veroguard"; do
+        _vpids=$(pgrep -f "${_vpat}" 2>/dev/null | grep -vwE "^(${_mypid}|${_myppid})$" || true)
+        if [ -n "${_vpids}" ]; then
+            echo -e "${FAIL} VeroRun processes still running: ${_vpat} (pids: ${_vpids})"
+            _verify_proc=1
+        fi
+    done
+    if [ "${_verify_proc}" = "1" ]; then
+        _issue=1
+    fi
 if ls /etc/systemd/system/verorun-*.service >/dev/null 2>&1; then
     echo -e "${FAIL} verorun-*.service files still present"
     _issue=1
@@ -183,3 +226,5 @@ echo -e "${INFO} Ready for fresh install:"
 echo -e "${INFO}   git clone https://github.com/fanjumin/verorun-pro.git"
 echo -e "${INFO}   cd verorun-pro"
 echo -e "${INFO}   sudo bash deploy/install.sh install your-domain.com"
+
+

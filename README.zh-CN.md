@@ -1,6 +1,6 @@
 # VeroRun — 企业多核 AI 操作系统
 
-[![Version](https://img.shields.io/badge/version-0.60.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.61.1-blue.svg)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-EULA%20v1.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)]()
 [![Plugins](https://img.shields.io/badge/plugins-30-orange.svg)]()
@@ -119,7 +119,7 @@ flask run --port 8081
 
 ## 引擎底座
 
-### AI 引擎 — 多角色 Agent 矩阵（9 角色）
+### AI 引擎 — 多角色 Agent 矩阵（21 角色）
 
 VeroRun 将复杂任务交给一组有分工、可评审的 Agent 角色：主控分解任务，子角色各司其职，评审质疑方案，决策签署结论。
 
@@ -134,6 +134,23 @@ VeroRun 将复杂任务交给一组有分工、可评审的 Agent 角色：主�
 | Vision | `vision` | sub | zhipu/glm-4v-plus | 图像分析、OCR、图表解读 |
 | Creative | `creative` | sub | siliconflow/FLUX.1-pro | 文生图、创意视觉设计 |
 | Business | `business` | sub | deepseek/deepseek-v4-flash | 商业分析、规划、供应链 |
+| Veroscholar | `veroscholar` | sub | deepseek/deepseek-v4-flash | 学术科研：文献检索、综述、实验设计、论文写作 |
+| Stock Analyst | `stock_analyst` | sub | deepseek/deepseek-v4-flash | 金融分析：行情、指标、策略研究 |
+
+**扩展科研角色**（veroscholar 发现引擎与投研分析子角色）：
+
+| 角色 | Slug | 职责 |
+|---|---|---|
+| 文献检索 | `lit_scout` | 文献发现与检索，为假设提供证据 |
+| 方法架构师 | `method_architect` | 实验 / 方法论设计 |
+| 论文匠 | `thesis_smith` | 论文写作与组装 |
+| 同行审计 | `peer_auditor` | 研究产出的独立评审与审计 |
+| 研究规划师 | `rs_planner` | 投研规划 |
+| 基本面分析师 | `rs_fundamental` | 财务报表与基本面分析 |
+| 量价分析师 | `rs_quant` | 量化 / 因子与量价分析 |
+| 风险官 | `rs_risk` | 风险 / 反方（红队）意见 |
+| 组合经理 | `rs_pm` | 综合研判与组合决策 |
+| 合规官 | `rs_compliance` | 研究合规与审计门槛 |
 
 **扩展 Agent**（经 `sub_*_prompt.md` 自动注册）：Supply Chain、Chatbot、Automation、Health Check、User、CMS、Cleaner。
 
@@ -186,6 +203,27 @@ VeroRun 将复杂任务交给一组有分工、可评审的 Agent 角色：主�
 - **语义检索**：pgvector + 关键词兜底；AI 问答带来源引用与反馈评分。
 - **工作区助手**：文档摘要、比对、溯源问答、内容分析。
 - **RBAC**：Viewer（检索 / 问答）/ Editor（上传 / 编辑）/ Owner（管理项目与成员）。
+
+### veroscholar 假设发现引擎
+
+`veroscholar`（v1.11.x）在学术科研之上新增**假设发现引擎（Discovery Engine）**，把开放式研究问题转化为有证据支撑、可排序的假设集合：
+
+- **流水线**：生成候选假设 → 多源证据召回 → 经 **Elo 锦标赛**排序 → 关键词聚类 → 三轮推演（生成 / 批判 / 进化）→ 最终裁决 → 落库。
+- **能力边界**：当前产物为候选假设集合 + Elo 排名 + 推演记录，不声称具备结构化可证伪检验（后续阶段预留）。
+- **存储**：6 张发现数据表（`discovery_runs` / `hypotheses` / `hypothesis_votes` / `hypothesis_discussions` / `discovery_events` / `discovery_memory`），全部幂等、无 pgvector 依赖。
+- **执行**：同步路径 + 7 个自定义 DAG 节点（`veroscholar_discovery_*`）与「假设发现锦标赛」工作流蓝图（异步依赖 orchestrator，引擎不可用时自动降级同步）。
+- **开关**：默认关闭（`discovery_enabled=false`）；关闭时所有 discovery API 返回 403，DAG 节点零副作用。
+- **LLM**：模型调用统一走 `agent_matrix` tier 模型解析 + UnifiedLLM（按模块记账）。
+
+### stock_analysis v2
+
+金融分析插件 `stock_analysis` 在三个架构级硬伤修复之上发布 v2.0.0：
+
+- **细粒度权限**：以 `stock.read` / `stock.write` / `stock.admin` 三级模型取代原先的一刀切 admin 校验，覆盖每个端点；JWT 携带用户权限列表。
+- **MCP 升级**：Provider 接入支持 MCP **Streamable HTTP** 传输，同时保持对 stdio 的向后兼容。
+- **显式复权语义**：复权因子引擎 + 除权事件表（`sa_corp_action`、`sa_adj_factor`），消除此前的前视 / 除权口径歧义。
+
+v2 另外补齐一整套研究栈（源自专项实施方案）：`secmaster` 符号解析、**Provider v2 契约**（`base_v2.py` / 带 provenance 的 `FetchResult`）、FMP / Polygon / 终端 / 用户自定义数据源、证据包防幻觉层、财务标准化（TTM / 杜邦 / Beneish M-Score / Altman Z）、估值模型（DCF / 反向 DCF / 可比 / PB-ROE）、因子实验台（六条回测铁律）、以及合规审计框架（审批流 / 静默期 / 审计留痕）。
 
 ### 可视化工作流引擎
 
@@ -249,7 +287,7 @@ VeroRun 将复杂任务交给一组有分工、可评审的 Agent 角色：主�
 
 | 领域 | 插件 |
 |---|---|
-| 知识管理 | `chatbot`、`memory_engine`、`project_workspace` |
+| 知识管理 | `chatbot`、`memory_engine`、`cogevolution_substrate`、`project_workspace`、`veroscholar`（含假设发现引擎） |
 | 内容传播 | `content_factory`、`site_builder`、`mini_app_builder`、`ads`、`social_push` 等 |
 | 商业经营 | `shop`、`payment`、`logistics`、`subscription`、`coupons` 等 |
 | 通信协作 | `im_gateway`、`email`、`sms`、`oauth_config` |
@@ -306,7 +344,7 @@ verorun-pro/
 ├── auth-center/            # 共享鉴权/模型/服务/路由（共享代码库）
 ├── main_site/              # 主站后端（8081）
 ├── agent_matrix/           # AI 引擎：多 Agent 编排
-│   ├── roles/              # 9 角色 YAML 定义
+│   ├── roles/              # 21 角色 YAML 定义
 │   ├── prompts/            # 动态提示词种子（15 个 .md，运行时从 agent_prompts 表加载）
 │   ├── prompt_resolver.py  # 动态提示词调度引擎
 │   ├── engine.py           # UnifiedLLM 网关 + 预算 + 配额
@@ -371,3 +409,13 @@ VeroRun 采用**源码可见（Source-Available）的专有许可**，依据 [Ve
 **与 VeroGuard 的一致性**：VeroGuard 的健康监控、完整性校验、自我保护与远程命令等能力，是 EULA 第 2.2 条（禁止反编译二进制）与第 3 条（禁止移除授权/DRM 机制）的落地执行，用于守护本许可的授权边界与商业资产。EULA 专有许可使资产守护机制在法律上自洽。
 
 Copyright (c) 2024-2026 VeroRun AI. All rights reserved. 详见 [LICENSE](LICENSE)。
+
+---
+
+## 本地开发工具
+
+### 本地开发工具（不进入版本控制）
+
+- `tools/dev_insight/` 是一个**仅本地**的开发辅助工具，用于分析 VeroRun 架构（系统核心 + 业务插件），产出 JSON / Markdown / HTML 报告，以及面向 AI 助手的精简版 `AI_CONTEXT.md`。
+- 已通过 `.git/info/exclude` **从 Git 排除**；请**不要**提交它或其 `out/` 产物。
+- 使用：`python tools/dev_insight/insight.py`

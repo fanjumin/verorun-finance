@@ -13,3 +13,25 @@ Analyzing...: 分析中...
 Signal: 信号
 Analysis failed: 分析失败
 Request failed: 请求失败
+Data sources: 数据来源
+Watchlist: 标的池
+Batch Analysis: 批量分析
+Add: 添加
+Alias: 别名
+Run: 运行
+Query: 查询
+Total: 共
+Delete: 删除
+No watchlist items yet.: 标的池暂无标的。
+No results.: 暂无结果。
+Running...: 运行中...
+Symbols (comma separated, empty = watchlist): 标的（逗号分隔，空则用标的池）
+Run ID: 运行批次
+Stock code: 股票代码
+Tushare Token: Tushare Token（可选）
+Data source environment: 数据源环境
+akshare not installed: akshare 未安装，北交所等数据源不可用
+Install akshare: 安装 akshare
+Installing...: 安装中，可能需要几分钟...
+Install success: akshare 安装成功
+Install failed: akshare 安装失败

@@ -1,0 +1,863 @@
+window.MARKET=window.MARKET||'{{ MARKET|default('cn') }}';
+/* ── 用户版插件商店（消费端）：浏览 / 订阅购买 / My Subscriptions / 评价 ──
+   官方/用户双界面分离：本文件官方版不加载，仅含消费功能，无任何商店管理代码。 */
+window.l_plugins_store=function(){
+  document.getElementById("pt").textContent="{{ _('Plugin Store') }}";
+  _loadDistCats(); /* v1.8：预取分类注册表（失败静默，前端回落内置 map） */
+  var mc=document.getElementById("mc");
+  mc.innerHTML='<div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;border-bottom:1px solid var(--bd);padding-bottom:8px">'+
+    '<button class="btn bp" id="storeTabBrowse" onclick="switchStoreTab(\'browse\')">{{ _('Plugin Store') }}</button>'+
+    '<button class="btn bo" id="storeTabSubs" onclick="switchStoreTab(\'subs\')">{{ _('My Subscriptions') }}</button>'+
+    '</div><div id="storeTabContent"></div>';
+  switchStoreTab('browse');
+};
+/* ⚠️ 本版**刻意不提供**「商店管理」入口（与官方版的产品边界一致）。
+   管理面 GET /store/admin、POST /store/admin/categories、
+   GET|PUT /store/admin/distribution/<id> 全部由 _require_store_admin() 守卫：
+   「官方版 ∧ super_admin」双条件（VR-SEC-014，plugin_manager/routes.py:77-94）。
+   非官方版无论角色一律 403（"商店运营仅官方端可用"）—— 无官方 Ed25519 凭证，
+   伪造无效。故在用户版暴露这些面板只会得到 403 空白页。
+   用户版真正能落地的 v1.8 同步是**展示层动态分类**：分类注册表走公开只读端点
+   /store/categories（routes.py:4859，无鉴权），供 _catGrad/_catIcon 渲染卡片横幅。 */
+function switchStoreTab(tab){
+  var b=document.getElementById("storeTabBrowse");
+  var s=document.getElementById("storeTabSubs");
+  if(b){b.className=tab==='browse'?'btn bp':'btn bo';}
+  if(s){s.className=tab==='subs'?'btn bp':'btn bo';}
+  var content=document.getElementById("storeTabContent");
+  if(!content)return;
+  if(tab==='subs'){renderSubscriptionList(content);}
+  else{renderStoreList(content);}
+}
+function renderStoreList(container){
+  var mc=container||document.getElementById("subview")||document.getElementById("mc");
+  mc.innerHTML='<div class="lo"><div class="s"></div>{{ _('Loading') }}...</div>';
+  var q=document.getElementById("storeSearch")?document.getElementById("storeSearch").value:'';
+  var cat=document.getElementById("storeCategory")?document.getElementById("storeCategory").value:'';
+  var pt=document.getElementById("storePrice")?document.getElementById("storePrice").value:'';
+  var sort=document.getElementById("storeSort")?document.getElementById("storeSort").value:'downloads';
+  var url="/admin/plugins/store/browse?q="+encodeURIComponent(q)+"&category="+encodeURIComponent(cat)+"&price_type="+encodeURIComponent(pt)+"&sort_by="+encodeURIComponent(sort)+"&page_size=100";
+  fetch(url,{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success){mc.innerHTML='<div class="em">{{ _('Load failed') }}: '+esc(d.error||'')+'</div>';return}
+    var plugins=d.data.plugins||[];
+    var h='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">';
+    h+='<div style="display:flex;gap:8px;align-items:center">';
+    h+='<input class="in" id="storeSearch" placeholder="{{ _('Search') }}..." style="width:200px" onkeydown="if(event.key===\'Enter\')renderStoreList()">';
+    h+='<select class="in" id="storeCategory" onchange="renderStoreList()"><option value="">{{ _('All Categories') }}</option><option value="system">{{ _('System') }}</option><option value="shop">{{ _('Shop') }}</option><option value="content">{{ _('Content') }}</option><option value="ai_agent">{{ _('AI Agent') }}</option><option value="social">{{ _('Social') }}</option><option value="tools">{{ _('Tools') }}</option><option value="supply_chain">{{ _('Supply Chain') }}</option></select>';
+    h+='<select class="in" id="storePrice" onchange="renderStoreList()"><option value="">{{ _('All') }}</option><option value="free">{{ _('Free') }}</option><option value="sub">{{ _('Subscription') }}</option></select>';
+    h+='<select class="in" id="storeSort" onchange="renderStoreList()"><option value="downloads">{{ _('Most Downloaded') }}</option><option value="rating">{{ _('Highest Rated') }}</option><option value="newest">{{ _('Newest') }}</option><option value="price_asc">{{ _('Price: Low to High') }}</option><option value="price_desc">{{ _('Price: High to Low') }}</option></select>';
+    h+='</div>';
+    h+='<span style="font-size:13px;color:var(--text-muted)">{{ _('Total') }}: '+((d.data&&d.data.total)||plugins.length)+'</span>';
+    h+='</div>';
+    if(plugins.length===0){
+      h+='<div class="empty-state"><div style="margin-bottom:12px;font-size:40px">🧩</div><div style="color:var(--dim)">{{ _('No plugins in store') }}</div></div>';
+      mc.innerHTML=h;return
+    }
+    h+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">';
+    plugins.forEach(function(p){
+      var priceSymbol = window.MARKET === 'intl' ? '$' : '¥';
+      var priceLabel=p.price_type==='free'?'{{ _('Free') }}': (p.price_type==='onetime'?'{{ _('Subscription only') }}': priceSymbol+(p.price_amount/100).toFixed(2)+(p.price_interval==='year'?'/yr':p.price_interval==='month'?'/mo':''));
+      var priceClass=p.price_type==='free'?'on':'';
+      var vHtml='v'+esc(p.version);
+      if(p.has_update){
+        vHtml+=' <span class="bdg" style="background:rgba(63,185,80,.15);color:#3fb950">&#x1F504; v'+esc(p.latest_version||p.version)+' {{ _('Upgrade available') }}</span>';
+      }
+      var iconHtml='';
+      if(p.icon_url){
+        iconHtml='<div onclick="showPluginDetail(\''+escAttr(p.identifier)+'\')" style="cursor:pointer;position:relative;width:100%;height:120px;overflow:hidden;border-radius:6px 6px 0 0;margin:-1rem -1rem 0.5rem -1rem;width:calc(100% + 2rem)">'+
+          '<img src="'+escAttr(p.icon_url)+'" style="width:100%;height:100%;object-fit:cover;display:block" '+
+          'onerror="_giteeIconFallback(this,\''+escAttr(p.identifier)+'\',\''+escAttr(p.category)+'\')">'+
+          '<div style="position:absolute;left:0;right:0;bottom:0;height:60%;background:linear-gradient(to top,rgba(0,0,0,.38),transparent);pointer-events:none"></div>'+
+          _pluginTaglineHtml(p)+
+          '</div>';
+      }else{
+        iconHtml=_pluginBanner(p,120,true);
+      }
+      h+='<div class="cd" style="display:flex;flex-direction:column">';
+      h+=iconHtml;
+      h+='<div style="font-size:15px;font-weight:600;margin-bottom:4px">'+esc(p.name)+' <span style="font-size:11px;color:var(--dim)">'+vHtml+'</span></div>';
+      h+='<div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;margin-top:2px">'+devBadge(p)+'</div>';
+      h+='<div style="font-size:12px;color:var(--dim);margin-bottom:8px;flex:1;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">'+esc(p.description||'')+'</div>';
+      var avgRating=(p._reviews&&p._reviews.average)||p.rating||0;
+      var reviewTotal=(p._reviews&&p._reviews.total)||p.review_count||0;
+      h+='<div style="margin-top:4px;margin-bottom:4px">'+renderStars(avgRating,reviewTotal)+'</div>';
+      h+='<div style="display:flex;align-items:center;justify-content:space-between">';
+      h+='<span class="bdg '+priceClass+'">'+priceLabel+'</span>';
+      h+='<div style="display:flex;gap:4px;align-items:center">';
+      h+='<button class="btn bo bs" onclick="showPluginDetail(\''+escAttr(p.identifier)+'\')">{{ _('Details') }}</button>';
+      if(p.installed){
+        h+='<span class="bdg" style="background:rgba(88,166,255,.12);color:#58a6ff">{{ _('Installed') }}</span>';
+      }
+      h+='</div></div></div>';
+    });
+    h+='</div>';
+    mc.innerHTML=h;
+  }).catch(function(){mc.innerHTML='<div class="em">{{ _('Network error') }}</div>'});
+}
+function storeInstallPlugin(id){
+  showConfirm("{{ _('Install Plugin') }}","{{ _('Install plugin?') }} <b>"+esc(id)+"</b>",function(){
+    fetch("/admin/plugins/store/"+encodeURIComponent(id)+"/install",{method:"POST",headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+      if(d.success){
+        if(d.data&&d.data.needs_restart){
+          showToast(esc(id)+" {{ _('Enabled') }} — {{ _('Restarting service') }}","success");
+          setTimeout(function(){location.reload()},3500);
+        }else{
+          showToast(esc(id)+" {{ _('Installed') }}","success");
+          renderStoreList&&renderStoreList();
+        }
+      }
+      else{showToast(d.error||"{{ _('Install failed') }}","error")}
+    }).catch(function(){showToast("{{ _('Network error') }}","error")});
+  },"{{ _('Install') }}");
+}
+
+/* ── Store upgrade (online update) ─────────────────── */
+function storeUpgradePlugin(id){
+  showConfirm("{{ _('Upgrade Plugin') }}","{{ _('Upgrade to latest version?') }} <b>"+esc(id)+"</b>",function(){
+    fetch("/admin/plugins/store/"+encodeURIComponent(id)+"/upgrade",{method:"POST",headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+      if(!d.success){showToast(d.error||"{{ _('Upgrade failed') }}","error");return}
+      var oldV=d.data.old_version||'';
+      var newV=d.data.new_version||'';
+      var msg=esc(id)+" v"+oldV+" → v"+newV;
+      if(d.data.needs_restart){msg+=" ({{ _('Restarting service') }})"}
+      showToast(msg,"success");
+      setTimeout(function(){renderStoreList&&renderStoreList()},1500);
+    }).catch(function(){showToast("{{ _('Network error') }}","error")});
+  },"{{ _('Upgrade') }}");
+}
+
+/* ── Store uninstall (remove installed plugin) ─────────────── */
+function storeUninstallPlugin(id){
+  showConfirm("{{ _('Uninstall Plugin') }}","{{ _('Are you sure you want to uninstall') }} <b>"+esc(id)+"</b>?",function(){
+    fetch("/admin/plugins/"+encodeURIComponent(id)+"/uninstall",{method:"POST",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify({confirm:true})}).then(function(r){return r.json()}).then(function(d){
+      if(d.success){showToast(esc(id)+" {{ _('Uninstalled') }}","success");closePluginDetail();renderStoreList&&renderStoreList()}
+      else{showToast(d.error||"{{ _('Uninstall failed') }}","error")}
+    }).catch(function(){showToast("{{ _('Network error') }}","error")});
+  },"{{ _('Uninstall') }}");
+}
+
+/* ── License Management ── */
+window.l_plugins_licenses=function(){
+  document.getElementById("pt").textContent="{{ _('License Management') }}";
+  renderLicenseList();
+};
+function renderLicenseList(container){
+  var mc=container||document.getElementById("subview")||document.getElementById("mc");
+  mc.innerHTML='<div class="lo"><div class="s"></div>{{ _('Loading') }}...</div>';
+  fetch("/admin/plugins/licenses",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success){mc.innerHTML='<div class="em">{{ _('Load failed') }}: '+esc(d.error||'')+'</div>';return}
+    var licences=d.data.licenses||[];
+    var h='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">';
+    h+='<span style="font-size:13px;color:var(--text-muted)">{{ _('Total') }}: '+licences.length+'</span>';
+    h+='<button class="btn bp" onclick="showActivateForm()">🔑 {{ _('Activate License') }}</button>';
+    h+='</div>';
+    if(licences.length===0){
+      h+='<div class="empty-state"><div style="margin-bottom:12px;font-size:40px">🔑</div><div style="color:var(--dim)">{{ _('No licenses activated yet') }}</div><br><button class="btn bp" onclick="showActivateForm()">{{ _('Activate Now') }}</button></div>';
+    }else{
+      h+='<table style="width:100%;font-size:13px">';
+      h+='<tr><th style="text-align:left;padding:8px 12px">{{ _('Plugin') }}</th><th style="text-align:left;padding:8px 12px">{{ _('License Key') }}</th><th style="text-align:center;padding:8px 12px">{{ _('Type') }}</th><th style="text-align:center;padding:8px 12px">{{ _('Status') }}</th><th style="text-align:center;padding:8px 12px">{{ _('Expires') }}</th><th style="text-align:center;padding:8px 12px">{{ _('Actions') }}</th></tr>';
+      var statusMap={
+        'active':'<span class="bdg on">{{ _('Active') }}</span>',
+        'inactive':'<span class="bdg off">{{ _('Inactive') }}</span>',
+        'expired':'<span class="bdg" style="background:rgba(248,81,73,.12);color:#f85149">{{ _('Expired') }}</span>',
+        'revoked':'<span class="bdg" style="background:rgba(248,81,73,.12);color:#f85149">{{ _('Revoked') }}</span>',
+        'pending':'<span class="bdg off">{{ _('Pending') }}</span>',
+        'grace':'<span class="bdg" style="background:rgba(240,192,64,.12);color:#f0c040">{{ _('Grace') }}</span>',
+      };
+      licences.forEach(function(l){
+        var st=statusMap[l.license_status]||esc(l.license_status);
+        h+='<tr>';
+        h+='<td style="padding:10px 12px;font-weight:600">'+esc(l.plugin_id)+'</td>';
+        h+='<td style="padding:10px 12px;font-family:monospace;font-size:12px;color:var(--dim)">'+esc(l.license_key.slice(0,16)+'...')+'</td>';
+        h+='<td style="padding:10px 12px;text-align:center">'+esc(l.license_type)+'</td>';
+        h+='<td style="padding:10px 12px;text-align:center">'+st+'</td>';
+        h+='<td style="padding:10px 12px;text-align:center;font-size:12px;color:var(--dim)">'+(l.expires_at?esc(l.expires_at.slice(0,10)):'-')+'</td>';
+        h+='<td style="padding:10px 12px;text-align:center">';
+        if(l.license_status==='active'||l.license_status==='grace'){
+          h+='<button class="btn bo bs" onclick="deactivateLicense(\''+escAttr(l.plugin_id)+'\')">{{ _('Deactivate') }}</button>';
+        }
+        h+='</td></tr>';
+      });
+      h+='</table>';
+    }
+    h+='<div id="licenseActionBox" style="margin-top:16px"></div>';
+    mc.innerHTML=h;
+  }).catch(function(){mc.innerHTML='<div class="em">{{ _('Network error') }}</div>'});
+}
+function showActivateForm(){
+  var box=document.getElementById("licenseActionBox");
+  box.innerHTML='<div class="cd"><div class="st">🔑 {{ _('Activate License') }}</div>'+
+    '<div style="margin:12px 0"><label style="display:block;font-size:12px;margin-bottom:4px">{{ _('Plugin ID') }}</label><input class="in" id="licPluginId" placeholder="e.g. coupons" style="width:100%"></div>'+
+    '<div style="margin:12px 0"><label style="display:block;font-size:12px;margin-bottom:4px">{{ _('License Key') }}</label><input class="in" id="licKey" placeholder="XXXXX-XXXXX-XXXXX" style="width:100%"></div>'+
+    '<div style="margin:12px 0"><label style="display:block;font-size:12px;margin-bottom:4px">{{ _('Email (optional)') }}</label><input class="in" id="licEmail" placeholder="customer@example.com" style="width:100%"></div>'+
+    '<button class="btn bp" onclick="submitActivateLicense()">{{ _('Activate') }}</button>'+
+    '<button class="btn bo" style="margin-left:8px" onclick="document.getElementById(\'licenseActionBox\').innerHTML=\'\'">{{ _('Cancel') }}</button></div>';
+}
+function submitActivateLicense(){
+  var pid=document.getElementById("licPluginId").value.trim();
+  var key=document.getElementById("licKey").value.trim();
+  var email=document.getElementById("licEmail").value.trim();
+  if(!pid||!key){showToast("{{ _('Plugin ID and License Key required') }}","error");return}
+  var btn=document.querySelector('#licenseActionBox .bp');
+  if(btn){btn.textContent="{{ _('Activating') }}...";btn.disabled=true}
+  fetch("/admin/plugins/license/activate",{method:"POST",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify({plugin_id:pid,license_key:key,customer_email:email})}).then(function(r){return r.json()}).then(function(d){
+    if(btn){btn.textContent="{{ _('Activate') }}";btn.disabled=false}
+    if(d.success){showToast("{{ _('License activated') }}","success");document.getElementById("licenseActionBox").innerHTML='';renderLicenseList()}
+    else{showToast(d.error||"{{ _('Activation failed') }}","error")}
+  }).catch(function(){if(btn){btn.textContent="{{ _('Activate') }}";btn.disabled=false}showToast("{{ _('Network error') }}","error")});
+}
+function deactivateLicense(pid){
+  if(!confirm("{{ _('Deactivate license for') }} "+esc(pid)+" ?"))return;
+  fetch("/admin/plugins/license/"+encodeURIComponent(pid)+"/deactivate",{method:"POST",headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){showToast("{{ _('License deactivated') }}","success");renderLicenseList()}
+    else{showToast(d.error||"{{ _('Deactivation failed') }}","error")}
+  }).catch(function(){showToast("{{ _('Network error') }}","error")});
+}
+
+/* ── Subscribe Dialog（用户版全订阅制：无一次性买断）── */
+var purchasePollTimer=null;
+function showPurchaseDialog(btn){
+  var pid=btn.getAttribute("data-pid");
+  var ptype=btn.getAttribute("data-ptype");
+  if(ptype!=='sub'){showToast("{{ _('Subscription only') }}","warn");return}
+  var name=btn.getAttribute("data-name");
+  var amount=parseInt(btn.getAttribute("data-amount"))||0;
+  var pquarter=parseInt(btn.getAttribute("data-pquarter"))||0;
+  var pyear=parseInt(btn.getAttribute("data-pyear"))||0;
+  var pinterval=btn.getAttribute("data-pinterval")||'month';
+  if(pinterval==='onetime'){pinterval='month';}
+  var mc=document.getElementById("subview")||document.getElementById("mc");
+  var ps = window.MARKET === 'intl' ? '$' : '¥';
+  var sel=function(iv){return iv===pinterval?' selected':''};
+  var cycleHtml=
+    '<option value="month"'+sel('month')+'>{{ _('Monthly') }} '+ps+(amount/100).toFixed(2)+'</option>'+
+    (pquarter>0?'<option value="quarter"'+sel('quarter')+'>{{ _('Quarterly') }} '+ps+(pquarter/100).toFixed(2)+'</option>':'')+
+    (pyear>0?'<option value="year"'+sel('year')+'>{{ _('Yearly') }} '+ps+(pyear/100).toFixed(2)+'</option>':'');
+  var isIntl = window.MARKET === 'intl';
+  var channelOptions = isIntl
+    ? '<option value="stripe">Stripe (Card)</option><option value="paypal">PayPal</option>'
+    : '<option value="alipay">{{ _('Alipay') }}</option><option value="wechat">{{ _('WeChat Pay') }}</option>';
+  mc.innerHTML='<div class="cd"><div class="st">🛒 {{ _('Subscribe') }}: '+esc(name)+'</div>'+
+    '<div style="margin:16px 0"><table style="width:100%;font-size:13px">'+
+    '<tr><td style="padding:8px 12px;color:var(--dim)">{{ _('Plugin') }}</td><td style="padding:8px 12px;font-weight:600">'+esc(name)+'</td></tr>'+
+    '<tr><td style="padding:8px 12px;color:var(--dim)">{{ _('Subscription Cycle') }}</td><td style="padding:8px 12px"><select class="in" id="subInterval" style="width:100%">'+cycleHtml+'</select></td></tr>'+
+    '<tr><td style="padding:8px 12px;color:var(--dim)">{{ _('Payment') }}</td><td style="padding:8px 12px"><select class="in" id="purchaseChannel">'+channelOptions+'</select></td></tr>'+
+    '<tr><td style="padding:8px 12px;color:var(--dim)">{{ _('Email') }}</td><td style="padding:8px 12px"><input class="in" id="purchaseEmail" placeholder="customer@example.com" style="width:250px"></td></tr>'+
+    '<tr><td style="padding:8px 12px;color:var(--dim)">{{ _('Coupon') }}</td><td style="padding:8px 12px"><div style="display:flex;gap:8px"><input class="in" id="couponCode" placeholder="{{ _('Discount code') }}" style="width:180px"><button class="btn bo bs" onclick="validateCoupon(\''+escAttr(pid)+'\','+amount+')">{{ _('Apply') }}</button></div><div id="couponResult" style="font-size:12px;margin-top:4px"></div></td></tr>'+
+    '</table></div>'+
+    '<div style="display:flex;gap:12px">'+
+    '<button class="btn bp" onclick="submitPurchase(\''+escAttr(pid)+'\')">💳 {{ _('Subscribe Now') }}</button>'+
+    '<button class="btn bo" onclick="renderStoreList()">{{ _('Cancel') }}</button>'+
+    '</div><div id="purchaseResult" style="margin-top:16px"></div></div>';
+}
+function validateCoupon(pid, amountFen){
+  var code=document.getElementById("couponCode").value.trim();
+  var cr=document.getElementById("couponResult");
+  if(!code){cr.innerHTML='';return}
+  cr.innerHTML='<div class="lo"><div class="s"></div></div>';
+  fetch("/admin/plugins/coupons/validate",{method:"POST",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify({code:code,plugin_id:pid,amount_fen:amountFen})}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){
+      var ds=d.data;
+      cr.innerHTML='<span style="color:var(--on)">✅ {{ _('Discount') }}: '+(ds.discount_type==='percentage'?ds.discount_value+'%':(window.MARKET==='intl'?'$':'¥')+(ds.discount_fen/100).toFixed(2))+'</span>';
+    }else{
+      cr.innerHTML='<span style="color:#f85149">❌ '+esc(d.error||'{{ _('Invalid') }}')+'</span>';
+    }
+  }).catch(function(){cr.innerHTML='<span style="color:#f85149">❌ {{ _('Check failed') }}</span>'});
+}
+function submitPurchase(pid){
+  var email=document.getElementById("purchaseEmail").value.trim();
+  var channel=document.getElementById("purchaseChannel").value;
+  var interval=document.getElementById("subInterval")?document.getElementById("subInterval").value:'month';
+  var coupon=document.getElementById("couponCode").value.trim();
+  var resultBox=document.getElementById("purchaseResult");
+  resultBox.innerHTML='<div class="lo"><div class="s"></div>{{ _('Creating order') }}...</div>';
+  var btn=document.querySelector('#purchaseResult').parentElement.querySelector(".bp");
+  if(btn){btn.disabled=true;btn.textContent="{{ _('Processing') }}...";}
+  var body={channel:channel,customer_email:email,interval:interval,price_type:'sub'};
+  if(coupon){body.coupon_code=coupon}
+  fetch("/admin/plugins/store/"+encodeURIComponent(pid)+"/purchase",{method:"POST",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify(body)}).then(function(r){return r.json()}).then(function(d){
+    if(btn){btn.disabled=false;btn.textContent="💳 {{ _('Subscribe Now') }}";}
+    if(!d.success){
+      if(d.error==='Plugin already licensed'){
+        resultBox.innerHTML='<div class="on" style="padding:12px">{{ _('Plugin already licensed') }}. <button class="btn bo bs" onclick="renderStoreList()">{{ _('Back') }}</button></div>';
+      }else{
+        resultBox.innerHTML='<div class="em">{{ _('Purchase failed') }}: '+esc(d.error||'')+'</div>';
+      }
+      return
+    }
+    var data=d.data;
+    var h='<div style="margin-top:12px">';
+    if(data.redirect_url){
+      h+='<div class="st">{{ _('Redirect to payment') }}</div>'+
+        '<div style="text-align:center;padding:20px">'+
+        '<a href="'+escAttr(data.redirect_url)+'" target="_blank" class="btn bp bs">{{ _('Go to Pay') }}</a>'+
+        '</div>';
+    }else if(data.qr_code){
+      var qrUrl='https://api.qrserver.com/v1/create-qr-code/?size=200x200&data='+encodeURIComponent(data.qr_code);
+      var channelLabel=data.channel==='wechat'?'{{ _('WeChat Pay') }}':'{{ _('Alipay') }}';
+      h+='<div class="st" style="margin-bottom:12px">{{ _('Scan to pay') }}</div>'+
+        '<div style="text-align:center;padding:16px;background:var(--bg-secondary);border-radius:8px;margin-bottom:12px">'+
+        '<div style="font-size:13px;color:var(--dim);margin-bottom:8px">'+channelLabel+'</div>'+
+        '<img src="'+qrUrl+'" style="width:180px;height:180px;border-radius:6px;background:#fff;padding:8px" alt="{{ _('QR Code') }}">'+
+        '</div>';
+    }
+    if(data.discount_fen>0){
+      var ps=window.MARKET==='intl'?'$':'¥';
+      h+='<div style="font-size:12px;color:var(--on);margin-bottom:4px">{{ _('Discount applied') }}: -'+ps+(data.discount_fen/100).toFixed(2)+'</div>';
+    }
+    h+='<div style="font-size:12px;color:var(--dim)">{{ _('Order No') }}: '+esc(data.order_no)+'</div>'+
+      '<div id="paymentPollResult" style="margin-top:8px;font-size:13px;color:var(--dim)">{{ _('Waiting for payment') }}...</div></div>';
+    resultBox.innerHTML=h;
+    if(purchasePollTimer)clearInterval(purchasePollTimer);
+    purchasePollTimer=setInterval(function(){checkPaymentStatus(data.order_no,resultBox)},3000);
+  }).catch(function(){if(btn){btn.disabled=false;btn.textContent="💳 {{ _('Subscribe Now') }}";}resultBox.innerHTML='<div class="em">{{ _('Network error') }}</div>'});
+}
+function checkPaymentStatus(orderNo,resultBox){
+  if(!resultBox)resultBox=document.getElementById("paymentPollResult");
+  if(!resultBox)return;
+  var pr=document.getElementById("paymentPollResult");
+  fetch("/admin/plugins/payment/"+encodeURIComponent(orderNo)+"/status",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success||!d.data)return;
+    var status=d.data.status;
+    if(status==='paid'){
+      if(purchasePollTimer){clearInterval(purchasePollTimer);purchasePollTimer=null}
+      pr.innerHTML='<div class="on" style="padding:12px">✅ {{ _('Payment successful! Subscription active.') }}<br><button class="btn bo bs" style="margin-top:8px" onclick="renderStoreList()">{{ _('Back to Store') }}</button></div>';
+    }else if(status==='failed'||status==='expired'){
+      if(purchasePollTimer){clearInterval(purchasePollTimer);purchasePollTimer=null}
+      pr.innerHTML='<div class="em">{{ _('Payment') }} '+esc(status)+'</div>';
+    }
+  }).catch(function(){});
+}
+
+/* ── Subscriptions Management ── */
+window.l_plugins_subscriptions=function(){
+  document.getElementById("pt").textContent="{{ _('Subscriptions') }}";
+  renderSubscriptionList();
+};
+function renderSubscriptionList(container){
+  var mc=container||document.getElementById("subview")||document.getElementById("mc");
+  mc.innerHTML='<div class="lo"><div class="s"></div>{{ _('Loading') }}...</div>';
+  fetch("/admin/plugins/subscriptions",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success){mc.innerHTML='<div class="em">{{ _('Load failed') }}: '+esc(d.error||'')+'</div>';return}
+    var subs=d.data.subscriptions||[];
+    var h='<div style="margin-bottom:16px"><span style="font-size:13px;color:var(--text-muted)">{{ _('Total') }}: '+subs.length+'</span></div>';
+    if(subs.length===0){
+      h+='<div class="empty-state"><div style="margin-bottom:12px;font-size:40px">📋</div><div style="color:var(--dim)">{{ _('No subscriptions') }}</div></div>';
+    }else{
+      h+='<table style="width:100%;font-size:13px">';
+      h+='<tr><th style="text-align:left;padding:8px 12px">{{ _('Plugin') }}</th><th style="text-align:center;padding:8px 12px">{{ _('Interval') }}</th><th style="text-align:center;padding:8px 12px">{{ _('Amount') }}</th><th style="text-align:center;padding:8px 12px">{{ _('Status') }}</th><th style="text-align:center;padding:8px 12px">{{ _('Period End') }}</th><th style="text-align:center;padding:8px 12px">{{ _('Auto') }}</th><th style="text-align:center;padding:8px 12px">{{ _('Actions') }}</th></tr>';
+      var statusMap={
+        'active':'<span class="bdg on">{{ _('Active') }}</span>',
+        'canceled':'<span class="bdg off">{{ _('Canceled') }}</span>',
+        'expired':'<span class="bdg" style="background:rgba(248,81,73,.12);color:#f85149">{{ _('Expired') }}</span>',
+        'suspended':'<span class="bdg" style="background:rgba(240,192,64,.12);color:#f0c040">{{ _('Suspended') }}</span>',
+      };
+      subs.forEach(function(s){
+        var st=statusMap[s.status]||esc(s.status);
+        var intervalTxt = s.interval_type==='month'?'{{ _('Monthly') }}':s.interval_type==='quarter'?'{{ _('Quarterly') }}':'{{ _('Yearly') }}';
+        var badge='';
+        if(s.bundle_id){badge=' <span class="bdg" style="background:rgba(123,101,235,.15);color:#7b65eb">📦 '+esc(s.bundle_id)+'</span>';}
+        else if(s.tier){badge=' <span class="bdg off">'+esc(s.tier)+'</span>';}
+        var daysLeft='-';
+        if(s.current_period_end&&s.status==='active'){
+          var endT=new Date(s.current_period_end.replace(' ','T')).getTime();
+          var dl=Math.ceil((endT-Date.now())/86400000);
+          daysLeft = dl>0 ? dl+' {{ _('Days Left') }}' : (dl===0?'{{ _('Today') }}':'<span style="color:#f85149">'+dl+'d</span>');
+        }
+        h+='<tr>';
+        h+='<td style="padding:10px 12px;font-weight:600">'+esc(s.plugin_id)+badge+'</td>';
+        h+='<td style="padding:10px 12px;text-align:center">'+intervalTxt+'</td>';
+        h+='<td style="padding:10px 12px;text-align:center">'+(window.MARKET==='intl'?'$':'¥')+(s.amount_fen/100).toFixed(2)+'</td>';
+        h+='<td style="padding:10px 12px;text-align:center">'+st+'</td>';
+        h+='<td style="padding:10px 12px;text-align:center;font-size:12px;color:var(--dim)">'+(s.current_period_end?esc(s.current_period_end.slice(0,10)):'-')+'<br>'+daysLeft+'</td>';
+        h+='<td style="padding:10px 12px;text-align:center">'+(s.auto_renew?'✅':'❌')+'</td>';
+        h+='<td style="padding:10px 12px;text-align:center">';
+        if(s.status==='active'){
+          h+='<button class="btn bo bs" onclick="showChangeCycleDialog(\''+escAttr(s.plugin_id)+'\',\''+escAttr(s.interval_type)+'\')" style="margin-right:4px">🔄 {{ _('Change') }}</button>';
+          if(s.bundle_id){
+            h+='<button class="btn bo bs" onclick="showBundleUpgradeDialog(\''+escAttr(s.bundle_id)+'\')" style="margin-right:4px">📦 {{ _('Upgrade Bundle') }}</button>';
+          }
+          h+='<button class="btn bo bs" onclick="cancelSubscription(\''+escAttr(s.plugin_id)+'\')" style="margin-right:4px">{{ _('Cancel') }}</button>';
+          h+='<button class="btn bo bs" onclick="renewSubscription(\''+escAttr(s.plugin_id)+'\')">{{ _('Renew') }}</button>';
+        }
+        h+='</td></tr>';
+      });
+      h+='</table>';
+    }
+    mc.innerHTML=h;
+  }).catch(function(){mc.innerHTML='<div class="em">{{ _('Network error') }}</div>'});
+}
+function cancelSubscription(pid){
+  if(!confirm("{{ _('Cancel subscription for') }} "+esc(pid)+" ?"))return;
+  fetch("/admin/plugins/subscriptions/"+encodeURIComponent(pid)+"/cancel",{method:"POST",headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){showToast("{{ _('Subscription canceled') }}","success");renderSubscriptionList()}
+    else{showToast(d.error||"{{ _('Cancel failed') }}","error")}
+  }).catch(function(){showToast("{{ _('Network error') }}","error")});
+}
+function renewSubscription(pid){
+  fetch("/admin/plugins/subscriptions/"+encodeURIComponent(pid)+"/renew",{method:"POST",headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){showToast("{{ _('Subscription renewed') }}","success");renderSubscriptionList()}
+    else{showToast(d.error||"{{ _('Renew failed') }}","error")}
+  }).catch(function(){showToast("{{ _('Network error') }}","error")});
+}
+function showChangeCycleDialog(pid, curInterval){
+  var mc=document.getElementById("storeTabContent")||document.getElementById("subview")||document.getElementById("mc");
+  var selected = function(iv){return iv===curInterval?'selected':''};
+  mc.innerHTML='<div class="cd"><div class="st">🔄 {{ _('Change Billing Cycle') }}: '+esc(pid)+'</div>'+
+    '<div style="margin:16px 0"><table style="width:100%;font-size:13px">'+
+    '<tr><td style="padding:8px 12px;color:var(--dim)">{{ _('New Interval') }}</td>'+
+    '<td style="padding:8px 12px"><select class="in" id="changeIntervalSel" onchange="fetchChangeQuote(\''+escAttr(pid)+'\')">'+
+    '<option value="month" '+selected('month')+'>{{ _('Monthly') }}</option>'+
+    '<option value="quarter" '+selected('quarter')+'>{{ _('Quarterly') }}</option>'+
+    '<option value="year" '+selected('year')+'>{{ _('Yearly') }}</option></select></td></tr>'+
+    '</table><div id="changeQuoteBox" style="margin-top:12px;font-size:12px;color:var(--dim)"></div></div>'+
+    '<div style="display:flex;gap:12px">'+
+    '<button class="btn bp" onclick="submitChangeCycle(\''+escAttr(pid)+'\')">✔ {{ _('Confirm Change') }}</button>'+
+    '<button class="btn bo" onclick="renderSubscriptionList()">{{ _('Back') }}</button>'+
+    '</div></div>';
+  fetchChangeQuote(pid);
+}
+function fetchChangeQuote(pid){
+  var iv=document.getElementById("changeIntervalSel").value;
+  var box=document.getElementById("changeQuoteBox");
+  box.innerHTML='<div class="lo"><div class="s"></div>{{ _('Loading') }}...</div>';
+  fetch("/admin/plugins/subscriptions/"+encodeURIComponent(pid)+"/change/quote",{method:"POST",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify({interval:iv})}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success){box.innerHTML='<div class="em">'+esc(d.error||'')+'</div>';return}
+    var q=d.data,ps=window.MARKET==='intl'?'$':'¥';
+    var payTxt=q.pay_fen>0?ps+(q.pay_fen/100).toFixed(2):'<span style="color:var(--on)">0</span>';
+    box.__proration=q.credit_fen||0;
+    box.innerHTML='<div style="background:var(--bg2);padding:10px;border-radius:6px;line-height:1.9">'+
+      '<div>{{ _('New Price') }}: <b>'+ps+(q.price_fen/100).toFixed(2)+'</b></div>'+
+      '<div>{{ _('Remaining Value Credit') }}: -'+ps+(q.credit_fen/100).toFixed(2)+'</div>'+
+      (q.carryover_fen>0?'<div>{{ _('Carryover') }}: '+ps+(q.carryover_fen/100).toFixed(2)+'</div>':'')+
+      '<div>{{ _('Payable') }}: <b>'+payTxt+'</b></div>'+
+      '</div>';
+  }).catch(function(){box.innerHTML='<div class="em">{{ _('Network error') }}</div>'});
+}
+function submitChangeCycle(pid){
+  var iv=document.getElementById("changeIntervalSel").value;
+  var quoteBox=document.getElementById("changeQuoteBox");
+  var proration=0;
+  if(quoteBox&&quoteBox.__proration!==undefined){proration=quoteBox.__proration}
+  fetch("/admin/plugins/subscriptions/"+encodeURIComponent(pid)+"/change",{method:"POST",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify({interval:iv,proration_fen:proration})}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){showToast("{{ _('Billing cycle changed') }}","success");renderSubscriptionList()}
+    else{showToast(d.error||"{{ _('Change failed') }}","error")}
+  }).catch(function(){showToast("{{ _('Network error') }}","error")});
+}
+function showBundleUpgradeDialog(bundleId){
+  var mc=document.getElementById("storeTabContent")||document.getElementById("subview")||document.getElementById("mc");
+  mc.innerHTML='<div class="cd"><div class="st">📦 {{ _('Upgrade to Bundle') }}: '+esc(bundleId)+'</div>'+
+    '<div id="bundleQuoteBox" style="margin:16px 0;font-size:12px;color:var(--dim)"><div class="lo"><div class="s"></div>{{ _('Loading') }}...</div></div>'+
+    '<div style="display:flex;gap:12px">'+
+    '<button class="btn bp" onclick="renderStoreList()">{{ _('Go to Store') }}</button>'+
+    '<button class="btn bo" onclick="renderSubscriptionList()">{{ _('Back') }}</button>'+
+    '</div></div>';
+  fetch("/admin/plugins/subscriptions/bundle/"+encodeURIComponent(bundleId)+"/upgrade/quote",{method:"POST",headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    var box=document.getElementById("bundleQuoteBox");
+    if(!d.success){box.innerHTML='<div class="em">'+esc(d.error||'')+'</div>';return}
+    var q=d.data,ps=window.MARKET==='intl'?'$':'¥';
+    var bundleMonth=(q.bundle&&q.bundle.month)||0;
+    var payTxt=q.needs_payment?ps+(q.upgrade_cost_fen/100).toFixed(2):'<span style="color:var(--on)">0</span>';
+    box.innerHTML='<div style="background:var(--bg2);padding:10px;border-radius:6px;line-height:1.9">'+
+      '<div>{{ _('Bundle Price') }}: <b>'+ps+(bundleMonth/100).toFixed(2)+'/mo</b></div>'+
+      '<div>{{ _('Remaining Value Credit') }}: -'+ps+(q.credit_fen/100).toFixed(2)+'</div>'+
+      (q.carryover_fen>0?'<div>{{ _('Carryover') }}: '+ps+(q.carryover_fen/100).toFixed(2)+'</div>':'')+
+      '<div>{{ _('Payable') }}: <b>'+payTxt+'</b></div>'+
+      '<div style="margin-top:8px;color:var(--dim)">{{ _('Proceed in store checkout to complete upgrade') }}</div>'+
+      '</div>';
+  }).catch(function(){var box=document.getElementById("bundleQuoteBox");if(box){box.innerHTML='<div class="em">{{ _('Network error') }}</div>'}});
+}
+
+/* ── Star Rating Helper ── */
+function renderStars(rating, count){
+  var r=Math.round(rating||0);
+  var s='';
+  for(var i=1;i<=5;i++){
+    s+=i<=r?'★':'☆';
+  }
+  if(count!==undefined){
+    s+=' <span style="font-size:11px;color:var(--dim)">('+count+')</span>';
+  }
+  return '<span style="color:#f0c040;font-size:14px;letter-spacing:1px">'+s+'</span>';
+}
+
+/* v1.8：分类 emoji 解析器（_categoryEmoji）已抽至共享 partial
+   partials/plugins_store_dist.html —— 注册表（plugin_categories.emoji）优先，
+   未命中回落内置 map，并已修正 'tool'/'tools' 键笔误
+   （原实现缺 'tools' 键，致 category='tools' 的插件横幅恒为 🧩）。 */
+
+/* 图标加载失败兜底：渲染规范类别渐变 Banner */
+function _imgIconFallback(el, identifier, category){
+  el.parentElement.innerHTML=_pluginBanner({identifier:identifier,category:category},120,true);
+}
+
+/* 图标/截图加载失败：raw.githubusercontent.com → gitee.com 动态切换（只试一次，防循环）。 */
+function _giteeIconFallback(img, identifier, category){
+  var src=img.getAttribute('src')||'';
+  if(src.indexOf('raw.githubusercontent.com')>-1){
+    img.onerror=null; /* 防无限重试 */
+    img.src=src.replace('raw.githubusercontent.com','gitee.com').replace(/verorun-store\/([^/]+)\//,'verorun-store/raw/$1/');
+    img.onerror=function(){
+      if(identifier){_imgIconFallback(img,identifier,category)}
+      else{img.style.display='none'}
+    };
+  }else{
+    if(identifier){_imgIconFallback(img,identifier,category)}
+    else{img.style.display='none'}
+  }
+}
+
+/* 色块占位：无图标/无截图时渲染确定性色块 */
+var _PLUGIN_COLORS=['#3b82f6','#8b5cf6','#ec4899','#f59e0b','#10b981','#ef4444','#06b6d4','#84cc16','#f97316','#6366f1','#14b8a6','#d946ef'];
+function _pluginColor(id){
+  var s=String(id||''),h=0,i;
+  for(i=0;i<s.length;i++){h=((h<<5)-h+s.charCodeAt(i))|0}
+  return _PLUGIN_COLORS[Math.abs(h)%_PLUGIN_COLORS.length];
+}
+function _colorBlockHtml(id,emoji,extraStyle){
+  var st=extraStyle||'width:100%;height:120px';
+  return '<div style="'+st+';display:flex;align-items:center;justify-content:center;font-size:2.5rem;background:'+_pluginColor(id)+';color:#fff">'+emoji+'</div>';
+}
+
+/* v1.8：_CAT_GRADS / _catGrad / _CAT_ICONS / _catIcon 已抽至共享 partial
+   partials/plugins_store_dist.html —— 注册表渐变/图标优先，未命中回落内置 7 类。 */
+
+/* 字号下拉选项（14-28px 自由选择） */
+function _fontSizeOptions(cur){
+  var opts=[14,16,18,20,22,24,26,28],h='';
+  for(var i=0;i<opts.length;i++){var v=opts[i]+'px';h+='<option value="'+v+'"'+(cur===v?' selected':'')+'>'+v+'</option>';}
+  return h;
+}
+function _pluginTaglineHtml(p){
+  var tag=esc(p.tagline||'');
+  if(!tag)return '';
+  var fs=escAttr(p.tagline_font_size||'16px');
+  var tc=escAttr(p.tagline_color||'#ffffff');
+  var sub=esc(p.tagline_subtitle||'');
+  var sfs=escAttr(p.tagline_subtitle_font_size||'14px');
+  var subHtml=sub?'<span style="display:block;font-size:'+sfs+';font-weight:400;opacity:.85;margin-top:2px">'+sub+'</span>':'';
+  return '<span style="position:absolute;top:8px;left:12px;right:12px;color:'+tc+';font-size:'+fs+';font-weight:600;text-shadow:0 1px 2px rgba(0,0,0,.28);white-space:pre-line;line-height:1.3;overflow:hidden">'+tag+subHtml+'</span>';
+}
+/* ── P0-A：官方/第三方徽标（审计 P2-7 修复：用户侧商店补全） ───────── */
+function devBadge(p){
+  if(!p)return '';
+  if(p.is_official===1||p.is_official===true){
+    return '<span class="bdg" style="background:rgba(56,139,253,.12);color:#388bfd;font-size:10px">'+_('Official')+'</span>';
+  }
+  return '<span class="bdg" style="background:rgba(240,158,64,.12);color:#f09e40;font-size:10px">'+_('Third-party')+'</span>'+
+         (p.developer_org?' '+esc(p.developer_org):'');
+}
+/* 使用说明渲染：Quill 富文本（HTML）走白名单清洗；本地 USAGE.md（markdown）走简易转换 */
+function _renderUsageGuide(mdOrHtml){
+  var s=mdOrHtml||'';
+  if(/<\/?[a-z][^>]*>/i.test(s)){return _sanitizeHtml(s)}
+  return _simpleMarkdown(s);
+}
+/* 白名单 HTML 清洗（防 XSS） */
+function _sanitizeHtml(html){
+  var tmp=document.createElement('div');
+  tmp.innerHTML=html||'';
+  var allowed={'A':1,'B':1,'STRONG':1,'I':1,'EM':1,'U':1,'S':1,'OL':1,'UL':1,'LI':1,'P':1,'BR':1,'H1':1,'H2':1,'H3':1,'H4':1,'PRE':1,'CODE':1,'BLOCKQUOTE':1,'SPAN':1,'DIV':1};
+  var scrub=function(node){
+    var kids=[].slice.call(node.childNodes);
+    for(var i=0;i<kids.length;i++){
+      var k=kids[i];
+      if(k.nodeType===1){
+        if(!allowed[k.tagName.toUpperCase()]){
+          while(k.firstChild){node.insertBefore(k.firstChild,k)}
+          node.removeChild(k);
+          continue;
+        }
+        if(k.tagName.toUpperCase()==='A'){
+          var href=k.getAttribute('href')||'';
+          if(!/^https?:\/\//i.test(href)){k.removeAttribute('href')}
+          k.removeAttribute('target');k.removeAttribute('rel');
+        }
+        k.removeAttribute('onclick');k.removeAttribute('onerror');k.removeAttribute('onload');
+        k.removeAttribute('style');k.removeAttribute('class');k.removeAttribute('id');
+        scrub(k);
+      }else if(k.nodeType!==3){
+        node.removeChild(k);
+      }
+    }
+  };
+  scrub(tmp);
+  return tmp.innerHTML;
+}
+function _pluginBanner(p,h,card){
+  var grad=_catGrad(p.category||'system');
+  var bleed=card?'margin:-1rem -1rem 0.5rem -1rem;width:calc(100% + 2rem)':'width:100%';
+  return '<div onclick="showPluginDetail(\''+escAttr(p.identifier)+'\')" style="cursor:pointer;position:relative;width:100%;height:'+(h||120)+'px;border-radius:6px;'+bleed+';overflow:hidden;background:'+grad+';display:flex;align-items:center;justify-content:center;user-select:none">'
+    +_pluginTaglineHtml(p)
+    +_catIcon(p.category||'system',46)
+    +'</div>';
+}
+
+/* ── Plugin Detail Modal ── */
+var detailModal=null;
+function showPluginDetail(pid){
+  if(detailModal){detailModal.remove();detailModal=null}
+  var ov=document.createElement("div");ov.className="modal-overlay store-modal-scope";ov.style.cssText="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center";
+  var st=document.createElement("style");st.textContent=
+    '.store-modal-scope{--text:#e6edf3;--dim:#8b949e;--muted:#9aa0a6;--bg-secondary:#161b22;--border:rgba(255,255,255,.14);color:var(--text)}'+
+    '.store-modal-scope .btn{color:var(--text)}.store-modal-scope .btn:hover{color:#fff}'+
+    '.store-modal-scope .tab-item{color:var(--muted)}.store-modal-scope .tab-item.active{color:var(--text)}'+
+    '.store-modal-scope a{color:#58a6ff}'+
+    '.store-modal-scope .bdg.on{color:#3fb950}.store-modal-scope .bdg.off{color:#f85149}.store-modal-scope .bdg.pd{color:#d29922}';
+  ov.appendChild(st);
+  var box=document.createElement("div");box.className="modal-box";box.style.cssText="background:rgba(13,13,24,0.55);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid var(--border);border-radius:12px;padding:24px;max-width:640px;width:90%;max-height:80vh;overflow-y:auto;position:relative";
+  box.innerHTML='<div class="lo"><div class="s"></div>{{ _('Loading') }}...</div>';
+  ov.appendChild(box);
+  document.body.appendChild(ov);
+  detailModal=ov;
+
+  fetch("/admin/plugins/store/"+encodeURIComponent(pid),{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success){box.innerHTML='<div class="em">{{ _('Load failed') }}</div>';return}
+    var p=d.data;
+    var reviewsData=d.data._reviews||{};
+    var avgRating=reviewsData.average||p.rating||0;
+    var reviewTotal=reviewsData.total||p.review_count||0;
+    var ps=window.MARKET==='intl'?'$':'¥';
+    var priceLabel=p.price_type==='free'?'{{ _('Free') }}': (p.price_type==='onetime'?'{{ _('Subscription only') }}':ps+(p.price_amount/100).toFixed(2)+(p.price_interval==='year'?'/yr':p.price_interval==='month'?'/mo':''));
+    var priceClass=p.price_type==='free'?'on':'';
+
+    var vHtml='v'+esc(p.version);
+    if(p.has_update){
+      vHtml+=' <span class="bdg" style="background:rgba(63,185,80,.15);color:#3fb950">&#x1F504; v'+esc(p.latest_version||p.version)+' {{ _('Upgrade available') }}</span>';
+    }
+
+    var detailIconHtml='';
+    if(p.icon_url){
+      detailIconHtml='<img src="'+escAttr(p.icon_url)+'" onerror="_giteeIconFallback(this)" style="width:64px;height:64px;border-radius:8px;object-fit:cover;border:1px solid var(--bd)">';
+    }else{
+      detailIconHtml='<div style="width:64px;height:64px;border-radius:8px;overflow:hidden;flex:none">'+_pluginBanner(p,64)+'</div>';
+    }
+
+    box.innerHTML='<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px">'+
+      '<div style="display:flex;gap:12px;align-items:flex-start">'+
+      detailIconHtml+
+      '<div><div style="font-size:18px;font-weight:600">'+esc(p.name)+' <span style="font-size:12px;color:var(--dim)">'+vHtml+'</span></div>'+
+      (p.tagline?'<div style="margin-top:4px;font-size:'+escAttr(p.tagline_font_size||'16px')+';font-weight:600;color:'+escAttr(p.tagline_color||'#8b949e')+'">'+esc(p.tagline)+
+        (p.tagline_subtitle?'<div style="font-size:'+escAttr(p.tagline_subtitle_font_size||'14px')+';font-weight:400;color:#8b949e;opacity:.92;margin-top:2px">'+esc(p.tagline_subtitle)+'</div>':'')+
+        '</div>':'')+
+      '<div style="margin-top:4px">'+renderStars(avgRating,reviewTotal)+'</div>'+
+      '<div style="margin-top:4px"><span class="bdg '+priceClass+'">'+priceLabel+'</span> <span class="bdg off">'+esc(p.category||'')+'</span>'+
+      (p.installed?' <span class="bdg" style="background:rgba(88,166,255,.12);color:#58a6ff">{{ _('Installed') }}</span>':'')+
+      '</div></div></div>'+
+      '<button class="btn bo bs" onclick="closePluginDetail()">{{ _('Close') }}</button></div>';
+
+    var hasReadme = p.readme_url && p.readme_url.length > 0;
+    var hasUsageGuide = p.usage_guide && p.usage_guide.length > 0;
+    var tabsHtml='<div class="tab-bar mt" style="margin-bottom:16px;display:flex;gap:0;border-bottom:1px solid var(--bd)">'+
+      '<div class="tab-item active" data-tab="desc" onclick="switchDetailTab(this,\'desc\')" style="padding:8px 16px;cursor:pointer;border-bottom:2px solid var(--accent);font-size:13px">{{ _('Description') }}</div>';
+    if(hasUsageGuide){
+      tabsHtml+='<div class="tab-item" data-tab="usage" onclick="switchDetailTab(this,\'usage\')" style="padding:8px 16px;cursor:pointer;border-bottom:2px solid transparent;font-size:13px">{{ _('Plugin Usage Guide') }}</div>';
+    }
+    if(hasReadme){
+      tabsHtml+='<div class="tab-item" data-tab="readme" onclick="switchDetailTab(this,\'readme\');loadReadme(\''+escAttr(p.identifier)+'\',\''+escAttr(p.readme_url)+'\')" style="padding:8px 16px;cursor:pointer;border-bottom:2px solid transparent;font-size:13px">{{ _('README') }}</div>';
+    }
+    tabsHtml+='<div class="tab-item" data-tab="reviews" onclick="switchDetailTab(this,\'reviews\');loadReviews(\''+escAttr(pid)+'\')" style="padding:8px 16px;cursor:pointer;border-bottom:2px solid transparent;font-size:13px">{{ _('Reviews') }} ('+reviewTotal+')</div>'+
+      '</div>';
+    box.innerHTML+=tabsHtml;
+
+    box.innerHTML+='<div id="detailTabDesc" class="detail-tab-content" style="font-size:13px;color:var(--text);line-height:1.6">'+
+      '<p>'+(p.description||'{{ _('No description') }}')+'</p>'+
+      (p.screenshots&&p.screenshots.length>0?'<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">'+p.screenshots.map(function(s){return '<img src="'+escAttr(s)+'" onerror="_giteeIconFallback(this)" style="max-width:100%;border-radius:6px;max-height:200px">'}).join('')+'</div>':_pluginBanner(p,200))+
+      '</div>';
+
+    if(hasUsageGuide){
+      box.innerHTML+='<div id="detailTabUsage" class="detail-tab-content ql-editor" style="display:none;font-size:13px;min-height:80px;padding:0">'+_renderUsageGuide(p.usage_guide)+'</div>';
+    }
+    if(hasReadme){
+      box.innerHTML+='<div id="detailTabReadme" class="detail-tab-content" style="display:none;font-size:13px">'+
+        '<div class="lo"><div class="s"></div>{{ _('Loading README') }}...</div></div>';
+    }
+    box.innerHTML+='<div id="detailTabReviews" class="detail-tab-content" style="display:none;font-size:13px"><div class="lo"><div class="s"></div></div></div>';
+
+    /* 用户版全订阅制：free→Install；sub→Subscribe（带周期价格）；onetime→仅订阅制不可购 */
+    var actionHtml='<div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--bd);display:flex;justify-content:flex-end;gap:8px">';
+    if(p.installed){
+      actionHtml+='<span class="bdg" style="background:rgba(88,166,255,.12);color:#58a6ff;padding:6px 16px">✅ {{ _('Installed') }}</span>'+
+        '<button class="btn bo bs" style="color:#f85149;border-color:rgba(248,81,73,.4)" onclick="storeUninstallPlugin(\''+escAttr(p.identifier)+'\')">{{ _('Uninstall') }}</button>';
+    }else if(p.has_update){
+      actionHtml+='<button class="btn bp bs" onclick="storeUpgradePlugin(\''+escAttr(p.identifier)+'\')">🔄 {{ _('Upgrade') }}</button>';
+    }else if(p.price_type==='free'){
+      actionHtml+='<button class="btn bp bs" onclick="storeInstallPlugin(\''+escAttr(p.identifier)+'\')">{{ _('Install') }}</button>';
+    }else if(p.price_type==='sub'){
+      actionHtml+='<button class="btn bp bs" data-pid="'+escAttr(p.identifier)+'" data-name="'+escAttr(p.name)+'" data-amount="'+(p.price_amount||0)+'" data-pquarter="'+(p.price_quarter_fen||0)+'" data-pyear="'+(p.price_year_fen||0)+'" data-ptype="'+escAttr(p.price_type)+'" data-pinterval="'+escAttr(p.price_interval||'month')+'" onclick="var b=this;closePluginDetail();setTimeout(function(){showPurchaseDialog(b)},100)">{{ _('Subscribe') }}</button>';
+    }else{
+      actionHtml+='<span class="bdg off" style="padding:6px 16px">{{ _('Subscription only') }}</span>';
+    }
+    actionHtml+='</div>';
+    box.innerHTML+=actionHtml;
+
+  }).catch(function(){box.innerHTML='<div class="em">{{ _('Network error') }}</div>'});
+}
+function closePluginDetail(){
+  if(purchasePollTimer){clearInterval(purchasePollTimer);purchasePollTimer=null}
+  if(detailModal){detailModal.remove();detailModal=null}
+}
+function switchDetailTab(el, tab){
+  document.querySelectorAll('.detail-tab-content').forEach(function(e){e.style.display='none'});
+  document.querySelectorAll('.tab-item').forEach(function(e){e.style.borderBottom='2px solid transparent'});
+  document.getElementById('detailTab'+tab.charAt(0).toUpperCase()+tab.slice(1)).style.display='block';
+  el.style.borderBottom='2px solid var(--accent)';
+}
+function loadReviews(pid){
+  var tab=document.getElementById('detailTabReviews');
+  if(!tab)return;
+  fetch("/admin/plugins/store/"+encodeURIComponent(pid)+"/reviews?sort=newest&page_size=50",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success){tab.innerHTML='<div class="em">{{ _('Load failed') }}</div>';return}
+    var reviews=d.data.reviews||[];
+    var h='';
+    h+=_buildReviewForm(pid);
+    if(reviews.length===0){
+      h+='<div style="padding:20px;text-align:center;color:var(--dim)">{{ _('No reviews yet') }}</div>';
+    }else{
+      h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'+
+        '<span style="font-size:12px;color:var(--text-muted)">{{ _('Total') }}: '+d.data.total+'</span>'+
+        '<select class="in" style="font-size:12px;width:auto" onchange="sortReviews(this.value,\''+escAttr(pid)+'\')">'+
+        '<option value="newest">{{ _('Newest') }}</option>'+
+        '<option value="highest">{{ _('Highest Rated') }}</option>'+
+        '<option value="lowest">{{ _('Lowest Rated') }}</option></select></div>';
+      reviews.forEach(function(r){
+        h+='<div style="padding:12px;border-bottom:1px solid var(--bd);font-size:13px">'+
+          '<div style="display:flex;justify-content:space-between;align-items:center">'+
+          '<div><strong>'+esc(r.user_name||'{{ _('Anonymous') }}')+'</strong> '+renderStars(r.rating,0)+'</div>'+
+          '<span style="font-size:11px;color:var(--dim)">'+(r.created_at?esc(r.created_at.slice(0,10)):'')+'</span></div>'+
+          (r.content?'<div style="margin-top:6px;color:var(--text)">'+esc(r.content)+'</div>':'')+
+          (r.reply_content?'<div style="margin-top:6px;padding:8px;background:var(--bg-secondary);border-radius:6px;font-size:12px;color:var(--dim)"><strong>{{ _('Developer Reply') }}:</strong> '+esc(r.reply_content)+'</div>':'')+
+          '</div>';
+      });
+    }
+    tab.innerHTML=h;
+  }).catch(function(){tab.innerHTML='<div class="em">{{ _('Network error') }}</div>'});
+}
+function _buildReviewForm(pid){
+  return '<div id="reviewForm" style="margin-bottom:16px;padding:12px;background:var(--bg-secondary);border-radius:8px">'+
+    '<div style="font-size:13px;font-weight:600;margin-bottom:8px">{{ _('Write a Review') }}</div>'+
+    '<div style="display:flex;gap:4px;margin-bottom:8px;font-size:24px;color:#f0c040;cursor:pointer" id="starSelector">'+
+    '★☆☆☆☆</div>'+
+    '<textarea class="in" id="reviewContent" placeholder="{{ _('Share your experience...') }}" style="width:100%;min-height:60px;resize:vertical"></textarea>'+
+    '<div style="margin-top:8px;display:flex;gap:8px">'+
+    '<button class="btn bp bs" onclick="submitReview(\''+escAttr(pid)+'\')">{{ _('Submit Review') }}</button>'+
+    '</div>'+
+    '<div id="reviewSubmitResult" style="margin-top:8px;font-size:12px"></div></div>';
+}
+document.addEventListener('click', function(e){
+  var starSel=document.getElementById('starSelector');
+  if(!starSel||!starSel.contains(e.target))return;
+  var rect=starSel.getBoundingClientRect();
+  var x=e.clientX-rect.left;
+  var starWidth=rect.width/5;
+  var rating=Math.min(5,Math.max(1,Math.ceil(x/starWidth)));
+  var s='';
+  for(var i=1;i<=5;i++){s+=i<=rating?'★':'☆';}
+  starSel.textContent=s;
+  starSel.dataset.rating=rating;
+});
+function submitReview(pid){
+  var starSel=document.getElementById('starSelector');
+  var rating=parseInt(starSel&&starSel.dataset.rating)||5;
+  var content=document.getElementById('reviewContent').value.trim();
+  var result=document.getElementById('reviewSubmitResult');
+  if(!content){result.innerHTML='<span style="color:#f85149">{{ _('Please enter your review') }}</span>';return}
+  result.innerHTML='<div class="lo"><div class="s"></div></div>';
+  fetch("/admin/plugins/store/"+encodeURIComponent(pid)+"/reviews",{method:"POST",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify({rating:rating,content:content})}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){
+      result.innerHTML='<span style="color:var(--on)">✅ {{ _('Review submitted') }}</span>';
+      document.getElementById('reviewContent').value='';
+      setTimeout(function(){loadReviews(pid)},500);
+    }else{
+      result.innerHTML='<span style="color:#f85149">❌ '+esc(d.error||'')+'</span>';
+    }
+  }).catch(function(){result.innerHTML='<span style="color:#f85149">❌ {{ _('Network error') }}</span>'});
+}
+function sortReviews(sort,pid){
+  var tab=document.getElementById('detailTabReviews');
+  if(!tab)return;
+  tab.innerHTML='<div class="lo"><div class="s"></div></div>';
+  fetch("/admin/plugins/store/"+encodeURIComponent(pid)+"/reviews?sort="+encodeURIComponent(sort)+"&page_size=50",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success){tab.innerHTML='<div class="em">{{ _('Load failed') }}</div>';return}
+    var reviews=d.data.reviews||[];
+    var h='';
+    h+=_buildReviewForm(pid);
+    if(reviews.length===0){
+      h+='<div style="padding:20px;text-align:center;color:var(--dim)">{{ _('No reviews yet') }}</div>';
+    }else{
+      h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'+
+        '<span style="font-size:12px;color:var(--text-muted)">{{ _('Total') }}: '+d.data.total+'</span>'+
+        '<select class="in" style="font-size:12px;width:auto" onchange="sortReviews(this.value,\''+escAttr(pid)+'\')">'+
+        '<option value="newest" '+(sort==='newest'?'selected':'')+'>{{ _('Newest') }}</option>'+
+        '<option value="highest" '+(sort==='highest'?'selected':'')+'>{{ _('Highest Rated') }}</option>'+
+        '<option value="lowest" '+(sort==='lowest'?'selected':'')+'>{{ _('Lowest Rated') }}</option></select></div>';
+      reviews.forEach(function(r){
+        h+='<div style="padding:12px;border-bottom:1px solid var(--bd);font-size:13px">'+
+          '<div style="display:flex;justify-content:space-between;align-items:center">'+
+          '<div><strong>'+esc(r.user_name||'{{ _('Anonymous') }}')+'</strong> '+renderStars(r.rating,0)+'</div>'+
+          '<span style="font-size:11px;color:var(--dim)">'+(r.created_at?esc(r.created_at.slice(0,10)):'')+'</span></div>'+
+          (r.content?'<div style="margin-top:6px;color:var(--text)">'+esc(r.content)+'</div>':'')+
+          (r.reply_content?'<div style="margin-top:6px;padding:8px;background:var(--bg-secondary);border-radius:6px;font-size:12px;color:var(--dim)"><strong>{{ _('Developer Reply') }}:</strong> '+esc(r.reply_content)+'</div>':'')+
+          '</div>';
+      });
+    }
+    tab.innerHTML=h;
+  }).catch(function(){tab.innerHTML='<div class="em">{{ _('Network error') }}</div>'});
+}
+
+/* ★ 插件商店改造：异步加载 README 内容（按系统语言动态选择，英文默认 README.md，中文 README.cn.md） */
+function _uiLang(){return (document.documentElement.getAttribute('lang')||'en').toLowerCase();}
+function _localizedReadmeUrl(readmeUrl){
+  var lg=_uiLang();
+  if(lg==='cn'||lg.indexOf('zh')===0){
+    return readmeUrl.replace(/README\.md$/, 'README.cn.md');
+  }
+  return readmeUrl;
+}
+function _renderReadmeTab(tab,text){
+  var html=_simpleMarkdown(text);
+  tab.innerHTML='<div style="max-height:400px;overflow-y:auto;padding-right:8px">'+html+'</div>';
+}
+function _renderReadmeFail(tab,readmeUrl){
+  tab.innerHTML='<div style="padding:20px;text-align:center;color:var(--dim)">'+
+    '{{ _('README load failed') }}<br>'+
+    '<a href="'+escAttr(readmeUrl)+'" target="_blank" style="color:var(--accent)">{{ _('Open in new tab') }}</a>'+
+    '</div>';
+}
+function loadReadme(identifier,readmeUrl){
+  var tab=document.getElementById('detailTabReadme');
+  if(!tab)return;
+  fetch("/admin/plugins/store/"+encodeURIComponent(identifier)+"/readme",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success){_renderReadmeFail(tab,readmeUrl);return}
+    var text=d.data&&d.data.text?d.data.text:'';
+    if(text){_renderReadmeTab(tab,text)}
+    else{_renderReadmeFail(tab,readmeUrl)}
+  }).catch(function(){_renderReadmeFail(tab,readmeUrl)});
+}
+
+/* ★ 插件商店改造：简易 Markdown → HTML 转换 */
+function _simpleMarkdown(md){
+  var html=esc(md);
+  var codeBlocks=[];
+  html=html.replace(/```([\s\S]*?)```/g,function(m,c){
+    codeBlocks.push('<pre style="background:var(--bg-secondary);padding:10px;border-radius:4px;overflow-x:auto;margin:8px 0;font-size:0.8rem"><code>'+c+'</code></pre>');
+    return '\x00CODE'+ (codeBlocks.length-1) +'\x00';
+  });
+  html=html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g,'<img src="$2" alt="$1" style="max-width:100%;border-radius:6px;margin:8px 0">');
+  html=html.replace(/\[([^\]]+)\]\(([^)]+)\)/g,'<a href="$2" target="_blank" style="color:var(--accent)">$1</a>');
+  html=html.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
+  html=html.replace(/\*([^*\n]+)\*/g,'<em>$1</em>');
+  html=html.replace(/~~(.+?)~~/g,'<del>$1</del>');
+  html=html.replace(/^### (.+)$/gm,'<h4 style="margin:12px 0 4px">$1</h4>');
+  html=html.replace(/^## (.+)$/gm,'<h3 style="margin:16px 0 6px">$1</h3>');
+  html=html.replace(/^# (.+)$/gm,'<h2 style="margin:20px 0 8px;font-size:1.1rem">$1</h2>');
+  html=html.replace(/^&gt; (.+)$/gm,'<blockquote style="border-left:3px solid var(--accent);margin:8px 0;padding:4px 12px;color:var(--dim)">$1</blockquote>');
+  html=html.replace(/^[\-\*] (.+)$/gm,'<li style="margin-left:1.5rem;list-style:disc">$1</li>');
+  html=html.replace(/^\d+\. (.+)$/gm,'<li style="margin-left:1.5rem;list-style:decimal">$1</li>');
+  html=html.replace(/`([^`]+)`/g,'<code style="background:var(--bg-secondary);padding:0.1em 0.3em;border-radius:3px;font-size:0.85em">$1</code>');
+  html=html.replace(/^(---|\*\*\*|___)$/gm,'<hr style="border:none;border-top:1px solid var(--bd);margin:16px 0">');
+  html=html.replace(/\n\n/g,'</p><p style="margin:8px 0">');
+  html=html.replace(/\n/g,'<br>');
+  html=html.replace(/\x00CODE(\d+)\x00/g,function(m,i){return codeBlocks[parseInt(i)];});
+  return '<div style="line-height:1.7"><p style="margin:8px 0">'+html+'</p></div>';
+}

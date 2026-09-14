@@ -134,7 +134,44 @@ def _check_structure(plugin_dir: str) -> List[str]:
         pass
     else:
         reasons.append('缺少插件入口 __init__.py')
+
+    # P1-1 / P1-2：agent_role/capabilities + 版本字段校验（并入 reasons）
+    reasons.extend(_check_roles_and_capabilities(meta))
+    reasons.extend(_check_version_fields(meta))
     return reasons
+
+
+# ── P1-1：agent_role + capabilities 强制校验（对齐标准 §2.2，v1.6 起必填）──
+def _check_roles_and_capabilities(meta: dict) -> list:
+    """agent_role 必须为 9 核心角色之一；capabilities 非空。
+
+    核心角色集从 agent_matrix.models.get_core_role_slugs() 动态推导（与 enable() 同源）。
+    """
+    problems = []
+    _role = (meta or {}).get('agent_role') or ''
+    try:
+        from agent_matrix.models import get_core_role_slugs
+        _core = get_core_role_slugs()
+    except ImportError:
+        _core = []
+    if _role not in _core:
+        problems.append(f"agent_role '{_role}' must be one of core roles: {sorted(_core)}")
+    _caps = (meta or {}).get('capabilities') or []
+    if not isinstance(_caps, list) or not _caps:
+        problems.append('capabilities must be a non-empty array')
+    return problems
+
+
+# ── P1-2：min_app_version / compatible_editions 格式与取值校验（对齐标准 §13.4/§14.9.3）──
+def _check_version_fields(meta: dict) -> list:
+    problems = []
+    _min = (meta or {}).get('min_app_version') or ''
+    if _min and not re.match(r'^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$', str(_min)):
+        problems.append(f"min_app_version '{_min}' must be semver")
+    _eds = (meta or {}).get('compatible_editions') or []
+    if not isinstance(_eds, list):
+        problems.append('compatible_editions must be an array (empty [] = all editions)')
+    return problems
 
 
 def _scan_dangerous(plugin_dir: str) -> List[str]:
@@ -358,13 +395,14 @@ def _check_similarity(plugin_dir: str,
 
 
 def review_plugin(plugin_dir: str, watermark_result: Dict[str, Any] = None,
-                  plugins_root: str = None) -> Dict[str, Any]:
+                  plugins_root: str = None, submitted_version: str = '') -> Dict[str, Any]:
     """对 pending 插件执行规则引擎审核。
 
     Args:
         plugin_dir:        待审核插件目录（plugins/.pending/<id>/）
         watermark_result:  预先的水印检测结果（缺省则内部重新检测）
         plugins_root:      官方插件目录（缺省为项目 plugins/）
+        submitted_version: 提交时声明的版本（P1-5 一致性守卫；与包内 plugin.json.version 比对）
 
     Returns:
         {'status': 'reject' | 'manual' | 'pass',
@@ -413,6 +451,14 @@ def review_plugin(plugin_dir: str, watermark_result: Dict[str, Any] = None,
     report['permission_consistency'] = perm_issues
     reasons.extend(perm_issues)
 
+    # ⑦ P1-5：包内版本与提交版本一致性守卫（审计 P1-2 修复）
+    if submitted_version:
+        _pkg_meta = _load_plugin_meta(plugin_dir)
+        _pkg_ver = str((_pkg_meta or {}).get('version') or '').strip()
+        if _pkg_ver and _pkg_ver != str(submitted_version).strip():
+            reasons.append(
+                f'包内 plugin.json.version({_pkg_ver}) 与提交版本({submitted_version}) 不一致，需人工复核')
+
     # 判定优先级：reject > manual > pass
     status = 'pass'
     for r in reasons:
@@ -422,7 +468,11 @@ def review_plugin(plugin_dir: str, watermark_result: Dict[str, Any] = None,
             break
     if status == 'pass':
         for r in reasons:
-            if '人工复核' in r or '完全一致' in r or '权限不一致' in r:
+            # P0 修复：agent_role/capabilities/版本字段问题必须显式置 manual，
+            # 防止缺 agent_role/capabilities 的第三方包自动审核静默 pass 后仍被发布。
+            if ('人工复核' in r or '完全一致' in r or '权限不一致' in r
+                    or r.startswith('agent_role') or r.startswith('capabilities')
+                    or r.startswith('min_app_version') or r.startswith('compatible_editions')):
                 status = 'manual'
                 break
 

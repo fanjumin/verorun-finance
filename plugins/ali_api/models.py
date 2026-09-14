@@ -9,52 +9,32 @@
 """
 
 import json
-import psycopg2
-import psycopg2.extras
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from contextlib import contextmanager
 
 import sys
 import os
-from plugins._base.db import get_raw_connection
+from plugins._base.db import get_pooled_connection
 from plugin_manager.logger import get_plugin_logger
 
 logger = get_plugin_logger('ali_api')
 
 
-class _PgConnection:
-    """psycopg2 connection adapter with sqlite3-compatible interface."""
-    def __init__(self, conn):
-        self._conn = conn
-    def execute(self, sql, params=None):
-        cur = self._conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        if params is not None:
-            cur.execute(sql, params)
-        else:
-            cur.execute(sql)
-        return cur
-    def commit(self):
-        self._conn.commit()
-    def close(self):
-        self._conn.close()
-
-
 @contextmanager
 def get_db():
-    """连接插件自有数据库（PG schema: ali_api）。"""
-    raw = get_raw_connection()
-    raw.autocommit = False
-    raw.cursor().execute("CREATE SCHEMA IF NOT EXISTS ali_api")
-    raw.commit()
-    raw.cursor().execute("SET search_path TO ali_api")
-    raw.commit()
-    conn = _PgConnection(raw)
+    """连接插件自有数据库（PG schema: ali_api），走共享连接池。
+
+    用完归还池而非真正关闭，杜绝逐请求建连导致的 PG 连接数打满。
+    """
+    conn = get_pooled_connection()
     try:
+        conn.execute("CREATE SCHEMA IF NOT EXISTS ali_api")
+        conn.execute("SET search_path TO ali_api")
         yield conn
         conn.commit()
     finally:
-        raw.close()
+        conn.close()
 
 
 @contextmanager
@@ -299,19 +279,19 @@ class AliApiItem:
         """更新发布状态"""
         now_iso = datetime.now().isoformat()
         if target_product_id:
-            conn.execute('''
+            cur = conn.execute('''
                 UPDATE ali_api_items SET
                     publish_status = %s, target_product_id = %s,
                     processed_at = %s, updated_at = %s
                 WHERE id = %s
             ''', (publish_status, target_product_id, now_iso, now_iso, item_id))
         else:
-            conn.execute('''
+            cur = conn.execute('''
                 UPDATE ali_api_items SET
                     publish_status = %s, processed_at = %s, updated_at = %s
                 WHERE id = %s
             ''', (publish_status, now_iso, now_iso, item_id))
-        return conn.rowcount > 0
+        return cur.rowcount > 0
     
     @staticmethod
     def migrate_b2b_fields(conn) -> bool:
@@ -345,7 +325,7 @@ class AliApiItem:
     def update_ai_titles(conn, item_id: int, ai_title_options: list, selected_title: str = '') -> bool:
         """更新AI生成的标题选项"""
         now_iso = datetime.now().isoformat()
-        conn.execute('''
+        cur = conn.execute('''
             UPDATE ali_api_items SET
                 ai_title_options = %s, selected_title = %s,
                 ai_title = %s, updated_at = %s
@@ -357,7 +337,7 @@ class AliApiItem:
             now_iso,
             item_id
         ))
-        return conn.rowcount > 0
+        return cur.rowcount > 0
 
     @staticmethod
     def list_by_publish_status(conn, publish_status: str = 'draft', limit: int = 100, offset: int = 0) -> List[Dict[str, Any]]:
@@ -953,8 +933,8 @@ class AliPurchaseOrder:
             return False
         set_clause = ','.join(f'{k}=%s' for k in sets)
         vals = list(sets.values()) + [po_id]
-        conn.execute(f'UPDATE ali_purchase_orders SET {set_clause} WHERE id=%s', vals)
-        return conn.rowcount > 0
+        cur = conn.execute(f'UPDATE ali_purchase_orders SET {set_clause} WHERE id=%s', vals)
+        return cur.rowcount > 0
 
 
 # ===== 数据库初始化 =====

@@ -110,15 +110,25 @@ class ContentFactoryPlugin(BasePlugin):
         return True
 
     def register_agents(self):
-        """注册 Content Curator Agent（§4.1/§6.3）：读 plugin.json agents 声明 + prompt 文件。"""
+        """注册 Content Curator Agent 能力到 content 角色 + 本地 agent_registry 表。"""
         try:
             from .models import upsert_agent
+            from agent_matrix.models import register_capability_to_role
             plugin_info = getattr(self, 'plugin_info', None)
             metadata = getattr(plugin_info, 'metadata', {}) or {}
             agents = metadata.get('agents', [])
             if not agents:
                 logger.info('[ContentFactoryPlugin] plugin.json 无 agents 声明，跳过 Agent 注册')
                 return []
+
+            # 注册能力到 content 角色（02-content.yaml）
+            for agent in agents:
+                register_capability_to_role(
+                    domain='content',
+                    name=agent.get('name', ''),
+                    capabilities=agent.get('capabilities', []),
+                    description=f"{agent.get('name', '')} — {agent.get('domain', 'content')}",
+                )
             registered = []
             base_dir = os.path.dirname(__file__)
             for agent in agents:

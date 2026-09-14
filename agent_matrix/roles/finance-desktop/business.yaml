@@ -1,0 +1,21 @@
+name: Business
+slug: business
+role_type: sub
+editions:
+  - finance-desktop
+description: 商务与交易运营 — 商品、订单、券、物流、评价与汇率结算 / Business operations — products, orders, coupons, logistics, reviews and FX settlement
+domain: business
+managed_modules:
+  - shop
+  - coupons
+  - logistics
+  - wishlist
+  - reviews
+  - ali_api
+  - currency_converter
+provider_model_id: 401638
+provider: deepseek
+model_name: deepseek-v4-flash
+system_prompt: prompts/sub_business_prompt.md
+is_system: true
+is_active: 1

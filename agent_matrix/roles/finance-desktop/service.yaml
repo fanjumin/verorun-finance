@@ -1,0 +1,19 @@
+name: Service
+slug: service
+role_type: sub
+editions:
+  - finance-desktop
+description: 客户与账号服务 — 通知触达、验证码、身份核验与即时通讯通道 / Customer and account services — messaging, verification codes, identity checks and IM channels
+domain: service
+managed_modules:
+  - email
+  - sms
+  - two_factor_auth
+  - im_gateway
+  - enterprise_verify
+provider_model_id: 401638
+provider: deepseek
+model_name: deepseek-v4-flash
+system_prompt: prompts/sub_service_prompt.md
+is_system: true
+is_active: 1

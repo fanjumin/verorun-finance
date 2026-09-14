@@ -554,11 +554,19 @@ class UnifiedLLM:
 
         start_time = _time.time()
         # 兜底引擎：主模型失败时自动切换 fallback 候选模型
-        def _call_once(cfg_):
+        # 读取 system_config 中的兜底系统提示词，兜底时替换原始 system prompt
+        _fallback_prompt = _get_system_key('ai_fallback_prompt')
+        _fallback_msgs = None
+        if _fallback_prompt:
+            _fallback_msgs = [{'role': 'system', 'content': _fallback_prompt}]
+            _fallback_msgs.extend(m for m in messages if m['role'] != 'system')
+
+        def _call_once(cfg_, is_fallback=False):
+            _msgs = _fallback_msgs if (is_fallback and _fallback_msgs) else messages
             client_ = self._get_client(cfg_['base_url'], cfg_['api_key'])
             return client_.chat.completions.create(
                 model=cfg_['model'],
-                messages=messages,
+                messages=_msgs,
                 temperature=temperature,
                 max_tokens=max_tokens,
                 **kwargs
@@ -578,6 +586,25 @@ class UnifiedLLM:
             )
 
         result = resp.choices[0].message.content
+
+        # SB-BUG-5 诊断：content 为空时记录 finish_reason / usage / reasoning 字段，
+        # 便于区分「推理 token 耗尽 max_tokens」与「真空回复」（仅日志，不改返回值）
+        if not result:
+            try:
+                _choice = resp.choices[0]
+                _finish = getattr(_choice, 'finish_reason', None)
+                _msg = getattr(_choice, 'message', None)
+                _reasoning = ''
+                if _msg is not None:
+                    _reasoning = str(getattr(_msg, 'reasoning_content', None) or '')[:120]
+                logger.warning(
+                    '[UnifiedLLM] empty content returned module=%s model=%s finish_reason=%s '
+                    'usage=%s reasoning_head=%r',
+                    module, used_cfg['model'], _finish,
+                    (usage.prompt_tokens if usage else None, usage.completion_tokens if usage else None),
+                    _reasoning)
+            except Exception as _e:  # 诊断失败绝不影响主流程
+                logger.warning('[UnifiedLLM] empty content (diagnostic unavailable): %s', _e)
 
         # Phase 2: cache the response
         if temperature == 0 and not raw_response:
@@ -604,11 +631,19 @@ class UnifiedLLM:
 
         start_time = _time.time()
 
-        def _stream_call(cfg_):
+        # 读取 system_config 中的兜底系统提示词，兜底时替换原始 system prompt
+        _fallback_prompt = _get_system_key('ai_fallback_prompt')
+        _fallback_msgs = None
+        if _fallback_prompt:
+            _fallback_msgs = [{'role': 'system', 'content': _fallback_prompt}]
+            _fallback_msgs.extend(m for m in messages if m['role'] != 'system')
+
+        def _stream_call(cfg_, is_fallback=False):
+            _msgs = _fallback_msgs if (is_fallback and _fallback_msgs) else messages
             client_ = self._get_client(cfg_['base_url'], cfg_['api_key'])
             return client_.chat.completions.create(
                 model=cfg_['model'],
-                messages=messages,
+                messages=_msgs,
                 stream=True,
                 stream_options={'include_usage': True},
                 **kwargs

@@ -3,7 +3,7 @@
 from i18n import _, get_lang
 import sys, os, json, time, secrets, csv, io
 from flask import Blueprint, jsonify, request, current_app, send_file
-from models import get_db
+from ..models import get_db
 from datetime import datetime
 from werkzeug.utils import secure_filename
 

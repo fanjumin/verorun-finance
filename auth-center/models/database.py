@@ -1191,6 +1191,10 @@ def init_db():
             )
         m.commit()
         # Backfill api_key_id: link provider_models → provider_api_keys via providers
+        # 全新库守卫：api_key_id 由模块级补列（import 时表未建则 no-op）补不到，seed 后按需补列（幂等；旧库列已存在自动跳过）
+        cols_pm = get_table_columns(m, 'provider_models')
+        if 'api_key_id' not in cols_pm:
+            m.execute('ALTER TABLE provider_models ADD COLUMN api_key_id BIGINT DEFAULT NULL REFERENCES provider_api_keys(id)')
         m.execute("""
             UPDATE provider_models pm
             SET api_key_id = pak.id
@@ -2009,10 +2013,27 @@ def init_db():
         cols_t = get_table_columns(m, 'user_tickets')
         if 'assigned_to' not in cols_t:
             try:
-                m.execute("ALTER TABLE user_tickets ADD COLUMN assigned_to BIGINT DEFAULT 0 REFERENCES users(id)")
+                # DEFAULT 0 + FK→users(id) 是天生违约（0 非合法用户 id），
+                # 任何不显式传该列的 INSERT 必 500。用 NULL（列可空，FK 放行）。
+                m.execute("ALTER TABLE user_tickets ADD COLUMN assigned_to BIGINT DEFAULT NULL REFERENCES users(id)")
                 print('[Migration] user_tickets.assigned_to added')
             except Exception as e:
                 print(f'[Migration] user_tickets.assigned_to skipped: {e}')
+        else:
+            try:
+                # 幂等纠正存量错误默认值（历史版本 DEFAULT 0 与 FK 冲突）
+                bad = m.execute(
+                    "SELECT pg_get_expr(d.adbin, d.adrelid) AS def "
+                    "FROM pg_attribute a "
+                    "JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum "
+                    "WHERE a.attrelid='user_tickets'::regclass "
+                    "AND a.attname='assigned_to' "
+                    "AND pg_get_expr(d.adbin, d.adrelid)='0'").fetchone()
+                if bad:
+                    m.execute('ALTER TABLE user_tickets ALTER COLUMN assigned_to SET DEFAULT NULL')
+                    print('[Migration] user_tickets.assigned_to default fixed 0->NULL')
+            except Exception as e:
+                print(f'[Migration] assigned_to default fix skipped: {e}')
         if 'assigned_name' not in cols_t:
             try:
                 m.execute("ALTER TABLE user_tickets ADD COLUMN assigned_name TEXT DEFAULT ''")

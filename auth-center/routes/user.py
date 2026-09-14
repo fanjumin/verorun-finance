@@ -81,6 +81,25 @@ def _get_user_app(payload):
 # =============================================
 # GET /user/profile
 # =============================================
+def _get_dev_level(user_id) -> str:
+    """查询用户开发者身份等级（P0-1：/user/profile 追加 dev_level）。
+
+    未注册开发者返回 ''；已注册返回 verify_level（free/email/identity/org）。
+    store_developers 表由 plugin_manager 建在 public schema，与 users 同库。
+    """
+    if not user_id:
+        return ''
+    try:
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT verify_level FROM store_developers "
+                "WHERE user_id=%s AND status='active'",
+                (user_id,)).fetchone()
+        return (row['verify_level'] or '') if row else ''
+    except Exception:
+        return ''
+
+
 @user_bp.route('/profile', methods=['GET'])
 def profile():
     payload, err = _require_auth()
@@ -92,6 +111,7 @@ def profile():
     tier_info = TIERS.get(authz['tier'], {}) if authz else TIERS['free']
     return jsonify({'success': True, 'data': {
         'id': user['id'],
+        'dev_level': _get_dev_level(user['id']),
         'phone': user['phone'],
         'display_name': user.get('display_name') or user.get('username') or '',
         'avatar': user['avatar_url'] or '',
@@ -136,6 +156,11 @@ def update_profile():
     data = request.get_json() or {}
     nickname = data.get('nickname', '').strip()
     display_name = data.get('display_name', '').strip()
+    # D-19: 长度校验（与前端 maxlength=30 对齐）
+    if len(nickname) > 30:
+        return jsonify({'success': False, 'error': _('Nickname cannot exceed 30 characters')}), 400
+    if len(display_name) > 30:
+        return jsonify({'success': False, 'error': _('Display name cannot exceed 30 characters')}), 400
     with get_db() as conn:
         user = conn.execute(
             'SELECT is_real_name_verified FROM users WHERE id=%s',
@@ -854,12 +879,12 @@ def create_ticket():
     if not title: return jsonify({'success': False, 'error': 'Title cannot be empty'}), 400
     if not content: return jsonify({'success': False, 'error': 'Content cannot be empty'}), 400
     with get_db() as conn:
-        cur = conn.execute(
+        row = conn.execute(
             'INSERT INTO user_tickets (user_id, type, category, title, content, contact, priority) VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id',
             (user_id, ttype, category, title, content, contact, priority)
-        )
+        ).fetchone()
         conn.commit()
-    return jsonify({'success': True, 'id': cur.fetchone()['id'], 'type': ttype, 'priority': priority})
+    return jsonify({'success': True, 'id': row['id'], 'type': ttype, 'priority': priority})
 
 
 # =============================================
@@ -1235,10 +1260,10 @@ def address_list():
                     d.name as district_name,
                     s.name as street_name
                 FROM user_addresses ua
-                LEFT JOIN regions p ON ua.province_code = p.code
-                LEFT JOIN regions c ON ua.city_code = c.code
-                LEFT JOIN regions d ON ua.district_code = d.code
-                LEFT JOIN regions s ON ua.street_code = s.code
+                LEFT JOIN regions p ON ua.province_code = p.code::text
+                LEFT JOIN regions c ON ua.city_code = c.code::text
+                LEFT JOIN regions d ON ua.district_code = d.code::text
+                LEFT JOIN regions s ON ua.street_code = s.code::text
                 WHERE ua.user_id=%s AND ua.status=1
                 ORDER BY ua.is_default DESC, ua.created_at DESC''',
                 (user_id,)
@@ -1330,10 +1355,10 @@ def address_create():
                 p.name as province_name, c.name as city_name,
                 d.name as district_name, s.name as street_name
             FROM user_addresses ua
-            LEFT JOIN regions p ON ua.province_code = p.code
-            LEFT JOIN regions c ON ua.city_code = c.code
-            LEFT JOIN regions d ON ua.district_code = d.code
-            LEFT JOIN regions s ON ua.street_code = s.code
+            LEFT JOIN regions p ON ua.province_code = p.code::text
+            LEFT JOIN regions c ON ua.city_code = c.code::text
+            LEFT JOIN regions d ON ua.district_code = d.code::text
+            LEFT JOIN regions s ON ua.street_code = s.code::text
             WHERE ua.id=%s''', (addr_id,)
         ).fetchone()
     return jsonify({'success': True, 'data': {'address': dict(addr)}})
@@ -1398,10 +1423,10 @@ def address_update(addr_id):
                 p.name as province_name, c.name as city_name,
                 d.name as district_name, s.name as street_name
             FROM user_addresses ua
-            LEFT JOIN regions p ON ua.province_code = p.code
-            LEFT JOIN regions c ON ua.city_code = c.code
-            LEFT JOIN regions d ON ua.district_code = d.code
-            LEFT JOIN regions s ON ua.street_code = s.code
+            LEFT JOIN regions p ON ua.province_code = p.code::text
+            LEFT JOIN regions c ON ua.city_code = c.code::text
+            LEFT JOIN regions d ON ua.district_code = d.code::text
+            LEFT JOIN regions s ON ua.street_code = s.code::text
             WHERE ua.id=%s''', (addr_id,)
         ).fetchone()
     return jsonify({'success': True, 'data': {'address': dict(addr)}})

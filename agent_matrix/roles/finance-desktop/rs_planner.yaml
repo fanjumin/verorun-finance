@@ -1,0 +1,14 @@
+name: 研究规划师
+slug: rs_planner
+role_type: sub
+editions:
+  - finance-desktop
+description: 研究规划 — 将研究问题拆解为可验证假设与数据清单 / Research planner — decompose questions into hypotheses & data checklist
+domain: research
+managed_modules:
+  - stock_analysis
+provider: deepseek
+model_name: deepseek-v4-flash
+system_prompt: prompts/rs_planner.md
+is_system: true
+is_active: 1

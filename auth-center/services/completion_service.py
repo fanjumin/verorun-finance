@@ -164,12 +164,17 @@ def check_milestone_rewards(user_id):
                 if rule['reward_type'] == 'coupon' and rule['reward_id']:
                     # 走插件引擎分发优惠券
                     try:
-                        from plugins.coupons import get_engine
-                        engine = get_engine()
+                        from shared.plugin_access import get_attr
+                        get_engine = get_attr('plugins.coupons', 'get_engine',
+                                              feature='completion_coupon')
+                        engine = get_engine() if get_engine else None
                         if engine:
                             engine.distribute(rule['reward_id'], [user_id])
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        import logging
+                        logging.getLogger(__name__).warning(
+                            '[completion_service] 优惠券发放失败 (rule=%s, user=%s): %s',
+                            rule.get('id'), user_id, e)
 
                 # Record claim
                 conn.execute(

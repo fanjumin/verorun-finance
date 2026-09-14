@@ -97,7 +97,9 @@ window.__I18N_PLUGINS__ = {
   "Plugin Center": "{{ _('Plugin Center') }}",
   "Licenses": "{{ _('Licenses') }}",
   "Subscriptions": "{{ _('Subscriptions') }}",
-  "Store Management": "{{ _('Store Management') }}"
+  "Store Management": "{{ _('Store Management') }}",
+  "Official": "{{ _('Official') }}",
+  "Third-party": "{{ _('Third-party') }}"
 };
 function _(key){return window.__I18N_PLUGINS__[key]||key;}
 
@@ -131,7 +133,9 @@ function _renderPluginUI(mc){
   h+='<button class="tab-btn' + (_pluginTab==='pending'?' active':'') + '" onclick="_switchTab(\'pending\')">' + _('Pending') + '</button>';
   h+='<button class="tab-btn' + (_pluginTab==='licenses'?' active':'') + '" onclick="_switchTab(\'licenses\')">' + _('Licenses') + '</button>';
   h+='<button class="tab-btn' + (_pluginTab==='subscriptions'?' active':'') + '" onclick="_switchTab(\'subscriptions\')">' + _('Subscriptions') + '</button>';
+{% if edition == 'official' %}
   if(_isSuperAdmin){h+='<button class="tab-btn' + (_pluginTab==='store_admin'?' active':'') + '" onclick="_switchTab(\'store_admin\')">' + _('Store Management') + '</button>';}
+{% endif %}
   h+='</div>';
   h+='<div style="display:flex;gap:8px">';
   if(_pluginTab==='installed'){
@@ -302,6 +306,15 @@ function submissionReject(id){
   }).catch(function(){if(act)act.innerHTML='<div class="em">'+_('Network error')+'</div>'});
 }
 
+/* ── P0-A：官方/第三方徽标 ─────────────────────────── */
+function devBadge(p){
+  if(p.is_official){
+    return '<span class="badge" style="background:rgba(56,139,253,.12);color:#388bfd;font-size:10px">'+_('Official')+'</span>';
+  }
+  return '<span class="badge" style="background:rgba(240,158,64,.12);color:#f09e40;font-size:10px">'+_('Third-party')+'</span>'+
+         (p.developer_org?' '+esc(p.developer_org):'');
+}
+
 /* ── Store tab (card grid) ──────────────────────────── */
 function _renderStoreTab(plugins){
   var h='';
@@ -332,6 +345,7 @@ function _renderStoreTab(plugins){
     }
     h+='<div style="flex:1;min-width:0">';
     h+='<div style="font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(p.name)+'</div>';
+    h+='<div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;margin-top:2px">'+devBadge(p)+'</div>';
     h+='<div style="font-size:11px;color:var(--dim)">v'+esc(p.version)+' &middot; '+esc(p.author||'')+'</div>';
     h+='</div>';
     h+='</div>';

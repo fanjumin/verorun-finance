@@ -7,12 +7,13 @@ from flask import Blueprint, request, jsonify
 from models import get_db, now_iso
 from services.jwt_service import validate_token, create_token
 from services.name_validator import sanitize_name
-try:
-    from plugins.oauth_config.services.douyin_service import code2session, miniprogram_is_stub
-except ImportError:
-    # verorun-pro 精简版无 plugins 目录
-    code2session = None
-    miniprogram_is_stub = True
+from shared.plugin_access import get_attr
+
+# verorun-pro 精简版无 plugins 目录：插件缺失时 code2session=None、miniprogram_is_stub=True
+code2session = get_attr('plugins.oauth_config.services.douyin_service', 'code2session',
+                        feature='douyin_miniprogram')
+miniprogram_is_stub = get_attr('plugins.oauth_config.services.douyin_service', 'miniprogram_is_stub',
+                               default=True, feature='douyin_miniprogram')
 
 douyin_mp_bp = Blueprint('douyin_mp', __name__, url_prefix='/douyin_mp')
 

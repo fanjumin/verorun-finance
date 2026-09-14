@@ -1,6 +1,8 @@
 name: Content
 slug: content
 role_type: sub
+editions:
+  - official
 description: Content manager — content creation, publishing, analytics, ads, social media
 domain: content
 managed_modules:

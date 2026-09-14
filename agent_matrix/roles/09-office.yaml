@@ -1,0 +1,13 @@
+name: Office
+slug: office
+role_type: sub
+editions:
+  - official
+description: Internal enterprise operations officer — HR affairs (employee records, attendance, leave, onboarding), administration (notices, meetings, minutes), secretarial (documents, reports, follow-ups)
+domain: office
+managed_modules: []
+capabilities: []
+provider: deepseek
+model_name: deepseek-v4-flash
+is_system: true
+is_active: 1

@@ -54,6 +54,18 @@ from .store import StoreAPIClient, get_store_client
 from .watermark import OFFICIAL_PLUGIN_IDS
 from .guard import CIRCUIT_BREAKER_THRESHOLD, should_trip, record_failure
 
+# 启动时「磁盘 plugin.json → 注册表」一致性刷新的判定字段集。
+# ★ T3.3 修复：契约字段（provides_hooks/listens_hooks/permissions）必须在列内 ——
+#   原实现只比 version/name/min_app_version，插件改声明后注册表契约列永不更新。
+_DB_SYNC_COMPARE_FIELDS = (
+    'version', 'name', 'min_app_version',
+    'provides_hooks', 'listens_hooks', 'permissions',
+)
+
+# 判定不一致时随之一并回写的字段集。
+# metadata 保留原「每次同步」行为；刻意不同步 config（用户可编辑配置，回写会覆盖用户设置）。
+_DB_SYNC_REFRESH_FIELDS = _DB_SYNC_COMPARE_FIELDS + ('metadata',)
+
 # 敏感权限集合（软执行门卫，§10.2/§11.1）：声明即需管理员启用前审查
 SENSITIVE_PERMISSIONS = {
     'network:request',
@@ -146,12 +158,48 @@ class PluginManager:
 
     # ── 初始化 ──────────────────────────────────────────────────────────
 
+    def _profile_mark(self, phase: str) -> None:
+        """记录一个启动阶段（N-06 可观测性）。任何异常都不得影响启动。"""
+        try:
+            now = time.monotonic()
+            if not hasattr(self, '_startup_t0'):
+                return
+            prev = getattr(self, '_startup_prev', None) or self._startup_t0
+            self._startup_phases.append(
+                (phase, round((now - prev) * 1000), round((now - self._startup_t0) * 1000)))
+            self._startup_prev = now
+        except Exception:
+            pass
+
+    def _profile_report(self) -> None:
+        """输出启动画像一行日志：阶段耗时 + 最慢插件 Top3（供 T0.7 判定与归因）。"""
+        try:
+            phases = getattr(self, '_startup_phases', [])
+            if not phases:
+                return
+            total = phases[-1][2]
+            slow = sorted(getattr(self, '_startup_slow', []), key=lambda x: -x[1])[:3]
+            # phases 元素为三元组 (阶段名, 本阶段 ms, 自 init_app 起累计 ms)
+            brief = ' '.join(f'{name}={span}ms' for name, span, _cum in phases)
+            slow_txt = (' | 最慢插件: ' + ', '.join(f'{p}={ms}ms' for p, ms in slow)) if slow else ''
+            print(f'[PluginManager] ⏱ 启动画像 total={total}ms {brief}{slow_txt}')
+        except Exception as e:
+            # 不再完全静默：上一版这里静默 catch，令解包 bug 藏了一整轮（画像行从未输出）
+            print(f'[PluginManager] ⚠️ 启动画像输出失败: {e!r}')
+
     def init_app(self, app):
         """工厂模式初始化，绑定到 Flask 应用
 
         调用时机: app 创建后，第一个请求前调用一次。
         """
         self.app = app
+        # N-06 可观测性：冷启动耗时此前只能靠"约 2 分钟"这种主观描述，
+        # 无法判定优化是否有效、也无法定位最慢的一环。这里做零侵入的阶段计时
+        # （time.monotonic，不改任何行为），末尾统一输出一行启动画像。
+        self._startup_t0 = time.monotonic()
+        self._startup_phases: List[tuple] = []
+        self._startup_slow: List[tuple] = []
+        self._profile_mark('init_app 进入')
 
         # 确定插件目录
         plugins_dir = getattr(app, 'plugins_dir', None) or \
@@ -164,10 +212,25 @@ class PluginManager:
 
         # 初始化日志系统
         init_plugin_logging()
-
         # 初始化 License & Store 表
         from .models_store import init_license_store_tables
         init_license_store_tables()
+
+        self._profile_mark('表结构与日志')
+
+        # 初始化订阅表（plugin_subscriptions / subscription_events）
+        try:
+            from .subscription import init_subscription_tables
+            init_subscription_tables()
+        except Exception as e:
+            print(f'[PluginManager] ⚠️ 订阅表初始化失败: {e}')
+
+        # 初始化优惠券表（coupon_codes）
+        try:
+            from .coupons import init_coupon_table
+            init_coupon_table()
+        except Exception as e:
+            print(f'[PluginManager] ⚠️ 优惠券表初始化失败: {e}')
 
         # License & Store 客户端（延迟初始化）
         self._license_mgr = get_license_manager()
@@ -261,6 +324,7 @@ class PluginManager:
 
         # 从数据库加载已注册插件到缓存
         self._load_cache()
+        self._profile_mark('DB 缓存装载')
 
         # 自动安装新发现的插件
         # PLUGIN_AUTO_INSTALL=0 时跳过自动安装/自动启用（部署默认关，插件由后台手动安装启用）
@@ -291,24 +355,9 @@ class PluginManager:
                     print(f'[PluginManager] ✅ 自动启用 {auto_enabled} 个插件')
                     self._load_cache()
 
-            # 用磁盘 plugin.json 刷新已缓存插件的静态元信息（menu/version 等）。
-            # 当磁盘版本与数据库不一致时同步写回 DB，确保插件管理器展示最新版本号。
-            for disk_info in discovered:
-                cached = self._cache.get(disk_info.identifier)
-                if cached:
-                    needs_db_sync = (
-                        cached.version != disk_info.version or
-                        cached.metadata.get('version') != disk_info.metadata.get('version') or
-                        cached.name != disk_info.name or
-                        cached.min_app_version != disk_info.min_app_version
-                    )
-                    cached.metadata = disk_info.metadata
-                    cached.version = disk_info.version
-                    cached.name = disk_info.name
-                    cached.min_app_version = disk_info.min_app_version
-                    if needs_db_sync:
-                        self._save_to_db(cached)
-                        print(f'[PluginManager] 🔄 {disk_info.identifier}: synced v{disk_info.version} to DB')
+            # 用磁盘 plugin.json 刷新已缓存插件的静态元信息与契约字段（行为与判据见方法 docstring）。
+            self._refresh_static_meta(discovered)
+            self._profile_mark('发现+装启+清单刷新')
 
             # ── 加载所有插件的 locale 翻译 ─────────────────────
             try:
@@ -332,6 +381,7 @@ class PluginManager:
         # Flask 不允许 app 处理首个请求后调用 register_blueprint，
         # 因此必须在此（app 首个请求前）一次性挂载所有 ENABLED/ACTIVE 插件的路由。
         self._preload_routes()
+        self._profile_mark('预注册路由与钩子')
 
         # 记录到 app 扩展
         if not hasattr(app, 'extensions'):
@@ -340,8 +390,81 @@ class PluginManager:
 
         print(f'[PluginManager] ✅ 已初始化 (plugins: {self.plugins_dir}, '
               f'cached: {len(self._cache)})')
+        self._profile_report()
 
     # ── 预注册 ───────────────────────────────────────────────────────────
+
+    def _refresh_static_meta(self, discovered: List[PluginInfo]) -> List[str]:
+        """用磁盘 plugin.json 刷新已缓存插件的静态元信息，必要时回写注册表。
+
+        ★ T3.3 修复（契约列长期陈旧）：原实现只比较 version/name/min_app_version，
+          且回写时压根不拷贝 hooks/permissions —— 插件改了 plugin.json 的 hooks 声明后，
+          注册表的 provides_hooks/listens_hooks 永远停在旧值（R1 实测：stock_analysis
+          清单声明 2 provides + 1 listens，落库全为 []），声明不可信且无任何告警。
+          现在把契约字段纳入同一判据（见 _DB_SYNC_COMPARE_FIELDS），并在日志里
+          打出实际变更的字段名，作为启动期一致性告警留痕。
+
+        刻意不同步的字段：config（DB 里存的是用户可编辑配置，从清单回写会覆盖用户设置）。
+
+        :return: 实际发生回写的插件 identifier 列表（供调用方/测试断言）
+        """
+        synced: List[str] = []
+        for disk_info in discovered:
+            cached = self._cache.get(disk_info.identifier)
+            if not cached:
+                continue
+            changed = [f for f in _DB_SYNC_COMPARE_FIELDS
+                       if getattr(cached, f, None) != getattr(disk_info, f, None)]
+            for _f in _DB_SYNC_REFRESH_FIELDS:
+                setattr(cached, _f, getattr(disk_info, _f))
+            if changed:
+                # 回写必须同时推进 updated_at：否则注册表时间戳永远停在旧值，
+                # 运维无从判断"契约是否刚被刷新过"（_save_to_db 用的是 info.updated_at）。
+                cached.updated_at = datetime.now().isoformat()
+                self._save_to_db(cached)
+                synced.append(disk_info.identifier)
+                print(f'[PluginManager] 🔄 {disk_info.identifier}: synced v{disk_info.version} '
+                      f'to DB（变更字段: {", ".join(changed)}）')
+        return synced
+
+    def _converge_excluded_rows(self, hidden, edition: str) -> List[str]:
+        """把本版"不提供"插件的注册表存量状态收口为 disabled（N-03 修复）。
+
+        :param hidden: {identifier: 原因文本}，由 _edition_hidden_map 产出
+                      （显式 exclude ∪ 未列入 include 白名单）
+        背景：`enable()` 早已拒绝排除插件，但**先于门控存在**的历史行不会被追改，
+        于是运维视图长期与实际不符（R1 复测实测：`hr_recruit` 已在 finance-desktop.yaml
+        exclude 内、路由也不再挂载，注册表却仍 `status=error` 挂着
+        `missing/invalid agent_role: 'office'`；`project_workspace`/`veroscholar`
+        则仍是 `active` —— 与本进程"未加载"的事实相反）。两个方向都在误报。
+
+        直接写状态而不调 `self.disable()`：这些插件在本进程已被 `_preload_routes`
+        门控跳过，从未加载实例，也就没有钩子/定时任务需要回收。
+        幂等：状态已是 disabled 且原因一致 → 不写库。
+
+        :return: 实际收口的插件 identifier 列表
+        """
+        converged: List[str] = []
+        for pid, reason_text in sorted(hidden.items()):
+            info = self._cache.get(pid)
+            if info is None:
+                continue
+            reason = reason_text
+            if info.status == PluginStatus.DISABLED and (info.last_error or '') == reason:
+                continue  # 已收口，幂等跳过
+            if info.status not in (PluginStatus.ENABLED, PluginStatus.ACTIVE,
+                                   PluginStatus.ERROR):
+                continue  # installed/未安装 等状态本就不表示"在服务"，不打扰
+            info.status = PluginStatus.DISABLED
+            info.last_error = reason
+            info.updated_at = datetime.now().isoformat()
+            try:
+                self._save_to_db(info)
+                converged.append(pid)
+                print(f'[PluginManager] 🔒 {pid}: 注册表存量状态收口为 disabled（{edition} 版不提供）')
+            except Exception as e:
+                print(f'[PluginManager] ⚠️ {pid}: 收口 disabled 失败: {e}')
+        return converged
 
     def _capability_allowed(self, info: PluginInfo, capability: str) -> bool:
         """能力注册权限门控（P0-1）。
@@ -406,6 +529,71 @@ class PluginManager:
         finally:
             print(f'[PluginManager] 🧯 {info.identifier} 熔断自动禁用: {reason}')
 
+    def _edition_hidden_map(self, candidates) -> tuple:
+        """本版"不提供"的插件集合 → {identifier: 原因文本}（与服务器产物口径对齐）。
+
+        两类来源：
+          1) deploy/editions/<edition>.yaml 的 plugins.exclude（显式排除）；
+          2) plugins.include 白名单**非空**时，未列入白名单的插件。
+             此前运行时只遵守 exclude，于是 include 外的插件（实测金融版 13 个，
+             含 site_builder/mini_app_builder/chatbot/iot_hub 等）在服务器版由
+             sync-to-pro.yml 物理不拷贝而"天然不存在"，桌面版整树拷贝却照样被
+             加载、挂路由、占启动时间（金融版实测 site_builder 单插件 14.5s）。
+
+        ⚠️ include 为空 = 该发行版未启用白名单语义（standard/老部署），此时
+        只按 exclude 处理 —— 否则会把全部插件判为不提供，等于自己把系统锁死。
+        """
+        try:
+            from agent_matrix.models import (current_edition, edition_plugin_excludes,
+                                             edition_plugin_includes)
+            excluded = set(edition_plugin_excludes())
+            included = set(edition_plugin_includes())
+            edition = current_edition()
+        except Exception as e:
+            print(f'[PluginManager] ⚠️ edition 门控取数失败（按不排除处理）: {e}')
+            return {}, 'unknown'
+
+        hidden = {pid: f'excluded_in_edition: {edition}（deploy/editions 显式排除）'
+                  for pid in excluded}
+        if included:
+            for pid in candidates:
+                if pid not in included and pid not in hidden:
+                    hidden[pid] = (f'not_in_edition_include: {edition}'
+                                   '（未列入本版 plugins.include 白名单，服务器版亦不随包分发）')
+        return hidden, edition
+
+    def _dist_hidden_map(self, candidates, edition: str = '') -> dict:
+        """v1.8 动态分流规则产生的"本机不适用"集合 → {identifier: 原因文本}。
+
+        与 `_edition_hidden_map` 的**关键区别（勿混用）**：
+          - 本方法**只服务于路由/钩子的挂载门控**，绝不参与 `_converge_excluded_rows`
+            写库收敛。即「规则隐藏」是**运行期视图**，不修改 `plugin_registry.status`；
+            把 `hidden` 改回 0 后重启服务即可恢复，无"开机即永久禁用"副作用。
+          - 规则表为空 / `VR_DIST_ENABLED=0` / 取数失败 → `{}`，
+            此时系统行为与 v1.7 完全一致（零回归）。
+
+        优先级链与商店展示、安装准入共用 `distribution.resolve_visible_set`（标准 §18.2）。
+        """
+        try:
+            from .distribution import is_enabled, resolve_visible_set, current_profile
+            if not is_enabled():
+                return {}
+            if not edition:
+                try:
+                    from agent_matrix.models import current_edition
+                    edition = current_edition()
+                except Exception:
+                    edition = ''
+            _, hidden = resolve_visible_set(
+                edition, list(candidates or []), current_profile())
+            if hidden:
+                print(f'[PluginManager] 🔀 分流规则隐藏 {len(hidden)} 个插件（仅挂载门控）: '
+                      f'{sorted(hidden)}')
+            return hidden
+        except Exception as e:
+            print(f'[PluginManager] ⚠️ 分流规则门控取数失败（按不隐藏处理）: {e}')
+            return {}
+
     def _preload_routes(self):
         """启动时预注册 DB 中 ENABLED/ACTIVE 插件的蓝图与钩子（幂等）。
 
@@ -426,10 +614,37 @@ class PluginManager:
             print(f'[PluginManager] ⚠️ _preload_routes db query failed: {e}')
             return
 
+        # 发行版门控（exclude ∪ 未列入 include 白名单；单一事实源 deploy/editions/*.yaml）
+        _candidates = [r['identifier'] for r in rows] + list(self._cache.keys())
+        _hidden, _edition_name = self._edition_hidden_map(_candidates)
+
+        # N-03：先把「先于门控存在」的存量行收口（enabled/active/error → disabled + 原因），
+        # 否则运维视图会持续误报（已排除的插件仍显示 active 或仍挂着旧的 agent_role 报错）。
+        # ⚠️ 只收敛**版侧**来源：动态分流规则（_dist_hidden_map）不写库，见其 docstring。
+        if _hidden:
+            self._converge_excluded_rows(_hidden, _edition_name)
+
+        # v1.8 动态分流：仅并入**挂载门控**（决定是否装载实例 / 挂路由与钩子），不写库。
+        # 规则表为空或 resolver 关闭时 _gate == _hidden，行为与 v1.7 完全一致。
+        _gate = dict(_hidden)
+        try:
+            _dist_hidden = self._dist_hidden_map(_candidates, _edition_name)
+            if isinstance(_dist_hidden, dict) and _dist_hidden:
+                _gate.update(_dist_hidden)
+        except Exception as e:
+            print(f'[PluginManager] ⚠️ 分流门控合并失败（仅按版侧处理）: {e}')
+
         for row in rows:
             pid = row['identifier']
+            _t_plugin = time.monotonic()
             info = self._cache.get(pid)
             if info is None:
+                continue
+            # 发行版门控：enable()/列表/商店三处此前已拒绝或隐藏，但**存量 active 行**
+            # 在本路径仍会被预加载并挂载路由与钩子（实测 finance 版 /admin/veroscholar
+            # 依然 308 可访问）→ 门控必须同样约束启动期装载，否则「不提供」只是 UI 层隐藏。
+            if pid in _gate:
+                print(f'[PluginManager] ⏭ {pid}: {_gate[pid]} → 跳过装载与路由挂载')
                 continue
             # 已加载实例直接复用；否则按启用流程加载（setup）
             instance = self._instances.get(pid)
@@ -489,6 +704,12 @@ class PluginManager:
                 if info.status == PluginStatus.ENABLED:
                     info.status = PluginStatus.ACTIVE
                     info.updated_at = datetime.now().isoformat()
+                    # 陈旧 setup error 只在这一刻才算被推翻：本次 setup/挂载已成功。
+                    # 刻意不清 capability blocked / 网关降级等提示 —— 那是 _capability_allowed
+                    # 有意持久化的「静默功能缺失」可诊断信息（R1 实测 currency_converter
+                    # 已 active 却仍挂着上周的 "setup error: No module named 'httpx'"）。
+                    if (info.last_error or '').startswith('setup error:'):
+                        info.last_error = None
                     self._save_to_db(info)
                     print(f'[PluginManager] ✅ {pid} active (preloaded)')
             except SystemExit as e:
@@ -497,6 +718,11 @@ class PluginManager:
             except Exception as e:
                 self._guard_failure(info, 'preload')
                 print(f'[PluginManager] ⚠️ {pid}: preload warning: {e}')
+            # N-06 画像：记录单插件装载耗时（setup+activate+挂载），供定位最慢环节
+            try:
+                self._startup_slow.append((pid, round((time.monotonic() - _t_plugin) * 1000)))
+            except Exception:
+                pass
 
     # ── 发现 ────────────────────────────────────────────────────────────
 
@@ -543,6 +769,14 @@ class PluginManager:
             self._emit('plugin.installed', plugin_id=identifier)
 
             print(f'[PluginManager] ✅ {identifier} v{info.version} installed')
+
+            # P2-5: 注册插件声明的 MCP server（幂等 upsert）
+            try:
+                from .mcp import sync_plugin_mcp
+                sync_plugin_mcp(identifier, info.metadata)
+            except Exception as _e:
+                print(f'[PluginManager] {identifier} mcp sync warning: {_e}')
+
             return info
 
     # ── 启用 ────────────────────────────────────────────────────────────
@@ -611,6 +845,33 @@ class PluginManager:
             except Exception as _e:
                 print(f'[PluginManager] ⚠️ {identifier}: integrity check skipped: {_e}')
 
+            # ── 发行版插件门控：exclude 或未列入 include 白名单者禁止启用（与装载/列表同口径）──
+            try:
+                from agent_matrix.models import (edition_plugin_excludes,
+                                                 edition_plugin_includes)
+                _ed_excl = set(edition_plugin_excludes())
+                _ed_incl = set(edition_plugin_includes())
+                _hidden_by = None
+                if identifier in _ed_excl:
+                    _hidden_by = 'excluded_in_edition'
+                    _why = '发行版 plugins.exclude 显式排除，不适用于本版安装'
+                elif _ed_incl and identifier not in _ed_incl:
+                    _hidden_by = 'not_in_edition_include'
+                    _why = ('未列入本版 plugins.include 白名单（服务器版亦不随包分发）；'
+                            '如需提供请先登记到 deploy/editions/<edition>.yaml')
+                if _hidden_by:
+                    info.last_error = f'{_hidden_by}: {identifier}（{_why}）'
+                    info.status = PluginStatus.ERROR
+                    self._save_to_db(info)
+                    raise PluginStateError(
+                        identifier, _hidden_by,
+                        f'enable failed: plugin not provided in current edition ({_hidden_by})'
+                    )
+            except PluginStateError:
+                raise
+            except Exception:
+                pass
+
             # ── 统一网关注册强制校验（插件标准 §2.2/§4）────────────
             # 官方插件必须声明 agent_role（核心角色之一），否则拒绝启用。
             # 核心角色集由 agent_matrix/roles/*.yaml 动态推导（单一事实源）。
@@ -658,6 +919,13 @@ class PluginManager:
 
             self._emit('plugin.enabled', plugin_id=identifier)
             print(f'[PluginManager] ✅ {identifier} enabled')
+
+            # P2-5: 启用时恢复插件 MCP server（disable 时置 0，此处覆盖为 1）
+            try:
+                from .mcp import sync_plugin_mcp
+                sync_plugin_mcp(identifier, info.metadata)
+            except Exception as _e:
+                print(f'[PluginManager] {identifier} mcp sync warning: {_e}')
 
             # ── 统一网关注册（§4）：插件能力聚合到所选核心角色 ──────
             _meta = info.metadata or {}
@@ -809,6 +1077,13 @@ class PluginManager:
                             self._unregister_blueprint(bp)
                 except Exception as e:
                     print(f'[PluginManager] {identifier} deactivate warning: {e}')
+
+            # P2-5: 关闭插件 MCP server 连接并置 enabled=0
+            try:
+                from .mcp import stop_plugin_mcp
+                stop_plugin_mcp(identifier)
+            except Exception as _e:
+                print(f'[PluginManager] {identifier} mcp stop warning: {_e}')
 
             info.status = PluginStatus.DISABLED
             info.updated_at = datetime.now().isoformat()
@@ -1280,8 +1555,24 @@ class PluginManager:
         """
         if not self.app:
             return
+        # 与 _preload_routes 同一道发行版门控（exclude ∪ 未列入 include）：本方法是公开的
+        # 启动期挂载入口，缺这道闸就成了绕过 edition 白名单的后门（当前无调用方，属防御性收口）。
+        _cached = list(self._cache.keys())
+        _hidden, _edition_name = self._edition_hidden_map(_cached)
+        # v1.8 同样并入动态分流门控（只影响挂载，不写库；取数失败回落版侧集合）
+        _gate = dict(_hidden)
+        try:
+            _dist_hidden = self._dist_hidden_map(_cached, _edition_name)
+            if isinstance(_dist_hidden, dict) and _dist_hidden:
+                _gate.update(_dist_hidden)
+        except Exception as e:
+            print(f'[PluginManager] ⚠️ 分流门控合并失败（仅按版侧处理）: {e}')
         mounted = []
         for identifier, info in self._cache.items():
+            if identifier in _gate:
+                print(f'[PluginManager] ⏭ {identifier}: {_gate[identifier]}'
+                      '（mount_active_routes 同样跳过）')
+                continue
             if info.status not in (PluginStatus.ENABLED, PluginStatus.ACTIVE):
                 continue
             try:
@@ -1430,6 +1721,16 @@ class PluginManager:
         local_ids = set(self._cache.keys())
         from .base import localize_plugin_dict
 
+        # ── 发行版插件白名单：本版"不提供"的插件不进本地/商店列表 ──
+        # 口径与 _preload_routes / enable() 完全一致：显式 exclude ∪（include 非空时）未列入白名单
+        try:
+            from agent_matrix.models import edition_plugin_excludes, edition_plugin_includes
+            _edition_excluded = set(edition_plugin_excludes())
+            _edition_include = set(edition_plugin_includes())
+        except Exception:
+            _edition_excluded = set()
+            _edition_include = set()
+
         # ── 以 DB 为成员真相源：跨 worker 统一（增/删/状态一致）──────
         # 旧实现以 _cache 派生成员集：启动后新装/卸载的插件在不同 worker
         # 的内存 _cache 不一致（_cache 只在本 worker 弹出/从未进入），
@@ -1443,17 +1744,23 @@ class PluginManager:
             for row in db_rows:
                 r = dict(row)
                 db_plugins[r['identifier']] = r
+            # include 白名单非空时，未列入者同样视为"本版不提供"（为空则绝不隐藏任何东西）
+            if _edition_include:
+                _edition_excluded |= {pid for pid in db_plugins if pid not in _edition_include}
             local = []
             for identifier, row in db_plugins.items():
+                if identifier in _edition_excluded:
+                    continue
                 info = self._cache.get(identifier)
                 if info is not None:
                     local.append(info.to_dict())
                 else:
                     local.append(self._row_to_info(row).to_dict())
-            local_ids = set(db_plugins.keys())
+            local_ids = set(db_plugins.keys()) - _edition_excluded
         except Exception as e:
             print(f'[PluginManager] get_unified_list db load failed: {e}')
-            local = [p.to_dict() for p in self._cache.values()]
+            local = [p.to_dict() for p in self._cache.values()
+                     if p.identifier not in _edition_excluded]
 
         # 以 DB 状态覆盖 status / last_error（多 worker 下内存状态可能滞后）
         for p in local:
@@ -1491,6 +1798,8 @@ class PluginManager:
                 ).fetchall()
                 for row in rows:
                     sp = dict(row)
+                    if sp['identifier'] in _edition_excluded:
+                        continue
                     sp['_source'] = 'store'
                     # 状态联动（对齐行业：商店=目录全集，本地=子集状态）
                     # 不剔除已安装插件；每个目录条目标注本地安装/激活状态

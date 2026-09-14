@@ -109,8 +109,9 @@ class TOTPService:
 
 
 # ── 登录预检 filter 回调（插件注册到核心扩展点 'auth.before_issue_session'）──
-def pre_login_check(**kwargs):
+def pre_login_check(value=None, **kwargs):
     """登录预检回调：插件启用期间，用户已开启 TOTP 则生成 challenge 并要求第二因子。
+    （签名 value=None 为 filter 链上游值，本钩子不消费；未拦截时返回 None，核心原样签发。）
 
     核心在 issue_auth_session 签发前调用
     apply_filters('auth.before_issue_session', None, **kwargs)。

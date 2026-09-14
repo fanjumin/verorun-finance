@@ -6,7 +6,7 @@
     "required": [],
     "optional": {}
   },
-  "version": "2.1.0",
+  "version": "2.2.1",
   "category": "shop",
   "tags": [
     "shop",
@@ -20,6 +20,8 @@
   "screenshots": [],
   "readme_url": "",
   "description": "Shop/Mall — Product management, categories, orders, cart, checkout",
+  "tagline": "完整商城系统",
+  "tagline_subtitle": "商品 · 分类 · 订单 · 购物车 · 结算",
   "author": "VeroRun",
   "min_app_version": "0.10.0",
   "agent_role": "business",
@@ -29,6 +31,7 @@
     "shop.category.manage",
     "shop.checkout"
   ],
+  "site_capabilities": ["ecommerce"],
   "dependencies": {},
   "config": {
     "shop_ai_provider": "deepseek",

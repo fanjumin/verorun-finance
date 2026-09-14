@@ -6,7 +6,7 @@
     "required": [],
     "optional": {}
   },
-  "version": "1.4.3",
+  "version": "1.5.3",
   "category": "shop",
   "icon": "coupons",
   "tags": [
@@ -16,6 +16,8 @@
     "shop"
   ],
   "description": "智能优惠券引擎 — 场景券/AI推荐/订阅联动",
+  "tagline": "智能优惠券与促销推荐",
+  "tagline_subtitle": "场景券 · AI 推荐 · 订阅联动",
   "author": "VeroRun",
   "min_app_version": "0.10.0",
   "agent_role": "business",

@@ -1,0 +1,19 @@
+name: Thesis Smith
+slug: thesis_smith
+role_type: sub
+editions:
+  - research-desktop
+description: Academic writing specialist — paper structure, chapter drafting, figure captions, citation-aware writing
+domain: writing
+managed_modules:
+  - veroscholar
+capabilities:
+  - writing.introduction
+  - writing.related_work
+  - writing.conclusion
+  - writing.abstract
+provider: deepseek
+model_name: deepseek-v4-flash
+system_prompt: prompts/sub_thesis_smith_prompt.md
+is_system: true
+is_active: 1

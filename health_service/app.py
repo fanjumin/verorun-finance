@@ -28,13 +28,14 @@ from flask import Flask
 
 # plugins/health_check 仅在 verorun-code（完整版）中存在；
 # verorun-pro 精简版无 plugins 目录，跳过 health check blueprint 注册。
-try:
-    from plugins.health_check.routes import health_bp
-    from plugins.health_check.models import init_health_tables, migrate_alert_schema
-    _has_health_plugin = True
-except ImportError:
-    _has_health_plugin = False
-    health_bp = None
+from shared.plugin_access import get_attr
+
+health_bp = get_attr('plugins.health_check.routes', 'health_bp', feature='health_service_bp')
+init_health_tables = get_attr('plugins.health_check.models', 'init_health_tables',
+                              feature='health_service_init')
+migrate_alert_schema = get_attr('plugins.health_check.models', 'migrate_alert_schema',
+                                feature='health_service_init')
+_has_health_plugin = health_bp is not None
 
 app = Flask(__name__)
 if _has_health_plugin:
@@ -57,7 +58,10 @@ def root():
 def ready():
     """Readiness probe — 检查数据库连接"""
     try:
-        from plugins.health_check.models import get_db
+        from shared.plugin_access import get_attr
+        get_db = get_attr('plugins.health_check.models', 'get_db', feature='health_service_ready')
+        if get_db is None:
+            return {'status': 'not_ready', 'error': 'health_check plugin not installed'}, 503
         with get_db() as db:
             db.execute('SELECT 1').fetchone()
         return {'status': 'ready', 'service': 'health-service'}

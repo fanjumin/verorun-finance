@@ -9,6 +9,7 @@ import secrets
 import string
 from datetime import datetime
 
+from i18n import _
 from .models import get_sms_db
 
 # ── 模板映射（与旧系统兼容）──
@@ -96,11 +97,7 @@ def send_sms(phone, code, purpose='login'):
     try:
         if provider:
             if provider_type == 'twilio':
-                lang = os.environ.get('DEPLOY_LANG', 'en')
-                if lang and lang.lower().startswith('zh'):
-                    message = f'您的验证码是：{code}，10 分钟内有效。'
-                else:
-                    message = f'Your verification code is: {code}. Valid for 10 minutes.'
+                message = _('Your verification code is: {code}. Valid for 10 minutes.', code=code)
                 result = provider.send(phone, message)
                 result['template'] = 'plain_text'
                 template = 'plain_text'
@@ -194,7 +191,7 @@ def validate_phone(phone, country_code=''):
     cleaned = re.sub(r'[\s\-\(\)]+', '', phone)
     digits_only = cleaned.lstrip('+')
     if not digits_only.isdigit() or len(digits_only) < 7 or len(digits_only) > 15:
-        return False, phone, 'Invalid phone number'
+        return False, phone, _('Invalid phone number')
 
     if not cleaned.startswith('+'):
         if country_code:

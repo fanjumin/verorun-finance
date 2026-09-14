@@ -1,0 +1,14 @@
+name: 合规官
+slug: rs_compliance
+role_type: sub
+editions:
+  - finance-desktop
+description: 合规把关 — 适当性、利益冲突、静默期与免责 / Compliance — suitability, conflicts, quiet period, disclaimer
+domain: research
+managed_modules:
+  - stock_analysis
+provider: deepseek
+model_name: deepseek-v4-flash
+system_prompt: prompts/rs_compliance.md
+is_system: true
+is_active: 1

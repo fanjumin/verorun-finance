@@ -35,11 +35,21 @@ def create_shop_payment(order_id: str, total_amount: float, subject: str = '商�
         {'success': bool, 'qr_code': str, 'order_id': str, 'amount': str, ...}
         未配置时返回失败（fail-closed，不再 mock 假成功）
     """
-    from plugins.payment.gateways.alipay import create_alipay_order
+    from shared.plugin_access import get_attr
+    create_alipay_order = get_attr('plugins.payment.gateways.alipay', 'create_alipay_order',
+                                   feature='shop_payment_create')
+    if create_alipay_order is None:
+        return {
+            'success': False,
+            'qr_code': '',
+            'pay_url': '',
+            'order_id': order_id,
+            'error': 'Payment gateway unavailable (plugins/payment not installed)',
+        }
 
     amount_fen = int(round(total_amount * 100))
     notify_base = _resolve_notify_base()
-    shop_notify_url = f'{notify_base}/shop/api/pay/notify' if notify_base else ''
+    shop_notify_url = f'{notify_base}/mall/api/pay/notify' if notify_base else ''
 
     result = create_alipay_order(order_id, amount_fen, subject, subject,
                                  notify_url=shop_notify_url)
@@ -65,7 +75,11 @@ def create_shop_payment(order_id: str, total_amount: float, subject: str = '商�
 
 def verify_notify(data: dict) -> bool:
     """验证支付宝异步通知签名，委托 plugins/subscription/gateways/alipay.py"""
-    from plugins.payment.gateways.alipay import verify_alipay_notify
+    from shared.plugin_access import get_attr
+    verify_alipay_notify = get_attr('plugins.payment.gateways.alipay', 'verify_alipay_notify',
+                                    feature='shop_payment_verify')
+    if verify_alipay_notify is None:
+        return False
     is_valid, _ = verify_alipay_notify(data, {})
     return is_valid
 

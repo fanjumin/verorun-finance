@@ -1,9 +1,8 @@
 """订单通知插件 — 基于事件系统的自动通知"""
-from i18n import _
 from plugin_manager.base import BasePlugin
 from plugin_manager.event_bus import EventName, get_event_bus
 from plugin_manager.logger import get_plugin_logger
-from .models import get_main_db, init_db, close_db
+from .models import get_main_db, init_db
 
 logger = get_plugin_logger('order_notify')
 
@@ -14,7 +13,7 @@ class OrderNotifyPlugin(BasePlugin):
     def version(self):
         info = getattr(self, 'plugin_info', None)
         return getattr(info, 'version', None) or '0.1.0'
-    description = _('Order Notify — Auto send notifications on order created, paid, shipped, refunded')
+    description = 'Order Notify — Auto send notifications on order created, paid, shipped, refunded'
 
     def on_enable(self, registry) -> bool:
         try:
@@ -66,9 +65,9 @@ class OrderNotifyPlugin(BasePlugin):
         if uid:
             self._notify_user(
                 uid,
-                self.t(_('Order has been created')),
-                self.t(_('Your order %s has been created (¥%.2f). Please complete payment soon.')) % (oid, total),
-                f'/shop/orders'
+                self.t('Order has been created'),
+                self.t('Your order {order_id} has been created ({amount:.2f}). Please complete payment soon.').format(order_id=oid, amount=total),
+                f'/mall/orders'
             )
 
     def _on_paid(self, **kw):
@@ -89,9 +88,9 @@ class OrderNotifyPlugin(BasePlugin):
         if uid:
             self._notify_user(
                 uid,
-                self.t(_('Payment successful')),
-                self.t(_('Your order %s has been successfully paid. We will ship it to you as soon as possible!')) % oid,
-                f'/shop/orders'
+                self.t('Payment successful'),
+                self.t('Your order {order_id} has been successfully paid. We will ship it to you as soon as possible!').format(order_id=oid),
+                f'/mall/orders'
             )
 
     def _on_shipped(self, **kw):
@@ -101,10 +100,10 @@ class OrderNotifyPlugin(BasePlugin):
         company = kw.get('company', '')
         tracking = kw.get('tracking_number', '')
         if uid:
-            msg = self.t(_('Your order %s has been shipped!')) % oid
+            msg = self.t('Your order {order_id} has been shipped!').format(order_id=oid)
             if company and tracking:
-                msg += self.t(_('\nCourier: %s | Tracking: %s')) % (company, tracking)
-            self._notify_user(uid, self.t(_('Shipped')), msg, f'/shop/orders')
+                msg += '\n' + self.t('Courier: {company} | Tracking: {tracking}').format(company=company, tracking=tracking)
+            self._notify_user(uid, self.t('Shipped'), msg, f'/mall/orders')
 
     def _on_refunded(self, **kw):
         """退款通知"""
@@ -112,56 +111,44 @@ class OrderNotifyPlugin(BasePlugin):
         oid = kw.get('order_id')
         reason = kw.get('reason', '')
         if uid:
-            msg = self.t(_('Your refund request for order %s has been received')) % oid
+            msg = self.t('Your refund request for order {order_id} has been received').format(order_id=oid)
             if reason:
-                msg += self.t(_('\nReason: %s')) % reason
-            self._notify_user(uid, self.t(_('Refund Requested')), msg, f'/shop/orders')
+                msg += '\n' + self.t('Reason: {reason}').format(reason=reason)
+            self._notify_user(uid, self.t('Refund Requested'), msg, f'/mall/orders')
 
     def _on_cancelled(self, **kw):
         """取消通知"""
         uid = kw.get('user_id')
         oid = kw.get('order_id')
         if uid:
-            self._notify_user(uid, self.t(_('Order canceled')),
-                              self.t(_('Your order %s has been canceled.')) % oid, f'/shop/orders')
+            self._notify_user(uid, self.t('Order canceled'),
+                              self.t('Your order {order_id} has been canceled.').format(order_id=oid), f'/mall/orders')
 
     def _on_completed(self, **kw):
         """完成通知"""
         uid = kw.get('user_id')
         oid = kw.get('order_id')
         if uid:
-            self._notify_user(uid, self.t(_('Order completed')),
-                              self.t(_('Your order %s is completed. Welcome back! Please leave a review.')) % oid,
-                              f'/shop/orders')
+            self._notify_user(uid, self.t('Order completed'),
+                              self.t('Your order {order_id} is completed. Welcome back! Please leave a review.').format(order_id=oid),
+                              f'/mall/orders')
 
     def get_dashboard_stats(self) -> dict:
         """Dashboard 聚合统计（读插件独立 schema order_notify，幂等）。"""
-        import psycopg2.extras
-        from plugins._base.db import get_raw_connection
         stats = {'total_notifications': 0, 'today_notifications': 0}
-        raw = None
         try:
-            raw = get_raw_connection()
-            cur = raw.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-            cur.execute('SET search_path TO order_notify')
-            cur.execute('SELECT COUNT(*) AS c FROM notification_log')
-            total = cur.fetchone()
-            cur.execute(
-                'SELECT COUNT(*) AS c FROM notification_log '
-                'WHERE created_at::timestamptz>=CURRENT_DATE'
-            )
-            today = cur.fetchone()
-            stats['total_notifications'] = int(total['c']) if total else 0
-            stats['today_notifications'] = int(today['c']) if today else 0
-            cur.close()
+            from .models import get_db
+            with get_db() as conn:
+                conn.execute('SET search_path TO order_notify')
+                total = conn.execute('SELECT COUNT(*) AS c FROM notification_log').fetchone()
+                today = conn.execute(
+                    'SELECT COUNT(*) AS c FROM notification_log '
+                    'WHERE created_at::timestamptz>=CURRENT_DATE'
+                ).fetchone()
+                stats['total_notifications'] = int(total['c']) if total else 0
+                stats['today_notifications'] = int(today['c']) if today else 0
         except Exception as e:
             logger.error(f'get_dashboard_stats failed: {e}')
-        finally:
-            if raw is not None:
-                try:
-                    raw.close()
-                except Exception:
-                    pass
         return stats
 
     def on_uninstall(self, registry) -> bool:

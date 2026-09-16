@@ -42,7 +42,29 @@ _EDITION_COLUMNS = ('id', 'edition', 'label', 'form_factor', 'enabled',
                     'default_exclude', 'note', 'updated_by', 'updated_at')
 
 _lock = threading.Lock()
-_cache = {'ts': 0.0, 'categories': {}, 'rules': {}, 'editions': {}, 'loaded': False}
+_cache = {'ts': 0.0, 'categories': {}, 'rules': {}, 'editions': {}, 'loaded': False,
+          'fp': None}
+
+# 跨进程失效指纹（BUG-6）：行数 + 最新 updated_at。写通道（routes.py 三个
+# admin 写端点）在 INSERT/UPDATE 时均显式赋值 updated_at=NOW()，因此任一 worker
+# 写库后该指纹必然变化，其余 worker 在下一次读取时即可感知并重载快照，
+# 不再各持一份最长 TTL(30s) 的脏快照。
+_FP_KEYS = ('c_n', 'c_t', 'r_n', 'r_t', 'e_n', 'e_t')
+_FP_SQL = (
+    'SELECT '
+    '(SELECT COUNT(*) FROM plugin_categories) AS c_n, '
+    "(SELECT COALESCE(MAX(updated_at), '') FROM plugin_categories) AS c_t, "
+    '(SELECT COUNT(*) FROM plugin_distribution_rules) AS r_n, '
+    "(SELECT COALESCE(MAX(updated_at), '') FROM plugin_distribution_rules) AS r_t, "
+    '(SELECT COUNT(*) FROM edition_catalog) AS e_n, '
+    "(SELECT COALESCE(MAX(updated_at), '') FROM edition_catalog) AS e_t"
+)
+
+# 指纹比对节流：同一请求内 resolve() 会被调用 N 次（browse 一页 100 插件 → 100 次
+# 裁决），若每次都打库会把查询量放大 ~100 倍。此处节流为「每进程每 1s 至多比对
+# 一次」：跨进程写后可见性由 ≤TTL(30s) 收紧到 ≤1s，DB 成本回落到每 1s 一次。
+_FP_MIN_INTERVAL = 1.0
+_fp_state = {'checked_at': 0.0, 'value': None}
 
 
 # ── 开关与工具 ────────────────────────────────────────────────────────
@@ -131,21 +153,77 @@ def _load(conn):
     return cats, rules, editions
 
 
+def _db_fingerprint(conn) -> str:
+    """三张分流事实表的轻量指纹；表缺失 / 查询失败 → ``''``（= 无法判定）。"""
+    try:
+        row = conn.execute(_FP_SQL).fetchone()
+    except Exception:
+        # fail-open：指纹不可得即退回 TTL 语义；静默处理，避免每请求刷日志
+        # （重载路径的失败仍会打印，诊断能力不受影响）
+        return ''
+    if row is None:
+        return ''
+    try:
+        vals = [row[k] for k in _FP_KEYS]
+    except (TypeError, KeyError, IndexError):
+        try:
+            vals = list(row)
+        except TypeError:
+            return ''
+    return '|'.join('' if v is None else str(v) for v in vals)
+
+
+def _fingerprint_now() -> str:
+    """按需取一次 DB 指纹（失败 → ``''``，调用方退回 TTL 语义）。"""
+    try:
+        from .models_store import get_registry_db
+        with get_registry_db() as conn:
+            return _db_fingerprint(conn)
+    except Exception:
+        # 同 _db_fingerprint：fail-open 退回 TTL 语义，静默避免日志风暴
+        return ''
+
+
+def _fp_cached(now: float) -> str:
+    """节流后的指纹读取：距上次比对不足 _FP_MIN_INTERVAL 秒则复用上次结果。"""
+    if now - _fp_state['checked_at'] < _FP_MIN_INTERVAL:
+        return _fp_state['value'] or ''
+    val = _fingerprint_now()
+    _fp_state['checked_at'] = now
+    _fp_state['value'] = val
+    return val
+
+
 def _snapshot():
-    """取缓存快照；TTL 过期则重载（查库失败时保留旧快照，绝不抛错）。"""
+    """取缓存快照；TTL 过期**或 DB 指纹变化**则重载（查库失败保留旧快照，绝不抛错）。
+
+    BUG-6 修复：命中缓存前先比对 DB 指纹 —— 写操作落在任一 worker 后，其余 worker
+    在下一次读取即重载（跨进程即时生效），消除 ≤TTL 的脏读窗口。
+    指纹比对按 _FP_MIN_INTERVAL 节流，同一请求内的 N 次裁决只打库一次。
+    指纹不可得（表缺失 / 查库失败）→ 退回纯 TTL 语义，行为与修复前一致。
+    """
     now = time.time()
     ttl = _ttl()
     if ttl > 0 and _cache['loaded'] and (now - _cache['ts']) < ttl:
-        return _cache['categories'], _cache['rules'], _cache['editions']
+        fp_new = _fp_cached(now)
+        if not fp_new or fp_new == _cache['fp']:
+            return _cache['categories'], _cache['rules'], _cache['editions']
     with _lock:
         now = time.time()
         if ttl > 0 and _cache['loaded'] and (now - _cache['ts']) < ttl:
-            return _cache['categories'], _cache['rules'], _cache['editions']
+            fp_new = _fp_cached(now)
+            if not fp_new or fp_new == _cache['fp']:
+                return _cache['categories'], _cache['rules'], _cache['editions']
         try:
             from .models_store import get_registry_db
             with get_registry_db() as conn:
+                fp = _db_fingerprint(conn)
                 cats, rules, editions = _load(conn)
-            _cache.update(ts=now, categories=cats, rules=rules, editions=editions, loaded=True)
+            _cache.update(ts=now, categories=cats, rules=rules, editions=editions,
+                          loaded=True, fp=fp)
+            # 复用本次重载已取得的指纹，省去一次比对查询
+            _fp_state['checked_at'] = now
+            _fp_state['value'] = fp
         except Exception as e:
             print(f'[Distribution] ⚠️ 规则读取失败（沿用旧快照）: {e}')
             # 记录时间戳，避免每请求都重试打库；保留旧数据不清零
@@ -249,6 +327,12 @@ def resolve(identifier, edition, profile=None):
         避免因环境变量缺失把插件全量锁死）。
       - 无单插件规则**且**矩阵无当前版记录 → 返回 ``None``，回落既有 yaml 语义。
     """
+    # kill-switch（BUG-2）：VR_DIST_ENABLED=0 时级1/2/3 一并关闭，全系统回落 yaml
+    # 语义（标准 v1.7 §18.4「一键回滚」）。此前仅级1/2 经 rule_for() 受保护，
+    # 矩阵级仍会按 default_exclude 隐藏插件，导致开关半失效。
+    if not is_enabled():
+        return None
+
     rule = rule_for(identifier)
 
     # 级1/级2：单插件覆盖（语义与 v1.8 完全一致；无规则则跳过）

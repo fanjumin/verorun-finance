@@ -198,6 +198,90 @@ def admin_email_settings_save():
     return jsonify({'success': True, 'data': {'saved': True}})
 
 
+# ── POST /admin/email/test-config ──
+@email_bp.route('/test-config', methods=['POST'])
+def admin_email_test_config():
+    """测试邮件配置：SMTP/IMAP 登录探测（不发送邮件、不修改已保存配置）。
+
+    优先使用请求体中的表单当前值（保存前即可测试）；字段缺省或为掩码
+    '********' 时回退到已保存配置，避免把掩码占位当真实密码。
+    端口约定：SMTP 465 → 隐式 SSL，其余 → STARTTLS 升级；
+              IMAP 993 → 隐式 SSL，其余 → 明文。
+    """
+    admin, err = _require_admin()
+    if err:
+        return err
+
+    import smtplib
+    import imaplib
+    from plugins.email.services import _get_mail_config
+
+    saved = _get_mail_config()
+    data = request.get_json(force=True) or {}
+
+    def _pick(key):
+        val = data.get(key, '')
+        if key in data and str(val) != '********' and val != '':
+            return str(val)
+        return str(saved.get(key, '') or '')
+
+    smtp_host, smtp_user, smtp_pass = _pick('smtp_host'), _pick('smtp_user'), _pick('smtp_pass')
+    imap_host, imap_user, imap_pass = _pick('imap_host'), _pick('smtp_user'), _pick('smtp_pass')
+    try:
+        smtp_port = int(_pick('smtp_port'))
+    except ValueError:
+        smtp_port = 0
+    try:
+        imap_port = int(_pick('imap_port'))
+    except ValueError:
+        imap_port = 0
+
+    result = {'smtp': {'ok': False, 'err': ''}, 'imap': {'ok': False, 'err': ''}}
+
+    # ── SMTP 登录探测 ──
+    if not smtp_host or not smtp_port:
+        result['smtp']['err'] = _('SMTP 未配置')
+    else:
+        try:
+            if smtp_port == 465:
+                server = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=12)
+            else:
+                server = smtplib.SMTP(smtp_host, smtp_port, timeout=12)
+                server.ehlo()
+                try:
+                    server.starttls()
+                except smtplib.SMTPNotSupportedError:
+                    pass  # 明文端口（25）无 TLS 能力时允许跳过
+                if smtp_user:
+                    server.login(smtp_user, smtp_pass)
+            server.quit()
+            result['smtp']['ok'] = True
+        except smtplib.SMTPAuthenticationError as e:
+            result['smtp']['err'] = _('SMTP 认证失败: {}').format(e.smtp_code)
+        except Exception as e:
+            result['smtp']['err'] = str(e)
+
+    # ── IMAP 登录探测 ──
+    if not imap_host or not imap_port:
+        result['imap']['err'] = _('IMAP 未配置')
+    else:
+        try:
+            if imap_port == 993:
+                conn = imaplib.IMAP4_SSL(imap_host, imap_port, timeout=12)
+            else:
+                conn = imaplib.IMAP4(imap_host, imap_port, timeout=12)
+            if imap_user:
+                conn.login(imap_user, imap_pass)
+            conn.logout()
+            result['imap']['ok'] = True
+        except imaplib.IMAP4.error as e:
+            result['imap']['err'] = _('IMAP 认证失败: {}').format(e)
+        except Exception as e:
+            result['imap']['err'] = str(e)
+
+    return jsonify({'success': True, 'data': result})
+
+
 # ── GET /admin/email/attachment/<uid>/<filename> ──
 @email_bp.route('/attachment/<int:uid>/<path:filename>', methods=['GET'])
 def admin_email_attachment(uid, filename):

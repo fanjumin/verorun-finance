@@ -36,7 +36,7 @@ try:
     from apscheduler.triggers.cron import CronTrigger
     from apscheduler.triggers.interval import IntervalTrigger
     from apscheduler.triggers.date import DateTrigger
-    from apscheduler.executors.pool import ThreadPoolExecutor, ProcessPoolExecutor
+    from apscheduler.executors.pool import ThreadPoolExecutor
     from apscheduler.jobstores.memory import MemoryJobStore
     from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR, EVENT_JOB_MISSED
     HAS_APSCHEDULER = True
@@ -150,9 +150,12 @@ class SchedulerEngine:
         jobstores = {
             'default': MemoryJobStore()
         }
+        # 执行器只保留默认线程池：'processpool' 从未被任何 add_job(executor=...)
+        # 使用，但 APScheduler 在 start() 时会实例化它 → 每个 worker 常驻多出 2 个
+        # 子进程，并因多进程资源追踪器/信号量在频繁 worker 重启下刷
+        # multiprocessing finalizer sem_unlink Traceback（1.6G 内存服务器上无收益）。
         executors = {
             'default': ThreadPoolExecutor(8),
-            'processpool': ProcessPoolExecutor(2)
         }
 
         self._apscheduler = BackgroundScheduler(

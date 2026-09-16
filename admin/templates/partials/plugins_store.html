@@ -94,20 +94,59 @@ function renderStoreList(container){
     mc.innerHTML=h;
   }).catch(function(){mc.innerHTML='<div class="em">{{ _('Network error') }}</div>'});
 }
+/* ── 安装中的可见状态（问题1）：禁用按钮 + 通栏细状态条（高 15px） ── */
+function _storeInstallState(id,busy){
+  var b=document.getElementById("storeInstallBtn");
+  if(b){
+    if(busy){if(!b.getAttribute("data-label"))b.setAttribute("data-label",b.innerHTML);b.disabled=true;b.innerHTML="{{ _('Installing') }}..."}
+    else{b.disabled=false;if(b.getAttribute("data-label"))b.innerHTML=b.getAttribute("data-label")}
+  }
+  var s=document.getElementById("storeInstallStatus");
+  if(busy){
+    if(!s&&b){
+      s=document.createElement("div");s.id="storeInstallStatus";
+      s.style.cssText="display:flex;align-items:center;gap:6px;height:15px;line-height:15px;width:100%;box-sizing:border-box;margin:16px 0 0 0;font-size:12px;color:var(--dim)";
+      /* 插到按钮行「上方」而非行内，才能通栏撑满（行内会被右对齐按钮挤窄） */
+      b.parentNode.parentNode.insertBefore(s,b.parentNode);
+    }
+    if(s){s.style.display="flex";s.innerHTML='<span style="flex:0 0 auto;width:12px;height:12px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:sp .8s linear infinite;display:inline-block"></span><span>'+esc(id)+" {{ _('Installing') }}...</span>"}
+  }else if(s){s.style.display="none";s.innerHTML=""}
+}
+/* ── 服务重启后就绪轮询，替代整页刷新（问题2/3） ── */
+function _storeWaitReady(id,tries){
+  tries=tries||0;
+  fetch("/admin/plugins/store/browse?page_size=1",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(d&&d.success){
+      if(typeof closePluginDetail==="function")closePluginDetail();
+      if(typeof renderNav==="function")renderNav();
+      if(typeof renderStoreList==="function")renderStoreList();
+      showToast(esc(id)+" {{ _('Enabled') }}","success");
+    }else if(tries<40){setTimeout(function(){_storeWaitReady(id,tries+1)},1500)}
+  }).catch(function(){if(tries<40)setTimeout(function(){_storeWaitReady(id,tries+1)},1500)});
+}
 function storeInstallPlugin(id){
   showConfirm("{{ _('Install Plugin') }}","{{ _('Install plugin?') }} <b>"+esc(id)+"</b>",function(){
+    _storeInstallState(id,true);
     fetch("/admin/plugins/store/"+encodeURIComponent(id)+"/install",{method:"POST",headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
-      if(d.success){
-        if(d.data&&d.data.needs_restart){
-          showToast(esc(id)+" {{ _('Enabled') }} — {{ _('Restarting service') }}","success");
-          setTimeout(function(){location.reload()},3500);
-        }else{
-          showToast(esc(id)+" {{ _('Installed') }}","success");
-          renderStoreList&&renderStoreList();
-        }
+      _storeInstallState(id,false);
+      /* 失败必须如实报错，不得再伪装成功（问题3） */
+      if(!d.success){showToast(d.error||"{{ _('Install failed') }}","error");return}
+      if(d.data&&d.data.auto_enabled===false){
+        /* 已装但未启用 → 明确告知原因，并刷新列表（未启用不会出现在菜单） */
+        showToast(esc(id)+" {{ _('Installed but not enabled') }}: "+(d.data.enable_error||""),"error");
+        if(typeof renderStoreList==="function")renderStoreList();
+        return
       }
-      else{showToast(d.error||"{{ _('Install failed') }}","error")}
-    }).catch(function(){showToast("{{ _('Network error') }}","error")});
+      if(d.data&&d.data.needs_restart){
+        showToast(esc(id)+" {{ _('Enabled') }} — {{ _('Restarting service') }}","success");
+        /* 不再 location.reload（会按 URL 路径跳回 Dashboard）；等后端就绪后原地刷新 */
+        setTimeout(function(){_storeWaitReady(id,0)},3000);
+        return
+      }
+      showToast(esc(id)+" {{ _('Installed') }}","success");
+      if(typeof renderNav==="function")renderNav();
+      if(typeof renderStoreList==="function")renderStoreList();
+    }).catch(function(){_storeInstallState(id,false);showToast("{{ _('Network error') }}","error")});
   },"{{ _('Install') }}");
 }
 
@@ -706,7 +745,7 @@ function showPluginDetail(pid){
     }else if(p.has_update){
       actionHtml+='<button class="btn bp bs" onclick="storeUpgradePlugin(\''+escAttr(p.identifier)+'\')">🔄 {{ _('Upgrade') }}</button>';
     }else if(p.price_type==='free'){
-      actionHtml+='<button class="btn bp bs" onclick="storeInstallPlugin(\''+escAttr(p.identifier)+'\')">{{ _('Install') }}</button>';
+      actionHtml+='<button class="btn bp bs" id="storeInstallBtn" onclick="storeInstallPlugin(\''+escAttr(p.identifier)+'\')">{{ _('Install') }}</button>';
     }else{
       /* 付费：先关闭弹窗再打开购买流程，避免弹窗上下文冲突 */
       actionHtml+='<button class="btn bp bs" data-pid="'+escAttr(p.identifier)+'" data-name="'+escAttr(p.name)+'" data-amount="'+(p.price_amount||0)+'" data-ptype="'+escAttr(p.price_type)+'" data-pinterval="'+escAttr(p.price_interval||'onetime')+'" onclick="var b=this;closePluginDetail();setTimeout(function(){showPurchaseDialog(b)},100)">{{ _('Purchase') }}</button>';

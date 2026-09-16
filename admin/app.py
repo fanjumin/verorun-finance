@@ -60,6 +60,76 @@ app.secret_key = os.environ.get('FLASK_SECRET_KEY', os.environ.get('FLASK_SECRET
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 app.config['PREFERRED_URL_SCHEME'] = 'https'
 
+# ══ CORS 中间件 ══
+# 桌面端研发/打包态（无服务版本地核）渲染层与 admin(8084) 异源（本机：vite:5173；打包态：
+# file:// 或 app:// 的 Origin 为 "null"/"file://"），axios 跨源请求带 Authorization 等自定义头
+# 会先发 preflight OPTIONS。若服务端不返回 Access-Control-Allow-* 头，浏览器拦截主请求，
+# axios 的 error.response 为空 → 前端把错误映射为「网络不可达」（科研版 R 复测根因）。
+# 这里统一注入 CORS 头，并对 OPTIONS 预检直接放行（带凭证，允许 Authorization 头）。
+# 允许源来自 env ADMIN_CORS_ALLOWED 逗号分隔白名单（如 puppet 模式之外的安全扩展），
+# 缺省放行桌面端开发/打包渲染源（详见 _normalize_origin）。
+_ALLOWED_ORIGIN_ENV = os.environ.get('ADMIN_CORS_ALLOWED', '')
+
+_DESKTOP_ORIGINS = {
+    'http://127.0.0.1:5173',
+    'http://localhost:5173',
+    # 打包态 Chromium 渲染层 Origin 为 "file://" 或 "null"（loadFile / app://）
+    'file://',
+    'null',
+}
+
+_CORS_ALLOW_HEADERS = (
+    'Authorization,Content-Type,Accept,Origin,Accept-Language,'
+    'X-Client-Language,X-Request-Id'
+)
+
+
+def _normalize_origin(value: str) -> str:
+    """将请求的 Origin 归一化为允许回显值：白名单内原样回显，其余返回空串（不跨源放行）。"""
+    origin = (value or '').strip()
+    if not origin:
+        return ''
+    low = origin.lower()
+    if low in {o.lower() for o in _DESKTOP_ORIGINS}:
+        return origin
+    if _ALLOWED_ORIGIN_ENV:
+        for item in _ALLOWED_ORIGIN_ENV.split(','):
+            if item.strip().lower() == low:
+                return origin
+    return ''
+
+
+@app.before_request
+def _cors_preflight():
+    """预检直接放行：OPTIONS + Access-Control-Request-Method 视为 CORS 预检。"""
+    if request.method == 'OPTIONS' and request.headers.get('Access-Control-Request-Method'):
+        resp = Response(status=204)
+        origin = _normalize_origin(request.headers.get('Origin'))
+        if origin:
+            resp.headers['Access-Control-Allow-Origin'] = origin
+        resp.headers['Access-Control-Allow-Methods'] = 'GET,POST,PUT,PATCH,DELETE,OPTIONS'
+        resp.headers['Access-Control-Allow-Headers'] = _CORS_ALLOW_HEADERS
+        resp.headers['Access-Control-Max-Age'] = '3600'
+        resp.headers['Access-Control-Allow-Credentials'] = 'true'
+        # Chromium(128+) Private Network Access：从公网/本地页访问 127.0.0.1 私有网段，
+        # 需本地网络预检响应声明该头，否则渲染层 fetch 被 PNA 策略拦截 → 表现 "Failed to fetch"。
+        resp.headers['Access-Control-Allow-Private-Network'] = 'true'
+        return resp
+    return None
+
+
+@app.after_request
+def _cors_allow(response):
+    """常规请求响应注入 CORS 允许头（仅回显白名单内源）。"""
+    origin = _normalize_origin(request.headers.get('Origin'))
+    if origin:
+        response.headers['Access-Control-Allow-Origin'] = origin
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        response.headers['Vary'] = 'Origin'
+        response.headers['Access-Control-Expose-Headers'] = 'X-Request-Id'
+    return response
+
+
 @app.context_processor
 def inject_deploy():
     return dict(deploy=deploy, edition=_os.environ.get('VR_EDITION', ''))
@@ -497,8 +567,32 @@ def _csrf_origin_guard():
     return jsonify({'success': False, 'error': 'Forbidden: cross-origin request rejected'}), 403
 
 
+# 桌面版（standalone native，科研/金融无服务器版）入口门控：
+# 本机浏览器手动访问 8084 时不再渲染管理面板登录页，而返回友好提示，
+# 避免普通用户误入管理后台而无所适从。服务器版（official）保持原逻辑。
+_DESKTOP_EDITIONS = ('research-desktop', 'finance-desktop')
+
+
+def _desktop_entry_gate() -> bool:
+    try:
+        from agent_matrix.models import current_edition
+        return current_edition() in _DESKTOP_EDITIONS
+    except Exception:
+        return False
+
+
+def _desktop_only_response():
+    from flask import make_response
+    from agent_matrix.models import current_edition
+    edition = current_edition()
+    label = '科研版' if edition == 'research-desktop' else '金融版'
+    return make_response(render_template('desktop_redirect.html', edition=edition, edition_label=label), 200)
+
+
 @app.route('/')
 def index():
+    if _desktop_entry_gate():
+        return _desktop_only_response()
     return redirect('/admin/login')
 
 
@@ -545,12 +639,16 @@ def workflow_editor():
 
 @app.route('/login')
 def login_page():
+    if _desktop_entry_gate():
+        return _desktop_only_response()
     return render_template('login.html')
 
 
 @app.route('/admin/login')
 def admin_login_page():
     """管理员专用登录页 — 无验证码、无OAuth、支持三端（browser/desktop/mobile）"""
+    if _desktop_entry_gate():
+        return _desktop_only_response()
     # 如果已登录且有 admin 权限，直接跳到后台
     from services.jwt_service import validate_token
     token = request.args.get('token') or request.headers.get('Authorization', '').replace('Bearer ', '')
@@ -1038,6 +1136,44 @@ def _is_plugin_embed_path(path: str) -> bool:
     return False
 
 
+# /admin/plugins/ 下的 API 命名空间（非插件页）：命中即不参与未安装判定，
+# 保持原有 SPA 兜底行为不变。
+_PLUGIN_API_NAMESPACES = {
+    'metrics', 'unified', 'discover', 'hooks', 'dependency-order', 'store',
+    'mcp', 'upload', 'submissions', 'license', 'licenses', 'coupons',
+    'payment', 'subscriptions', 'menus', 'developer',
+}
+
+
+def _is_unknown_plugin_page_path(path: str) -> bool:
+    """判断 path 是否为「未安装插件」的后台页地址（如 /admin/plugins/<id>/page）。
+
+    未安装的 identifier 由 SPA catch-all 兜底渲染管理面板壳（恒 200）会让人误以为
+    该插件的后台页仍可访问（复测项 F5）。这里对「不在 plugin_registry 的
+    identifier」显式 404。
+
+    不影响：`/admin/plugins` 本身（合法 SPA 页面）、API 命名空间白名单、
+    已注册插件（含已禁用/已卸载记录）、以及插件蓝图自身服务的路径
+    （蓝图路由优先于 catch-all，不会走到这里）。读库失败 → fail-open，保持原有行为。
+    """
+    m = re.match(r'^/admin/plugins/([^/]+)(?:/|$)', path)
+    if not m:
+        return False
+    identifier = m.group(1)
+    if identifier in _PLUGIN_API_NAMESPACES:
+        return False
+    try:
+        from plugin_manager.models import get_registry_db
+        with get_registry_db() as conn:
+            row = conn.execute(
+                'SELECT 1 FROM plugin_registry WHERE identifier = ?',
+                (identifier,)
+            ).fetchone()
+        return row is None
+    except Exception:
+        return False
+
+
 @app.route('/admin/<path:subpath>')
 def admin_spa_catchall(subpath):
     """SPA catch-all — /admin/xxx 全部渲染 admin SPA 壳，前端根据 pathname 路由"""
@@ -1045,6 +1181,10 @@ def admin_spa_catchall(subpath):
     # 防递归护栏：已注册插件 menu 的 embed_url 路径若未被插件蓝图服务，
     # 直接 404，禁止回落 admin SPA 壳（避免 iframe 嵌套管理面板 → 重叠+无限递归）
     if _is_plugin_embed_path(request.path):
+        abort(404)
+    # 未安装插件的后台页地址（如 /admin/plugins/<id>/page）同样不得回落 SPA 壳：
+    # 恒 200 的壳会被误认为"该插件页仍可访问"
+    if _is_unknown_plugin_page_path(request.path):
         abort(404)
     from services.jwt_service import validate_token
     from flask import make_response

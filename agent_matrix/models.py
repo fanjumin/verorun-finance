@@ -768,11 +768,19 @@ def seed_default_agents():
         #   1) 角色集异常收缩（<5）→ 跳过删除（fail-closed）
         #   2) 删除数量超上限 MAX_SYSTEM_ROLE_DELETE（默认 3）→ 跳过删除（fail-closed）
         #   3) SEED_DRY_RUN=1 → 预演模式，只打印不删除
+        #
+        # ★ 方向版（research/finance）修复：角色源已按版本目录隔离
+        #   （_role_dir_for_edition → roles/<edition>/，见上），因此**凡不属于本版
+        #   YAML 的 is_system 角色即异版本残留**，删除是"版本切换迁移"的期望收敛，
+        #   而非"角色集异常"。故方向版跳过数字上限护栏（隔离边界=版本目录本身），
+        #   上限护栏仅用于 official/standard 全集角色崩坏的保护。
         deleted = 0
+        _ed_for_del = current_edition()
+        directional = _ed_for_del in ('research-desktop', 'finance-desktop')
         if yaml_slugs:
             placeholders = ','.join(['%s'] * len(yaml_slugs))
             stale = 0
-            if len(yaml_slugs) < 5:
+            if len(yaml_slugs) < 5 and not directional:
                 print(f'[Seed] FAIL-CLOSED: role set shrank to {len(yaml_slugs)}, skip delete')
             else:
                 stale = conn.execute(
@@ -780,9 +788,17 @@ def seed_default_agents():
                     "WHERE is_system=1 AND slug NOT IN ({}) AND slug != ''"
                     .format(placeholders), tuple(yaml_slugs)
                 ).fetchone()['c'] or 0
-                max_delete = int(os.getenv('MAX_SYSTEM_ROLE_DELETE', '3'))
-                if stale > max_delete:
-                    print(f'[Seed] FAIL-CLOSED: {stale} stale roles exceed limit {max_delete}, skip delete')
+                if not directional and stale > int(os.getenv('MAX_SYSTEM_ROLE_DELETE', '3')):
+                    print(f'[Seed] FAIL-CLOSED: {stale} stale roles exceed limit '
+                          f'{os.getenv("MAX_SYSTEM_ROLE_DELETE", "3")}, skip delete')
+                elif directional:
+                    # 方向版：清理本版之外的全部系统角色（版本严格隔离）
+                    deleted = conn.execute(
+                        "DELETE FROM agent_matrix "
+                        "WHERE is_system=1 AND slug NOT IN ({}) AND slug != ''"
+                        .format(placeholders), tuple(yaml_slugs)
+                    ).rowcount
+                    print(f'[Seed] Directional {_ed_for_del}: removed {deleted} cross-version roles')
                 elif os.getenv('SEED_DRY_RUN', '0') == '1':
                     print(f'[Seed] DRY-RUN: would delete {stale} stale system roles, skipped')
                 else:

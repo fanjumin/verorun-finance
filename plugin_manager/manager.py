@@ -110,6 +110,25 @@ def _dag_handler_conforms(handler) -> bool:
     return has_varargs or len(positional) >= 2
 
 
+# ── 跨进程缓存失效指纹（VR-PLG-407）──────────────────────────────────────
+# `_cache` 是进程内字典，而 plugin_registry 是所有 worker 共享的真相源。
+# 这里取 plugin_registry 的轻量指纹：行数 + 最新 updated_at。所有写通道
+# （install / enable / activate / disable / uninstall / set_config）都会更新
+# updated_at，卸载则是行数变化，因此任一 worker 写库后该指纹必然变化，
+# 其余 worker 在下一次读取时即可感知并重载缓存。
+# 修法与 distribution.py 的 BUG-6 一致（同一套指纹失效约定）。
+_REGISTRY_FP_SQL = (
+    "SELECT COUNT(*) AS n, COALESCE(MAX(updated_at), '') AS t "
+    "FROM plugin_registry"
+)
+
+# 指纹比对节流：读路径（is_enabled / is_path_allowed / list_plugins 等）每个
+# 请求都会被调用，若每次都打库会把查询放大到每请求一次。此处节流为
+# 「每进程每 1s 至多比对一次」：跨进程写后可见性由「worker 重启」收紧到 ≤1s，
+# DB 成本回落到每 1s 一次。
+_REGISTRY_FP_MIN_INTERVAL = 1.0
+
+
 class PluginManager:
     """插件管理器核心类"""
 
@@ -123,6 +142,11 @@ class PluginManager:
 
         # 运行时缓存: {identifier: PluginInfo}
         self._cache: Dict[str, PluginInfo] = {}
+
+        # 跨进程缓存一致性（见 _REGISTRY_FP_SQL / sync_cache_if_stale）：
+        # _cache_fp = 上次重载时 plugin_registry 的指纹；_fp_state 为指纹比对节流状态
+        self._cache_fp = ''
+        self._fp_state = {'checked_at': 0.0, 'value': None}
 
         # 运行时实例: {identifier: instance}
         self._instances: Dict[str, Any] = {}
@@ -231,6 +255,15 @@ class PluginManager:
             init_coupon_table()
         except Exception as e:
             print(f'[PluginManager] ⚠️ 优惠券表初始化失败: {e}')
+
+        # 初始化插件支付订单表（plugin_payment_orders）
+        # BUG-1：此前仅由 get_payment_router() 惰性建表，全新实例未走到支付路由时
+        # 该表永不创建，导致 /developer/overview（聚合查询）与订单状态查询直接 500。
+        try:
+            from .payment import init_payment_tables
+            init_payment_tables()
+        except Exception as e:
+            print(f'[PluginManager] ⚠️ 支付订单表初始化失败: {e}')
 
         # License & Store 客户端（延迟初始化）
         self._license_mgr = get_license_manager()
@@ -742,12 +775,19 @@ class PluginManager:
     def install(self, identifier: str) -> PluginInfo:
         """安装插件: 写入 registry 持久化, 状态 → INSTALLED"""
         with self._lock_timeout():
-            if identifier in self._cache:
-                info = self._cache[identifier]
-                if info.status in (PluginStatus.INSTALLED, PluginStatus.ENABLED,
-                                   PluginStatus.ACTIVE):
-                    print(f'[PluginManager] {identifier} 已安装，跳过')
-                    return info
+            # 以 DB 为成员真相源判定「已安装」：本进程 _cache 可能残留其它 worker
+            # 已卸载的幽灵条目，旧逻辑据此静默跳过安装（不写 DB 行），
+            # 结果「安装成功」但 worker 重启后插件凭空消失。
+            self.sync_cache_if_stale(force=True)
+            db_info = self._load_from_db(identifier)
+            if db_info is not None and db_info.status in (
+                    PluginStatus.INSTALLED, PluginStatus.ENABLED,
+                    PluginStatus.ACTIVE):
+                print(f'[PluginManager] {identifier} 已安装，跳过')
+                self._cache[identifier] = db_info
+                return db_info
+            if db_info is None:
+                self._cache.pop(identifier, None)  # 丢弃幽灵条目
 
             # 从磁盘扫描
             info = self._discovery.discover_one(identifier)
@@ -1209,11 +1249,12 @@ class PluginManager:
 
         Returns:
             {'identifier', 'old_version', 'new_version', 'needs_restart'}
+            商店版本与本地一致时额外返回 {'already_latest': True, 'needs_restart': False}
 
         Raises:
             PluginNotFoundError: 插件未安装
             PluginStateError: 状态不允许升级 / License 无效
-            PluginVersionError: 目标版本不高于当前版本 / min_app_version 不满足
+            PluginVersionError: 目标版本低于当前版本 / min_app_version 不满足
             ValueError: 商店无更新包 / 包内 identifier 不一致 / 包损坏
         """
         with self._lock_timeout():
@@ -1233,14 +1274,26 @@ class PluginManager:
             if not latest:
                 raise ValueError(f'商店未提供 {identifier} 的目标版本号')
 
-            # 版本比较：拒绝降级/同版本
+            # 版本比较：同版本视为「已是最新」幂等返回；降级拒绝
             latest_ver = parse_version(latest)
             installed_ver = parse_version(old_version)
+            same_version = False
             if latest_ver is not None and installed_ver is not None:
-                if latest_ver <= installed_ver:
+                same_version = latest_ver == installed_ver
+                if latest_ver < installed_ver:
                     raise PluginVersionError(identifier, f'>{old_version}', latest)
-            elif latest == old_version:
-                raise PluginVersionError(identifier, f'>{old_version}', latest)
+            else:
+                same_version = latest == old_version
+            if same_version:
+                # PB-3：商店版本与本地一致时不报错（面板"重新升级"/重试同一版本
+                # 此前返回 409/40901 CONFLICT），直接返回幂等结果，不下载不解压
+                return {
+                    'identifier': identifier,
+                    'old_version': old_version,
+                    'new_version': old_version,
+                    'already_latest': True,
+                    'needs_restart': False,
+                }
 
             # min_app_version 兼容校验
             min_app = str(detail.get('min_app_version') or '')
@@ -1687,14 +1740,91 @@ class PluginManager:
                 except ValueError:
                     pass
 
+    # ── 跨进程缓存一致性（VR-PLG-407）─────────────────────────────────
+
+    def _registry_fingerprint(self) -> str:
+        """plugin_registry 轻量指纹；查询失败 / 无法判定 → ``''``。"""
+        try:
+            with get_registry_db() as conn:
+                row = conn.execute(_REGISTRY_FP_SQL).fetchone()
+        except Exception:
+            # fail-open：指纹不可得即退回「不重载」语义（行为同修复前）；
+            # 静默处理，避免每请求刷日志（重载路径的失败仍会打印）
+            return ''
+        if row is None:
+            return ''
+        try:
+            return f"{row['n']}|{row['t'] or ''}"
+        except (TypeError, KeyError, IndexError):
+            try:
+                return '|'.join('' if v is None else str(v) for v in list(row))
+            except TypeError:
+                return ''
+
+    def _registry_fp_cached(self, now: float) -> str:
+        """节流后的指纹读取：距上次比对不足 _REGISTRY_FP_MIN_INTERVAL 秒则复用上次结果。"""
+        st = self._fp_state
+        if st['value'] is not None and (now - st['checked_at']) < _REGISTRY_FP_MIN_INTERVAL:
+            return st['value']
+        val = self._registry_fingerprint()
+        st['checked_at'] = now
+        st['value'] = val
+        return val
+
+    def sync_cache_if_stale(self, force: bool = False) -> bool:
+        """跨 worker 缓存一致性：DB 成员 / 状态变化时重建内存缓存。
+
+        写操作（install / enable / activate / disable / uninstall / set_config）
+        只更新处理请求的那个 worker 的 `_cache`，而此前只有启动期调用
+        `_load_cache()`，其余 worker 会长期持有陈旧成员集与状态，表现为：
+        卸载后残留「幽灵插件」、状态 / 配置跨 worker 交替、重装被静默跳过。
+
+        这里按 `plugin_registry` 指纹做跨进程失效（与 distribution.py 的
+        BUG-6 同一套修法）：指纹变化 → 全量 `_load_cache()`，成员集 / 状态 /
+        配置全部回到 DB 权威值。比对按 `_REGISTRY_FP_MIN_INTERVAL` 节流，
+        同一请求内多次调用只打库一次；指纹不可得（查库失败）→ 保留现有缓存，
+        绝不抛错、绝不返回空列表。
+
+        Args:
+            force: True 时跳过「指纹未变」判断，直接重载（写路径可用）
+
+        Returns:
+            True → 本次执行了重载；False → 未重载（未变化 / 节流命中 / 无法判定）
+        """
+        if not force:
+            fp = self._registry_fp_cached(time.time())
+            if not fp or fp == self._cache_fp:
+                return False
+        with self._lock:
+            # 双检：并发请求同时发现变化时只重载一次
+            if not force:
+                fp = self._registry_fp_cached(time.time())
+                if not fp or fp == self._cache_fp:
+                    return False
+            else:
+                # 主动同步：以「重载前」的指纹作基线。若重载期间他人又写了库，
+                # 下次读取会因指纹不等而再次重载，不会漏判成「已同步」。
+                fp = self._registry_fingerprint()
+            try:
+                self._load_cache()
+            except Exception as e:
+                print(f'[PluginManager] ⚠️ 缓存同步失败（保留现有缓存）: {e}')
+                return False
+            self._cache_fp = fp
+            self._fp_state['checked_at'] = time.time()
+            self._fp_state['value'] = fp
+            return True
+
     # ── 查询方法 ────────────────────────────────────────────────────────
 
     def get_info(self, identifier: str) -> Optional[PluginInfo]:
-        """获取插件信息（从缓存）"""
+        """获取插件信息（缓存；跨 worker 变更时先同步）"""
+        self.sync_cache_if_stale()
         return self._cache.get(identifier)
 
     def list_plugins(self, status: str = None) -> List[PluginInfo]:
-        """列出插件，可按状态筛选"""
+        """列出插件，可按状态筛选（跨 worker 变更时先同步，避免幽灵条目）"""
+        self.sync_cache_if_stale()
         if status:
             return [p for p in self._cache.values() if p.status.value == status]
         return list(self._cache.values())
@@ -1710,6 +1840,9 @@ class PluginManager:
                 'total_store': int,
             }
         """
+        # 跨 worker 一致：先按 DB 指纹同步，保证随后的 info.to_dict()（含 config）
+        # 不是本进程的陈旧副本
+        self.sync_cache_if_stale()
         from .models_store import get_registry_db as _get_store_db
 
         # 懒刷新商店目录（距上次同步超过 TTL 时异步重新拉取，不阻塞请求）
@@ -1863,11 +1996,13 @@ class PluginManager:
         return True
 
     def is_enabled(self, identifier: str) -> bool:
+        self.sync_cache_if_stale()
         info = self._cache.get(identifier)
         return info is not None and info.status in (
             PluginStatus.ENABLED, PluginStatus.ACTIVE)
 
     def is_active(self, identifier: str) -> bool:
+        self.sync_cache_if_stale()
         info = self._cache.get(identifier)
         return info is not None and info.status == PluginStatus.ACTIVE
 
@@ -1876,9 +2011,11 @@ class PluginManager:
         return self._instances.get(identifier)
 
     def count(self) -> int:
+        self.sync_cache_if_stale()
         return len(self._cache)
 
     def count_by_status(self) -> Dict[str, int]:
+        self.sync_cache_if_stale()
         counts = {}
         for p in self._cache.values():
             s = p.status.value
@@ -1888,10 +2025,18 @@ class PluginManager:
     # ── 配置读写 ────────────────────────────────────────────────────────
 
     def get_config(self, identifier: str, key: str = None, default=None):
-        """读取插件配置"""
+        """读取插件配置
+
+        多 worker / 多服务场景：插件可能由其它进程安装，本进程缓存缺失时
+        按需从 DB 加载，避免返回 manifest 默认值或 None。
+        """
+        self.sync_cache_if_stale()
         info = self._cache.get(identifier)
         if not info:
-            return default
+            info = self._load_from_db(identifier)
+            if info is None:
+                return default
+            self._cache[identifier] = info
         if key:
             return info.config.get(key, default)
         return info.config
@@ -1909,9 +2054,12 @@ class PluginManager:
         校验失败会打印警告但仍会保存（防止前端设置损坏后无法恢复）。
         """
         with self._lock_timeout():
-            info = self._cache.get(identifier)
-            if not info:
+            # 以 DB 为权威再合并单键：本进程缓存可能落后于其它 worker 的写入，
+            # 基于旧 config 整体回写会覆盖别的 worker 刚写入的键（丢更新）。
+            info = self._load_from_db(identifier)
+            if info is None:
                 return False
+            self._cache[identifier] = info
 
             if validate and info.settings_schema:
                 test_config = dict(info.config)
@@ -1939,9 +2087,12 @@ class PluginManager:
             {'success': bool, 'errors': [str], 'coerced': dict}
         """
         with self._lock_timeout():
-            info = self._cache.get(identifier)
-            if not info:
+            # 以 DB 为权威再整体替换：避免用本进程滞后的缓存（版本/元数据/
+            # settings_schema）回写，覆盖其它 worker 刚更新的记录。
+            info = self._load_from_db(identifier)
+            if info is None:
                 return {'success': False, 'errors': ['Plugin not found'], 'coerced': {}}
+            self._cache[identifier] = info
 
             schema = info.settings_schema or {}
             target = config
@@ -1982,6 +2133,7 @@ class PluginManager:
         Returns:
             {'success': bool, 'errors': [str], 'schema': dict}
         """
+        self.sync_cache_if_stale()
         info = self._cache.get(identifier)
         if not info:
             return {'success': False, 'errors': ['Plugin not found'], 'schema': {}}
@@ -2168,7 +2320,13 @@ class PluginManager:
     # ── 内部方法 ────────────────────────────────────────────────────────
 
     def _get_cached(self, identifier: str) -> PluginInfo:
-        """获取缓存中的插件信息，不存在则抛出异常"""
+        """获取缓存中的插件信息，不存在则抛出异常
+
+        写路径（enable/activate/disable/uninstall/upgrade）入口统一先做跨 worker
+        同步：否则本进程可能持有已被其它 worker 卸载的「幽灵条目」，让写操作
+        误判为「已启用，跳过」，DB 里却早已没有这条记录。
+        """
+        self.sync_cache_if_stale()
         info = self._cache.get(identifier)
         if info is None:
             # 尝试从数据库恢复
@@ -2183,9 +2341,21 @@ class PluginManager:
         """动态加载插件模块，返回 BasePlugin 子类实例"""
         identifier = info.identifier
         plugin_dir = info.path
-
         if not os.path.isdir(plugin_dir):
-            raise PluginNotFoundError(identifier)
+            # 自愈：path 陈旧（如旧的打包产物路径）时回退到标准插件目录并回写 DB，
+            # 避免已缓存插件因 path 永久失效而无法挂载（科研版无数据根因 §6.1 / 出厂复测）。
+            fallback = os.path.join(self.plugins_dir, identifier)
+            if os.path.isdir(fallback):
+                print(f'[PluginManager] ⚠️ {identifier} 修复过期 path: '
+                      f'{plugin_dir!r} -> {fallback!r}')
+                info.path = fallback
+                try:
+                    self._save_to_db(info)
+                except Exception as _e:
+                    print(f'[PluginManager] ⚠️ {identifier} path 回写失败: {_e}')
+            else:
+                raise PluginNotFoundError(identifier)
+            plugin_dir = fallback
 
         # 确保项目根在 sys.path（供插件导入根业务模块 analytics/health_check 等）
         project_root = os.path.dirname(os.path.dirname(plugin_dir))  # plugins/ 的父目录
@@ -2344,15 +2514,20 @@ class PluginManager:
     # ── 数据库操作 ──────────────────────────────────────────────────────
 
     def _load_cache(self):
-        """从数据库加载所有已注册插件到缓存"""
-        self._cache.clear()
+        """从数据库加载所有已注册插件到缓存
+
+        先构建新字典再整体替换（引用交换是原子操作）：避免读库中途失败时留下
+        空缓存 / 半份缓存，让并发读请求读到「插件全没了」的假象。
+        """
+        new_cache: Dict[str, PluginInfo] = {}
         with get_registry_db() as conn:
             rows = conn.execute(
                 'SELECT * FROM plugin_registry ORDER BY identifier'
             ).fetchall()
             for row in rows:
                 info = self._row_to_info(dict(row))
-                self._cache[info.identifier] = info
+                new_cache[info.identifier] = info
+        self._cache = new_cache
 
     def _load_from_db(self, identifier: str) -> Optional[PluginInfo]:
         """从数据库加载单个插件"""

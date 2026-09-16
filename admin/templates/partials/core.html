@@ -27,7 +27,7 @@ function showConfirm(title,text,cb,okLabel){
   ov.querySelector(".scTitle").textContent=title;
   ov.querySelector(".scText").innerHTML=text;
   ov.querySelector(".scOk").textContent=okLabel||'{{ _("Delete") }}';
-  ov.style.display="";
+  ov.style.display="flex";
 }
 
 if(!T){document.getElementById("mc").innerHTML='<div class="em">{{ _('Please') }} <a href="/admin/login">{{ _('Log In') }}</a></div>'}

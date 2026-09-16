@@ -1,0 +1,19 @@
+name: Academic Writer
+slug: academic_writer
+role_type: sub
+editions:
+  - research-desktop
+description: Academic prose specialist — paragraph expansion, sentence refinement, figure/table captions, citation-aware writing in-flow
+domain: writing
+managed_modules:
+  - veroscholar
+capabilities:
+  - writing.body
+  - writing.refine
+  - writing.figure_caption
+  - writing.citation_flow
+provider: deepseek
+model_name: deepseek-v4-flash
+system_prompt: prompts/sub_academic_writer_prompt.md
+is_system: true
+is_active: 1

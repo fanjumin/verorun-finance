@@ -125,39 +125,4 @@ function mlDelete(id,name){
   });
 }
 
-// ── 自定义确认弹窗 ────────────────────────────────
-var _confirmCallback=null;
-function showConfirm(title,text,cb,okLabel){
-  _confirmCallback=cb;
-  var overlay=document.getElementById("confirmOverlay");
-  if(!overlay){
-    var div=document.createElement("div");div.id="confirmOverlay";
-    div.innerHTML='<div id="confirmBox" style="position:fixed;top:0;left:0;width:100%;height:100%;z-index:99999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.45);backdrop-filter:blur(2px)">'
-      +'<div style="background:var(--card,#fff);border:1px solid var(--border,#e0e0e0);border-radius:var(--radius,12px);padding:28px 32px;min-width:340px;max-width:440px;box-shadow:0 8px 32px rgba(0,0,0,0.18);animation:fadeIn .2s ease">'
-      +'<div id="confirmTitle" style="font-size:16px;font-weight:600;color:var(--text,#1a1a1a);margin-bottom:12px"></div>'
-      +'<div id="confirmText" style="font-size:14px;color:var(--dim,#666);margin-bottom:24px;line-height:1.5"></div>'
-      +'<div style="display:flex;gap:10px;justify-content:flex-end">'
-      +'<button id="confirmCancel" class="btn bo bs" style="padding:8px 20px">{{ _('Cancel') }}</button>'
-      +'<button id="confirmOk" style="padding:8px 20px;background:#f85149;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:500">{{ _('Delete') }}</button>'
-      +'</div></div></div>';
-    document.body.appendChild(div);
-    document.getElementById("confirmCancel").onclick=function(){document.getElementById("confirmOverlay").style.display="none";_confirmCallback=null};
-    document.getElementById("confirmOverlay").onclick=function(e){if(e.target.id==="confirmOverlay"){document.getElementById("confirmOverlay").style.display="none";_confirmCallback=null}};
-    document.getElementById("confirmOk").onclick=function(){
-      document.getElementById("confirmOverlay").style.display="none";
-      if(_confirmCallback){_confirmCallback();_confirmCallback=null}
-    };
-    overlay=div;
-    // add animation keyframes once
-    if(!document.getElementById("_confirmStyle")){
-      var s=document.createElement("style");s.id="_confirmStyle";
-      s.textContent='@keyframes fadeIn{from{opacity:0;transform:scale(.95)}to{opacity:1;transform:scale(1)}}';
-      document.head.appendChild(s);
-    }
-  }
-  document.getElementById("confirmTitle").textContent=title;
-  document.getElementById("confirmText").innerHTML=text;
-  document.getElementById("confirmOk").textContent=okLabel||'{{ _("Delete") }}';
-  overlay.style.display="";
-}
 // 🧹 {{ _('Data Cleaning Agent') }}

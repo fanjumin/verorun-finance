@@ -87,10 +87,15 @@ var GROUPS=[
 ];
 // 与 GROUPS 一一对应的英文标识（插件 menu.group 用此匹配现有组，避免 i18n 翻译差异）
 var GROUP_KEYS=["Dashboard","Command Console","System","AI & Content"{% if edition != 'edu' %},"Business Center"{% endif %},"Workflow","Publishing","Users & Support","Security & Compliance","Monitoring & Data","Plugins & i18n"];
+/* 插件菜单加载失败必须可见（问题3：菜单凭空少了却无任何提示） */
+function _navPluginMenuError(){
+  var e=document.getElementById("nav");if(!e||document.getElementById("navPluginMenuErr"))return;
+  e.insertAdjacentHTML("beforeend",'<div class="ns-section" id="navPluginMenuErr" style="color:#f85149">⚠ {{ _('Plugin menu load failed') }}</div>');
+}
 function renderNav(){var e=document.getElementById("nav"),h='';GROUPS.forEach(function(g,i){var n=g[0],c=g[1],t=g[2];if(!c&&t.length===1){var k=t[0][0],x=t[0][1],l=t[0][2];h+='<div class="ni" onclick="go(\''+k+'\')\" id="n-'+k+'">'+x+'<span>'+l+'</span></div>'}else{h+='<div class="ng" id="ng-'+i+'"><div class="ns" onclick="toggleGroup('+i+')"><span class="ns-arrow">'+(c?'▶':'▼')+'</span><span class="ns-label">'+n+'</span></div><div class="ng-body'+(c?' collapsed':'')+'" id="ngb-'+i+'">';t.forEach(function(m){var k=m[0],x=m[1],l=m[2];if(k==='_section'){h+='<div class="ns-section">'+l+'</div>'}else{h+='<div class="ni" onclick="go(\''+k+'\')\" id="n-'+k+'">'+x+'<span>'+l+'</span></div>'}});h+='</div></div>'}});e.innerHTML=h;
   // Load plugin menus
   fetch("/admin/plugins/menus",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
-    if(!d.success||!d.data||!d.data.menus)return;
+    if(!d.success||!d.data||!d.data.menus){_navPluginMenuError();return;}
     var pm=d.data.menus;
     if(pm.length===0)return;
     // Group menus by group name
@@ -130,7 +135,7 @@ function renderNav(){var e=document.getElementById("nav"),h='';GROUPS.forEach(fu
       gIdx++;
     });
     if(ph)e.insertAdjacentHTML('beforeend',ph);
-  }).catch(function(){});
+  }).catch(function(){_navPluginMenuError();});
 }
 function toggleGroup(i){var b=document.getElementById("ngb-"+i),a=document.querySelector("#ng-"+i+" .ns-arrow");b.classList.contains("collapsed")?(b.classList.remove("collapsed"),a.textContent="▼"):(b.classList.add("collapsed"),a.textContent="▶")}
 function togglePlugin(id,el){var b=document.getElementById(id),a=el.querySelector(".ns-arrow");if(!b)return;b.classList.contains("collapsed")?(b.classList.remove("collapsed"),a.textContent="▼"):(b.classList.add("collapsed"),a.textContent="▶")}

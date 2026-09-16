@@ -21,8 +21,9 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 
-# ── SSRF 防护：仅允许访问以下域名 ──
-ALLOWED_NETLOCS = {'github.com', 'raw.githubusercontent.com', 'cdn.jsdelivr.net'}
+# ── SSRF 防护：仅允许访问以下域名（GitHub / Gitee 双平台 + CDN，与文件头说明一致）──
+SUPPORTED_REPO_HOSTS = {'github.com', 'raw.githubusercontent.com',
+                        'cdn.jsdelivr.net', 'gitee.com'}
 
 # 内置分类兜底集（v1.8 起不再是封闭白名单）：
 #   实际合法分类 = 本常量 ∪ plugin_categories 注册表（enabled=1）

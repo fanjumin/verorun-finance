@@ -632,7 +632,7 @@ def email_verify():
         return api_err('Email and verification code are required')
     with get_db() as conn:
         row = conn.execute(
-            'SELECT code, expires_at FROM sms_codes WHERE phone=%s AND purpose=%s ORDER BY id DESC LIMIT 1',
+            'SELECT id, code, expires_at FROM sms_codes WHERE phone=%s AND purpose=%s AND COALESCE(used,0)=0 ORDER BY id DESC LIMIT 1',
             (email, 'email_verify')
         ).fetchone()
         if not row:
@@ -646,6 +646,8 @@ def email_verify():
         if exist:
             return api_err('This email is already in use')
         conn.execute('UPDATE users SET email=%s, email_verified=1 WHERE id=%s', (email, payload['user_id']))
+        # 一次性消费：验证成功后置 used=1，杜绝有效期内同码重放
+        conn.execute('UPDATE sms_codes SET used=1 WHERE id=%s', (row['id'],))
         conn.commit()
     return api_ok({'email': email, 'email_verified': True})
 

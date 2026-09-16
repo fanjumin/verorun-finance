@@ -4,7 +4,7 @@
 
 Email Service 是 VeroRun 平台的统一邮件服务插件，提供完整的 SMTP 发信和 IMAP 收信能力，支持收件箱管理、邮件撰写、附件处理和联系人管理。插件使用独立的 PostgreSQL schema `email`，不依赖主库的邮件相关表，实现完全的数据隔离。
 
-插件支持 SMTP/IMAP 协议，默认配置兼容阿里企业邮箱（smtp.qiye.aliyun.com），可通过环境变量或 PluginManager 配置灵活切换邮件服务商。配置来源遵循环境变量 > PluginManager > system_config > 默认值的优先级顺序。
+插件支持 SMTP/IMAP 协议，**不预置任何邮件服务器参数**，全部由用户在设置中自行填写（支持任意邮件服务商）。配置来源遵循环境变量 > PluginManager > system_config > 默认值（均为空）的优先级顺序。
 
 ## 功能特性
 
@@ -83,7 +83,7 @@ PluginManager 配置 (email plugin config)
 主库 system_config 表 (兼容旧配置)
     |
     v
-默认值 (smtp.qiye.aliyun.com:465 / imap.qiye.aliyun.com:993)
+默认值 (均为空，由用户在设置中自行配置)
 ```
 
 ## 目录结构
@@ -123,26 +123,26 @@ email/
 
 | 环境变量 | 说明 | 默认值 |
 |----------|------|--------|
-| `SMTP_HOST` | SMTP 服务器地址 | smtp.qiye.aliyun.com |
-| `SMTP_PORT` | SMTP 端口 | 465 |
+| `SMTP_HOST` | SMTP 服务器地址 | （空，用户配置） |
+| `SMTP_PORT` | SMTP 端口 | （空，用户配置） |
 | `SMTP_USER` | SMTP 登录账号 | - |
 | `SMTP_PASS` | SMTP 登录密码 | - |
 | `SMTP_FROM` | 发件人地址 | 同 SMTP_USER |
-| `IMAP_HOST` | IMAP 服务器地址 | imap.qiye.aliyun.com |
-| `IMAP_PORT` | IMAP 端口 | 993 |
+| `IMAP_HOST` | IMAP 服务器地址 | （空，用户配置） |
+| `IMAP_PORT` | IMAP 端口 | （空，用户配置） |
 | `CONTACT_TO` | 联系表单收件人邮箱 | - |
 
 ## 配置说明
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `smtp_host` | string | smtp.qiye.aliyun.com | SMTP 服务器主机名 |
-| `smtp_port` | integer | 465 | SMTP 端口（465=SSL，587=STARTTLS） |
+| `smtp_host` | string | "" | SMTP 服务器主机名（用户配置） |
+| `smtp_port` | integer | 0 | SMTP 端口（465=SSL，587=STARTTLS，用户配置） |
 | `smtp_user` | string | "" | SMTP 登录用户名 |
 | `smtp_pass` | string | "" | SMTP 登录密码（敏感字段，显示时掩码） |
 | `smtp_from` | string | "" | 发件人地址 |
-| `imap_host` | string | imap.qiye.aliyun.com | IMAP 服务器主机名 |
-| `imap_port` | integer | 993 | IMAP 端口 |
+| `imap_host` | string | "" | IMAP 服务器主机名（用户配置） |
+| `imap_port` | integer | 0 | IMAP 端口（用户配置） |
 
 ## API 端点
 

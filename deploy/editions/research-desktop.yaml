@@ -16,7 +16,6 @@ plugins:
     - _base
     - captcha_embedded
     - email
-    - health_check
     - sms
     - two_factor_auth
     - memory_engine
@@ -47,6 +46,7 @@ roles:
   - method_architect
   - thesis_smith
   - peer_auditor
+  - academic_writer
 core_files:
   - agent_matrix/models.py
   - agent_matrix/routes.py

@@ -620,6 +620,13 @@ class UnifiedLLM:
     def chat_stream(self, messages, provider_model_id=None, provider=None,
                     model=None, module='unknown', **kwargs):
         """流式 chat 接口，返回生成器（自动记录 token 用量）"""
+        # 兜底：未显式传参时回退构造器/实例配置（兼容"构造即配置"的调用方，
+        # 如 plugins/chatbot/service.py、agent_matrix/intent.py）。与 chat() 一致。
+        if self._provider and not provider_model_id and not provider:
+            provider = self._provider
+            model = self._model
+            if self._pm_id:
+                provider_model_id = self._pm_id
         cfg = self._resolve_model(provider_model_id, provider, model)
 
         allowed, reason = check_ai_budget(module)

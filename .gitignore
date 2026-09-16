@@ -82,6 +82,9 @@ plugins/*/*.db
 plugins/*/*.db-shm
 plugins/*/*.db-wal
 
+# Health check runtime discovery data (regenerated at startup, never commit)
+plugins/health_check/data/
+
 # License server runtime DB (created at runtime, must not be committed)
 plugin_manager/license_server/data/*.db
 plugin_manager/license_server/data/*.db-shm
@@ -204,6 +207,9 @@ TEST_PLAN_*.md
 # Local-only workflow/report artifacts (excluded from tracking)
 .github/MULTI-MACHINE-WORKFLOW.md
 deploy/VeroRun-Deploy-Report.html
+
+# ── 本地开发者协作规约（仅本机阅读，永不提交、永不推送） ──
+/DEVELOPER-MUST-READ.md
 
 # ── D-06 修复：打包载荷泄漏物（凭据/git 历史/工具态目录），永不入库、永不随包分发 ──
 .openclaw/

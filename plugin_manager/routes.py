@@ -24,6 +24,7 @@ import time
 import traceback
 from datetime import datetime
 from flask import Blueprint, jsonify, request
+from shared.http import api_err
 
 from .manager import PluginManager
 from .models import PluginStatus
@@ -94,12 +95,42 @@ def _require_store_admin():
     return None
 
 
+def _registry_rows(identifiers=None):
+    """按 identifier 读 plugin_registry 的 {identifier: {version, status}}。
+
+    以 DB 为跨 worker 真相源：`PluginManager._cache` 只反映处理过写请求的那个
+    worker，直接用缓存判定 installed / already_installed / 已启用会让标记漂移
+    （卸载后仍显示已安装、商店页陈旧徽标）。
+
+    Args:
+        identifiers: 限定查询的 identifier 集合；None / 空 → 全表
+
+    Returns:
+        dict → 查询成功（可能为空字典）；None → 读库失败（调用方自行兜底）
+    """
+    sql = 'SELECT identifier, version, status FROM plugin_registry'
+    params = None
+    if identifiers is not None:
+        ids = sorted({i for i in identifiers if i})
+        if not ids:
+            return {}
+        sql += f" WHERE identifier IN ({','.join(['?'] * len(ids))})"
+        params = tuple(ids)
+    try:
+        with get_registry_db() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        return {dict(r)['identifier']: dict(r) for r in rows}
+    except Exception as e:
+        print(f'[routes] plugin_registry 读取失败: {e}')
+        return None
+
+
 def _parse_positive_int(name: str, default: int, lo: int = 1, hi: int = 100000) -> int:
     """解析正整数查询参数（D-PAGE-500）。
 
     - 缺省/空 → default
     - 非整数 → 抛 ValueError（由调用方转为 400）
-    - 超出 [lo, hi] → 截断到边界
+    - 超出 [lo, hi] → 抛 ValueError（由调用方转为 400，不再静默钳制）
     """
     raw = request.args.get(name, '')
     if raw == '' or raw is None:
@@ -108,7 +139,9 @@ def _parse_positive_int(name: str, default: int, lo: int = 1, hi: int = 100000) 
         v = int(raw)
     except (TypeError, ValueError):
         raise ValueError(f'参数 {name} 必须为整数')
-    return max(lo, min(hi, v))
+    if v < lo or v > hi:
+        raise ValueError(f'参数 {name} 必须在 [{lo}, {hi}] 之间')
+    return v
 
 
 def _quota(raw, default: int, lo: int, hi: int):
@@ -239,15 +272,16 @@ def discover_plugins():
 
     try:
         all_plugins = mgr.discover_all()
-        # 标记已安装
-        installed_ids = {p.identifier for p in mgr._cache.values()}
+        # 标记已安装（以 plugin_registry 为准：本进程 _cache 不反映其它 worker 的
+        # 安装/卸载，直接读缓存会让 installed / status 标记跨请求漂移）
+        registry = _registry_rows() or {}
         dicts = []
         for p in all_plugins:
             d = _info_to_dict(p)
-            d['installed'] = p.identifier in installed_ids
-            if p.identifier in mgr._cache:
-                cached = mgr._cache[p.identifier]
-                d['status'] = cached.status.value if cached.status else 'unknown'
+            row = registry.get(p.identifier)
+            d['installed'] = row is not None
+            if row is not None:
+                d['status'] = row.get('status') or 'unknown'
             dicts.append(d)
 
         return _json_result(True, data={
@@ -391,14 +425,14 @@ def get_plugin_config(identifier: str):
     if not mgr:
         return _json_result(False, error='PluginManager not initialized', code=503)
 
-    info = mgr.get_info(identifier)
-    if not info:
+    cfg = mgr.get_config(identifier)
+    if cfg is None:
         return _json_result(False, error=f'Plugin "{identifier}" not found', code=404)
-
+    info = mgr.get_info(identifier)
     return _json_result(True, data={
         'identifier': identifier,
-        'config': info.config,
-        'settings_schema': info.settings_schema,
+        'config': cfg,
+        'settings_schema': info.settings_schema if info else {},
     })
 
 
@@ -424,11 +458,13 @@ def set_plugin_config(identifier: str):
 
     try:
         for key, value in config.items():
-            mgr.set_config(identifier, key, value)
-        info = mgr.get_info(identifier)
+            ok = mgr.set_config(identifier, key, value)
+            if not ok:
+                return _json_result(False, error=f'Plugin "{identifier}" not found in registry', code=404)
+        saved = mgr.get_config(identifier)
         return _json_result(True, data={
             'identifier': identifier,
-            'config': info.config if info else config,
+            'config': saved if saved is not None else config,
         })
     except PluginError as e:
         return _json_result(False, error=str(e), code=400)
@@ -1172,11 +1208,19 @@ def _annotate_store_plugins(mgr, plugins: list) -> None:
         return
 
     # 收集本地已安装版本映射（仅针对当前页插件，避免全量查询）
+    # 以 plugin_registry 为准：本进程缓存不反映其它 worker 的安装/卸载，
+    # 会给出陈旧的 installed 徽标（卸载后仍显示"已安装"）。
     local_versions = {}
-    for p in plugins:
-        info = mgr.get_info(p.get('identifier', ''))
-        if info:
-            local_versions[p['identifier']] = info.version
+    registry = _registry_rows([p.get('identifier') for p in plugins])
+    if registry is None:
+        # 读库失败 → 退回缓存（PluginManager 已按 DB 指纹同步，优于修复前）
+        for p in plugins:
+            info = mgr.get_info(p.get('identifier', ''))
+            if info:
+                local_versions[p['identifier']] = info.version
+    else:
+        for pid, row in registry.items():
+            local_versions[pid] = row.get('version')
 
     updates = {}
     if local_versions and mgr.store_client:
@@ -1292,7 +1336,11 @@ def store_public_detail(identifier: str):
 
 @bp.route('/mcp/<plugin_id>/manifest', methods=['GET'])
 def plugin_mcp_manifest(plugin_id: str):
-    """P2-5: 插件 MCP 能力清单（对外暴露，供外部 MCP client 发现）。"""
+    """P2-5: 插件 MCP 能力清单（管理侧发现接口，需商店管理员权限）。
+
+    鉴权先于 manifest 查询：非管理员恒 403（不泄漏插件安装状态与能力面）；
+    管理员访问"未安装 / 未声明 MCP"的插件 → 404（No MCP servers for this plugin）。
+    """
     err = _require_store_admin()
     if err:
         return err
@@ -1380,13 +1428,14 @@ def store_install(identifier: str):
     if not detail:
         return _json_result(False, error=f'Plugin "{identifier}" not found in store', code=404)
 
-    # 如果已安装，直接返回
-    existing = mgr.get_info(identifier)
-    if existing and existing.status.value not in ('unknown', 'uninstalled'):
+    # 如果已安装，直接返回（以 DB 为准：缓存不反映其它 worker 的安装/卸载，
+    # 否则卸载后立即重装会被误判为 already_installed 而静默跳过）
+    existing = (_registry_rows([identifier]) or {}).get(identifier)
+    if existing and existing.get('status') not in ('unknown', 'uninstalled'):
         return _json_result(True, data={
             'identifier': identifier,
             'status': 'already_installed',
-            'version': existing.version,
+            'version': existing.get('version'),
         })
 
     # v1.8：动态分流准入闸门（标准 §18.2「展示 / 安装准入 / 运行时门控读同一优先级链」）。
@@ -1475,29 +1524,62 @@ def store_install(identifier: str):
 
 # ── 商店在线升级 ──────────────────────────────────
 
+_RESTART_UNITS = ['verorun-main', 'verorun-auth', 'verorun-admin']
+
+
 def _schedule_service_restart(delay: float = 3.0):
     """后台延迟重启所有挂载插件路由的服务，使新启用/升级插件的路由生效。
 
     Flask 运行期无法动态注册蓝图，插件路由统一在启动时挂载；
-    安装/启用/升级后必须重启 admin/main/auth 三个服务。
-    用 systemd-run 创建独立 transient unit 执行重启，脱离 admin 服务自身
-    cgroup——否则重启 admin 时会连带终止当前进程（含本 sudo 子进程），
-    导致后续服务不重启。sudo systemd-run 免密已在服务器配置。
+    安装/启用/升级后必须重启 main/auth/admin 三个服务。
+
+    命令形态按顺序尝试，全部使用 `sudo -n`（非交互）——无 TTY 时直接以
+    非 0 退出返回，绝不静默卡在密码提示，也绝不静默失败：
+      1) systemd-run … systemctl restart「三单元」——单个 transient unit，
+         脱离 admin 自身 cgroup，重启 admin 不会连带终止发起重启的进程
+      2) 逐单元 systemctl restart（一单元一条命令）——兜底形态；
+         sudoers 白名单是「单元级精确匹配」，三单元连写不匹配任何条目、
+         会退回需密码的 (ALL:ALL) ALL 而失败。
+         admin 排在最后：重启 admin 会终止本进程，其后的单元将不再执行。
+
+    每次尝试都检查 returncode 并打印输出（PB-1：旧实现用 DEVNULL 丢弃输出
+    且不检查返回码，重启静默失效，表现为"插件装好了但插件页面打不开"）。
     """
+    def _run(cmd: list):
+        try:
+            proc = subprocess.run(cmd, stdout=subprocess.PIPE,
+                                  stderr=subprocess.STDOUT, timeout=30,
+                                  start_new_session=True)
+        except Exception as e:
+            return None, f'{type(e).__name__}: {e}'
+        return proc.returncode, (proc.stdout or b'').decode('utf-8', 'replace').strip()
+
     def _restart():
         time.sleep(delay)
-        try:
-            subprocess.Popen(
-                ['sudo', 'systemd-run', '--collect', '--no-block',
-                 'systemctl', 'restart',
-                 'verorun-admin', 'verorun-main', 'verorun-auth'],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True,
-            )
-        except Exception as e:
-            print(f'[PluginManager] ⚠️ restart services failed: {e}')
+
+        cmd = ['sudo', '-n', 'systemd-run', '--collect', '--no-block',
+               'systemctl', 'restart', *_RESTART_UNITS]
+        rc, out = _run(cmd)
+        if rc == 0:
+            print(f'[PluginManager] ✅ 插件路由重启已提交: {" ".join(cmd)}')
+            return
+        print(f'[PluginManager] ⚠️ systemd-run 形态不可用（rc={rc} {out[:200]}），'
+              f'改用逐单元 systemctl')
+
+        failed = []
+        for unit in _RESTART_UNITS:
+            rc, out = _run(['sudo', '-n', 'systemctl', 'restart', unit])
+            if rc == 0:
+                print(f'[PluginManager] ✅ 已重启 {unit}')
+            else:
+                failed.append(f'{unit} rc={rc} {out[:200]}')
+                print(f'[PluginManager] ⚠️ 重启 {unit} 失败: rc={rc} {out[:200]}')
+        if failed:
+            print(f'[PluginManager] ❌ 插件路由自动重启存在失败项，'
+                  f'新启用插件页面需人工重启服务后生效: {failed}')
+
     threading.Thread(target=_restart, daemon=True).start()
+
 
 @bp.route('/store/<identifier>/upgrade', methods=['POST'])
 def store_upgrade(identifier: str):
@@ -2028,6 +2110,7 @@ def approve_submission(sub_id):
         _req_body = request.get_json(silent=True) or {}
         _override = bool(_req_body.get('override'))
         _auto_publish = bool(_req_body.get('auto_publish'))
+        _sync_warn = None  # 仅 catalog sync 失败时携带告警（不回滚已发布的提交）
         if _audit_status == 'reject' and not _override:
             return _json_result(False, error=(
                 '审计未通过（audit_status=reject），含危险代码特征，禁止安装；'
@@ -2065,15 +2148,26 @@ def approve_submission(sub_id):
                     "UPDATE plugin_submissions SET status='approved', updated_at=NOW() WHERE id=%s",
                     (sub_id,))
                 conn.commit()
-            _pub = _publish_approved(sub_id)
+            _pub = _publish_approved(sub_id, bool(_req_body.get('local_only')))
             if _pub[1] != 200:
-                # 发布失败：回滚 approved → pending，保持状态机一致
-                with get_registry_db() as conn:
-                    conn.execute(
-                        "UPDATE plugin_submissions SET status='pending', updated_at=NOW() WHERE id=%s",
-                        (sub_id,))
-                    conn.commit()
-                return _pub
+                _published = False
+                try:
+                    _j = _pub[0].get_json() or {}
+                    _published = bool(_j.get('published'))
+                    if _published:
+                        _sync_warn = _j.get('error') or 'Plugin published but catalog sync failed. Please retry sync-all.'
+                except Exception:
+                    _published = False
+                if not _published:
+                    # 发布工具本身失败：回滚 approved → pending，保持状态机一致
+                    with get_registry_db() as conn:
+                        conn.execute(
+                            "UPDATE plugin_submissions SET status='pending', updated_at=NOW() WHERE id=%s",
+                            (sub_id,))
+                        conn.commit()
+                    return _pub
+                # 发布已成功、仅 catalog sync 失败（store_plugins 已落库）：
+                # 不回滚，继续本地安装；最终响应携带 sync 告警提示重试 sync-all
 
         _shutil_app.move(pending_dir, dest_dir)
         discovered = mgr._discovery.discover_one(identifier)
@@ -2081,21 +2175,36 @@ def approve_submission(sub_id):
             _shutil_app.rmtree(dest_dir, ignore_errors=True)
             return _json_result(False, error=f'Failed to discover plugin: {identifier}. Check plugin.json structure.', code=500)
 
-        # 标记为 upload 来源 + 安装
+        # 标记为 upload 来源 + 幂等安装（BUG-14：local_only 发布已完成本地安装并激活，
+        # 此时 install/enable/activate 必须各自幂等，绝不因"已是 active"而抛 500）
         discovered.source = 'upload'
-        mgr.install(discovered.identifier)
-        mgr.enable(discovered.identifier)
-        mgr.activate(discovered.identifier)
+        _si = mgr.get(discovered.identifier)
+        _si_status = getattr(_si, 'status', None) if _si else None
+        if _si_status not in (PluginStatus.INSTALLED, PluginStatus.ENABLED, PluginStatus.ACTIVE):
+            mgr.install(discovered.identifier)
+        try:
+            mgr.enable(discovered.identifier)
+        except PluginStateError:
+            pass  # 已在 ENABLED/ACTIVE 可忽略；由下方 activate 收敛
+        try:
+            mgr.activate(discovered.identifier)
+        except PluginStateError:
+            # 已 ACTIVE 时抛 "active→active" 非法转换 —— BUG-14 根因，跳过即可
+            pass
 
         with get_registry_db() as conn:
+            # BUG-3(b)：包目录已归位到 plugins/<identifier>，同步回填 file_path ——
+            # 否则 approve 之后再单独调用 publish_third_party 必然 404（发布死锁）
             conn.execute(
-                "UPDATE plugin_submissions SET status='approved', updated_at=NOW() WHERE id=%s",
-                (sub_id,))
+                "UPDATE plugin_submissions SET status='approved', file_path=%s, updated_at=NOW() WHERE id=%s",
+                (dest_dir, sub_id))
             conn.commit()
 
         installed = mgr.get(identifier)
         result = _info_to_dict(installed) if installed else {'identifier': identifier}
         result['submission_id'] = sub_id
+        if _sync_warn:
+            result['sync_warning'] = _sync_warn
         return _json_result(True, data=result)
     except Exception as e:
         traceback.print_exc()
@@ -2476,8 +2585,20 @@ def store_purchase(identifier: str):
 
 @bp.route('/payment/<order_no>/status', methods=['GET'])
 def payment_order_status(order_no: str):
-    """查询订单支付状态"""
-    order = get_payment_order(order_no)
+    """查询订单支付状态（需登录用户；匿名 401，不再直落 500）"""
+    from services.jwt_service import validate_token
+    _token = request.headers.get('Authorization', '').replace('Bearer ', '')
+    if not _token:
+        _token = (request.args.get('token') or request.cookies.get('sso_token')
+                  or request.cookies.get('tm_token'))
+    if not (_token and validate_token(_token)):
+        return _json_result(False, error='Please login first', code=401)
+    try:
+        order = get_payment_order(order_no)
+    except Exception as e:
+        # 鉴权前置后仍可能遇到订单表缺失 / DB 异常：收敛为 503，不外泄裸栈
+        print(f'[routes] payment_order_status query failed: {e}')
+        return _json_result(False, error='Order service unavailable', code=503)
     if not order:
         return _json_result(False, error='Order not found', code=404)
 
@@ -3171,13 +3292,17 @@ def _auto_install_enable_plugin(mgr, identifier: str):
     幂等：已启用直接跳过；失败只记日志，不阻断支付回调（License 已激活）。
     """
     try:
+        # 以 DB 为状态真相源（缓存不反映其它 worker 的安装/启用，会让
+        # 「已启用 / 未安装」判定漂移，导致重复下载安装）
+        row = (_registry_rows([identifier]) or {}).get(identifier)
+
         # 已启用 → 跳过
-        if mgr.is_enabled(identifier):
+        if row and row.get('status') in ('enabled', 'active'):
             print(f'[Payment] {identifier} already enabled, skip auto-enable')
             return
 
         # 未安装 → 从商店下载到 plugins/<id>/
-        if mgr.get_info(identifier) is None:
+        if row is None:
             store = mgr.store_client
             if not store:
                 print(f'[Payment] Store client unavailable, skip download for {identifier}')
@@ -3489,13 +3614,12 @@ def _publish_approved(submission_id, local_only=False):
             _n = store.sync_all()
     except Exception:
         traceback.print_exc()
-        return _json_result(False,
-                            error='Plugin published but catalog sync failed. Please retry sync-all.',
-                            code=500)
+        # 发布已成功（store_plugins 已落库），仅同步失败：标记 published，调用方不得回滚
+        return api_err('Plugin published but catalog sync failed. Please retry sync-all.',
+                       500, published=True)
     if _n <= 0:
-        return _json_result(False,
-                            error=f'Plugin published but catalog sync returned {_n}. Please retry sync-all.',
-                            code=500)
+        return api_err(f'Plugin published but catalog sync returned {_n}. Please retry sync-all.',
+                       500, published=True)
     return _json_result(True, data={'submission_id': submission_id,
                                     'synced': _n,
                                     'local_only': local_only})
@@ -3946,12 +4070,22 @@ def developer_submit():
 
         with _zipfile.ZipFile(tmp_path, 'r') as zf:
             json_entry = None
+            nested_entry = None
             for name in zf.namelist():
                 cleaned = _os.path.normpath(name).replace('\\', '/')
-                if cleaned.endswith('/plugin.json') or cleaned == 'plugin.json':
+                if cleaned == 'plugin.json':
                     json_entry = name
                     break
+                if cleaned.endswith('/plugin.json') and nested_entry is None:
+                    nested_entry = name
             if json_entry is None:
+                # BUG-8：口径与 audit._check_structure（只认包根 manifest）对齐 ——
+                # 嵌套包在此明确拒绝，避免「submit 放行 → audit 判缺 manifest」的误杀
+                if nested_entry:
+                    return _json_result(False, error=(
+                        'plugin.json must be at the zip root '
+                        f'(found nested entry: {nested_entry}). '
+                        'Please repack without a top-level folder.'), code=400)
                 return _json_result(False, error='plugin.json not found in zip root', code=400)
             json_raw = zf.read(json_entry).decode('utf-8')
 
@@ -4500,8 +4634,11 @@ def health_ready():
 def skill_browse():
     """P0-1：商店浏览已上架技能（q 搜索 + 分页，按安装量排序）。"""
     q = (request.args.get('q') or '').strip()
-    page = _parse_positive_int('page', 1, 1, 100000)
-    per_page = _parse_positive_int('per_page', 20, 1, 100)
+    try:
+        page = _parse_positive_int('page', 1, 1, 100000)
+        per_page = _parse_positive_int('per_page', 20, 1, 100)
+    except ValueError as e:
+        return _json_result(False, error=str(e), code=400)
     where = ["status='approved'"]
     params: list = []
     if q:
@@ -4744,8 +4881,8 @@ def skill_circuit_breaker():
         with get_registry_db() as conn:
             conn.execute(
                 "INSERT INTO system_config (key, value, description, updated_at) "
-                "VALUES ('skill_circuit_breaker', %s, 'skill circuit breaker scope', NOW()::text) "
-                "ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW()::text",
+                "VALUES ('skill_circuit_breaker', %s, 'skill circuit breaker scope', NOW()) "
+                "ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW()",
                 (value,))
             conn.commit()
     except Exception as e:

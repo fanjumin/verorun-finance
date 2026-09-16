@@ -96,7 +96,15 @@ function renderStoreList(container){
 }
 function storeInstallPlugin(id){
   showConfirm("{{ _('Install Plugin') }}","{{ _('Install plugin?') }} <b>"+esc(id)+"</b>",function(){
+    /* 安装进度反馈：确认后立即把确认框切成加载态（下载+安装可能耗时数秒~数十秒），
+       完成后恢复原样并关闭，避免期间界面无任何状态反馈。 */
+    var sc=document.getElementById("scOverlay");
+    var scBox=sc?sc.firstElementChild:null;
+    var scSaved=null;
+    if(sc&&scBox){scSaved=scBox.innerHTML;scBox.innerHTML='<div class="lo"><div class="s"></div>{{ _('Installing') }} <b>'+esc(id)+'</b>...</div>';sc.style.display="flex";}
+    function done(){if(sc&&scBox&&scSaved!==null){scBox.innerHTML=scSaved;sc.style.display="none"}}
     fetch("/admin/plugins/store/"+encodeURIComponent(id)+"/install",{method:"POST",headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+      done();
       if(d.success){
         if(d.data&&d.data.needs_restart){
           showToast(esc(id)+" {{ _('Enabled') }} — {{ _('Restarting service') }}","success");
@@ -107,7 +115,7 @@ function storeInstallPlugin(id){
         }
       }
       else{showToast(d.error||"{{ _('Install failed') }}","error")}
-    }).catch(function(){showToast("{{ _('Network error') }}","error")});
+    }).catch(function(){done();showToast("{{ _('Network error') }}","error")});
   },"{{ _('Install') }}");
 }
 
@@ -597,15 +605,15 @@ function _pluginBanner(p,h,card){
 var detailModal=null;
 function showPluginDetail(pid){
   if(detailModal){detailModal.remove();detailModal=null}
-  var ov=document.createElement("div");ov.className="modal-overlay store-modal-scope";ov.style.cssText="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center";
+  var ov=document.createElement("div");ov.className="modal-overlay store-modal-scope";ov.style.cssText="position:fixed;top:0;left:0;right:0;bottom:0;background:var(--bg-overlay);z-index:9999;display:flex;align-items:center;justify-content:center";
   var st=document.createElement("style");st.textContent=
-    '.store-modal-scope{--text:#e6edf3;--dim:#8b949e;--muted:#9aa0a6;--bg-secondary:#161b22;--border:rgba(255,255,255,.14);color:var(--text)}'+
-    '.store-modal-scope .btn{color:var(--text)}.store-modal-scope .btn:hover{color:#fff}'+
-    '.store-modal-scope .tab-item{color:var(--muted)}.store-modal-scope .tab-item.active{color:var(--text)}'+
-    '.store-modal-scope a{color:#58a6ff}'+
-    '.store-modal-scope .bdg.on{color:#3fb950}.store-modal-scope .bdg.off{color:#f85149}.store-modal-scope .bdg.pd{color:#d29922}';
+    '.store-modal-scope{color:var(--text)}'+
+    '.store-modal-scope .btn{color:var(--text)}.store-modal-scope .btn:hover{color:var(--text-high)}'+
+    '.store-modal-scope .tab-item{color:var(--text-muted)}.store-modal-scope .tab-item.active{color:var(--text)}'+
+    '.store-modal-scope a{color:var(--cyan)}'+
+    '.store-modal-scope .bdg.on{color:var(--green)}.store-modal-scope .bdg.off{color:var(--rose)}.store-modal-scope .bdg.pd{color:var(--gold)}';
   ov.appendChild(st);
-  var box=document.createElement("div");box.className="modal-box";box.style.cssText="background:rgba(13,13,24,0.55);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid var(--border);border-radius:12px;padding:24px;max-width:640px;width:90%;max-height:80vh;overflow-y:auto;position:relative";
+  var box=document.createElement("div");box.className="modal-box";box.style.cssText="background:var(--bg-card);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid var(--border);border-radius:var(--radius);padding:24px;max-width:640px;width:90%;max-height:80vh;overflow-y:auto;position:relative";
   box.innerHTML='<div class="lo"><div class="s"></div>{{ _('Loading') }}...</div>';
   ov.appendChild(box);
   document.body.appendChild(ov);
@@ -623,7 +631,7 @@ function showPluginDetail(pid){
 
     var vHtml='v'+esc(p.version);
     if(p.has_update){
-      vHtml+=' <span class="bdg" style="background:rgba(63,185,80,.15);color:#3fb950">&#x1F504; v'+esc(p.latest_version||p.version)+' {{ _('Upgrade available') }}</span>';
+      vHtml+=' <span class="bdg" style="background:rgba(0,255,159,.15);color:var(--green)">&#x1F504; v'+esc(p.latest_version||p.version)+' {{ _('Upgrade available') }}</span>';
     }
 
     var detailIconHtml='';
@@ -637,12 +645,12 @@ function showPluginDetail(pid){
       '<div style="display:flex;gap:12px;align-items:flex-start">'+
       detailIconHtml+
       '<div><div style="font-size:18px;font-weight:600">'+esc(p.name)+' <span style="font-size:12px;color:var(--dim)">'+vHtml+'</span></div>'+
-      (p.tagline?'<div style="margin-top:4px;font-size:'+escAttr(p.tagline_font_size||'16px')+';font-weight:600;color:'+escAttr(p.tagline_color||'#8b949e')+'">'+esc(p.tagline)+
-        (p.tagline_subtitle?'<div style="font-size:'+escAttr(p.tagline_subtitle_font_size||'14px')+';font-weight:400;color:#8b949e;opacity:.92;margin-top:2px">'+esc(p.tagline_subtitle)+'</div>':'')+
+      (p.tagline?'<div style="margin-top:4px;font-size:'+escAttr(p.tagline_font_size||'16px')+';font-weight:600;color:'+escAttr(p.tagline_color||'var(--text-dim)')+'">'+esc(p.tagline)+
+        (p.tagline_subtitle?'<div style="font-size:'+escAttr(p.tagline_subtitle_font_size||'14px')+';font-weight:400;color:var(--text-dim);opacity:.92;margin-top:2px">'+esc(p.tagline_subtitle)+'</div>':'')+
         '</div>':'')+
       '<div style="margin-top:4px">'+renderStars(avgRating,reviewTotal)+'</div>'+
       '<div style="margin-top:4px"><span class="bdg '+priceClass+'">'+priceLabel+'</span> <span class="bdg off">'+esc(p.category||'')+'</span>'+
-      (p.installed?' <span class="bdg" style="background:rgba(88,166,255,.12);color:#58a6ff">{{ _('Installed') }}</span>':'')+
+      (p.installed?' <span class="bdg" style="background:rgba(34,211,238,.12);color:var(--cyan)">{{ _('Installed') }}</span>':'')+
       '</div></div></div>'+
       '<button class="btn bo bs" onclick="closePluginDetail()">{{ _('Close') }}</button></div>';
 
@@ -677,8 +685,8 @@ function showPluginDetail(pid){
     /* 用户版全订阅制：free→Install；sub→Subscribe（带周期价格）；onetime→仅订阅制不可购 */
     var actionHtml='<div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--bd);display:flex;justify-content:flex-end;gap:8px">';
     if(p.installed){
-      actionHtml+='<span class="bdg" style="background:rgba(88,166,255,.12);color:#58a6ff;padding:6px 16px">✅ {{ _('Installed') }}</span>'+
-        '<button class="btn bo bs" style="color:#f85149;border-color:rgba(248,81,73,.4)" onclick="storeUninstallPlugin(\''+escAttr(p.identifier)+'\')">{{ _('Uninstall') }}</button>';
+      actionHtml+='<span class="bdg" style="background:rgba(34,211,238,.12);color:var(--cyan);padding:6px 16px">✅ {{ _('Installed') }}</span>'+
+        '<button class="btn bo bs" style="color:var(--rose);border-color:rgba(244,63,94,.4)" onclick="storeUninstallPlugin(\''+escAttr(p.identifier)+'\')">{{ _('Uninstall') }}</button>';
     }else if(p.has_update){
       actionHtml+='<button class="btn bp bs" onclick="storeUpgradePlugin(\''+escAttr(p.identifier)+'\')">🔄 {{ _('Upgrade') }}</button>';
     }else if(p.price_type==='free'){

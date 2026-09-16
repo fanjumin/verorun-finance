@@ -9,13 +9,15 @@ Email Service — 统一邮件服务（SMTP 发信 + IMAP 收信 + 附件）
 
 环境变量              | 说明                    | 默认值
 ---------------------|-------------------------|--------------------------
-SMTP_HOST            | SMTP 服务器              | smtp.qiye.aliyun.com
-SMTP_PORT            | SMTP 端口                | 465
+SMTP_HOST            | SMTP 服务器              | （空，由用户配置）
+SMTP_PORT            | SMTP 端口                | （空，由用户配置）
 SMTP_USER            | SMTP 账号                | （必填）
 SMTP_PASS            | SMTP 密码                | （必填）
 SMTP_FROM            | 发件人地址              | 同 SMTP_USER
-IMAP_HOST            | IMAP 服务器             | imap.qiye.aliyun.com
-IMAP_PORT            | IMAP 端口               | 993
+IMAP_HOST            | IMAP 服务器             | （空，由用户配置）
+IMAP_PORT            | IMAP 端口               | （空，由用户配置）
+
+> 本插件不预置任何邮件服务器参数，全部由用户在设置中自行填写。
 """
 
 import os
@@ -44,9 +46,9 @@ _MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024  # 10MB
 # ── Config keys ──
 _MAIL_KEYS = ['smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_from', 'imap_host', 'imap_port']
 _DEFAULTS = {
-    'smtp_host': 'smtp.qiye.aliyun.com', 'smtp_port': '465',
+    'smtp_host': '', 'smtp_port': '',
     'smtp_user': '', 'smtp_pass': '', 'smtp_from': '',
-    'imap_host': 'imap.qiye.aliyun.com', 'imap_port': '993',
+    'imap_host': '', 'imap_port': '',
 }
 _ENV_MAP = {
     'smtp_host': 'SMTP_HOST', 'smtp_port': 'SMTP_PORT',
@@ -55,13 +57,13 @@ _ENV_MAP = {
 }
 
 CONFIG_DEFS = {
-    'smtp_host':  {'label': _('SMTP 服务器'),    'default': 'smtp.qiye.aliyun.com', 'sensitive': False},
-    'smtp_port':  {'label': _('SMTP 端口'),      'default': '465',                  'sensitive': False},
-    'smtp_user':  {'label': _('SMTP 账号'),      'default': '',                     'sensitive': False},
-    'smtp_pass':  {'label': _('SMTP 密码'),      'default': '',                     'sensitive': True},
-    'smtp_from':  {'label': _('发件人地址'),      'default': '',                     'sensitive': False},
-    'imap_host':  {'label': _('IMAP 服务器'),     'default': 'imap.qiye.aliyun.com','sensitive': False},
-    'imap_port':  {'label': _('IMAP 端口'),       'default': '993',                  'sensitive': False},
+    'smtp_host':  {'label': _('SMTP 服务器'),    'default': '',   'sensitive': False},
+    'smtp_port':  {'label': _('SMTP 端口'),      'default': '',   'sensitive': False},
+    'smtp_user':  {'label': _('SMTP 账号'),      'default': '',   'sensitive': False},
+    'smtp_pass':  {'label': _('SMTP 密码'),      'default': '',   'sensitive': True},
+    'smtp_from':  {'label': _('发件人地址'),      'default': '',   'sensitive': False},
+    'imap_host':  {'label': _('IMAP 服务器'),     'default': '',   'sensitive': False},
+    'imap_port':  {'label': _('IMAP 端口'),       'default': '',   'sensitive': False},
 }
 
 
@@ -114,11 +116,11 @@ def _get_mail_config():
     try:
         cfg['smtp_port'] = int(cfg['smtp_port'])
     except (ValueError, TypeError):
-        cfg['smtp_port'] = 465
+        cfg['smtp_port'] = 0
     try:
         cfg['imap_port'] = int(cfg['imap_port'])
     except (ValueError, TypeError):
-        cfg['imap_port'] = 993
+        cfg['imap_port'] = 0
     return cfg
 
 

@@ -32,13 +32,13 @@
   "admin_url": "",
   "admin_label": "Email Settings",
   "config": {
-    "smtp_host": "smtp.qiye.aliyun.com",
-    "smtp_port": 465,
+    "smtp_host": "",
+    "smtp_port": 0,
     "smtp_user": "",
     "smtp_pass": "",
     "smtp_from": "",
-    "imap_host": "imap.qiye.aliyun.com",
-    "imap_port": 993
+    "imap_host": "",
+    "imap_port": 0
   },
   "permissions": [
     "network:request",
@@ -78,12 +78,12 @@
     "properties": {
       "smtp_host": {
         "type": "string",
-        "default": "smtp.qiye.aliyun.com",
+        "default": "",
         "description": "SMTP server hostname"
       },
       "smtp_port": {
         "type": "integer",
-        "default": 465,
+        "default": 0,
         "description": "SMTP port"
       },
       "smtp_user": {
@@ -103,12 +103,12 @@
       },
       "imap_host": {
         "type": "string",
-        "default": "imap.qiye.aliyun.com",
+        "default": "",
         "description": "IMAP server hostname"
       },
       "imap_port": {
         "type": "integer",
-        "default": 993,
+        "default": 0,
         "description": "IMAP port"
       }
     }

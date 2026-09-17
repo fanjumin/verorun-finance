@@ -8,6 +8,7 @@
   "tagline_subtitle": "全量/增量备份 · AES-256-GCM 加密 · 多目标存储",
   "author": "VeroRun",
   "min_app_version": "0.10.0",
+  "compatible_editions": ["enterprise", "standard", "pro", "finance", "research", "minipro"],
   "agent_role": "ops",
   "capabilities": [
     "vault.create_backup",

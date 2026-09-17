@@ -21,7 +21,7 @@
   "price_quarter_fen": 0,
   "price_year_fen": 0,
   "trial_days": 0,
-  "compatible_editions": [],
+  "compatible_editions": ["finance"],
   "dependencies": {},
   "conflicts": [],
   "python_dependencies": {

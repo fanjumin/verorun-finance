@@ -29,8 +29,9 @@
 : "${LOG_DIR:=/var/log/verorun}"
 : "${SERVICE_DIR:=/etc/systemd/system}"
 : "${REGION:=global}"                # cn | global
-# 审计 H-5：Sparse-checkout whitelist (base list). Entry scripts can extend it by appending,
-# e.g. install-code.sh runs SPARSE_DIRS="${SPARSE_DIRS} plugins" after sourcing.
+# 审计 H-5：Sparse-checkout whitelist (base list)。入口脚本可改写本变量：源码版/官方版/教育版
+# 刻意置空表示"全量检出"（如 install-code.sh 的 SPARSE_DIRS=""）。
+# 2026-09-16：白名单实际下发统一由 _apply_sparse_checkout 处理（含缺核心服务目录时降级全量检出的守卫）。
 # 审计 M-1：appends scripts/ (the README references the scripts/dev_start.py local dev script).
 # 审计 H-5 / 根治 2026-08-21：SPARSE_DIRS 采用 "未设置才赋默认、空串保持为空" 语义。
 # 原因：官方版/源码版把 SPARSE_DIRS 刻意置空表示"全量检出（disable sparse-checkout）"；
@@ -55,6 +56,53 @@ fi
 # ── Colors ────────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 OK="${GREEN}[OK]${NC}"; WARN="${YELLOW}[WARN]${NC}"; FAIL="${RED}[FAIL]${NC}"; INFO="${BLUE}[i]${NC}"
+
+# ── Sparse-checkout 下发 + 白名单守卫（2026-09-16）─────────────────────
+# do_install / do_update 共用，统一稀疏检出行为：
+#   1) SPARSE_DIRS 为空     → 全量检出（disable），绝不 set；
+#   2) 白名单缺核心服务目录 → 视为异常白名单（历史残留 / 错误传入），告警并降级为全量检出；
+#   3) 白名单完整           → disable 清残留 → init --cone + set。
+# 事故背景（2026-09-16 .104）：工作副本白名单未含 plugins/iot_hub、plugins/cogevolution_substrate，
+# 被跟踪的插件源被置 skip-worktree 且永不落盘 → 插件枚举不到、蓝图未挂载 → 路由 404；
+# 反向风险同样存在：像 "plugins" 这种只含单目录的白名单，在 cone 模式下会裁掉 admin/ main_site/
+# 等其余被跟踪目录，直接把装机弄坏。两种后果都由本守卫拦住。
+_apply_sparse_checkout() {
+    local home="$1"
+    local critical_dir
+    local missing=""
+
+    if [ -z "${SPARSE_DIRS:-}" ]; then
+        git -C "${home}" sparse-checkout disable 2>/dev/null || true
+        echo -e "${INFO} SPARSE_DIRS empty — full checkout, sparse-checkout disabled"
+        return 0
+    fi
+
+    # 核心服务目录：缺任一即认定白名单不可信（缺服务根目录，装机必然不可用）
+    for critical_dir in admin main_site; do
+        case " ${SPARSE_DIRS} " in
+            *" ${critical_dir} "*) : ;;
+            *) missing="${missing} ${critical_dir}" ;;
+        esac
+    done
+    if [ -n "${missing}" ]; then
+        git -C "${home}" sparse-checkout disable 2>/dev/null || true
+        echo -e "${WARN} Sparse whitelist incomplete (missing:${missing}) — falling back to full checkout"
+        echo -e "${INFO} 白名单必须包含 admin/main_site 等核心服务目录；按异常白名单裁剪会删除工作区被跟踪文件，已改为全量检出"
+        return 0
+    fi
+
+    # 审计 H6：leftovers from old repos/manual mode (core.sparseCheckoutCone not set) make set follow manual mode,
+    # where patterns contain only directories with no "/*" root-file keep rule → root files such as
+    # requirements.txt/VERSION/README get deleted from the working tree. First disable to clear leftovers, then init --cone + set;
+    # on failure fall back to a full checkout (no files deleted) and continue installation.
+    git -C "${home}" sparse-checkout disable 2>/dev/null || true
+    if git -C "${home}" sparse-checkout init --cone 2>/dev/null \
+        && git -C "${home}" sparse-checkout set ${SPARSE_DIRS} 2>/dev/null; then
+        return 0
+    fi
+    git -C "${home}" sparse-checkout disable 2>/dev/null || true
+    echo -e "${WARN} sparse-checkout failed — keeping full working tree"
+}
 
 # 审计 F-3：globally suppress git interactive credential prompts (applies to all git call sites, e.g. update/rollback/configure-domain);
 # any credential request fails immediately instead of hanging interactively, preventing infinite stalls when origin points to a mirror.
@@ -1806,6 +1854,17 @@ ${_auth_basic_on}
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_read_timeout 300s;
     }
+    # IoT 设备接入端点（iot_hub 插件）：插件蓝图带显式 url_prefix /api/iot/v1，只挂在挂载
+    # 插件路由的 8083/8084；默认 location / 指向 8081（auth_server，不挂插件路由），
+    # 故必须在此显式转发，否则设备 HTTP 请求全部 404
+    location ^~ /api/iot/v1/ {
+        proxy_pass http://127.0.0.1:8083;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        # 审计 M1：XFF overwritten with the direct IP (\$remote_addr), not appending client-forged values
+        proxy_set_header X-Forwarded-For \$remote_addr;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
     location / {
         # 审计 M4：main-site uploads (avatars up to 2MB etc.) need > nginx's default 1M, consistent with the backend limit
         client_max_body_size 100M;
@@ -2006,6 +2065,17 @@ ${_auth_basic_on}
         proxy_set_header X-Forwarded-For \$remote_addr;
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_read_timeout 300s;
+    }
+    # IoT 设备接入端点（iot_hub 插件）：插件蓝图带显式 url_prefix /api/iot/v1，只挂在挂载
+    # 插件路由的 8083/8084；默认 location / 指向 8081（auth_server，不挂插件路由），
+    # 故必须在此显式转发，否则设备 HTTP 请求全部 404
+    location ^~ /api/iot/v1/ {
+        proxy_pass http://127.0.0.1:8083;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        # 审计 M1：XFF overwritten with the direct IP (\$remote_addr), not appending client-forged values
+        proxy_set_header X-Forwarded-For \$remote_addr;
+        proxy_set_header X-Forwarded-Proto \$scheme;
     }
     location / {
         # 审计 M4：LAN main-site uploads consistent with the backend limit
@@ -2299,27 +2369,10 @@ do_install() {
         fi
         _clone_with_timeout "${GIT_REPO}" "${APP_HOME}" "${GIT_BRANCH}"
     fi
-    # Apply the sparse-checkout whitelist ONLY when SPARSE_DIRS is non-empty.
-    # 根治 2026-08-20：SPARSE_DIRS 为空 = 全量检出（官方版/源码版），只执行 disable，
-    # 绝不 init --cone + set —— 否则旧白名单会在 git pull 时删除 cone 外的被跟踪文件
-    # （曾导致官方版 26 个插件被清空、服务加载失败）。
-    if [ -n "${SPARSE_DIRS:-}" ]; then
-        # 审计 H6：leftovers from old repos/manual mode (core.sparseCheckoutCone not set) make set follow manual mode,
-        # where patterns contain only directories with no "/*" root-file keep rule → root files such as
-        # requirements.txt/VERSION/README get deleted from the working tree. First disable to clear leftovers, then init --cone + set;
-        # on failure fall back to a full checkout (no files deleted) and continue installation.
-        git -C "${APP_HOME}" sparse-checkout disable 2>/dev/null || true
-        if git -C "${APP_HOME}" sparse-checkout init --cone 2>/dev/null \
-            && git -C "${APP_HOME}" sparse-checkout set ${SPARSE_DIRS} 2>/dev/null; then
-            :
-        else
-            git -C "${APP_HOME}" sparse-checkout disable 2>/dev/null || true
-            echo -e "${WARN} sparse-checkout failed — keeping full working tree"
-        fi
-    else
-        git -C "${APP_HOME}" sparse-checkout disable 2>/dev/null || true
-        echo -e "${INFO} SPARSE_DIRS empty — full checkout, sparse-checkout disabled"
-    fi
+    # Sparse-checkout 下发（含白名单守卫）：见 _apply_sparse_checkout。
+    # 2026-09-16：白名单缺 plugins/<id> 会让被跟踪的插件源永不落盘（.104 路由 404 真因）；
+    # 白名单缺 admin/main_site 则会把工作区裁坏。两种情况统一由守卫降级为全量检出。
+    _apply_sparse_checkout "${APP_HOME}"
     # No-domain scripts (install-local/code/dev) are kept on disk: deleting
     # git-tracked files leaves unstaged changes that break `git pull` / update.
     # Clean stale __pycache__ before chown (avoids race-condition failures)
@@ -2614,24 +2667,8 @@ do_update() {
             }
         }
     fi
-    # Apply the sparse-checkout whitelist ONLY when SPARSE_DIRS is non-empty.
-    # 根治 2026-08-20：同 do_install——SPARSE_DIRS 为空 = 全量检出，只执行 disable，绝不 set，
-    # 杜绝 git pull 按旧白名单删除 cone 外的被跟踪文件。
-    if [ -n "${SPARSE_DIRS:-}" ]; then
-        # first disable to clear manual-mode leftovers, then init --cone + set;
-        # on failure fall back to a full checkout. See the 审计 H6 note in do_install for details.
-        git -C "${APP_HOME}" sparse-checkout disable 2>/dev/null || true
-        if git -C "${APP_HOME}" sparse-checkout init --cone 2>/dev/null \
-            && git -C "${APP_HOME}" sparse-checkout set ${SPARSE_DIRS} 2>/dev/null; then
-            :
-        else
-            git -C "${APP_HOME}" sparse-checkout disable 2>/dev/null || true
-            echo -e "${WARN} sparse-checkout failed — keeping full working tree"
-        fi
-    else
-        git -C "${APP_HOME}" sparse-checkout disable 2>/dev/null || true
-        echo -e "${INFO} SPARSE_DIRS empty — full checkout, sparse-checkout disabled"
-    fi
+    # Sparse-checkout 下发（含白名单守卫）：同 do_install —— 见 _apply_sparse_checkout。
+    _apply_sparse_checkout "${APP_HOME}"
     # No-domain scripts (install-local/code/dev) are kept on disk: deleting
     # git-tracked files leaves unstaged changes that break `git pull` / update.
     local after_commit

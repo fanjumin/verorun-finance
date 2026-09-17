@@ -315,12 +315,11 @@ def current_profile():
 def resolve(identifier, edition, profile=None):
     """单一裁决：``(visible, reason)`` 或 ``None``（= 无可判定源，调用方走 yaml）。
 
-    优先级链（标准 §14.9.3 / §18.2）：
+    优先级链：
       1. ``rule.hidden = 1``             → 隐藏（覆盖一切）
       2. ``rule.editions``/``profiles``  → 单插件覆盖（规则存在即以其为准）
-      3. ``edition_catalog`` 命中当前版  → 发行矩阵：default_exclude 判隐藏
-      4. 否则 → 可见（未知则回落 yaml，由调用方处理）
-      5. ``compatible_editions`` 或 yaml → 调用方兜底
+      3. ``edition_catalog`` 命中当前版且启用 → 可见
+      4. ``compatible_editions``（插件自声明 ID，可多选）→ 常规判定，见 store 层匹配
 
     判定细节（与既有约定一致）：
       - ``edition`` / ``profile`` 为空时**跳过对应检查**（无法判定即不隐藏，
@@ -348,18 +347,14 @@ def resolve(identifier, edition, profile=None):
         if profs and profile and profile not in profs:
             return False, f'profile_mismatch: {profile}'
 
-    # 级3：发行矩阵（edition_catalog）——在 yaml(调用方) 之前
+    # 级3：发行版注册表（edition_catalog）
+    # 【黑名单已退出】default_exclude 不再参与判定：可见性完全由插件自身的
+    # compatible_editions 决定（在 store 层按发行版 ID 精确匹配，见 _search_local）。
+    # 此处仅保留「发行版已停用」的容错：enabled=0 → 回落 yaml，避免停用版本全量锁死。
     _, _, editions = _snapshot()
     entry = editions.get(edition) if edition else None
-    if entry is not None:
-        if _as_int(entry.get('enabled'), 1) != 1:
-            # 版本已停用（enabled=0）→ 视同无记录，回落 yaml，避免停用版本全量锁死
-            pass
-        else:
-            excl = _as_list(entry.get('default_exclude'))
-            if identifier in excl:
-                return False, f'edition_excluded: {edition}'
-            return True, 'ok'
+    if entry is not None and _as_int(entry.get('enabled'), 1) == 1:
+        return True, 'ok'
 
     # 无单插件规则且矩阵无当前版记录 → 回落 yaml
     if rule is None:

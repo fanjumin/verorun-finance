@@ -13,16 +13,32 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROLES_DIR = os.path.join(BASE_DIR, 'roles')
 
 # ── 发行版 edition 归一化（单一事实源：VR_EDITION / RELEASE_EDITION / DEPLOY_TYPE）──
-# 历史旧版名归一为现行版名：edu/research→research-desktop、pro/finance→finance-desktop；
-# 其余（standard/official/空）视为全量版。
+# 现行发行版 ID 共 7 个（定稿后不再变更；显示名走 i18n，与 ID 解耦）：
+#   enterprise 企业版 / standard 标准版 / pro 专业版 / finance 金融版 /
+#   research 科研版 / minipro 小程序版 / edge 边缘版
+# 注意：pro（专业版）与 finance（金融版）是两个**独立** ID，不可再合并。
+_EDITION_IDS = ('enterprise', 'standard', 'pro', 'finance', 'research', 'minipro', 'edge')
+
+# 历史旧名 / 别名 → 现行 ID（大小写不敏感）
+_EDITION_ALIASES = {
+    'official': 'enterprise',
+    'enterprise-web': 'enterprise',
+    'standard-web': 'standard',
+    'pro-web': 'pro',
+    'finance-desktop': 'finance',
+    'research-desktop': 'research',
+    'edu': 'research',
+    'edu-desktop': 'research',
+    'mini': 'minipro',
+    'vr_test_edge': 'edge',
+    'edge-computing': 'edge',
+}
+
+
 def normalize_edition(e) -> str:
-    """归一化版本标识（大小写不敏感）：旧名→现行版名，空→standard。"""
+    """归一化发行版标识（大小写不敏感）：旧名/别名→现行 ID，空→standard。"""
     e = (e or '').strip().lower()
-    if e in ('edu', 'research', 'research-desktop'):
-        return 'research-desktop'
-    if e in ('pro', 'finance', 'finance-desktop'):
-        return 'finance-desktop'
-    return e or 'standard'
+    return _EDITION_ALIASES.get(e, e) or 'standard'
 
 
 def current_edition() -> str:
@@ -157,8 +173,13 @@ def edition_plugin_lists() -> dict:
 
 
 def edition_plugin_excludes() -> list:
-    """当前 edition 插件排除名单（插件列表隐藏 / enable 拒绝共用）。"""
-    return edition_plugin_lists().get('exclude', []) or []
+    """【已废弃】发行版插件排除名单。
+
+    黑名单机制已退出：插件可见性完全由插件自身 plugin.json 的
+    ``compatible_editions`` 决定（可多选发行版 ID，空数组 = 全版本可见）。
+    此处恒返回空列表，使既有调用点无需改动即不再排除任何插件。
+    """
+    return []
 
 
 def edition_plugin_includes() -> list:

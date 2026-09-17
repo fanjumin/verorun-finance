@@ -961,7 +961,34 @@ function showStoreAdminForm(identifier){
     _renderStoreForm(mc,title,p);
   }
 }
+/* ── 发行版分流：清单加载 + 多选渲染（数据源 edition_catalog，label 已按当前语言本地化） ── */
+function _loadStoreEditions(cb){
+  if(window._storeEditions){if(cb)cb();return}
+  fetch('/admin/plugins/store/admin/editions',{headers:{'Authorization':'Bearer '+T}})
+    .then(function(r){return r.json()})
+    .then(function(d){window._storeEditions=((d&&d.data&&d.data.items)||[]);if(cb)cb()})
+    .catch(function(){window._storeEditions=[];if(cb)cb()});
+}
+function _editionChecks(selected){
+  var list=window._storeEditions||[];
+  var sel=selected||[];
+  if(typeof sel==='string'){try{sel=JSON.parse(sel||'[]')}catch(e){sel=[]}}
+  if(!list.length)return '<span style="font-size:12px;color:var(--dim)">{{ _('Loading...') }}</span>';
+  return list.map(function(e){
+    var id=e.edition||'';
+    if(!id)return '';
+    var ck=sel.indexOf(id)>=0?' checked':'';
+    return '<label style="display:inline-flex;align-items:center;gap:4px;margin:0 14px 6px 0;font-size:12px;cursor:pointer">'+
+      '<input type="checkbox" class="sai_edition" value="'+escAttr(id)+'"'+ck+'>'+esc(e.label||id)+'</label>';
+  }).join('');
+}
 function _renderStoreForm(container, title, p){
+  /* 发行版清单需先取回（多选字段的数据源）：首次进入先拉取，再重渲染表单 */
+  if(!window._storeEditions){
+    container.innerHTML='<div class="cd"><div class="lo"><div class="s"></div></div></div>';
+    _loadStoreEditions(function(){_renderStoreForm(container,title,p)});
+    return;
+  }
   container.innerHTML='<div class="cd"><div class="st">📝 '+title+'</div>'+
     /* ★ GitHub 导入区：从仓库自动获取元数据并回填表单 */
     '<div id="ghImportBox" style="margin:12px 0;padding:12px;background:var(--bg-secondary);border-radius:8px">'+
@@ -1000,6 +1027,7 @@ function _renderStoreForm(container, title, p){
     '<div><label style="display:block;font-size:12px;margin-bottom:4px">{{ _('Download URL') }}</label><input class="in" id="sai_download" value="'+escAttr(p.download_url||'')+'" style="width:100%"></div>'+
     '<div><label style="display:block;font-size:12px;margin-bottom:4px">{{ _('Author') }}</label><input class="in" id="sai_author" value="'+escAttr(p.author||'')+'" style="width:100%"></div>'+
     '<div><label style="display:block;font-size:12px;margin-bottom:4px">{{ _('Readme URL') }} <span style="font-size:10px;color:var(--dim)">{{ _('Markdown file URL, shown in detail page') }}</span></label><input class="in" id="sai_readme" value="'+escAttr(p.readme_url||'')+'" placeholder="https://example.com/README.md" style="width:100%"><input type="hidden" id="sai_readme_cache" value="'+escAttr(p.readme_cache||'')+'"></div>'+
+    '<div style="grid-column:1/3"><label style="display:block;font-size:12px;margin-bottom:4px">{{ _('Distributions') }} <span style="font-size:10px;color:var(--dim)">{{ _('Multi-select. Leave empty to show in all distributions') }}</span></label>'+_editionChecks(p.compatible_editions)+'</div>'+
     '</div>'+
     '<div style="display:flex;gap:12px;margin-top:12px">'+
     '<button class="btn bp" onclick="saveStorePlugin()">💾 {{ _('Save') }}</button>'+
@@ -1089,6 +1117,9 @@ function saveStorePlugin(){
   d.screenshots=[];
   d.min_app_version='0.10.0';
   d.depends_on={};
+  /* 发行版分流：多选 checkbox → ID 数组；全不勾 = [] = 全版本可见。
+     必须显式回传：后端默认取 []，不回传会清空已配置的分流。 */
+  d.compatible_editions=Array.prototype.slice.call(document.querySelectorAll('.sai_edition:checked')).map(function(x){return x.value});
   if(!d.identifier||!d.name){showToast("{{ _('Identifier and Name are required') }}","error");return}
   /* ★ P8: 校验 identifier 格式 */
   if(!/^[a-z0-9_]+$/.test(d.identifier)){showToast("{{ _('Identifier must contain only lowercase letters, digits, underscores') }}","error");return}

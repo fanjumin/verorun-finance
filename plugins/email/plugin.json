@@ -21,6 +21,7 @@
   "description": "Email Service — SMTP/IMAP email client with inbox, compose, attachments, and contact management",
   "author": "VeroRun",
   "min_app_version": "0.10.0",
+  "compatible_editions": ["enterprise", "standard", "pro", "finance", "research", "minipro"],
   "agent_role": "service",
   "capabilities": [
     "email.send",

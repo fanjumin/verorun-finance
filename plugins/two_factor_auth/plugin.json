@@ -6,6 +6,7 @@
   "description": "基于 TOTP 的双因素认证（2FA），兼容 Google/Microsoft Authenticator，支持恢复码与操作审计。",
   "author": "VeroRun",
   "min_app_version": "0.10.0",
+  "compatible_editions": ["enterprise", "standard", "pro", "finance", "research", "minipro"],
   "agent_role": "service",
   "capabilities": [
     "two_factor.setup",

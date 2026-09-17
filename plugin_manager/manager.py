@@ -1227,7 +1227,10 @@ class PluginManager:
         if not referenced:
             return
 
-        plugins_root = os.path.dirname(os.path.abspath(plugin_dir))
+        # 宿主根目录固定为 self.plugins_dir：upgrade 传入的是 plugins/.staging/<id>，
+        # 若按 dirname 推导会得到 plugins/.staging，导致共享模块校验必然失败
+        # （所有商店包都 import plugins._base → 在线更新 100% 被拒）。
+        plugins_root = self.plugins_dir or os.path.dirname(os.path.abspath(plugin_dir))
         missing = [
             f'plugins/{shared}'
             for shared in referenced

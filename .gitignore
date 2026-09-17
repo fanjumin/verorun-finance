@@ -16,6 +16,7 @@ REGRESSIONS.md
 .idea/
 .trae/
 .trae-html-share-packages/
+.workbuddy/
 *.swp
 *.swo
 
@@ -27,6 +28,9 @@ _*.txt
 _*.html
 !plugins/**/templates/_*.html
 _test_output.txt
+
+# Git 对象库损坏时的留证目录（.git 改名备份，含无 .idx 的孤儿 pack）
+.git.broken-*/
 
 # Temp scripts & artifacts
 tmp/
@@ -134,7 +138,7 @@ deploy/caddy/
 docs/*
 !docs/i18n-standard.md
 !docs/plugin-manifest.schema.json
-!docs/plugin-standard-v1.7.md
+!docs/plugin-standard-v1.8.md
 !docs/stock-desktop-integration-contract.md
 
 # Local deploy diagnostics (not tracked — health scripts are tracked separately)

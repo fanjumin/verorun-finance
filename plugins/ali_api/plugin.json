@@ -15,6 +15,7 @@
   "tagline_subtitle": "商品搜索 · 文案重写 · 一键发布到本地商城",
   "author": "VeroRun",
   "min_app_version": "0.10.0",
+  "compatible_editions": ["enterprise", "standard", "pro", "finance", "minipro"],
   "dependencies": {},
   "enabled": true,
   "category": "supply_chain",

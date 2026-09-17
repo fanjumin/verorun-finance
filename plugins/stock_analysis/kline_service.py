@@ -158,23 +158,40 @@ def kline_payload(symbol: str, period: str = "daily", adjust: str = "hfq",
 
 
 def _to_quote(symbol: str, q: dict) -> dict:
-    """腾讯快照字段 → 契约 quote 对象；快照源不提供的字段置 null。"""
+    """腾讯快照字段 → 契约 quote 对象。
+
+    历史缺陷：open/high/low/volume/amount 五个字段**硬编码 None**，注释称
+    「快照源不提供」。但腾讯 88 字段里全部有（[5]今开 [33]最高 [34]最低
+    [6]成交量手 [37]成交额万元），providers/tencent.py 也已补齐 →
+    曾导致前端行情条/K线页这些列恒为 null。此处改为透传，缺失才为 None。
+    """
     price = float(q.get("price") or 0)
     prev_close = float(q.get("prev_close") or 0)
+
+    def _opt(key: str) -> float | None:
+        """0 视为缺失（盘前/停牌时腾讯给 0），避免把 0 当真实值展示。"""
+        v = q.get(key)
+        if v in (None, "", 0, 0.0):
+            return None
+        try:
+            return _round(float(v))
+        except (TypeError, ValueError):
+            return None
+
     return {
         "symbol": symbol,
         "name": q.get("name"),
         "price": _round(price),
         "change": _round(price - prev_close) if prev_close else None,
         "change_pct": _round(q.get("change_pct")),
-        "volume": None,
-        "amount": None,
+        "volume": _opt("volume"),
+        "amount": _opt("amount"),
         "pe": _round(q.get("pe_ttm")),
         "pb": _round(q.get("pb")),
         "turnover": _round(q.get("turnover_rate")),
-        "high": None,
-        "low": None,
-        "open": None,
+        "high": _opt("high"),
+        "low": _opt("low"),
+        "open": _opt("open"),
         "prev_close": _round(prev_close),
         "at": time.strftime("%H:%M:%S"),
     }

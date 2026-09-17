@@ -24,6 +24,7 @@
   "tagline_subtitle": "证件识别 · 智能审核 · KYC 风控",
   "author": "VeroRun",
   "min_app_version": "0.10.0",
+  "compatible_editions": ["enterprise", "standard", "pro", "finance", "minipro"],
   "dependencies": {},
   "enabled": true,
   "admin_url": "",

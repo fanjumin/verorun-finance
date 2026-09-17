@@ -10,6 +10,7 @@
   "description": "Hierarchical agent memory with vector retrieval, Reflexion-based self-evolution and prompt metrics.",
   "author": "VeroRun",
   "min_app_version": "0.10.0",
+  "compatible_editions": ["enterprise", "standard", "pro", "finance", "research", "minipro"],
   "category": "system",
   "icon": "database",
   "icon_url": "",

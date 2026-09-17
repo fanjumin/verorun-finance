@@ -43,11 +43,34 @@ class TencentProvider(BaseProviderV2):
         parts = response.text.strip().strip(";").split("~")
         if len(parts) < 40:
             raise ProviderError(self.name, "quote", "实时行情返回数据不完整")
-        return {"name": parts[1], "price": float(parts[3] or 0),
-                "prev_close": float(parts[4] or 0), "change_pct": float(parts[32] or 0),
-                "pe_ttm": float(parts[39] or 0),
-                "pb": float(parts[46] or 0) if len(parts) > 46 else 0,
-                "turnover_rate": float(parts[38] or 0) if len(parts) > 38 else 0}
+
+        # 腾讯 ~ 分隔字段位（实测 88 字段，v_sh600519）：
+        #   [1]名称 [3]现价 [4]昨收 [5]今开 [6]成交量(手) [30]时间戳
+        #   [31]涨跌额 [32]涨跌幅% [33]最高 [34]最低 [37]成交额(万元)
+        #   [38]换手率% [39]PE(TTM) [43]振幅% [44]流通市值(亿) [45]总市值(亿) [46]PB
+        # 历史缺陷：只取 7 个字段，open/high/low/volume/amount 从未填充 →
+        # 前端 quotes 这些列恒为 null（K线页与行情条缺开高低量）。
+        def _f(idx: int) -> float:
+            if idx >= len(parts):
+                return 0.0
+            try:
+                return float(parts[idx] or 0)
+            except (TypeError, ValueError):
+                return 0.0
+
+        return {"name": parts[1],
+                "price": _f(3),
+                "prev_close": _f(4),
+                "open": _f(5),
+                "high": _f(33),
+                "low": _f(34),
+                "volume": _f(6),
+                # 腾讯成交额单位为万元 → 统一为元，与其他 provider 对齐
+                "amount": _f(37) * 10000,
+                "change_pct": _f(32),
+                "pe_ttm": _f(39),
+                "pb": _f(46),
+                "turnover_rate": _f(38)}
 
     def fetch_quote(self, symbol: str) -> dict:
         return self._fetch_quote(symbol)

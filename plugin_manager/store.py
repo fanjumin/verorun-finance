@@ -324,20 +324,21 @@ class StoreAPIClient:
                     sql += ' AND s.price_type=%s'
                     params.append(price_type)
 
-                # 阶段 3：按部署版本过滤（compatible_editions 空数组=全兼容）
-                sql += " AND (s.compatible_editions = '[]' OR s.compatible_editions LIKE %s)"
-                params.append(f'%"{DEPLOY_EDITION}"%')
+                # 阶段 3：按发行版分流（可见性的唯一依据）
+                # 插件在自身 plugin.json 的 compatible_editions 中声明所支持的发行版 ID
+                # （可多选）；空数组 / NULL = 全版本可见。此处按 ID **精确匹配数组元素**，
+                # 避免 LIKE 子串碰撞（如 pro 误配 pro-web）。
+                # 注意：必须用 `@>`（包含）而非 jsonb 的 `?`（键存在）运算符 ——
+                # models._PgConnection.execute 有 `sql.replace('?', '%s')` 垫片，
+                # `?` 会被误改成占位符导致参数个数不匹配（IndexError → 500）。
+                sql += (" AND (s.compatible_editions IS NULL"
+                        " OR s.compatible_editions IN ('', '[]')"
+                        " OR (s.compatible_editions ~ '^[[:space:]]*\\['"
+                        " AND s.compatible_editions::jsonb @> %s::jsonb))")
+                params.append(json.dumps([DEPLOY_EDITION]))
 
-                # 阶段 3b：发行版插件白名单排除（本版 exclude 插件不在商店展示）
-                try:
-                    from agent_matrix.models import edition_plugin_excludes
-                    _excl = edition_plugin_excludes()
-                    if _excl:
-                        placeholders = ','.join(['%s'] * len(_excl))
-                        sql += f' AND s.identifier NOT IN ({placeholders})'
-                        params.extend(_excl)
-                except Exception:
-                    pass
+                # 阶段 3b：黑名单机制已退出 —— default_exclude / yaml exclude 均不再参与，
+                # 可见性完全由上面的 compatible_editions 决定。
 
                 # 排序
                 sort_map = {

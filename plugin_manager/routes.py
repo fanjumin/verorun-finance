@@ -5166,9 +5166,18 @@ def store_admin_editions_list():
                     excludes = []
             except (TypeError, ValueError):
                 excludes = []
+            # label 存 i18n 键（如 Edition Enterprise）：按当前语言本地化后下发，
+            # 并保留 label_key 供诊断/回填；键缺失时 _() 原样返回，不会丢显示名。
+            _label_key = (r['label'] or '').strip()
+            try:
+                from i18n import _
+                _label = _(_label_key) if _label_key else r['edition']
+            except Exception:
+                _label = _label_key or r['edition']
             items.append({
                 'edition': r['edition'],
-                'label': r['label'],
+                'label': _label,
+                'label_key': _label_key,
                 'form_factor': r['form_factor'],
                 'enabled': _dist_int(r['enabled'], 1),
                 'default_exclude': excludes,

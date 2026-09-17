@@ -25,6 +25,7 @@
   "tagline_subtitle": "审核工作流 · 静态页生成 · 技能推送",
   "author": "VeroRun",
   "min_app_version": "0.10.0",
+  "compatible_editions": ["enterprise", "standard", "pro", "finance", "minipro"],
   "dependencies": {},
   "admin_url": "",
   "admin_label": "Content Factory Settings",

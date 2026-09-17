@@ -14,6 +14,7 @@
   "tagline_subtitle": "CPU/内存/磁盘监控 · 告警通知 · 趋势分析",
   "author": "VeroRun",
   "min_app_version": "0.10.0",
+  "compatible_editions": ["enterprise", "standard", "pro", "finance", "minipro"],
   "category": "system",
   "icon": "health",
   "icon_url": "",

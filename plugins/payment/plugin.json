@@ -27,6 +27,7 @@
   "tagline_subtitle": "支付宝 · 微信 · Stripe · PayPal 配置管理",
   "author": "VeroRun",
   "min_app_version": "0.10.0",
+  "compatible_editions": ["enterprise", "standard", "pro", "finance", "minipro"],
   "agent_role": "finance",
   "capabilities": [
     "payment.create",

@@ -21,6 +21,7 @@
   "tagline_subtitle": "多广告位与分区 · 展示与点击统计 · AI 就绪 API",
   "author": "VeroRun",
   "min_app_version": "0.10.0",
+  "compatible_editions": ["enterprise", "standard", "pro", "finance", "minipro"],
   "dependencies": {},
   "enabled": true,
   "admin_url": "",

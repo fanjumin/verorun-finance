@@ -23,6 +23,7 @@
   "tagline_subtitle": "快递鸟 API · 600+ 快递公司覆盖",
   "author": "VeroRun",
   "min_app_version": "0.10.0",
+  "compatible_editions": ["enterprise", "standard", "pro", "finance", "minipro"],
   "agent_role": "business",
   "capabilities": [
     "logistics.create",

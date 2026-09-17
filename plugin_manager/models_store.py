@@ -412,13 +412,14 @@ CREATE INDEX IF NOT EXISTS idx_plugin_dist_rules_hidden ON plugin_distribution_r
 -- 约束：全部 IF NOT EXISTS，可空；不新增任何既有表约束。
 CREATE TABLE IF NOT EXISTS edition_catalog (
     id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    edition         TEXT NOT NULL UNIQUE,            -- 复合键：standard-web / pro-web /
-                                                    --   research-desktop / finance-desktop /
-                                                    --   official / edge（未来）
-    label           TEXT NOT NULL DEFAULT '',        -- 展示名（标准网站版…）
+    edition         TEXT NOT NULL UNIQUE,            -- 发行版唯一 ID（分流判定唯一依据）：
+                                                    --   enterprise / standard / pro /
+                                                    --   finance / research / minipro / edge
+    label           TEXT NOT NULL DEFAULT '',        -- i18n 键（如 Edition Enterprise）
     form_factor     TEXT NOT NULL DEFAULT '',        -- desktop | web | edge
     enabled         BIGINT NOT NULL DEFAULT 1,
-    default_exclude TEXT NOT NULL DEFAULT '[]',      -- JSON 数组：本版本默认排除插件
+    default_exclude TEXT NOT NULL DEFAULT '[]',      -- 【已废弃】黑名单已退出：恒为空；
+                                                    --   可见性改由插件 compatible_editions 决定
     note            TEXT DEFAULT '',
     updated_by      TEXT DEFAULT '',
     created_at      TEXT DEFAULT NOW(),
@@ -584,19 +585,18 @@ _BUILTIN_CATEGORY_SEED = (
     ('supply_chain', '供应链',    '📦', '#F59F00', '#E8590C', 70),
 )
 
-# 发行版矩阵内置种子（方案Ⅰ：业务版 × 形态 拆行；「只排不白」）。
-# ON CONFLICT DO NOTHING → 只补缺失 edition，不覆盖管理员已改的排除清单/label。
-# 边缘插件（iot_hub/ros_bridge/cogevolution_substrate）对所有现行发行版一律排除：
-#   官方版 / 网站版 = 全量可选 → 仅预填边缘排除；
-#   research/finance 桌面版同理（连同各自已有的业务排除由管理员后续在后台维护）。
-# 未来边缘版（edge）未立项，不在种子内（避免同步写死非边缘插件的反向排除）。
-_EDGE_ONLY_EXCLUDES = ('iot_hub', 'ros_bridge', 'cogevolution_substrate')
+# 发行版注册表种子（ON CONFLICT DO NOTHING → 只补缺失 ID，不覆盖管理员已改的显示名）。
+# edition = 唯一 ID（分流判定的唯一依据，定稿后永不变更）；label = i18n 键（显示名可切换语言）。
+# 黑名单机制（default_exclude / yaml exclude）已废弃：可见性完全由插件自身在 plugin.json
+# 的 compatible_editions 中填写的 ID 列表决定（可多选，空数组 = 全版本可见）。
 _EDITION_CATALOG_SEED = (
-    ('standard-web',       '标准网站版', 'web',     _EDGE_ONLY_EXCLUDES),
-    ('pro-web',            '专业网站版', 'web',     _EDGE_ONLY_EXCLUDES),
-    ('research-desktop',   '科研桌面版', 'desktop', _EDGE_ONLY_EXCLUDES),
-    ('finance-desktop',    '金融桌面版', 'desktop', _EDGE_ONLY_EXCLUDES),
-    ('official',           '官方版',     'web',     _EDGE_ONLY_EXCLUDES),
+    ('enterprise', 'Edition Enterprise',   'web',     ()),
+    ('standard',   'Edition Standard',     'web',     ()),
+    ('pro',        'Edition Professional', 'web',     ()),
+    ('finance',    'Edition Finance',      'desktop', ()),
+    ('research',   'Edition Research',     'desktop', ()),
+    ('minipro',    'Edition Mini Program', 'web',     ()),
+    ('edge',       'Edition Edge',         'edge',    ()),
 )
 
 

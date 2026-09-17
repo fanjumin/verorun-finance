@@ -15,6 +15,7 @@
   "tagline_subtitle": "拼图生成 · 行为分析 · 限流防刷",
   "author": "VeroRun",
   "min_app_version": "0.10.0",
+  "compatible_editions": ["enterprise", "standard", "pro", "finance", "research", "minipro"],
   "agent_role": "ops",
   "capabilities": [
     "captcha.generate",

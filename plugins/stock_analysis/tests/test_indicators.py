@@ -72,7 +72,10 @@ class ComputeIndicatorsTest(unittest.TestCase):
         self.assertTrue(tail_k and tail_d)
         self.assertTrue(all(0 <= x <= 100 for x in tail_k))
         self.assertTrue(all(0 <= x <= 100 for x in tail_d))
-        self.assertAlmostEqual(j[-1], 3 * k[-1] - 2 * d[-1], places=4)
+        # j 由未取整的 k/d 算出，而三者在出参上各自四舍五入到 4 位小数，
+        # 故 j = 3k − 2d 只在该舍入误差内成立（上界 = 5 × 5e-5 = 2.5e-4）。
+        # 原 places=4 恰好卡在边界（实测差 1.0e-4）而误报失败（复测 N1-3）。
+        self.assertAlmostEqual(j[-1], 3 * k[-1] - 2 * d[-1], delta=1e-3)
 
     def test_rsi14_bounds(self):
         out = compute_indicators(_frame(), basis="raw")
@@ -105,9 +108,11 @@ class KdjDirectTest(unittest.TestCase):
         self.assertIsNotNone(out["k"][-1])
 
     def test_kdj_warmup_then_converged(self):
+        # 单边上涨且"当日收盘即窗口最高"（high=close）→ RSV 饱和于 100，K 应收敛到高位。
+        # 原用例用 high=close*1.02 的 ±2% 高位带宽，RSV 实际饱和于 (0.02C+Δ)/(0.04C+Δ)≈72.6，
+        # 与"K>90"的期望不符（复测 N1-4）——此处修**数据**而非放宽断言，保持断言语义。
         close = pd.Series(np.linspace(10, 20, 120))
-        out = kdj(high=close * 1.02, low=close * 0.98, close=close)
-        # 单调上涨序列：尾段 K/D 应接近高位并收敛在 [0, 100]
+        out = kdj(high=close, low=close * 0.98, close=close)
         self.assertGreater(out["k"][-1], 90)
         self.assertGreater(out["d"][-1], 80)
 

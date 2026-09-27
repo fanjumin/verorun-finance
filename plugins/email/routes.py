@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Email Plugin Routes — 邮件管理 API 路由
 ========================================
@@ -298,3 +298,23 @@ def admin_email_attachment(uid, filename):
         as_attachment=True,
         download_name=filename,
     )
+
+
+# GET /admin/email/providers
+EMAIL_PROVIDERS = [
+    {'id': 'tencent', 'name': '腾讯企业邮箱', 'smtp_host': 'smtp.exmail.qq.com', 'smtp_port': 465, 'imap_host': 'imap.exmail.qq.com', 'imap_port': 993, 'ssl': True},
+    {'id': 'netease', 'name': '网易163', 'smtp_host': 'smtp.163.com', 'smtp_port': 465, 'imap_host': 'imap.163.com', 'imap_port': 993, 'ssl': True},
+    {'id': 'qq', 'name': 'QQ邮箱', 'smtp_host': 'smtp.qq.com', 'smtp_port': 465, 'imap_host': 'imap.qq.com', 'imap_port': 993, 'ssl': True},
+    {'id': 'gmail', 'name': 'Gmail', 'smtp_host': 'smtp.gmail.com', 'smtp_port': 587, 'imap_host': 'imap.gmail.com', 'imap_port': 993, 'ssl': False},
+    {'id': 'outlook', 'name': 'Outlook/Hotmail', 'smtp_host': 'smtp.office365.com', 'smtp_port': 587, 'imap_host': 'outlook.office365.com', 'imap_port': 993, 'ssl': False},
+    {'id': 'sina', 'name': '新浪邮箱', 'smtp_host': 'smtp.sina.com', 'smtp_port': 465, 'imap_host': 'imap.sina.com', 'imap_port': 993, 'ssl': True},
+    {'id': 'sohu', 'name': '搜狐邮箱', 'smtp_host': 'smtp.sohu.com', 'smtp_port': 465, 'imap_host': 'imap.sohu.com', 'imap_port': 993, 'ssl': True},
+    {'id': 'aliyun', 'name': '阿里企业邮箱', 'smtp_host': 'smtp.qiye.aliyun.com', 'smtp_port': 465, 'imap_host': 'imap.qiye.aliyun.com', 'imap_port': 993, 'ssl': True},
+]
+
+@email_bp.route('/providers', methods=['GET'])
+def admin_email_providers():
+    admin, err = _require_admin()
+    if err:
+        return err
+    return jsonify({'success': True, 'data': EMAIL_PROVIDERS})

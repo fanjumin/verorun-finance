@@ -256,11 +256,22 @@ def register_page():
 
 # ══ Captcha proxy → admin:8084 ══
 def _proxy_captcha(path, data=None, method='GET'):
+    """代理到 admin:8084，并**保留上游真实状态码**。
+
+    2026-09-27：urlopen 对任何非 2xx 都会抛 HTTPError，改造前被上层
+    `except Exception` 统一改写成 502，导致上游 404/401/500 全部伪装成
+    “网关不可达”（实测 /api/captcha/* 全线 502，真实原因是上游 404）。
+    HTTPError 本身就是一个响应对象，直接透传即可；502 只保留给真正的连接失败。
+    """
     url = 'http://127.0.0.1:8084' + path
     req = _ur.Request(url, data=data, method=method)
     if data:
         req.add_header('Content-Type', 'application/json')
-    resp = _ur.urlopen(req, timeout=5)
+    try:
+        resp = _ur.urlopen(req, timeout=5)
+    except _ur.HTTPError as e:
+        ctype = e.headers.get('Content-Type', 'application/json') if e.headers else 'application/json'
+        return e.read(), e.code, {'Content-Type': ctype}
     return resp.read(), resp.status, {'Content-Type': resp.headers.get('Content-Type', 'application/json')}
 
 

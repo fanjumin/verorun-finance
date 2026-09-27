@@ -199,11 +199,41 @@ def _info_to_dict(info) -> dict:
     return d
 
 
+def _edition_hidden_ids(mgr, identifiers) -> set:
+    """本版「不提供」的插件集合（与启动期装载门控 _gate 完全同源）。
+
+    来源 = 版侧隐藏（include/exclude，仅启用运行时白名单的版本有值）
+          ∪ v1.8 动态分流规则（plugin_distribution_rules，与商店准入共用
+          distribution.resolve_visible_set）。
+    取数失败按"不隐藏"处理（fail-open），与该模块既有降级约定一致。
+
+    用于插件中心 / 插件发现两个列表端点，避免"能看见"与"能装载"两套口径。
+    商店（/store/*）与安装入口不受影响：那里的准入按各插件 compatible_editions 判定，
+    故"未来适用本版的插件上架后仍可订阅安装"。
+    """
+    try:
+        ids = [i for i in (identifiers or []) if i]
+        hidden, edition = mgr._edition_hidden_map(ids)
+        gate = dict(hidden)
+        dist_hidden = mgr._dist_hidden_map(ids, edition)
+        if isinstance(dist_hidden, dict) and dist_hidden:
+            gate.update(dist_hidden)
+        return set(gate)
+    except Exception as e:
+        print(f'[PluginManager] ⚠️ 插件门控取数失败（本次不隐藏）: {e}')
+        return set()
+
+
 # ── 1. 列出所有插件 ────────────────────────────────────────────────
 
 @bp.route('', methods=['GET'])
 def list_plugins():
-    """列出所有插件（含状态、版本信息）"""
+    """列出本版提供的插件（含状态、版本信息）。
+
+    2026-09-21 收口：按 edition 门控过滤 —— 本版"不提供"的插件不再出现在插件中心
+    列表里。此前它们会被一并列出（status=disabled），界面看仍是"全量插件"，而用户既
+    启用不了也卸载不掉，属误导性展示。判定见 _edition_hidden_ids（与装载门控同源）。
+    """
     err = _require_admin()
     if err:
         return err
@@ -214,6 +244,11 @@ def list_plugins():
 
     status_filter = request.args.get('status')
     plugins = [p for p in mgr.list_plugins(status_filter)]
+
+    hidden = _edition_hidden_ids(mgr, [p.identifier for p in plugins])
+    if hidden:
+        plugins = [p for p in plugins if p.identifier not in hidden]
+
     return _json_result(True, data=[_info_to_dict(p) for p in plugins])
 
 
@@ -261,7 +296,11 @@ def list_plugins_unified():
 
 @bp.route('/discover', methods=['GET'])
 def discover_plugins():
-    """扫描 plugins/ 目录，返回所有插件（含已安装的）"""
+    """扫描 plugins/ 目录，返回**本版提供**的插件（含已安装的）。
+
+    edition 门控过滤见 _edition_hidden_ids：本版"不提供"的插件不返回 ——
+    否则 V3 插件中心（本端点的消费方）会呈现"全量插件"。
+    """
     err = _require_admin()
     if err:
         return err
@@ -283,6 +322,12 @@ def discover_plugins():
             if row is not None:
                 d['status'] = row.get('status') or 'unknown'
             dicts.append(d)
+
+        # 与插件中心同一道 edition 门控：本版"不提供"的插件不出现在发现列表里。
+        # （V3 插件中心页读的正是本端点，缺这道过滤则界面仍呈现"全量插件"。）
+        hidden = _edition_hidden_ids(mgr, [d.get('identifier') for d in dicts])
+        if hidden:
+            dicts = [d for d in dicts if d.get('identifier') not in hidden]
 
         return _json_result(True, data={
             'total': len(dicts),
@@ -1199,9 +1244,11 @@ def _check_paid_entitlement(identifier: str, detail: dict):
 
 
 def _annotate_store_plugins(mgr, plugins: list) -> None:
-    """为商店插件批量注入 installed / has_update / latest_version 标记
+    """为商店插件批量注入 installed / has_update / latest_version / 判定可见性标记
 
     就地修改 plugins 中的 dict；内部异常已捕获，不影响原有响应。
+    2026-09-18：新增 catalog_behind（目录版本低于已装版本）与
+    update_check_failed（本次对比未能得出结果），避免"该提示却没提示"完全静默。
     """
     from .store import DEPLOY_EDITION, StoreAPIClient
     if not plugins:
@@ -1223,17 +1270,24 @@ def _annotate_store_plugins(mgr, plugins: list) -> None:
             local_versions[pid] = row.get('version')
 
     updates = {}
+    update_check_error = ''
     if local_versions and mgr.store_client:
         try:
             updates = mgr.store_client.check_updates(local_versions)
+            update_check_error = getattr(mgr.store_client, '_last_check_error', '') or ''
         except Exception as e:
             print(f'[routes] _annotate_store_plugins check_updates failed: {e}')
+            update_check_error = str(e)
 
     for p in plugins:
         p['installed'] = p.get('identifier') in local_versions
         u = updates.get(p.get('identifier'))
         p['has_update'] = bool(u and u.get('has_update'))
         p['latest_version'] = (u or {}).get('latest') or p.get('version')
+        # 2026-09-18：目录落后 / 判定不可用（列表内条目本身都在目录里，只需判已装）
+        p['catalog_behind'] = bool(u and u.get('catalog_behind'))
+        p['update_check_failed'] = bool(
+            update_check_error and p['installed'] and not u)
         # 阶段 3：标记部署版本兼容性（前端可提示"当前版本不适用"）
         p['current_edition'] = DEPLOY_EDITION
         p['compatible_edition'] = StoreAPIClient._edition_compatible(
@@ -4486,18 +4540,74 @@ def _skill_row_dict(row) -> dict:
     return d
 
 
-def _submit_skill_record(dev: dict, content_md: str):
+def _skill_manifest_columns(dev: dict, meta: dict, manifest: dict,
+                            content_md: str, prompt_md: str):
+    """清单 → 落库列（requirements / permissions / source / prompt_md / schema_ver）。
+
+    0.9 技能（无 skill.json）：requirements='{}'（恒可用）、source 按作者身份判定、
+    prompt_md 回退 content_md（整篇即提示词），与 §6.5 存量回填口径一致。
+    1.0 技能：requirements 收录 plugins/skills/roles/capabilities/editions + task_types
+    （task_types 与依赖同列存放：注入器与 /skills/available 均从该列读取）。
+    """
+    if not manifest:
+        return {
+            'requirements': '{}',
+            'permissions': '[]',
+            'source': 'official' if not dev.get('id') else 'community',
+            'prompt_md': prompt_md or content_md,
+            'schema_ver': '0.9',
+        }
+    reqs = dict(manifest.get('requirements') or {})
+    reqs['task_types'] = manifest.get('task_types') or []
+    declared = (manifest.get('source') or '').strip()
+    return {
+        'requirements': json.dumps(reqs, ensure_ascii=False),
+        'permissions': json.dumps(manifest.get('permissions') or [], ensure_ascii=False),
+        # source 权威来源是作者身份：开发者不得自封 official（否则可绕过社区熔断）
+        'source': 'official' if not dev.get('id')
+                  else ('user' if declared == 'user' else 'community'),
+        'prompt_md': prompt_md or content_md,
+        'schema_ver': '1.0',
+    }
+
+
+def _submit_skill_record(dev: dict, content_md: str,
+                         skill_json: str = '', prompt_md: str = ''):
     """技能提交核心：校验 + 自动审核 + 幂等入库（submit / import 共用）。
+
+    Args:
+        dev: 开发者行（author_developer_id；id=0 视为官方来源）
+        content_md: SKILL.md 全文（front-matter + 正文）
+        skill_json: 可选，skill.json 权威清单（依赖 / task_types / 发行版）
+        prompt_md: 可选，引擎注入用提示词正文；缺省回退 content_md
 
     Returns:
         (ok, payload, http_code)：ok=True → payload 为成功 data；
         ok=False → payload 为错误文案，http_code 区分 400/500。
     """
-    from .skills import validate_skill, audit_skill
+    from .skills import validate_skill, audit_skill, parse_skill_package
+    if isinstance(skill_json, dict):        # 允许直接传 JSON 对象（API 边界容错）
+        skill_json = json.dumps(skill_json, ensure_ascii=False)
     errors, meta = validate_skill(content_md)
     if errors:
         return False, '; '.join(errors), 400
+
+    errors, manifest = parse_skill_package(skill_json)
+    if errors:
+        return False, '; '.join(errors), 400
+    if manifest and manifest.get('slug') != meta['identifier']:
+        return False, 'skill.json slug must match SKILL.md identifier', 400
+
+    cols = _skill_manifest_columns(dev, meta, manifest,
+                                   content_md, (prompt_md or '').strip())
+
+    # SKILL.md 与注入正文同口径审核（prompt_md 进入 system prompt，必须过审）
     audit_status, reasons = audit_skill(content_md)
+    p_status, p_reasons = audit_skill(cols['prompt_md'])
+    if p_status == 'reject':
+        audit_status = 'reject'
+        reasons += [f'prompt: {r}' for r in p_reasons]
+
     try:
         with get_registry_db() as conn:
             cur = conn.execute(
@@ -4507,23 +4617,32 @@ def _submit_skill_record(dev: dict, content_md: str):
                 cur = conn.execute(
                     'UPDATE store_skills SET content_md=%s, name=%s, description=%s, '
                     'tagline=%s, tags=%s, version=%s, audit_status=%s, audit_note=%s, '
-                    "status='pending', updated_at=NOW() WHERE id=%s RETURNING id",
+                    'requirements=%s, permissions=%s, source=%s, prompt_md=%s, '
+                    "schema_ver=%s, status='pending', updated_at=NOW() WHERE id=%s "
+                    'RETURNING id',
                     (content_md, meta['name'], meta['description'], meta['tagline'],
                      json.dumps(meta['tags']), meta['version'], audit_status,
-                     json.dumps(reasons), existing['id']))
+                     json.dumps(reasons), cols['requirements'], cols['permissions'],
+                     cols['source'], cols['prompt_md'], cols['schema_ver'],
+                     existing['id']))
             else:
                 cur = conn.execute(
                     "INSERT INTO store_skills "
                     " (identifier, name, description, tagline, tags, content_md, "
-                    "  author_developer_id, version, status, audit_status, audit_note) "
-                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'pending',%s,%s) RETURNING id",
+                    "  author_developer_id, version, requirements, permissions, "
+                    "  source, prompt_md, schema_ver, status, audit_status, audit_note) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'pending',%s,%s) "
+                    'RETURNING id',
                     (meta['identifier'], meta['name'], meta['description'], meta['tagline'],
                      json.dumps(meta['tags']), content_md, dev['id'], meta['version'],
+                     cols['requirements'], cols['permissions'], cols['source'],
+                     cols['prompt_md'], cols['schema_ver'],
                      audit_status, json.dumps(reasons)))
             skill_id = cur.fetchone()['id']
             conn.commit()
         return True, {'id': skill_id, 'identifier': meta['identifier'],
-                      'status': 'pending', 'audit_status': audit_status}, 200
+                      'status': 'pending', 'audit_status': audit_status,
+                      'schema_ver': cols['schema_ver']}, 200
     except Exception as e:
         traceback.print_exc()
         return False, f'Failed: {e}', 500
@@ -4531,7 +4650,11 @@ def _submit_skill_record(dev: dict, content_md: str):
 
 @bp.route('/skills/submit', methods=['POST'])
 def skill_submit():
-    """P0-1：开发者提交技能（幂等：重复 identifier 更新未审版本为 pending）。"""
+    """P0-1：开发者提交技能（幂等：重复 identifier 更新未审版本为 pending）。
+
+    1.0 技能额外接受 skill_json（权威清单：依赖 / task_types / 发行版）与
+    prompt_md（引擎注入正文）；缺省即 0.9 语义（整篇 content_md 即提示词）。
+    """
     dev, err = _require_developer()
     if err:
         return err
@@ -4539,7 +4662,10 @@ def skill_submit():
     content_md = (data.get('content_md') or '').strip()
     if not content_md:
         return _json_result(False, error='content_md is required', code=400)
-    ok, payload, code = _submit_skill_record(dev, content_md)
+    ok, payload, code = _submit_skill_record(
+        dev, content_md,
+        skill_json=data.get('skill_json') or '',
+        prompt_md=data.get('prompt_md') or '')
     return _json_result(ok, data=payload if ok else None,
                         error=None if ok else payload, code=code)
 
@@ -4565,7 +4691,10 @@ def skill_import():
             return _json_result(False, error=f'Failed to fetch url: {e}', code=400)
     if not content_md:
         return _json_result(False, error='content_md or url is required', code=400)
-    ok, payload, code = _submit_skill_record(dev, content_md)
+    ok, payload, code = _submit_skill_record(
+        dev, content_md,
+        skill_json=data.get('skill_json') or '',
+        prompt_md=data.get('prompt_md') or '')
     return _json_result(ok, data=payload if ok else None,
                         error=None if ok else payload, code=code)
 
@@ -4835,6 +4964,50 @@ def skill_available():
             continue
         out.append(_skill_row_dict(r))
     return _json_result(True, data=out)
+
+
+# ── 常用技能快捷清单（P1-B / B-4：桌面会话框「常用 Skill」条） ─────────────
+# 与 /skills/available 分工：后者是**注册表内**「已上架且依赖满足」的技能全集
+# （依赖 AvailabilityResolver 求值，空注册表时降级为空列表）；本表是**少数固定快捷入口**，
+# 每条携带一段预置提示词（label_key / prompt_key 为前端 i18n 键，文案由前端语言包承载）。
+# 数据源在此（后端常量），桌面端不得再写死清单；发行版分派由本表承载，
+# 未登记的发行版一律回落 default 桶（ops / 通用），前端不做分派判定。
+_SKILL_SHORTCUTS = {
+    'finance': [
+        {'slug': 'research-report', 'label_key': 'chat.skill.researchReport',
+         'prompt_key': 'chat.skill.researchReportPrompt', 'order': 1},
+        {'slug': 'fin-statement', 'label_key': 'chat.skill.finStatement',
+         'prompt_key': 'chat.skill.finStatementPrompt', 'order': 2},
+        {'slug': 'stock-signal', 'label_key': 'chat.skill.stockSignal',
+         'prompt_key': 'chat.skill.stockSignalPrompt', 'order': 3},
+        {'slug': 'macro-edb', 'label_key': 'chat.skill.macroEdb',
+         'prompt_key': 'chat.skill.macroEdbPrompt', 'order': 4},
+    ],
+    'research': [
+        {'slug': 'literature-review', 'label_key': 'chat.skill.literatureReview',
+         'prompt_key': 'chat.skill.literatureReviewPrompt', 'order': 1},
+        {'slug': 'paper-draft', 'label_key': 'chat.skill.paperDraft',
+         'prompt_key': 'chat.skill.paperDraftPrompt', 'order': 2},
+        {'slug': 'experiment-design', 'label_key': 'chat.skill.experimentDesign',
+         'prompt_key': 'chat.skill.experimentDesignPrompt', 'order': 3},
+    ],
+    'default': [
+        {'slug': 'web-analyze', 'label_key': 'chat.skill.webAnalyze',
+         'prompt_key': 'chat.skill.webAnalyzePrompt', 'order': 1},
+        {'slug': 'server-diagnose', 'label_key': 'chat.skill.serverDiagnose',
+         'prompt_key': 'chat.skill.serverDiagnosePrompt', 'order': 2},
+        {'slug': 'code-review', 'label_key': 'chat.skill.codeReview',
+         'prompt_key': 'chat.skill.codeReviewPrompt', 'order': 3},
+    ],
+}
+
+
+@bp.route('/skills/shortcuts', methods=['GET'])
+def skill_shortcuts():
+    """P1-B(B-4)：常用技能快捷清单（?edition= 分派；数据源为本文件常量，未登记→default）。"""
+    edition = (request.args.get('edition') or '').strip()
+    items = _SKILL_SHORTCUTS.get(edition, _SKILL_SHORTCUTS['default'])
+    return _json_result(True, data=sorted(items, key=lambda x: x['order']))
 
 
 @bp.route('/skills/<identifier>/requirements', methods=['GET'])

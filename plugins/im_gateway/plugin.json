@@ -45,7 +45,9 @@
       "im_gateway/send_message",
       "im_gateway/push_media"
     ],
-    "listens": []
+    "listens": [
+      "stock.alert.triggered"
+    ]
   },
   "menu": {
     "group": "System",

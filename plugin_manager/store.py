@@ -39,7 +39,9 @@ DOWNLOAD_MIRROR_PREFIX = os.environ.get('DOWNLOAD_MIRROR_PREFIX', '').strip()
 
 # 部署版本（阶段 3）：商店按 compatible_editions 过滤插件（空数组=全版本兼容）。
 # 统一走 agent_matrix.current_edition()（单一事实源：VR_EDITION→RELEASE_EDITION→DEPLOY_TYPE，
-# 新旧名归一 edu→research / pro→finance）；agent_matrix 不可用时兜底旧 DEPLOY_EDITION 环境变量。
+# 旧名归一 official→enterprise、*-desktop→去连字符名、edu→research；
+# **不含 pro→finance**，见 agent_matrix.models._EDITION_ALIASES）；
+# agent_matrix 不可用时兜底旧 DEPLOY_EDITION 环境变量（该兜底路径不做归一化）。
 def _resolve_deploy_edition() -> str:
     try:
         from agent_matrix.models import current_edition
@@ -55,6 +57,23 @@ SYNC_RETRY_BASE = 15 * 60
 SYNC_RETRY_MAX = 6 * 3600
 
 
+def _pick_latest(catalog_version: str, live_version) -> str:
+    """在"目录版本"与"多版本 live 版本"之间取较高者（2026-09-18 修正）。
+
+    旧实现为 `live_version or catalog_version`：只要该插件存在一条 live 版本行，
+    目录版本就被**无条件忽略**——一条陈旧的 live 行会永久钉住 latest，
+    使 latest ≤ installed，从而全站都不出现"可更新"状态。
+    两个版本都可解析时取较大者；live 缺失或任一不可解析时以目录版本为准。
+    """
+    if not live_version:
+        return catalog_version
+    cv = parse_version(catalog_version)
+    lv = parse_version(live_version)
+    if cv is None or lv is None:
+        return catalog_version
+    return live_version if lv > cv else catalog_version
+
+
 class StoreAPIClient:
     """插件商店 API 客户端"""
 
@@ -65,6 +84,9 @@ class StoreAPIClient:
         self._sync_failures = 0
         self._last_sync_ts = 0.0
         self._last_sync_error = ''
+        # 2026-09-18：最近一次 check_updates 的失败原因（非空=判定不可用，
+        # 供上层把"全站静默无徽标"变成可见状态）
+        self._last_check_error = ''
 
     def _fetch_catalog(self) -> dict:
         """Fetch store_catalog.json 多源回退（P0-2）。
@@ -276,8 +298,9 @@ class StoreAPIClient:
         """阶段 3：按部署版本（DEPLOY_EDITION）过滤插件。
 
         空数组 = 全版本兼容（旧插件未标注不拦截）；
-        非空时必须包含当前版本（大小写不敏感，双侧新旧名归一，
-        旧 catalog 的 edu/pro 与现行 research/finance 视为同版本）。
+        非空时必须包含当前版本（大小写不敏感，双侧均过 normalize_edition，
+        旧 catalog 的 edu 与现行 research 视为同版本；pro 不在别名表内，
+        与 finance 是并列 ID，插件须在 compatible_editions 里显式列出）。
         """
         if not compatible_editions:
             return True
@@ -527,9 +550,13 @@ class StoreAPIClient:
                             如 {'ads': '1.0.0'}（来源：plugin_registry）
 
         Returns:
-            {identifier: {installed, latest, has_update, min_app_version}}
+            {identifier: {installed, latest, has_update, catalog_behind, min_app_version}}
             仅包含"本地已安装 且 商店目录上架"的插件。
+            `catalog_behind=True` 表示**目录版本低于已装版本**（不该有更新提示），
+            用于把"目录落后"这一静默状态显式暴露给管理面板。
         """
+        # 每次调用复位；失败时在 except 中写入原因（供上层展示"更新检查不可用"）
+        self._last_check_error = ''
         print(f'[StoreAPIClient] check_updates: 收到本地已安装插件 {len(local_versions)} 个: {local_versions}')
         if not local_versions:
             print('[StoreAPIClient] check_updates: local_versions 为空，无可对比项，直接返回空结果')
@@ -548,6 +575,7 @@ class StoreAPIClient:
                     "FROM store_plugins sp WHERE sp.enabled=1"
                 ).fetchall()
         except Exception as e:
+            self._last_check_error = str(e)
             print(f'[StoreAPIClient] check_updates: 查询 store_plugins 失败: {e}，返回空结果')
             return {}
         print(f'[StoreAPIClient] check_updates: 商店目录上架插件 {len(rows)} 条')
@@ -557,8 +585,9 @@ class StoreAPIClient:
         skipped = 0
         for r in rows:
             identifier = r['identifier']
-            # P1 §5.3：第三方 live 版本优先；官方插件回退 store_plugins.version
-            latest = r.get('live_version') or r['version']
+            # P1 §5.3：第三方 live 版本；2026-09-18 修正为与目录版本取较高者
+            # （旧实现 live 优先，会让一条陈旧的 live 行永久钉住 latest）
+            latest = _pick_latest(r['version'], r.get('live_version'))
             installed = local_versions.get(identifier)
             if installed is None:
                 skipped += 1
@@ -573,16 +602,21 @@ class StoreAPIClient:
                 print(f'[StoreAPIClient] check_updates: ⚠️ {identifier} 版本号无法解析 '
                       f'(installed={installed!r}, latest={latest!r})，退化为字符串比较')
                 has_update = latest != installed
+                catalog_behind = False
             else:
                 has_update = latest_ver > installed_ver
+                # 目录版本低于已装版本（典型场景：本地升了版但未发布进目录）
+                catalog_behind = latest_ver < installed_ver
 
             print(f'[StoreAPIClient] check_updates: {identifier} '
                   f'installed={installed} latest={latest} has_update={has_update} '
+                  f'catalog_behind={catalog_behind} '
                   f'min_app_version={r["min_app_version"]}')
             result[identifier] = {
                 'installed': installed,
                 'latest': latest,
                 'has_update': has_update,
+                'catalog_behind': catalog_behind,
                 'min_app_version': r['min_app_version'],
             }
 

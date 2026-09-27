@@ -63,10 +63,14 @@ class MemoryEnginePlugin(BasePlugin):
         self._extractor = MemoryExtractor(self._config)
         self._reflexion = ReflexionService(self._config)
         self._injector = PromptInjector(self._config)
-        self._evolution = PromptEvolutionService()
+        self._evolution = PromptEvolutionService(self._config)
         from .services.sedimentation import SedimentationService, set_service
         self._sedimentation = SedimentationService(self._config)
         set_service(self._sedimentation)
+        from .services.forgetting import ForgettingService
+        self._forgetting = ForgettingService(self._config)
+        from .services.abtest import AbTestService
+        self._abtest = AbTestService(self._config)
         return True
 
     def activate(self):
@@ -79,6 +83,7 @@ class MemoryEnginePlugin(BasePlugin):
                 get_event_bus().on(AGENT_TASK_COMPLETED, self._on_task_completed)
         if self._injector:
             self._injector.register()
+        # abtest 结局记录与提取共用同一事件入口（_on_task_completed），无需额外订阅
         logger.info('memory_engine activated')
 
     def _on_task_completed(self, **kwargs):
@@ -91,6 +96,11 @@ class MemoryEnginePlugin(BasePlugin):
         if not agent_id or not task:
             return
         self._extractor.submit(task, result, agent_id)
+        # P2 A/B：记录结局（含对照臂；同步单行 INSERT，异常静默）
+        if getattr(self, '_abtest', None):
+            self._abtest.record_outcome(
+                task, result, agent_id,
+                injected_len=getattr(self._injector, '_last_injected_len', 0))
 
     def deactivate(self):
         """Unsubscribe everything (disable path)."""
@@ -130,8 +140,8 @@ class MemoryEnginePlugin(BasePlugin):
     # ── registration hooks (standard) ─────────────────────────
 
     def register_routes(self) -> list:
-        from .routes import bp
-        return [bp]
+        from .routes import bp, user_bp
+        return [bp, user_bp]
 
     def register_jobs(self) -> list:
         """Daily 02:10 prompt-metrics aggregation (APScheduler dict)."""
@@ -149,6 +159,14 @@ class MemoryEnginePlugin(BasePlugin):
                 'trigger': 'cron',
                 'hour': 2,
                 'minute': 40,
+            })
+        if getattr(self, '_forgetting', None):
+            jobs.append({
+                'id': 'memory_engine_daily_forgetting',
+                'func': self._forgetting.run_daily,
+                'trigger': 'cron',
+                'hour': 3,
+                'minute': 10,
             })
         return jobs
 
@@ -210,7 +228,7 @@ class MemoryEnginePlugin(BasePlugin):
                 " applied_at timestamptz NOT NULL DEFAULT now())"
             )
             conn.execute("SET search_path TO %s, public" % SCHEMA)
-            # CE-D1 方案 A：探测 pgvector，可用 -> vector(1536)，不可用 -> TEXT 降级关键词检索
+            # CE-D1 方案 A：探测 pgvector，可用 -> vector(<provider dim>)，不可用 -> TEXT 降级关键词检索
             try:
                 _vrow = conn.execute(
                     "SELECT 1 FROM pg_available_extensions WHERE name='vector'"
@@ -218,7 +236,19 @@ class MemoryEnginePlugin(BasePlugin):
                 _vec = _vrow is not None
             except Exception:
                 _vec = False
-            _col_type = 'vector(1536)' if _vec else 'TEXT'
+            # 路 A：维度从 embedding provider 动态解析（换模型改配置即可，不写死）
+            _dim = 1536
+            try:
+                from plugins._base.embeddings import EmbeddingService
+                # F4 修复：原句引用未定义变量 config（NameError 被 except 吞掉，
+                # 动态维度解析从未生效）。migrate() 可能在 on_install 路径被调用
+                # （早于 on_enable 设置 _config），故用 getattr 兜底。
+                _cfg = {'module': 'memory_engine'}
+                _cfg.update(getattr(self, '_config', None) or {})
+                _dim = int(EmbeddingService(_cfg).dim or 1536)
+            except Exception as e:
+                logger.warning('resolve embedding dim for memory_engine failed, fallback 1536: %s', e)
+            _col_type = ('vector(%d)' % _dim) if _vec else 'TEXT'
             logger.info('memory_engine embedding column type: %s', _col_type)
             migrations_dir = os.path.join(os.path.dirname(__file__), 'migrations')
             for fname in sorted(os.listdir(migrations_dir)):

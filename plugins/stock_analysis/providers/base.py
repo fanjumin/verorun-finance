@@ -21,6 +21,9 @@ class DataCategory(str, Enum):
     NORTHBOUND = "northbound"   # 北向资金（A 股特色）
     SHAREFLOAT = "sharefloat"   # 限售股解禁（A 股特色）
     HOLDERNUMBER = "holdernumber"  # 股东户数（A 股特色）
+    MACRO = "macro"             # 宏观 EDB：经济指标时序（方案 §4.6，FMP economic / 未来 Tushare）
+    DEPTH = "depth"             # 五档盘口（方案 §4.2，腾讯快照买卖五档 / 未来终端桥）
+    TICKS = "ticks"             # 分笔成交（方案 §4.3，腾讯逐笔明细 / 未来终端桥）
 
 
 class ProviderError(RuntimeError):

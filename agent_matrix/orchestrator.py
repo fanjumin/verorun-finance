@@ -124,25 +124,61 @@ class AgentOrchestrator:
             except Exception as e:
                 logger.warning(f'[CapabilityGate] check failed: {e}')
 
-        # 3. 任务分解
+        # 2.6 迭代规划器开关（WP-C C-①）：默认关闭。
+        # 导入失败 / 读取失败 / 配置为关 → 一律 fail-open 到下方单次路径，行为与基线一致。
+        # 位置固定在能力闸门之后：未安装插件的能力拦截优先于规划器。
+        _use_planner_loop = False
+        _loop_stats = None
         try:
-            decomposed = self.decompose_task(instruction, master_config)
+            from agent_matrix.planner_loop import is_replan_enabled, PlannerLoop
+            _use_planner_loop = bool(is_replan_enabled())
         except Exception as e:
-            self.models.update_task_status(master_task_id, 'failed', error_message=str(e))
-            self._add_task_log(master_task_id, master_agent_id, 'error', 'execution',
-                               f'Task decomposition failed: {e}')
-            return {'status': 'failed', 'error': f'Task decomposition failed: {e}', 'master_task_id': master_task_id}
+            logger.warning(f'[PlannerLoop] switch check failed, using single pass: {e}')
 
-        self._add_task_log(master_task_id, master_agent_id, 'info', 'execution',
-                           f'Task decomposition completed: {len(decomposed)} sub-tasks')
+        if _use_planner_loop:
+            # 4. 保存会话消息（先落库、后下发，保持"用户消息先于子任务下发"不变量）
+            if session_id:
+                self.models.add_message(session_id, 'user', instruction, master_task_id=master_task_id)
+            try:
+                _planner = PlannerLoop(
+                    self, master_task_id, master_agent_id, master_config,
+                    session_id=session_id, user_id=user_id, mode=mode,
+                )
+                decomposed, sub_results, _loop_stats = _planner.run(instruction)
+                self._add_task_log(
+                    master_task_id, master_agent_id, 'info', 'execution',
+                    f'PlannerLoop completed: {_loop_stats["iterations"]} iteration(s), '
+                    f'stop={_loop_stats["stop_reason"]}')
+            except Exception as e:
+                # 规划器内部已对"分解/下发"异常做 fail-open 收敛，能逃到此处者仅可能发生在
+                # 下发开始之前（导入/构造/轮间护栏）。为避免极端情况下重复下发造成副作用，
+                # 此处不做二次执行，直接按失败上报（fail-closed，不静默）。
+                logger.warning(f'[PlannerLoop] aborted: {e}')
+                self.models.update_task_status(master_task_id, 'failed', error_message=str(e))
+                self._add_task_log(master_task_id, master_agent_id, 'error', 'execution',
+                                   f'PlannerLoop aborted: {e}')
+                return {'status': 'failed', 'error': f'PlannerLoop aborted: {e}',
+                        'master_task_id': master_task_id}
+        else:
+            # 3. 任务分解
+            try:
+                decomposed = self.decompose_task(instruction, master_config)
+            except Exception as e:
+                self.models.update_task_status(master_task_id, 'failed', error_message=str(e))
+                self._add_task_log(master_task_id, master_agent_id, 'error', 'execution',
+                                   f'Task decomposition failed: {e}')
+                return {'status': 'failed', 'error': f'Task decomposition failed: {e}', 'master_task_id': master_task_id}
 
-        # 4. 保存会话消息
-        if session_id:
-            self.models.add_message(session_id, 'user', instruction, master_task_id=master_task_id)
+            self._add_task_log(master_task_id, master_agent_id, 'info', 'execution',
+                               f'Task decomposition completed: {len(decomposed)} sub-tasks')
 
-        # 5. 下发子任务（传入原始指令用于参考图识别 + user_id 用于模块策略校验 + mode 用于动态提示词）
-        sub_results = self.dispatch_sub_tasks(decomposed, master_task_id, session_id,
-                                              original_instruction=instruction, user_id=user_id, mode=mode)
+            # 4. 保存会话消息
+            if session_id:
+                self.models.add_message(session_id, 'user', instruction, master_task_id=master_task_id)
+
+            # 5. 下发子任务（传入原始指令用于参考图识别 + user_id 用于模块策略校验 + mode 用于动态提示词）
+            sub_results = self.dispatch_sub_tasks(decomposed, master_task_id, session_id,
+                                                  original_instruction=instruction, user_id=user_id, mode=mode)
 
         # 6. 汇总结果
         all_completed = all(r.get('status') == 'completed' for r in sub_results)
@@ -166,6 +202,11 @@ class AgentOrchestrator:
 
         # 8. 保存会话回复
         summary = self._build_summary(decomposed, sub_results, total_time, all_completed)
+        # 8.1 迭代规划统计（仅开关开启时附加；渲染失败不影响主汇总）
+        if _loop_stats:
+            _stats_text = self._format_loop_stats(_loop_stats)
+            if _stats_text:
+                summary = f'{summary}\n{_stats_text}'
         if session_id:
             self.models.add_message(
                 session_id, 'master', summary,
@@ -393,13 +434,13 @@ class AgentOrchestrator:
 {{
   "tasks": [
     {{
-      "title": _("Sub-task Summary Title"),
+      "title": "子任务简要标题",
       "description": "子任务详细描述，包含执行要求",
-      "target_agent_name": _("Target Agent Name (must be in the list above)"),
+      "target_agent_name": "目标Agent名称（必须是上面列表中的）",
       "task_type": "execute",
       "priority": 5,
-      "input_data": {{"action": _("Specific Operation"), "params": {{...}}}},
-      "expected_output": {{"fields": [_("Expected output field name")]}}
+      "input_data": {{"action": "具体操作", "params": {{...}}}},
+      "expected_output": {{"fields": ["期望输出字段名"]}}
     }}
   ]
 }}
@@ -510,11 +551,11 @@ class AgentOrchestrator:
                 if isinstance(mod, str):
                     kws.add(mod.lower())
                     # 模块名拆分（site_builder → site, builder）
-                    for part in mod.replace('-', '_(').split(')_('):
+                    for part in mod.replace('-', '_').split('_'):
                         if len(part) > 2:
                             kws.add(part)
             # 3. name 拆分关键词
-            for part in name.replace(')-', ' ').replace('_(', ') ').split():
+            for part in name.replace('-', ' ').replace('_', ' ').split():
                 w = part.lower().strip()
                 if len(w) > 2:
                     kws.add(w)
@@ -655,7 +696,7 @@ class AgentOrchestrator:
             else:
                 exec_result = self._execute_standard_agent(
                     task_def, agent_config, sub_task_id, target_id,
-                    session_id, master_task_id
+                    session_id, master_task_id, user_id
                 )
 
             # 更新结果状态
@@ -815,7 +856,7 @@ class AgentOrchestrator:
             return None
 
     def _execute_standard_agent(self, task_def, agent_config, sub_task_id, target_id,
-                                 session_id, master_task_id):
+                                 session_id, master_task_id, user_id: int = 0):
         """执行标准 LLM Agent"""
         from agent_matrix.agent_runner import AgentRunner
         # 动态解析 System Prompt
@@ -847,6 +888,7 @@ class AgentOrchestrator:
             'expected_output': task_def.get('expected_output', {}),
             'max_retries': 2,
             'skip_critique': task_def.get('skip_critique', False),
+            'user_id': user_id,  # 仅供事件订阅方（memory_engine）解析归属；_build_query 不读此键
         }, history=history)
 
     def _execute_image_agent(self, task_def, agent_config, sub_task_id, target_id,
@@ -1066,6 +1108,40 @@ class AgentOrchestrator:
 
         return '\n'.join(parts)
 
+    def _format_loop_stats(self, stats):
+        """渲染 PlannerLoop 迭代统计（开关开启时附加到汇总末尾）。
+
+        纯只读、纯字符串拼接：不调 LLM、不读写会话缓存（避免污染 summary store）。
+        任何形状异常一律返回空串，绝不影响主汇总。
+        """
+        try:
+            if not isinstance(stats, dict):
+                return ''
+            rounds = stats.get('rounds') or []
+            if not rounds:
+                return ''
+            lines = [
+                f"\n🔁 **迭代规划**：共 {stats.get('iterations', len(rounds))} 轮 | "
+                f"停止原因 `{stats.get('stop_reason', 'unknown')}` | "
+                f"观察用量 {stats.get('observation_tokens', 0)} tokens | "
+                f"总耗时 {stats.get('duration_s', 0)}s"
+            ]
+            for r in rounds:
+                if not isinstance(r, dict):
+                    continue
+                lines.append(
+                    f"   - 第 {r.get('iteration', '?')} 轮："
+                    f"子任务 {r.get('subtasks', 0)}，"
+                    f"完成 {r.get('completed', 0)}，"
+                    f"失败 {r.get('failed', 0)}，"
+                    f"阻塞 {r.get('blocked', 0)}，"
+                    f"{r.get('duration_s', 0)}s"
+                )
+            return '\n'.join(lines)
+        except Exception as e:
+            logger.warning(f'[PlannerLoop] format stats failed: {e}')
+            return ''
+
     # -------------------------------------------------------
     # 辅助方法
     # -------------------------------------------------------
@@ -1158,6 +1234,20 @@ class AgentOrchestrator:
         """
         agents = self.models.list_agents(role_type='sub', domain=domain, active_only=True)
         return agents[0] if agents else None
+
+    def _find_agent_for_protocol(self, role_slugs, fallback_domain):
+        """讨论协议选角（2026-09-21 定稿）：优先"本版设计角色 slug"，回落官方 domain。
+
+        为什么不能只按 domain：官方版按 domain=site_builder / finance 选 Planner / Decider，
+        而方向版（科研 / 金融桌面）的角色集是按各自业务流水线重构的 —— 那些官方 domain
+        在方向版不存在（金融版曾因此**缺 Planner**、一直走降级分支）。改为「本版角色 slug
+        优先 → 回落原 domain」，官方版没有这些 slug 时行为不变，跨版本通用且不新造角色。
+        """
+        for slug in role_slugs or []:
+            agents = self.models.list_agents(role_type='sub', active_only=True, slugs=[slug])
+            if agents:
+                return agents[0]
+        return self._find_agent_by_domain(fallback_domain)
 
     # ============================================================
     # Core: run a single discussion agent round
@@ -1450,17 +1540,19 @@ class AgentOrchestrator:
             return event
 
         # ── Agent availability check with degradation (Fix #5) ──
-        planner_agent = self._find_agent_by_domain('site_builder')   # Builder → Planner
+        # 选角规则（2026-09-21）：优先本版设计角色（投研流水线 rs_planner / rs_pm），
+        # 官方版无这些 slug 时回落官方 domain（site_builder / finance）。
+        planner_agent = self._find_agent_for_protocol(['rs_planner'], 'site_builder')
         reviewer_agent = self._find_agent_by_domain('ops')           # Ops → Reviewer
-        decider_agent = self._find_agent_by_domain('finance')        # Finance → Decider
+        decider_agent = self._find_agent_for_protocol(['rs_pm'], 'finance')
 
         missing = []
         if not planner_agent:
-            missing.append('Planner (Builder/site_builder)')
+            missing.append('Planner (rs_planner / Builder・site_builder)')
         if not reviewer_agent:
-            missing.append('Reviewer (Ops/ops)')
+            missing.append('Reviewer (Ops・ops)')
         if not decider_agent:
-            missing.append('Decider (Finance/finance)')
+            missing.append('Decider (rs_pm / Finance・finance)')
 
         if missing:
             degradation_msg = 'Discussion roles unavailable: ' + ', '.join(missing) + '. '

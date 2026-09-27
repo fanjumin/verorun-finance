@@ -18,6 +18,22 @@ Plugin Manager — HookRegistry (Action + Filter 双钩子系统)
     result = hooks.apply_filters('content.render', html_content)
 
 优先级: 数字越小越先执行（默认 10）。
+
+内核保留钩子（第三方插件不得注册）
+------------------------------------
+以下钩子在 Agent 内核执行路径上被直接消费，注册即等于获得进程内全局拦截能力。
+第三方插件不得注册；发现注册视为越权，须在插件评审中拒绝。
+
+    agent_tool.pre_execute
+        内核工具执行前的审批门（消费点：agent_matrix/tools.py 的 execute_tool）。
+        回调签名 callback(gate, **kwargs) -> gate，其中
+            gate = {'tool', 'args', 'allowed', 'agent_id', 'task_id', 'agent_name'}
+        返回 gate['allowed'] 为假即拒绝执行，可另给 deny_reason 作为回执文本；
+        返回 None 或非 dict 由内核按 fail-open 处理（视为放行），任何异常亦被本
+        注册表捕获而不中断链路。
+
+注：add_filter 目前无 permissions 门控（CAPABILITY_PERMISSIONS 不含 filter 类
+能力），故上述约束依赖插件评审而非运行时强制；运行时强制列入二期。
 """
 
 import threading

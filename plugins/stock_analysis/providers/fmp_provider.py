@@ -55,7 +55,17 @@ class FMPProvider(BaseProviderV2):
         DataCategory.KLINE, DataCategory.FUNDAMENTAL, DataCategory.CONSENSUS,
         DataCategory.PROFILE, DataCategory.NEWS, DataCategory.QUOTE,
         DataCategory.FORECAST,
+        DataCategory.MACRO,          # 方案 §4.6 宏观 EDB：/economic 指标时序
     })
+
+    # FMP economic 端点支持的常用指标（前端下拉直接用；不在表里的也允许手填，
+    # 由上游决定是否返回数据，不做客户端臆造）
+    MACRO_INDICATORS = (
+        "GDP", "realGDP", "CPI", "coreCPI", "inflationRate", "PPI",
+        "unemploymentRate", "nonfarmPayrolls", "initialClaims",
+        "federalFundsRate", "treasuryRate", "consumerSentiment",
+        "retailSales", "industrialProduction", "housingStarts",
+    )
 
     # ------------------------------------------------------------ 契约微调
 
@@ -89,6 +99,12 @@ class FMPProvider(BaseProviderV2):
     # ------------------------------------------------------------ 实现
 
     def _do_fetch(self, cat: DataCategory, *, symbol: Optional[str] = None, **kw) -> FetchResult:
+        # 宏观指标**无 symbol**，必须在下面的 symbol 校验之前分流（否则会被"需要 symbol"误杀）
+        if cat == DataCategory.MACRO:
+            return self._macro(kw.get("indicator") or "CPI",
+                               country=kw.get("country") or "US",
+                               start=kw.get("start"), end=kw.get("end"),
+                               limit=int(kw.get("limit") or 240))
         sym = (symbol or "").split(":")[-1].upper()
         if not sym:
             raise ProviderUnavailable("FMP 需要 symbol")
@@ -197,6 +213,81 @@ class FMPProvider(BaseProviderV2):
                            as_of=str(row.get("timestamp", "")), delay_seconds=900,
                            url=self._url(f"quote/{sym}"), params={"symbol": sym},
                            cost_units=0.5)
+
+    # ---- 宏观 EDB（方案 §4.6）----
+
+    def _macro(self, indicator: str, country: str = "US",
+               start: Optional[str] = None, end: Optional[str] = None,
+               limit: int = 240) -> FetchResult:
+        """宏观经济指标时序：`GET /economic?name=<indicator>&country=<CC>`。
+
+        与方案示例的差异（按 FMP 官方文档修正）：方案写 `/economic/{indicator}`，
+        官方稳定形态是 `/economic?name=...`（带 name 参数并支持 from/to 日期区间），
+        路径式端点不在 v3 文档内。这里按官方形态实现。
+
+        返回统一为 DataFrame（date 索引 + value 列），空数据走 FetchResult.empty
+        → gateway 不缓存、计入失败，前端显示"该指标无数据"。
+        """
+        p = {"apikey": self.secret(), "name": indicator, "country": country}
+        if start:
+            p["from"] = start
+        if end:
+            p["to"] = end
+        try:
+            raw = self._get_json(f"{BASE}/economic", p, timeout=20)
+        except Exception as err:                       # noqa: BLE001 —— 上游异常统一包装
+            raise ProviderUnavailable(f"FMP macro upstream: {type(err).__name__}: {err}")
+        if isinstance(raw, dict) and raw.get("Error Message"):
+            raise ProviderUnavailable(f"FMP: {raw['Error Message']}")
+
+        # 兼容三种形态：顶层 list / {"data": [...]} / 单条指标记录 {date, value}
+        if isinstance(raw, list):
+            rows = raw
+        elif isinstance(raw, dict):
+            if isinstance(raw.get("data"), list) or isinstance(raw.get("historical"), list):
+                rows = raw.get("data") or raw.get("historical")
+            elif "date" in raw or "value" in raw:      # 单条记录（无 data 包装）
+                rows = [raw]
+            else:
+                rows = []
+        else:
+            rows = []
+        recs = []
+        for r in rows or []:
+            if not isinstance(r, dict):
+                continue
+            d = r.get("date") or r.get("datetime") or r.get("period")
+            v = r.get("value", r.get(indicator))
+            if d is None or v is None:
+                continue
+            try:
+                val = float(v)
+            except (TypeError, ValueError):
+                continue
+            recs.append({"date": str(d)[:10], "value": val})
+        recs.sort(key=lambda x: x["date"])
+        if limit and len(recs) > limit:
+            recs = recs[-limit:]
+
+        if not recs:
+            return FetchResult(DataCategory.MACRO, pd.DataFrame(), "fmp", "",
+                               warnings=["empty"], url=self._redact(f"{BASE}/economic?name={indicator}"),
+                               params={"indicator": indicator, "country": country})
+        df = pd.DataFrame(recs)
+        df["date"] = pd.to_datetime(df["date"])
+        df = df.set_index("date")
+        # 溯源：gateway 只往外传 DataFrame，来源随数据走 attrs（路由读取后如实标注；
+        # 若跨缓存回读丢失 attrs，路由会退化成 unknown，而不是编造来源）
+        df.attrs.update({"source": self.name, "indicator": indicator, "country": country})
+        return FetchResult(DataCategory.MACRO, df, "fmp", as_of=str(df.index.max().date()),
+                           delay_seconds=86400,
+                           url=self._redact(f"{BASE}/economic?name={indicator}"),
+                           params={"indicator": indicator, "country": country},
+                           cost_units=1.0)
+
+    def get_macro(self, indicator: str, country: str = "US", **kw) -> FetchResult:
+        """公开入口（方案 §4.6）：宏观指标时序，走统一的 fetch 模板（含埋点/令牌桶）。"""
+        return self.fetch(DataCategory.MACRO, indicator=indicator, country=country, **kw)
 
     # ---- 健康探测 ----
 

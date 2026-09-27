@@ -22,12 +22,7 @@ import re
 
 logger = logging.getLogger('memory_engine.sedimentation')
 
-# 与 extractor._PII_PATTERNS 保持一致的二次过滤（沉淀前必须再查一遍）
-_PII_PATTERNS = [
-    re.compile(r'(?i)(password|api[_-]?key|secret|token)\s*[:=]\s*\S+'),
-    re.compile(r'\b1[3-9]\d{9}\b'),                    # CN mobile
-    re.compile(r'\b\d{17}[\dXx]\b'),                   # CN ID card
-]
+# PII 二次过滤委托给 plugins._base.pii（与 extractor 共用，S11b）
 
 # 关键词 → 知识库分类（对齐 cleaner_agent.CATEGORY_LIMITS 的类别集合）
 _CATEGORY_RULES = [
@@ -156,10 +151,10 @@ class SedimentationService:
     def _enqueue(self, conn, source_schema, memory_id, owner_id,
                  memory_type, content, keywords, confidence, quality_score) -> bool:
         content = str(content or '').strip()
-        if not content:
-            return False
-        if any(p.search(content) for p in _PII_PATTERNS):
-            logger.info('sedimentation skipped (PII): %s/%s', source_schema, memory_id)
+        from plugins._base.pii import contains_pii
+        if not content or contains_pii(content):
+            if content:
+                logger.info('sedimentation skipped (PII): %s/%s', source_schema, memory_id)
             return False
         if not self._user_opted_in(owner_id):
             return False

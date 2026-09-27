@@ -23,11 +23,19 @@ from .providers.fmp_provider import FMPProvider
 from .providers.polygon_provider import PolygonProvider
 from .providers.user_supplied import UserSuppliedProvider
 from .providers.terminal_provider import WindProvider, ChoiceProvider
+# B 段 S1：财报免费备源（tushare 财报需 2000 积分，120 积分账号必失败）
+from .providers.akshare_fundamental import AkshareFundamentalProvider
+# B 段 S3：中国宏观免费备源（原 MACRO 只有 FMP，未配 key 时 /api/macro 恒 404）
+from .providers.akshare_macro import AkshareMacroProvider
+from .providers.akshare_consensus import AkshareConsensusProvider
 
 try:
-    from .providers.base_v2 import FetchResult, ProviderUnavailable
+    from .providers.base_v2 import (BaseProviderV2, FetchResult,
+                                    ProviderUnavailable, SecretResolver)
 except ImportError:
     FetchResult = None
+    BaseProviderV2 = object
+    SecretResolver = None
 
     class ProviderUnavailable(RuntimeError):
         pass
@@ -40,12 +48,18 @@ _log = logging.getLogger("stock_analysis.gateway")
 ROUTE: dict = {
     DataCategory.KLINE: [TushareProvider, AkshareProvider, SinaProvider, PolygonProvider,
                          WindProvider, ChoiceProvider],
-    DataCategory.FUNDAMENTAL: [TushareProvider, FMPProvider, UserSuppliedProvider],
+    # akshare 免费备源插在 tushare 之后：有积分走 tushare（字段最全），
+    # 无积分自动落到这里，财报页不至于空态。
+    DataCategory.FUNDAMENTAL: [TushareProvider, AkshareFundamentalProvider,
+                               FMPProvider, UserSuppliedProvider],
     DataCategory.MONEYFLOW: [TushareProvider],
     DataCategory.NEWS: [SinaProvider, PolygonProvider],
     DataCategory.QUOTE: [TencentProvider, SinaProvider, PolygonProvider, WindProvider, ChoiceProvider],
     DataCategory.INDEX: [TencentProvider, WindProvider, ChoiceProvider],
-    DataCategory.CONSENSUS: [FMPProvider, TushareProvider, UserSuppliedProvider],
+    # S4：A 股一致预期免费源（同花顺，免 key）挂链尾 —— 有 FMP key 或有 Tushare
+    # 2000 积分时仍优先走前面两源（字段更全），无 key 自动落到这里。
+    DataCategory.CONSENSUS: [FMPProvider, TushareProvider, UserSuppliedProvider,
+                             AkshareConsensusProvider],
     DataCategory.PROFILE: [FMPProvider, PolygonProvider],
     DataCategory.FORECAST: [FMPProvider, UserSuppliedProvider],
     DataCategory.TOPLIST: [TushareProvider],
@@ -53,18 +67,38 @@ ROUTE: dict = {
     DataCategory.NORTHBOUND: [TushareProvider],
     DataCategory.SHAREFLOAT: [TushareProvider],
     DataCategory.HOLDERNUMBER: [TushareProvider],
+    # 方案 §4.2/§4.3：五档与分笔目前只有腾讯实现（免 key 公开行情）；
+    # 终端桥（wind/choice）将来在 provider 里支持 DEPTH/TICKS 后自动进链，
+    # 现在它们的 categories 不含这两类，会被 `category in cls.supports()` 过滤掉。
+    DataCategory.DEPTH: [TencentProvider, WindProvider, ChoiceProvider],
+    DataCategory.TICKS: [TencentProvider, WindProvider, ChoiceProvider],
+    # 方案 §4.6 宏观 EDB：FMP 覆盖多国（需 key）；akshare_macro 补 **中国** 免费源
+    # （只在 country=CN 时接管，其余国家明确不支持 → 自动落回 FMP）。
+    DataCategory.MACRO: [FMPProvider, AkshareMacroProvider],
 }
 TTL = {DataCategory.KLINE: 300, DataCategory.QUOTE: 60, DataCategory.INDEX: 60,
        DataCategory.NEWS: 600, DataCategory.FUNDAMENTAL: 300, DataCategory.MONEYFLOW: 300,
        DataCategory.CONSENSUS: 3600, DataCategory.PROFILE: 86400, DataCategory.FORECAST: 3600,
        DataCategory.TOPLIST: 600, DataCategory.MARGIN: 300, DataCategory.NORTHBOUND: 300,
-       DataCategory.SHAREFLOAT: 86400, DataCategory.HOLDERNUMBER: 86400}
+       DataCategory.SHAREFLOAT: 86400, DataCategory.HOLDERNUMBER: 86400,
+       DataCategory.MACRO: 86400,
+       DataCategory.DEPTH: 10, DataCategory.TICKS: 30}
 COOLDOWN = 300                                   # 连续失败摘除时长（秒）
+# 连续失败触发冷却的次数阈值（原为 _dispatch 内字面量 3；2026-09-20 提为命名常量，
+# 供 /api/constants 下发给壳层，避免前端镜像漂移）
+COOLDOWN_FAIL_STREAK = 3
 # #SA-20260830-02：K 线数据新鲜度阈值（自然日）。10 天可覆盖春节/国庆长假且
 # 不误伤正常周末/短假；陈旧超过该阈值的数据一律拒绝输出（failover 下一源）。
 MAX_STALE_DAYS = 10
 # P2-11：进程内存结果缓存必须有界。写入超限时先逐过期项；仍超限则按最接近过期者逐出。
 MAX_MEM_CACHE = 1024
+# S1 补完：财报落盘缓存有效期（自然日）。财报按季度更新，7 天足够；
+# 命中期内重复访问走磁盘（毫秒级），不再付 akshare 财报约 8s/股 的网络开销。
+# 只影响 FUNDAMENTAL；K 线仍走 _disk_get 默认分支（当日有效），行为不变。
+FUND_DISK_TTL_DAYS = 7
+# S4：一致预期落盘缓存有效期（自然日）。机构预测随研报更新，但同花顺单次 1~7s，
+# 3 天足够；与财报同理，没有「当日」概念。
+CONSENSUS_DISK_TTL_DAYS = 3
 
 
 def _resolve_disk_dir() -> str:
@@ -122,13 +156,25 @@ def _disk_path(key: str) -> str:
     return os.path.join(DISK_DIR, key.replace(":", "_").replace("/", "_") + ".json.gz")
 
 
-def _disk_get(key: str):
+def _disk_get(key: str, max_age_days: float = None):
+    """读落盘缓存。
+
+    max_age_days=None（默认，K 线行为，不可改）：沿用 payload["day"] 判「当日有效」。
+    max_age_days=N：按 payload["ts"] 判「N 天内有效」——财报等低频数据用，
+    避免每天首次访问都重新付费级取数（akshare 财报约 8s/股）。
+    """
     path = _disk_path(key)
     if os.path.exists(path):
         try:
             with gzip.open(path, "rt", encoding="utf-8") as f:
                 payload = json.load(f)
-            if payload["day"] == time.strftime("%Y-%m-%d"):   # 当日有效
+            if max_age_days is None:
+                fresh = payload["day"] == time.strftime("%Y-%m-%d")
+            else:
+                ts = payload.get("ts")
+                fresh = ts is not None and \
+                    (time.time() - float(ts)) <= max_age_days * 86400
+            if fresh:
                 return _deserialize(payload["data"]), payload.get("source"), payload.get("provenance")
         except Exception as err:
             _log.warning("disk cache read failed: %s", err)   # 坏缓存走网络，不阻塞
@@ -149,6 +195,9 @@ def _disk_put(key: str, data, source_name: str, provenance: dict = None):
     try:
         os.makedirs(DISK_DIR, exist_ok=True)
         payload = {"day": time.strftime("%Y-%m-%d"),
+                   # S1 补完：epoch 时间戳。K 线沿用 day 判「当日有效」；
+                   # 财报按季度更新，用 ts 支持跨天有效期（见 _disk_get max_age_days）。
+                   "ts": time.time(),
                    "source": source_name,
                    "data": _serialize(data)}
         if provenance:
@@ -164,9 +213,43 @@ def _disk_put(key: str, data, source_name: str, provenance: dict = None):
         _log.warning("disk cache write failed: %s", err)      # 落盘失败不阻塞主链路
 
 
+def _ensure_adjusted(symbol: str, frame: pd.DataFrame) -> pd.DataFrame:
+    """自报 raw 且存在复权事件时，用 corporate_actions.AdjustmentEngine 补齐真 hfq。
+
+    修复 S0-1 的第二半：口径诚实化只是停止误标，真正恢复 hfq 能力需要接线引擎
+    （此前 corporate_actions 是"实现了但全库零引用"的死代码）。
+    """
+    if frame is None or frame.empty or "close_hfq" in frame.columns \
+            and str(frame.get("price_basis", pd.Series(["raw"])).iloc[0]).lower() == "hfq":
+        return frame
+    try:
+        from .corporate_actions import AdjustmentEngine, load_events
+        events = load_events(symbol)
+        if not events:
+            return frame                          # 无事件 → 保持 raw，由 meta 如实告知
+        engine = AdjustmentEngine()
+        out = engine.apply(frame, events)
+        out["price_basis"] = "hfq"
+        out.attrs["basis_source"] = "corporate_actions"
+        errs = engine.validate(out)               # 返回问题列表（不抛异常）
+        if errs:
+            _log.warning("adjust validate %s: %s", symbol, "; ".join(errs))
+        return out
+    except Exception as err:
+        _log.warning("adjust failed %s, fallback to raw: %s", symbol, err)
+        return frame
+
+
 class DataGateway:
     def __init__(self):
-        self._instances = {cls: cls() for chain in ROUTE.values() for cls in chain}
+        self._secret_resolver = self._build_secret_resolver()
+        self._instances = {}
+        for chain in ROUTE.values():
+            for cls in chain:
+                if SecretResolver is not None and issubclass(cls, BaseProviderV2):
+                    self._instances[cls] = cls(secrets=self._secret_resolver)
+                else:
+                    self._instances[cls] = cls()
         self._cache: dict[str, tuple[float, object]] = {}
         self._fail_streak: dict[type, int] = {}
         self._cooldown_until: dict[type, float] = {}
@@ -174,6 +257,26 @@ class DataGateway:
         # 并发请求的 data_sources 归属会串数据（合规输出事故）。threading.local
         # 使每个请求线程只看到自己的数据点记录。
         self._usage: threading.local = threading.local()
+
+    @staticmethod
+    def _build_secret_resolver():
+        """统一凭据解析器：插件持久化配置 → env → config.yaml。
+
+        模块级单例 gateway 在 Flask 应用上下文外构造，因此配置读取必须推迟到
+        resolve() 调用时（传可调用源给 from_plugin_config），否则设置页保存的
+        新凭据在下次解析时不会生效。无上下文/未启用时返回空 dict，解析器自动
+        回退 env → config.yaml（与现状一致：未配置 token 时免费源回退不变）。
+        """
+        def plugin_cfg() -> dict:
+            try:
+                from flask import current_app
+                pm = current_app.extensions.get("plugin_manager")
+                if pm is not None and pm.is_enabled("stock_analysis"):
+                    return pm.get_config("stock_analysis") or {}
+            except Exception:      # noqa: BLE001 —— 无上下文按未配置处理
+                pass
+            return {}
+        return SecretResolver.from_plugin_config(plugin_cfg)
 
     # P2-11：进程内存缓存有界写入。读路径已跳过过期项；写入仅在超限时触发一次清理，
     # 先逐过期项，仍超限再按「最接近过期」逐出约 1/4，避免长跑进程无界增长。
@@ -191,7 +294,9 @@ class DataGateway:
 
     # ── 对外入口（阶段2 增 get_fundamental/get_moneyflow）──
     def get_kline(self, symbol: str, datalen: int = 120) -> pd.DataFrame:
-        return self._dispatch(DataCategory.KLINE, symbol, datalen=datalen)
+        """K 线取数；自报 raw 的帧按 sa_corp_action 事件补齐真 hfq（见 §5.3）。"""
+        return _ensure_adjusted(symbol, self._dispatch(DataCategory.KLINE, symbol,
+                                                       datalen=datalen))
 
     def get_quote(self, symbol: str, category: DataCategory = DataCategory.QUOTE) -> dict:
         return self._dispatch(category, symbol)
@@ -199,9 +304,12 @@ class DataGateway:
     def get_news(self, symbol: str) -> list:
         return self._dispatch(DataCategory.NEWS, symbol)
 
-    def get_fundamental(self, symbol: str) -> dict:
-        """深财报四表合一（Tushare income/balance/cashflow/fina_indicator）。无权限/无 token 抛 ProviderError。"""
-        return self._dispatch(DataCategory.FUNDAMENTAL, symbol)
+    def get_fundamental(self, symbol: str, periods: int = 8) -> dict:
+        """深财报四表合一（Tushare income/balance/cashflow/fina_indicator）。无权限/无 token 抛 ProviderError。
+
+        periods 透传给 provider 的 head(N)；默认 8 与 provider 默认一致，老调用方行为不变。
+        """
+        return self._dispatch(DataCategory.FUNDAMENTAL, symbol, periods=periods)
 
     def get_moneyflow(self, symbol: str, days: int = 5) -> pd.DataFrame:
         """个股资金流（Tushare moneyflow 最近 N 日，日期索引）。"""
@@ -238,6 +346,23 @@ class DataGateway:
     def get_holdernumber(self, symbol: str, **kwargs) -> list:
         """股东户数（Tushare stk_holdernumber）。"""
         return self._dispatch(DataCategory.HOLDERNUMBER, symbol, **kwargs)
+
+    def get_macro(self, indicator: str, country: str = "US", **kwargs) -> pd.DataFrame:
+        """宏观 EDB 指标时序（方案 §4.6）：date 索引 + value 列的 DataFrame。
+
+        宏观指标不属于任何个股，symbol 传空串（与北向资金同款处理）。
+        无可用源（FMP 未配 key）抛 ProviderError，由路由转成 404 + 明确 error。
+        """
+        return self._dispatch(DataCategory.MACRO, "", indicator=indicator,
+                              country=country, **kwargs)
+
+    def get_depth(self, symbol: str) -> dict:
+        """五档盘口（方案 §4.2）：{name, price, prev_close, buy[5], sell[5], spread, asOf}。"""
+        return self._dispatch(DataCategory.DEPTH, symbol)
+
+    def get_ticks(self, symbol: str, limit: int = 50) -> dict:
+        """分笔成交（方案 §4.3）：{rows:[{seq,time,price,change,volume,amount,side,direction}]}。"""
+        return self._dispatch(DataCategory.TICKS, symbol, limit=limit)
 
     def apply_preference(self, preferred: str):
         """DATA_PROVIDER 语义：首选源覆盖——将指定 provider 排到其所在链头；空值按 ROUTE 顺序。"""
@@ -300,6 +425,31 @@ class DataGateway:
                                     (time.time() + TTL[category], value, source_cls))
                     self._record_usage(category, source_cls, provenance=disk_provenance)
                     return value
+        elif category is DataCategory.FUNDAMENTAL:
+            # S1 补完：财报落盘缓存（7 天）。财报不跟盘口走，没有「当日」概念，
+            # 因此不做 _check_freshness / _kline_cache_stale（那是 K 线的新鲜度逻辑）。
+            disk_key = f"fundamental:{symbol}:{kwargs.get('periods', 8)}"
+            disk = _disk_get(disk_key, max_age_days=FUND_DISK_TTL_DAYS)
+            if disk is not None:
+                value, source_name, disk_provenance = disk
+                source_cls = next((c for c in ROUTE[category] if c.name == source_name),
+                                  chain[0])
+                self._cache_put(cache_key,
+                                (time.time() + TTL[category], value, source_cls))
+                self._record_usage(category, source_cls, provenance=disk_provenance)
+                return value
+        elif category is DataCategory.CONSENSUS:
+            # S4：一致预期落盘缓存（3 天）。前瞻预测不随盘中变动，
+            # 不套 K 线的新鲜度判定。
+            disk = _disk_get(f"consensus:{symbol}", max_age_days=CONSENSUS_DISK_TTL_DAYS)
+            if disk is not None:
+                value, source_name, disk_provenance = disk
+                source_cls = next((c for c in ROUTE[category] if c.name == source_name),
+                                  chain[0])
+                self._cache_put(cache_key,
+                                (time.time() + TTL[category], value, source_cls))
+                self._record_usage(category, source_cls, provenance=disk_provenance)
+                return value
         # 积分探针驱动裁剪：provider.supports() 不含本类别（如 tushare 无权限）则跳过；
         # supports() 内部有进程级缓存，仅 token 解析/首次探针会产生一次开销。
         available = [cls for cls in self._available_chain(category)
@@ -334,6 +484,12 @@ class DataGateway:
                 if category is DataCategory.KLINE:
                     _disk_put(f"kline:{symbol}:{kwargs.get('datalen', '120')}",
                               value, provider_cls.name, provenance=prov_meta)
+                elif category is DataCategory.FUNDAMENTAL:
+                    _disk_put(f"fundamental:{symbol}:{kwargs.get('periods', 8)}",
+                              value, provider_cls.name, provenance=prov_meta)
+                elif category is DataCategory.CONSENSUS:
+                    _disk_put(f"consensus:{symbol}", value, provider_cls.name,
+                              provenance=prov_meta)
                 self._cache_put(cache_key,
                                 (time.time() + TTL[category], value, provider_cls))
                 return value
@@ -343,7 +499,7 @@ class DataGateway:
                 if getattr(err, "retryable", True):
                     streak = self._fail_streak.get(provider_cls, 0) + 1
                     self._fail_streak[provider_cls] = streak
-                    if streak >= 3:                         # 连续3败 → 冷却摘除
+                    if streak >= COOLDOWN_FAIL_STREAK:      # 连续 N 败 → 冷却摘除
                         self._cooldown_until[provider_cls] = time.time() + COOLDOWN
                         _log.warning("provider %s cooldown %ss (%s)",
                                      provider_cls.name, COOLDOWN, err)

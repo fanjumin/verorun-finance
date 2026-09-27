@@ -7,6 +7,10 @@ from flask import Response, jsonify, request
 from models import get_db
 import os
 import json
+import logging
+import psycopg2
+
+logger = logging.getLogger(__name__)
 
 @admin_bp.route('/api-keys', methods=['GET'])
 @_cached_get(ttl=3)
@@ -1068,7 +1072,7 @@ def quota_overview():
         # 超出阈值（calls_today >= tier daily_limit * 0.8）的key
         from models import TIERS
         near_limit = conn.execute("""
-            SELECT k.id, k.name, k.key_prefix, k.calls_today,
+            SELECT k.id, k.user_id, k.name, k.key_prefix, k.calls_today,
                    COALESCE(u.display_name, u.username, '') as user_name
             FROM api_keys k
             LEFT JOIN users u ON k.user_id=u.id
@@ -1193,7 +1197,7 @@ def provider_api_key_list():
     from services.crypto import decrypt as _decrypt
     with get_db() as conn:
         rows = conn.execute(
-            "SELECT id, name, provider, description, is_active, key_value_enc, "
+            "SELECT id, name, provider, description, is_active, pool_role, key_value_enc, "
             "CASE WHEN key_value_enc != '' THEN 1 ELSE 0 END AS has_value, "
             "created_at, updated_at "
             "FROM provider_api_keys ORDER BY id"
@@ -1227,6 +1231,9 @@ def provider_api_key_create():
     name = (data.get('name') or '').strip()
     key_value = (data.get('key_value') or '').strip()
     provider = (data.get('provider') or '').strip()
+    pool_role = data.get('pool_role') or 'primary'
+    if pool_role not in ('primary', 'backup', 'dedicated'):
+        pool_role = 'primary'
     if not name or not key_value:
         return jsonify({'success': False, 'error': _('Name and Key cannot be empty')}), 400
 
@@ -1238,9 +1245,9 @@ def provider_api_key_create():
 
     with get_db() as conn:
         row = conn.execute(
-            'INSERT INTO provider_api_keys (name, key_value_enc, provider, description) '
-            'VALUES (%s,%s,%s,%s) RETURNING id',
-            (name, encrypted, provider, data.get('description', ''))
+            'INSERT INTO provider_api_keys (name, key_value_enc, provider, description, pool_role) '
+            'VALUES (%s,%s,%s,%s,%s) RETURNING id',
+            (name, encrypted, provider, data.get('description', ''), pool_role)
         ).fetchone()
         conn.commit()
         kid = row['id']
@@ -1266,6 +1273,10 @@ def provider_api_key_update(kid):
             if field in data and data[field] is not None:
                 updates.append(f'{field}=%s')
                 params.append(data[field].strip() if isinstance(data[field], str) else data[field])
+        if 'pool_role' in data:
+            pool_role = data['pool_role'] if data['pool_role'] in ('primary', 'backup', 'dedicated') else 'primary'
+            updates.append('pool_role=%s')
+            params.append(pool_role)
         if 'is_active' in data:
             updates.append('is_active=%s')
             params.append(1 if data['is_active'] else 0)
@@ -1342,9 +1353,88 @@ def provider_api_key_delete(kid):
     return jsonify({'success': True})
 
 
+@admin_bp.route('/provider-api-keys/<int:kid>/test', methods=['POST'])
+def provider_api_key_test(kid):
+    """测试 Provider API Key 连接：解密 key 后向 base_url 发一个最小 chat/completions 请求。
+    优先用请求体 base_url/model；未传时从该 key 的 provider 对应 provider_models 取默认模型。
+    返回值固定 {ok, status, error}，桌面版设置页据此渲染成功/失败。"""
+    admin, err = _require_admin()
+    if err:
+        return err
+    from services.crypto import decrypt as _decrypt
+    with get_db() as conn:
+        row = conn.execute(
+            'SELECT id, name, provider, key_value_enc FROM provider_api_keys WHERE id=%s',
+            (kid,)
+        ).fetchone()
+    if not row or not row['key_value_enc']:
+        return jsonify({'success': False, 'error': _('Key not found or empty')}), 400
+    try:
+        api_key = _decrypt(row['key_value_enc']) or ''
+    except Exception as e:
+        # SB-BUG-1：解密失败必须显式留痕，禁止静默降级
+        logger.error('Provider key #%s decrypt failed (%s): salt/ENCRYPTION_KEY '
+                     'mismatch — re-enter the API key.', kid, type(e).__name__)
+        api_key = row['key_value_enc'] or ''
+    if not api_key:
+        return jsonify({'success': False, 'error': _('Key value is empty')}), 400
+
+    data = request.get_json(force=True) or {}
+    base_url = str(data.get('base_url') or '').strip().rstrip('/')
+    model = str(data.get('model') or '').strip()
+    if not base_url or not model:
+        try:
+            with get_db() as conn:
+                mrow = conn.execute(
+                    "SELECT pm.model_name, pm.endpoint_url FROM provider_models pm "
+                    "JOIN providers p ON p.id = pm.provider_id "
+                    "WHERE p.slug = %s AND COALESCE(pm.endpoint_url, '') <> '' "
+                    "ORDER BY pm.sort_order LIMIT 1",
+                    (row['provider'],)
+                ).fetchone()
+            if mrow:
+                base_url = base_url or (mrow['endpoint_url'] or '').rstrip('/')
+                model = model or mrow['model_name'] or ''
+        except Exception:
+            pass
+    if not base_url:
+        return jsonify({'success': False, 'error': _('Missing API base URL')}), 400
+
+    import requests
+    url = base_url + ('/chat/completions' if not base_url.endswith('/chat/completions') else '')
+    payload = {'model': model or 'gpt-4o-mini',
+               'messages': [{'role': 'user', 'content': 'Hi'}],
+               'max_tokens': 5}
+    try:
+        resp = requests.post(url, json=payload,
+                             headers={'Content-Type': 'application/json',
+                                      'Authorization': f'Bearer {api_key}'},
+                             timeout=15)
+        ok = resp.status_code == 200
+        return jsonify({'success': True, 'data': {
+            'ok': ok, 'status': resp.status_code,
+            'error': '' if ok else resp.text[:200]}})
+    except Exception as e:
+        return jsonify({'success': True, 'data': {'ok': False, 'status': 0, 'error': str(e)}})
+
+
 # ═══════════════════════════════════════════════════════
 # LLM Quota 管理（按用户/模型/模块的精细化配额）
 # ═══════════════════════════════════════════════════════
+
+# 配额目标类型（事实来源：auth-center/models/database.py:2650
+#   CHECK(target_type IN ('user','model','module','global'))，与下方 create 校验一致）
+_LLM_QUOTA_TARGET_TYPES = ['user', 'model', 'module', 'global']
+
+
+@admin_bp.route('/llm-quotas/meta', methods=['GET'])
+def llm_quota_meta():
+    """只读元数据：配额目标类型枚举（供客户端消除硬编镜像）。"""
+    admin, err = _require_admin()
+    if err:
+        return err
+    return jsonify({'success': True, 'data': {'target_types': _LLM_QUOTA_TARGET_TYPES}})
+
 
 @admin_bp.route('/llm-quotas', methods=['GET'])
 def llm_quota_list():
@@ -1367,14 +1457,17 @@ def llm_quota_create():
     target_type = data.get('target_type', 'module')
     if target_type not in ('user', 'model', 'module', 'global'):
         return jsonify({'success': False, 'error': _('Invalid target_type')}), 400
-    with get_db() as conn:
-        row = conn.execute(
-            'INSERT INTO llm_quotas (target_type, target_id, daily_limit, rate_limit, rate_window_sec) '
-            'VALUES (%s,%s,%s,%s,%s) RETURNING id',
-            (target_type, data.get('target_id'), data.get('daily_limit', 0),
-             data.get('rate_limit', 0), data.get('rate_window_sec', 60))
-        ).fetchone()
-        conn.commit()
+    try:
+        with get_db() as conn:
+            row = conn.execute(
+                'INSERT INTO llm_quotas (target_type, target_id, daily_limit, rate_limit, rate_window_sec) '
+                'VALUES (%s,%s,%s,%s,%s) RETURNING id',
+                (target_type, data.get('target_id'), data.get('daily_limit', 0),
+                 data.get('rate_limit', 0), data.get('rate_window_sec', 60))
+            ).fetchone()
+            conn.commit()
+    except psycopg2.IntegrityError:
+        return jsonify({'success': False, 'error': _('A quota for this target already exists')}), 409
     _log(admin['user_id'], 'create_llm_quota', 'llm_quota', str(row['id']))
     return jsonify({'success': True, 'data': {'id': row['id']}})
 
@@ -1413,6 +1506,7 @@ def llm_quota_delete(qid):
         conn.execute('DELETE FROM llm_quotas WHERE id=%s', (qid,))
         conn.commit()
     _log(admin['user_id'], 'delete_llm_quota', 'llm_quota', str(qid))
+    return jsonify({'success': True})
 
 
 @admin_bp.route('/ai-model-health', methods=['GET'])

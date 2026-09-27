@@ -2,20 +2,94 @@
 """
 AI Audio Interface — 语音输入/输出抽象层
 ========================================
-定义标准接口，当前仅占位，不实现具体功能。
-- AudioInputProcessor: 语音识别（ASR），预留 Vosk + 阿里云接口
-- AudioOutputProcessor: 语音合成（TTS），预留阿里云接口
+- AudioInputProcessor: 语音识别（ASR），已实现 Vosk 本地识别（aliyun_asr 待实现）
+- AudioOutputProcessor: 语音合成（TTS），Azure / Edge TTS
 """
 
 from i18n import _
+import io
+import json
 import os
+import shutil
+import subprocess
+import wave
 import logging
 
 logger = logging.getLogger(__name__)
 
+# Vosk 只接受 16kHz / 16bit / 单声道 PCM
+_ASR_SAMPLE_RATE = 16000
+
+
+def _wav_pcm16k(audio_data: bytes) -> bytes:
+    """已是 16kHz/单声道/16bit 的 WAV 时直接取帧，避免调用 ffmpeg。
+
+    其它格式（含其它采样率/声道的 WAV）返回 b''，交由 ffmpeg 归一化。
+    """
+    try:
+        with wave.open(io.BytesIO(audio_data), 'rb') as w:
+            if (w.getnchannels() == 1
+                    and w.getframerate() == _ASR_SAMPLE_RATE
+                    and w.getsampwidth() == 2):
+                return w.readframes(w.getnframes())
+    except Exception:
+        pass
+    return b''
+
+
+def _ffmpeg_pcm16k(audio_data: bytes) -> bytes:
+    """用系统 ffmpeg 把任意容器音频转成 16kHz/16bit/单声道 PCM。
+
+    前端用 MediaRecorder 录的是 audio/webm;codecs=opus（见
+    src/hooks/useAudioRecorder.ts:20），必须转码后才能喂给 Vosk。
+    本机无 ffmpeg 或转码失败时返回 b''（调用方按"无识别结果"处理）。
+    """
+    if not shutil.which('ffmpeg'):
+        return b''
+    cmd = [
+        'ffmpeg', '-hide_banner', '-loglevel', 'error',
+        '-i', 'pipe:0',
+        '-f', 's16le', '-acodec', 'pcm_s16le',
+        '-ac', '1', '-ar', str(_ASR_SAMPLE_RATE),
+        'pipe:1',
+    ]
+    try:
+        proc = subprocess.run(
+            cmd, input=audio_data, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, timeout=120
+        )
+    except Exception as e:
+        logger.warning('[AudioInput] ffmpeg 转码异常: %s', e)
+        return b''
+    if proc.returncode != 0 or not proc.stdout:
+        logger.warning(
+            '[AudioInput] ffmpeg 转码失败: %s',
+            proc.stderr.decode('utf-8', 'ignore')[:200]
+        )
+        return b''
+    return proc.stdout
+
+
+def _to_pcm16k(audio_data: bytes) -> bytes:
+    """把上传的音频字节归一化为 16kHz/16bit/单声道 PCM；无法处理时返回 b''。"""
+    pcm = _wav_pcm16k(audio_data)
+    if pcm:
+        return pcm
+    return _ffmpeg_pcm16k(audio_data)
+
 
 class AudioInputProcessor:
-    """语音输入处理器（ASR）—— 预留接口，暂不实现"""
+    """语音输入处理器（ASR）。
+
+    对外契约（与前端 useSpeech.ts / handlers.ts 对齐）：
+      - transcribe(audio_data) / transcribe_file(path) 返回识别文本；
+      - **未配置 provider 或识别失败一律返回 ''，不抛异常**（前端已按空文案容错）。
+
+    provider 解析复用既有机制，不新造配置：
+      - provider 由构造参数决定（默认 'vosk'）；
+      - Vosk 模型路径取既有环境变量 VOSK_MODEL_PATH（原实现即如此）。
+    本地无 Vosk 依赖/模型时 initialize() 返回 False，端点降级为空文案。
+    """
 
     PROVIDERS = {
         'vosk': _('Offline Speech Recognition (vosk-model-small-cn-0.22)'),
@@ -30,22 +104,82 @@ class AudioInputProcessor:
         self.provider = provider
         self.model_path = model_path or os.environ.get('VOSK_MODEL_PATH', '')
         self._initialized = False
-        logger.info(f'[AudioInput] 接口已创建（提供商: {provider}），待实现')
+        self._model = None
+        self._recognizer = None
+        logger.info(f'[AudioInput] 接口已创建（提供商: {provider}）')
 
     def initialize(self) -> bool:
-        """初始化语音识别引擎（需安装对应依赖后实现）"""
-        logger.warning('[AudioInput] initialize() 未实现——需要安装 Vosk 或阿里云 SDK')
-        return False
+        """初始化语音识别引擎；依赖缺失/未配置时返回 False（不抛异常）。"""
+        if self._initialized:
+            return True
+        if self.provider == 'vosk':
+            self._initialized = self._init_vosk()
+        else:
+            # 阿里云实时识别是 WebSocket 流式协议，本同步 base64 接口无法驱动
+            logger.warning(
+                '[AudioInput] 提供商 %s 未实现（本接口仅接收 base64 音频），返回空文案',
+                self.provider
+            )
+        return self._initialized
 
     def transcribe(self, audio_data: bytes) -> str:
-        """将音频数据转换为文本"""
-        logger.warning('[AudioInput] transcribe() 未实现')
+        """将音频数据转换为文本；未配置或失败返回 ''。"""
+        if not audio_data:
+            return ''
+        if not self.initialize():
+            return ''
+        try:
+            if self.provider == 'vosk':
+                return self._transcribe_vosk(audio_data)
+        except Exception as e:
+            logger.error('[AudioInput] transcribe 失败: %s', e)
         return ''
 
     def transcribe_file(self, file_path: str) -> str:
-        """识别音频文件"""
-        logger.warning('[AudioInput] transcribe_file() 未实现')
-        return ''
+        """识别音频文件；文件不可读时返回 ''。"""
+        try:
+            with open(file_path, 'rb') as f:
+                return self.transcribe(f.read())
+        except OSError as e:
+            logger.error('[AudioInput] 读取音频文件失败: %s', e)
+            return ''
+
+    def _init_vosk(self) -> bool:
+        """加载 Vosk 模型；未安装依赖或未配置模型路径时返回 False。"""
+        try:
+            import vosk
+        except ImportError:
+            logger.warning(
+                '[AudioInput] 未安装 vosk（pip install vosk），ASR 不可用，返回空文案'
+            )
+            return False
+        if not self.model_path or not os.path.isdir(self.model_path):
+            logger.warning(
+                '[AudioInput] 未配置 VOSK_MODEL_PATH（或目录不存在），'
+                'ASR 不可用，返回空文案'
+            )
+            return False
+        try:
+            self._model = vosk.Model(self.model_path)
+            self._recognizer = vosk.KaldiRecognizer(self._model, _ASR_SAMPLE_RATE)
+            logger.info('[AudioInput] vosk 已就绪（model=%s）', self.model_path)
+            return True
+        except Exception as e:
+            logger.error('[AudioInput] vosk 模型加载失败: %s', e)
+            return False
+
+    def _transcribe_vosk(self, audio_data: bytes) -> str:
+        """单段音频整段识别（非实时流），返回文本。"""
+        pcm = _to_pcm16k(audio_data)
+        if not pcm:
+            logger.warning(
+                '[AudioInput] 音频无法归一化为 16kHz PCM（需本机 ffmpeg），返回空文案'
+            )
+            return ''
+        self._recognizer.Reset()
+        self._recognizer.AcceptWaveform(pcm)
+        text = json.loads(self._recognizer.FinalResult()).get('text', '')
+        return (text or '').strip()
 
     def start_stream(self):
         """启动实时语音识别流"""

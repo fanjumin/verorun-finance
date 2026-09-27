@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Changes
+
+- Hard-cap curator single-call input (field 2000 chars / payload 4000 chars) to guard against unbounded prompt re-injection regressions.
+
 ## v1.5.0 — 2026-08-27
 
 ### Changes

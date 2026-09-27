@@ -29,10 +29,12 @@ except ImportError:
 try:
     from .gateway import gateway
     from .providers.base import DataCategory
+    from .providers.commons import INDEX_CANDIDATES, index_symbol
     from . import indicators as _ind
 except ImportError:
     from gateway import gateway
     from providers.base import DataCategory
+    from providers.commons import INDEX_CANDIDATES, index_symbol
     import indicators as _ind
 
 # ============================================================
@@ -158,6 +160,22 @@ class AnalysisResult:
         return self.signal
 
 
+def _plugin_config() -> dict:
+    """读取 stock_analysis 插件持久化配置（pm.get_config）。
+
+    无 Flask 上下文 / 插件未启用时返回 {}，调用方走缺省分支
+    （index_selection 缺省三大指数）。异常一律吞掉不阻塞主链路。
+    """
+    try:
+        from flask import current_app
+        pm = current_app.extensions.get("plugin_manager")
+        if pm is not None and pm.is_enabled("stock_analysis"):
+            return pm.get_config("stock_analysis") or {}
+    except Exception:
+        pass
+    return {}
+
+
 def _num(v, nd: int = 3):
     """安全数值格式化：NaN/Inf/空/非法一律落 None，避免 round()/JSON 序列化崩掉。"""
     try:
@@ -257,7 +275,7 @@ class StockAnalysisSkill:
     # ── 公共 API ──
 
     def analyze(self, symbol: str, analysis_type: str = "llm",
-                months: int = 6) -> AnalysisResult:
+                months: int = 6, trace_id: str = None) -> AnalysisResult:
         """
         全维度股票分析
 
@@ -269,20 +287,27 @@ class StockAnalysisSkill:
                 - "sentiment"    情绪面 (新闻 + 社交)
                 - "llm"          LLM 智能综合研判 (默认, 需 LLM_API_KEY)
             months: 历史数据月数
+            trace_id: 神经中枢贯穿 id（P1）；默认回退 symbol 级 trace（无 job 上下文时用）
         """
+        trace_id = trace_id or ("sa_" + symbol)
         analysis_type = analysis_type.lower()
 
-        if analysis_type == "technical":
-            return self._technical_analysis(symbol)
-        elif analysis_type == "fundamental":
-            return self._fundamental_analysis(symbol)
-        elif analysis_type == "sentiment":
-            return self._sentiment_analysis(symbol)
-        elif analysis_type == "llm":
-            return self._llm_analysis(symbol, months)
+        if analysis_type == "llm":
+            return self._llm_analysis(symbol, months, trace_id=trace_id)
         else:
-            # 兼容旧调用方：未知类型回落技术面（原 _combined_analysis 语义，避免伪造综合研判）
-            return self._technical_analysis(symbol)
+            # 技术/基本/情绪面非 LLM 主链路，仍发一条 data→end 简录（P1 旁路；v1.3 契约词表）
+            self._emit_flow(trace_id, symbol, "data", "start")
+            try:
+                if analysis_type == "technical":
+                    return self._technical_analysis(symbol)
+                elif analysis_type == "fundamental":
+                    return self._fundamental_analysis(symbol)
+                elif analysis_type == "sentiment":
+                    return self._sentiment_analysis(symbol)
+                else:
+                    return self._technical_analysis(symbol)
+            finally:
+                self._emit_flow(trace_id, symbol, "data", "end")
 
     def get_signal(self, symbol: str) -> dict:
         """快速获取交易信号"""
@@ -290,11 +315,19 @@ class StockAnalysisSkill:
         return result.signal
 
     def market_overview(self) -> Union[dict, str]:
-        """市场概况"""
-        indices = {"上证指数": "000001", "深证成指": "399001", "创业板指": "399006"}
+        """市场概况（指数段由配置 index_selection 驱动，缺省三大指数）。
+
+        逐只过 index_symbol() 规范化后走 INDEX 链（腾讯为主）；单只失败降级
+        跳过、不阻塞其余，返回结构与现状兼容（indices 以指数中文名为键）。
+        """
+        cfg = _plugin_config()
+        selection = cfg.get("index_selection") or ["sh000001", "sz399001", "sz399006"]
+        # 规范形态（index_symbol 小写输出）→ 展示名，兼容候选表内外符号
+        name_by_symbol = {index_symbol(c["symbol"]): c["name"] for c in INDEX_CANDIDATES}
         result = {}
         ok = fail = 0
-        for name, code in indices.items():
+        for code in selection:
+            name = name_by_symbol.get(index_symbol(code)) or name_by_symbol.get(code) or str(code)
             try:
                 quote = gateway.get_quote(code, category=DataCategory.INDEX)
                 result[name] = {"price": quote["price"], "change_pct": quote["change_pct"]}
@@ -324,6 +357,45 @@ class StockAnalysisSkill:
         return config
 
     # ── 各分析类型实现 ──
+
+    def _emit_flow(self, trace_id: str, symbol: str, stage: str, event: str = "end",
+                   *, decision_type=None, status="ok", message="", latency_ms=None,
+                   tokens=None, confidence=None, meta=None):
+        """神经中枢 flow span 发射（P1；旁路，任一失败静默，绝不阻断分析主链路）。"""
+        try:
+            from .flow_events import emit_flow_span
+            emit_flow_span(trace_id, "stock", stage, event, symbol=symbol,
+                           decision_type=decision_type, status=status,
+                           message=message, latency_ms=latency_ms, tokens=tokens,
+                           confidence=confidence, meta=meta)
+        except Exception:
+            pass
+
+    def _read_llm_tokens(self):
+        """回读最近一次 stock_analysis LLM 调用 token（方案 §6.1.2③）。
+
+        agent_token_logs.created_at 为 TEXT 列，必须 ::timestamptz 显式转型后比较；
+        回读前预检 module 列存在性（信息架构 R17），缺失则回退 None，不静默伪装为 0。
+        返回 {"prompt_tokens":..,"completion_tokens":..,"total_tokens":..} 或 None。
+        """
+        try:
+            from . import models_sa as _sa_mod
+            _sa_mod.ensure_tables()
+            with _sa_mod.get_db() as _conn:
+                _row = _conn.execute(
+                    "SELECT prompt_tokens, completion_tokens FROM agent_token_logs "
+                    "WHERE module = 'stock_analysis' "
+                    "AND created_at::timestamptz >= now() - interval '10 minutes' "
+                    "ORDER BY id DESC LIMIT 1").fetchone()
+                if not _row:
+                    return None
+                p = int(_row.get("prompt_tokens") or 0)
+                c = int(_row.get("completion_tokens") or 0)
+                return {"prompt_tokens": p, "completion_tokens": c, "total_tokens": p + c}
+        except Exception as _tok_err:
+            _LOGGER.warning("llm token readback failed symbol=%s: %s",
+                            getattr(self, "symbol", "?"), _tok_err)
+            return None
 
     def _technical_analysis(self, symbol: str) -> AnalysisResult:
         """技术面分析"""
@@ -492,19 +564,31 @@ class StockAnalysisSkill:
         except Exception as e:
             return AnalysisResult(symbol=symbol, error=str(e))
 
-    def _llm_analysis(self, symbol: str, months: int = 6) -> AnalysisResult:
+    def _llm_analysis(self, symbol: str, months: int = 6,
+                      trace_id: str = None) -> AnalysisResult:
         """通过 VeroRun UnifiedLLM 执行综合分析。"""
+        trace_id = trace_id or ("sa_" + symbol)
         try:
+            _flow_t0 = time.time()          # 决策帧 latency 口径：从分析起点累计
+            self._emit_flow(trace_id, symbol, "data", "start")
             gateway.usage_snapshot()      # 清空上一轮残留
             technical = self._technical_analysis(symbol)
             if technical.error:
+                self._emit_flow(trace_id, symbol, "indicator", "end", status="failed",
+                                message=str(technical.error)[:160])
                 return technical
+            self._emit_flow(trace_id, symbol, "indicator", "end", status="ok",
+                            message="technical ok")
             tech_data = technical.json_data
             fundamental = self._fundamental_analysis(symbol)
             if fundamental.error:
+                self._emit_flow(trace_id, symbol, "indicator", "end", status="failed",
+                                message=str(fundamental.error)[:160])
                 return fundamental
             basic = fundamental.json_data.get("basic", {})
             bscore = fundamental.json_data.get("score", 50)
+            self._emit_flow(trace_id, symbol, "indicator", "end", status="ok",
+                            message="fundamental ok")
 
             # 获取历史行情摘要
             df = gateway.get_kline(symbol, datalen=max(20, months * 20))
@@ -521,6 +605,7 @@ class StockAnalysisSkill:
                 ma_basis = "不复权"
 
             # A1：证据链（四表/资金流/新闻/估值分位），各源独立降级
+            self._emit_flow(trace_id, symbol, "evidence", "start")
             from .evidence import build_evidence_context as _build_evidence
             try:
                 from .valuation import pe_pb_percentile, valuation_line
@@ -530,6 +615,8 @@ class StockAnalysisSkill:
             evidence_text = _build_evidence(
                 gateway.get_fundamental, gateway.get_moneyflow, gateway.get_news,
                 valuation_text=_val_text, symbol=symbol)
+            self._emit_flow(trace_id, symbol, "evidence", "end", status="ok",
+                            message="4-source bundle ok")
 
             # 构建 LLM Prompt
             prompt = self._build_llm_prompt(symbol, tech_data, basic, bscore,
@@ -537,7 +624,16 @@ class StockAnalysisSkill:
                                             evidence=evidence_text, ma_basis=ma_basis)
 
             # 调用 LLM（SA-N3：空响应重试，逐次留痕；仍失败给明确降级文案供错误码归类）
+            # 神经中枢：route_expensive 决策 + 插件掐表（agent_token_logs 无 elapsed_ms 列，源码唯一精确源）
+            # v1.3 §5.2：决策帧独立发射（event="decision"，必带 latency_ms）——
+            # 分流戏剧化序列的唯一触发源；llm end 帧仍带 decision_type 供兼容。
+            _decision_latency = round((time.time() - _flow_t0) * 1000.0, 1)
+            self._emit_flow(trace_id, symbol, "decision", "decision",
+                            decision_type="route_expensive",
+                            latency_ms=_decision_latency,
+                            message="走昂贵路径：LLM 综合研判")
             llm_report = None
+            _llm_start = time.time()
             for attempt in range(1, _LLM_MAX_ATTEMPTS + 1):
                 llm_report = self._call_llm(prompt)
                 if llm_report:
@@ -546,8 +642,15 @@ class StockAnalysisSkill:
                                 symbol, attempt, _LLM_MAX_ATTEMPTS)
                 if attempt < _LLM_MAX_ATTEMPTS:
                     time.sleep(_LLM_RETRY_BACKOFF)
+            _llm_latency = round((time.time() - _llm_start) * 1000.0, 1)
             if not llm_report:
+                self._emit_flow(trace_id, symbol, "llm", "end", decision_type="route_expensive",
+                                status="failed", latency_ms=_llm_latency,
+                                message="UnifiedLLM 返回空响应")
                 return AnalysisResult(symbol=symbol, error="UnifiedLLM 返回空响应")
+            self._emit_flow(trace_id, symbol, "llm", "end", decision_type="route_expensive",
+                            status="ok", latency_ms=_llm_latency,
+                            tokens=self._read_llm_tokens())
 
             # 提取信号（A4：结构化解析优先，失败回落既有兜底链）
             from .evidence import parse_structured_output as _parse_structured
@@ -609,6 +712,8 @@ class StockAnalysisSkill:
             sources.extend(gateway.usage_snapshot())
 
             # B2/D-4b：结论沉淀统一由调用方（routes.analyze / jobs_queue）负责
+            self._emit_flow(trace_id, symbol, "output", "end", status="ok",
+                            decision_type="extract", confidence=signal.get("confidence"))
             return AnalysisResult(
                 symbol=symbol,
                 text_report=llm_report,
@@ -617,6 +722,8 @@ class StockAnalysisSkill:
                 data_sources=sources,
             )
         except Exception as e:
+            self._emit_flow(trace_id, symbol, "output", "end", status="failed",
+                            message=(str(e) or "")[:200])
             return AnalysisResult(symbol=symbol, error=str(e))
 
     def _build_llm_prompt(self, symbol, tech_data, basic, bscore,

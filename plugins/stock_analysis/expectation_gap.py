@@ -5,6 +5,8 @@ expectation_gap.py — 预期差计算模块（P1 W13-14）
 两条数据通路：
   - FMP（美股）：analyst-estimates → estimatedRevenue / estimatedEps / estimatedNetIncome
   - Tushare（A 股）：forecast_vip → net_profit_min/max, basic_eps_min/max
+  - akshare/同花顺（A 股，免 key）：stock_profit_forecast_ths → 年度 EPS 预测 + 预测机构数
+    ★ 只有**前瞻年度**口径，与定期报告累计/TTM 实际值不同口径，不计算超预期。
 
 核心函数：
   compute_gap(consensus, actuals) → ExpectationGapResult
@@ -218,6 +220,119 @@ def _compute_from_tushare(consensus: dict, actuals: dict, symbol: str) -> Expect
     )
 
 
+def _eps_by_period(actuals: dict) -> Dict[str, float]:
+    """end_date(YYYYMMDD) → 基本每股收益。
+
+    akshare 财报源的两处落点都读：income 的 `basic_eps`（新浪利润表「基本每股收益」）
+    与 fina_indicator 的中文键「基本每股收益」（东财摘要）。两者都是**年初至今累计**
+    口径 —— 计算 TTM 时要用「本期累计 + 上年全年 − 上年同期累计」。
+    """
+    out: Dict[str, float] = {}
+    for key in ("income", "fina_indicator"):
+        for row in actuals.get(key) or []:
+            if not isinstance(row, dict):
+                continue
+            d = str(row.get("end_date") or "")
+            if len(d) != 8 or not d.isdigit():
+                continue
+            val = _safe_float(row.get("basic_eps"))
+            if val is None:
+                val = _safe_float(row.get("基本每股收益"))
+            if val is not None and d not in out:
+                out[d] = val
+    return out
+
+
+def _ttm_eps(eps_map: Dict[str, float]) -> tuple:
+    """累计口径 EPS → 滚动 12 个月 EPS，返回 (值, 口径说明)。
+
+    年报（1231）本身就是全年值；季报/半年报用 本期 + 上年全年 − 上年同期。
+    上年全年或上年同期缺失时退化为最近一期累计值（并在说明里标注，不静默当 TTM）。
+    """
+    if not eps_map:
+        return None, ""
+    periods = sorted(eps_map)
+    latest = periods[-1]
+    year = int(latest[:4])
+    mmdd = latest[4:]
+    if mmdd == "1231":
+        return eps_map[latest], f"{latest} 年报"
+    prev_fy = f"{year - 1}1231"
+    prev_same = f"{year - 1}{mmdd}"
+    if prev_fy in eps_map and prev_same in eps_map:
+        val = eps_map[latest] + eps_map[prev_fy] - eps_map[prev_same]
+        return val, f"{latest} 滚动12月"
+    return eps_map[latest], f"{latest} 年初至今（缺上年同期，未折算TTM）"
+
+
+def _compute_from_akshare(consensus: dict, actuals: dict, symbol: str) -> ExpectationGapResult:
+    """akshare（同花顺）一致预期：**只有年度 EPS 预测 + 预测机构数**。
+
+    ★ 口径纪律：这里的预期是**前瞻年度值**（FY1~FY3），而可拿到的实际值是
+    **定期报告累计/滚动 12 月值**，两者不可比 —— 硬算"超预期"会系统性偏向
+    "不及预期"（TTM 永远是滞后于全年预测的）。因此：
+      - **不产出带 surprise 的 GapItem**（避免 UI 显示假的"不及预期"）；
+      - 实际值、达成度只写进 narrative，供阅读，不算作预期差。
+    只有当已披露**年报**的年度恰好等于某预测年度时（基本不会遇到，源只给未来三年），
+    才按同口径产出可比项。
+    """
+    forecasts = [f for f in (consensus.get("forecasts") or []) if isinstance(f, dict)]
+    years = [int(f["year"]) for f in forecasts if f.get("year") is not None]
+    fy1 = min(years) if years else None
+
+    eps_map = _eps_by_period(actuals)
+    ttm, ttm_note = _ttm_eps(eps_map)
+
+    items: List[GapItem] = []
+    # 同口径可比：已披露年报 EPS 落在某个预测年度上
+    for f in forecasts:
+        y = f.get("year")
+        annual = eps_map.get(f"{int(y)}1231") if y is not None else None
+        if annual is None:
+            continue
+        est = _safe_float(f.get("eps_mean"))
+        items.append(GapItem(
+            metric=f"eps_fy{int(y)}", label=f"{int(y)}年 每股收益",
+            actual=annual, estimate=est,
+            estimate_low=_safe_float(f.get("eps_min")),
+            estimate_high=_safe_float(f.get("eps_max")),
+            surprise_pct=_pct_surprise(annual, est) if est else None,
+            unit="CNY/share",
+        ))
+
+    parts = []
+    fy1_row = next((f for f in forecasts if f.get("year") == fy1), {}) or {}
+    est = _safe_float(fy1_row.get("eps_mean"))
+    lo = _safe_float(fy1_row.get("eps_min"))
+    hi = _safe_float(fy1_row.get("eps_max"))
+    inst = fy1_row.get("institutions")
+    if ttm is not None and fy1 is not None:
+        parts.append(f"实际 EPS {ttm:.2f} 元（{ttm_note}）")
+        head = f"FY{int(fy1)} 一致预期"
+        if est is None:
+            parts.append(f"{head} 缺失")
+        elif inst and lo is not None and hi is not None:
+            parts.append(f"{head} {est:.2f} 元（{inst} 家机构，区间 {lo:.2f}~{hi:.2f}）")
+        elif inst:
+            parts.append(f"{head} {est:.2f} 元（{inst} 家机构）")
+        else:
+            parts.append(f"{head} {est:.2f} 元")
+        if est:
+            parts.append(f"达成度 {ttm / est * 100:.1f}%")
+    elif ttm is not None:
+        parts.append(f"实际 EPS {ttm:.2f} 元（{ttm_note}）")
+    parts.append("口径：滚动12月实际 vs 前瞻年度预测，二者不可比，故不计超预期")
+
+    return ExpectationGapResult(
+        symbol=symbol,
+        period=f"FY{int(fy1)}E" if fy1 else "",
+        items=items,
+        source="akshare_consensus",
+        overall_surprise=None,
+        narrative="｜".join(parts),
+    )
+
+
 def compute_gap(consensus: Any, actuals: dict, symbol: str = "") -> ExpectationGapResult:
     """计算预期差。
 
@@ -233,10 +348,16 @@ def compute_gap(consensus: Any, actuals: dict, symbol: str = "") -> ExpectationG
     if not consensus:
         return ExpectationGapResult(symbol=symbol, narrative="无一致预期数据")
     if not actuals:
-        return ExpectationGapResult(symbol=symbol, narrative="无实际业绩数据")
+        # akshare 源给的是**前瞻**预测，没有实际业绩时预测本身仍然有效，
+        # 只是无从比较 —— 不整条判死，交给 _compute_from_akshare 输出口径说明。
+        if not (isinstance(consensus, dict)
+                and consensus.get("source") == "akshare_consensus"):
+            return ExpectationGapResult(symbol=symbol, narrative="无实际业绩数据")
 
     if isinstance(consensus, list):
         return _compute_from_fmp(consensus, actuals, symbol)
+    if isinstance(consensus, dict) and consensus.get("source") == "akshare_consensus":
+        return _compute_from_akshare(consensus, actuals, symbol)
     if isinstance(consensus, dict) and consensus.get("source") == "tushare":
         return _compute_from_tushare(consensus, actuals, symbol)
     if isinstance(consensus, dict) and any(

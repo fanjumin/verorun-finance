@@ -77,7 +77,7 @@ var GROUPS=[
   ["{{ _('Command Console') }}",false,[["ai_chat",I.ai_chat,"{{ _('Command Console') }}"]]],
   ["{{ _('System') }}",true,[["ai_hub",I.matrix,"{{ _('AI Hub') }}"],["admins",I.admins,"{{ _('Admins') }}"]]],
   ["{{ _('AI & Content') }}",true,[["all_content",I.all_content,"{{ _('All Content') }}"],["cms",I.cms,"{{ _('Create Article') }}"],["downloads",I.downloads,"{{ _('Download Management') }}"],["media_library",I.media_library,"{{ _('Media Library') }}"],["knowledge",I.knowledge,"{{ _('RAG Knowledge') }}"]]],
-  {% if edition != 'edu' %}["{{ _('Business Center') }}",true,[]],{% endif %}
+  {% if edition != 'research' %}["{{ _('Business Center') }}",true,[]],{% endif %}
   ["{{ _('Workflow') }}",true,[["automation",I.automation,"{{ _('Auto Schedule') }}"]]],
   ["{{ _('Publishing Management') }}",true,[["publish_history",I.logs,"{{ _('Publish History') }}"]]],
   ["{{ _('Users & Support') }}",true,[["customers",I.customers,"{{ _('All Customers') }}"],["customer_agents",I.agents,"{{ _('Customer Agents') }}"],["api_keys",I.keys,"{{ _('API Tokens') }}"],["notifications",I.notifications,"{{ _('Notifications') }}"],["tickets",I.tickets,"{{ _('User Tickets') }}"],["reward_rules",I.reward_rules,"{{ _('Rewards') }}"]]],
@@ -86,7 +86,7 @@ var GROUPS=[
   ["{{ _('Plugins & i18n') }}",true,[["plugins_store",I.plugins,"{{ _('Plugin Management') }}"],["skills_admin",I.plugins,"{{ _('Skill Review') }}"],["i18n_translations",I.i18n_translations,"{{ _('Translations') }}"]]],
 ];
 // 与 GROUPS 一一对应的英文标识（插件 menu.group 用此匹配现有组，避免 i18n 翻译差异）
-var GROUP_KEYS=["Dashboard","Command Console","System","AI & Content"{% if edition != 'edu' %},"Business Center"{% endif %},"Workflow","Publishing","Users & Support","Security & Compliance","Monitoring & Data","Plugins & i18n"];
+var GROUP_KEYS=["Dashboard","Command Console","System","AI & Content"{% if edition != 'research' %},"Business Center"{% endif %},"Workflow","Publishing","Users & Support","Security & Compliance","Monitoring & Data","Plugins & i18n"];
 /* 插件菜单加载失败必须可见（问题3：菜单凭空少了却无任何提示） */
 function _navPluginMenuError(){
   var e=document.getElementById("nav");if(!e||document.getElementById("navPluginMenuErr"))return;
@@ -97,6 +97,15 @@ function renderNav(){var e=document.getElementById("nav"),h='';GROUPS.forEach(fu
   fetch("/admin/plugins/menus",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
     if(!d.success||!d.data||!d.data.menus){_navPluginMenuError();return;}
     var pm=d.data.menus;
+    // 插件版本元数据（后端 get_plugin_menus 注入的 plugin_meta）→ 供 goPlugin 版本条使用
+    window.PLUGIN_META={};
+    pm.forEach(function(m){
+      if(m._plugin_id&&m.plugin_meta)window.PLUGIN_META[m._plugin_id]=m.plugin_meta;
+      (m.children||[]).forEach(function(c){
+        var _cpid=c._plugin_id||m._plugin_id;
+        if(_cpid)window.PLUGIN_META[_cpid]=c.plugin_meta||m.plugin_meta;
+      });
+    });
     if(pm.length===0)return;
     // Group menus by group name
     var groups={};
@@ -116,12 +125,12 @@ function renderNav(){var e=document.getElementById("nav"),h='';GROUPS.forEach(fu
           itemsHtml+='<div class="ni-children collapsed" id="'+cid+'">';
           m.children.forEach(function(c){
             var iconHtml=I[c.icon]||I.plugins||'';
-            itemsHtml+='<div class="ni ni-child" onclick="goPlugin(\''+escAttr(c.key||c._plugin_id)+'\',\''+escAttr(c.embed_url||'')+'\')" id="n-'+escAttr(c.key||c._plugin_id)+'">'+iconHtml+'<span>'+esc(c.label)+'</span></div>';
+            itemsHtml+='<div class="ni ni-child" onclick="goPlugin(\''+escAttr(c.key||c._plugin_id)+'\',\''+escAttr(c.embed_url||'')+'\',\''+escAttr(c._plugin_id||m._plugin_id)+'\')" id="n-'+escAttr(c.key||c._plugin_id)+'">'+iconHtml+'<span>'+esc(c.label)+'</span></div>';
           });
           itemsHtml+='</div>';
         } else {
           var iconHtml=I[m.icon]||I.plugins||'';
-          itemsHtml+='<div class="ni" onclick="goPlugin(\''+escAttr(m.key||m._plugin_id)+'\',\''+escAttr(m.embed_url||'')+'\')" id="n-'+escAttr(m.key||m._plugin_id)+'">'+iconHtml+'<span>'+esc(m.label)+'</span></div>';
+          itemsHtml+='<div class="ni" onclick="goPlugin(\''+escAttr(m.key||m._plugin_id)+'\',\''+escAttr(m.embed_url||'')+'\',\''+escAttr(m._plugin_id)+'\')" id="n-'+escAttr(m.key||m._plugin_id)+'">'+iconHtml+'<span>'+esc(m.label)+'</span></div>';
         }
       });
       // 若插件 group 匹配现有组（英文标识），插入该组 body，避免新建重复组

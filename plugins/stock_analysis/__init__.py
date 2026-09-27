@@ -85,7 +85,26 @@ class StockAnalysisPlugin(BasePlugin):
                 "trigger": "interval",
                 "seconds": 60,
             },
+            {
+                # P1：神经中枢 flow span 归档清理（保留 30 天，失败不影响主链路）
+                "id": "stock_analysis_flow_prune",
+                "name": "Stock Analysis Flow Span Prune",
+                "func": self._flow_prune_job,
+                "trigger": "cron",
+                "day": "*",
+                "hour": 3,
+                "minute": 17,
+            },
         ]
+
+    def _flow_prune_job(self):
+        """每日清理超期 flow span 归档（sa_flow_spans 保留 30 天，旁路）。"""
+        try:
+            from .models_sa import prune_flow_spans
+            removed = prune_flow_spans(retention_days=30)
+            self.log("flow span prune removed=%s" % removed)
+        except Exception as err:
+            self.log("flow span prune failed: %s" % err)
 
     def register_dag_nodes(self):
         """注册自定义工作流节点：stock_deep_research (v1) + stock.rs_* (v2 多智能体流水线)。"""
@@ -124,6 +143,13 @@ class StockAnalysisPlugin(BasePlugin):
         except Exception as err:
             self.log("event subscribe failed: %s" % err)
             self._bus = None
+        # 证券主数据后台预热：/api/search 依赖 sa_symbol_master（外部源单次约 17s），
+        # 启动时异步拉取，避免用户首次搜索等待、也不阻塞插件启用。
+        try:
+            from .symbol_master import warm_async
+            warm_async()
+        except Exception as err:
+            self.log("symbol master warm kick failed: %s" % err)
         return True
 
     def on_disable(self, registry):

@@ -107,7 +107,7 @@ def get_provider_list(category: str, market: str = '') -> list:
     # Append runtime-registered classes
     runtime = _RUNTIME_CLASSES.get(mkt, {}).get(category, [])
     for cls in runtime:
-        result.append((cls, cls.__module__ if hasattr(cls, '__module__(') else ')'))
+        result.append((cls, cls.__module__ if hasattr(cls, '__module__') else ''))
     return result
 
 

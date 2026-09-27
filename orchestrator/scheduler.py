@@ -133,6 +133,15 @@ def parse_natural_cron(expr: str) -> str:
 class SchedulerEngine:
     """Cron 任务调度器引擎"""
 
+    # ── A6：真选主（行级 CAS 租约） ──
+    # 为何不用 pg_try_advisory_lock：本仓 m.get_db() 是**短连接上下文管理器**
+    # （每次 psycopg2.connect，finally 关闭），会话级 advisory lock 会随连接关闭
+    # 立即释放，无法承担"持锁"职责。故改用 scheduler_leader 表的行级 CAS 抢主。
+    SCHEDULER_LEADER_NAME = 'automation'
+    SCHEDULER_LEADER_TTL_SECONDS = 90        # 租约 TTL；心跳 30s 续租，留 3 次容错
+    SCHEDULER_LEADER_ELECTION_KEY = 'scheduler_leader_election'   # 缝位④ 回退开关
+    HEARTBEAT_JOB_ID = '_scheduler_heartbeat'
+
     def __init__(self, scheduler_id: str = None, db_url: str = None):
         hostname = platform.node() or os.environ.get('COMPUTERNAME', 'localhost')
         self.scheduler_id = scheduler_id or f'scheduler-{hostname}-{os.getpid()}'
@@ -140,6 +149,8 @@ class SchedulerEngine:
         self._running_jobs: dict = {}  # job_id -> APScheduler job
         self._workflow_runner: Optional[Callable] = None
         self._callback_map: dict = {}  # target_type -> handler function
+        self._is_leader = True             # 首次定主前按旧行为运行；start() 会立即定主
+        self._leadership_checked = False   # 是否已定过主（避免重复挂起/恢复）
 
         if not HAS_APSCHEDULER:
             raise ImportError(
@@ -211,6 +222,12 @@ class SchedulerEngine:
             )
             m.add_log('system', 0, 'info',
                        f'📅 Plugin job scheduled: [{job_id}]')
+            # A6：非 leader 副本注册的插件作业同样立即挂起
+            if self._leadership_checked and not self._is_leader:
+                try:
+                    self._apscheduler.pause_job(f'plugin_{job_id}')
+                except Exception as e:
+                    logger.warning(f'[Scheduler] pause plugin_{job_id} on non-leader failed: {e}')
             return True
         except Exception as e:
             m.add_log('system', 0, 'error',
@@ -227,6 +244,13 @@ class SchedulerEngine:
         self._apscheduler.start()
         self._register_scheduler_heartbeat()
         self._sync_cron_jobs()
+        # A6：启动即定主。否则首个心跳周期（30s）内所有副本都处于"未定主"状态，
+        # 多副本会在这个窗口里重复触发同一 cron —— 正是 A6 要消除的重复执行。
+        try:
+            self._apply_leadership(self._try_acquire_leadership())
+        except Exception as e:
+            logger.error(f'[Scheduler] initial leadership probe failed: {e}')
+            self._apply_leadership(False)
 
     def shutdown(self, wait=True):
         """关闭调度器"""
@@ -242,7 +266,118 @@ class SchedulerEngine:
     def resume(self):
         """恢复所有任务"""
         self._apscheduler.resume()
+        # A6：非 leader 副本不得因人工 resume 而恢复业务作业，否则重新出现重复触发
+        if self._leadership_checked and not self._is_leader:
+            self._set_business_jobs_suspended(True)
         m.add_log('system', 0, 'info', _('▶️ Scheduler resumed'))
+
+    # ---- A6：选主与作业挂起 ----
+
+    def _running_job_count(self) -> int:
+        """当前有下次执行时间的运行中作业数（心跳/观测用）"""
+        return len([j for j in self._running_jobs.values()
+                    if j and getattr(j, 'next_run_time', None)])
+
+    def _leader_election_enabled(self) -> bool:
+        """A6 回退开关（缝位 ④）：system_config.scheduler_leader_election
+        或环境变量 SCHEDULER_LEADER_ELECTION。
+
+        显式 '0'/'false'/'off'/'no' → 关闭选主，回退为"每副本都调度"的旧行为
+        （仅供单副本部署省事；多副本下会重新引入重复触发，属临时手段）。
+        未配置 / 读取失败 → 默认开启（多副本安全优先）。"""
+        raw = os.environ.get('SCHEDULER_LEADER_ELECTION')
+        if raw is None:
+            try:
+                with m.get_db() as conn:
+                    conn.execute(
+                        "SELECT value FROM system_config WHERE key=%s",
+                        (self.SCHEDULER_LEADER_ELECTION_KEY,))
+                    row = conn.fetchone()
+                raw = (row or {}).get('value')
+            except Exception:
+                raw = None
+        if raw is None or str(raw).strip() == '':
+            return True
+        return str(raw).strip().lower() not in ('0', 'false', 'off', 'no')
+
+    def _try_acquire_leadership(self) -> bool:
+        """A6：行级 CAS 抢主（单条语句原子，N 个副本只有一个能拿到行）。
+
+        语义：holder 为空 / 租约已过期 / holder 就是自己 → 抢到并续租；
+        否则抢不到。返回 True 表示本副本当前持有 leader 租约。
+        异常时返回 False（fail-closed：拿不到租约就不调度，宁可停不可重复）。"""
+        if not self._leader_election_enabled():
+            return True
+        hostname = platform.node() or os.environ.get('COMPUTERNAME', 'localhost')
+        try:
+            with m.get_db() as conn:
+                conn.execute("""
+                    INSERT INTO scheduler_leader
+                        (name, holder, expires_at, updated_at)
+                    VALUES (%s, %s, NOW() + make_interval(secs => %s::int), NOW())
+                    ON CONFLICT (name) DO UPDATE SET
+                        holder = EXCLUDED.holder,
+                        expires_at = EXCLUDED.expires_at,
+                        updated_at = NOW()
+                    WHERE scheduler_leader.holder = EXCLUDED.holder
+                       OR scheduler_leader.expires_at < NOW()
+                    RETURNING holder
+                """, (self.SCHEDULER_LEADER_NAME, self.scheduler_id,
+                      self.SCHEDULER_LEADER_TTL_SECONDS))
+                row = conn.fetchone()
+                got = bool(row and row.get('holder') == self.scheduler_id)
+
+                # 真实 leader 状态写回心跳表供运维观测（原实现恒为 1）
+                conn.execute("""
+                    INSERT INTO scheduler_state
+                        (scheduler_id, hostname, is_leader, last_heartbeat,
+                         running_jobs, state_json)
+                    VALUES (%s,%s,%s, NOW(), %s, '{}')
+                    ON CONFLICT (scheduler_id) DO UPDATE SET
+                        hostname = EXCLUDED.hostname,
+                        is_leader = EXCLUDED.is_leader,
+                        last_heartbeat = EXCLUDED.last_heartbeat,
+                        running_jobs = EXCLUDED.running_jobs,
+                        state_json = EXCLUDED.state_json
+                """, (self.scheduler_id, hostname, 1 if got else 0,
+                      self._running_job_count()))
+            return got
+        except Exception as e:
+            logger.error(f'[Scheduler] leadership probe failed: {e}')
+            return False
+
+    def _set_business_jobs_suspended(self, suspended: bool):
+        """挂起/恢复"业务作业"，**永不触碰心跳作业**。
+
+        ⚠️ 不能改用 self._apscheduler.pause()：心跳作业注册在同一个 scheduler 上，
+        整体 pause 会让心跳停摆，本副本将永远无法重新抢回 leader（自锁）。"""
+        switched = 0
+        for job in self._apscheduler.get_jobs():
+            if job.id == self.HEARTBEAT_JOB_ID:
+                continue
+            try:
+                if suspended:
+                    self._apscheduler.pause_job(job.id)
+                else:
+                    self._apscheduler.resume_job(job.id)
+                switched += 1
+            except Exception as e:
+                logger.warning(f'[Scheduler] leadership switch failed for {job.id}: {e}')
+        return switched
+
+    def _apply_leadership(self, leader: bool):
+        """按 leader 状态挂起/恢复业务作业，并记录状态（供 add_plugin_job 等使用）"""
+        if self._leadership_checked and leader == self._is_leader:
+            return
+        self._is_leader = leader
+        self._leadership_checked = True
+        switched = self._set_business_jobs_suspended(not leader)
+        if switched:
+            m.add_log('system', 0, 'info' if leader else 'warn',
+                       (f'🟢 Scheduler leadership acquired ({self.scheduler_id}), '
+                        f'{switched} job(s) resumed') if leader else
+                       (f'🟡 Scheduler leadership lost ({self.scheduler_id}), '
+                        f'{switched} job(s) suspended'))
 
     # ---- 任务管理 ----
 
@@ -321,6 +456,12 @@ class SchedulerEngine:
             )
 
             self._running_jobs[job_id] = aps_job
+            # A6：非 leader 副本新登记的作业立即挂起（抢到租约后由心跳统一恢复）
+            if self._leadership_checked and not self._is_leader:
+                try:
+                    self._apscheduler.pause_job(f'cron_{job_id}')
+                except Exception as e:
+                    logger.warning(f'[Scheduler] pause cron_{job_id} on non-leader failed: {e}')
             m.add_log('cron', job_id, 'info',
                        f'📅 Task Scheduled: [{job.get("name")}] {cron_expr or natural_expr or f"every {interval_sec} seconds"}')
 
@@ -497,28 +638,13 @@ class SchedulerEngine:
         )
 
     def _heartbeat(self):
-        """调度器心跳更新"""
+        """调度器心跳：A6 选主续租 + 按 leader 状态挂起/恢复业务作业。
+
+        原实现写死 is_leader=1（心跳注册表而非选主）→ N 个副本 = N 个 leader
+        → 同一 cron 被重复触发。现由 _try_acquire_leadership 续租。"""
         try:
-            running_count = len([
-                j for j in self._running_jobs.values()
-                if j and getattr(j, 'next_run_time', None)
-            ])
-            hostname = platform.node() or os.environ.get('COMPUTERNAME', 'localhost')
-
-            with m.get_db() as conn:
-                conn.execute("""
-                    INSERT INTO scheduler_state
-                        (scheduler_id, hostname, is_leader, last_heartbeat,
-                         running_jobs, state_json)
-                    VALUES (%s,%s,1, NOW(), %s, '{}')
-                    ON CONFLICT (scheduler_id) DO UPDATE SET
-                        hostname = EXCLUDED.hostname,
-                        is_leader = EXCLUDED.is_leader,
-                        last_heartbeat = EXCLUDED.last_heartbeat,
-                        running_jobs = EXCLUDED.running_jobs,
-                        state_json = EXCLUDED.state_json
-                """, (self.scheduler_id, hostname, running_count))
-
+            got = self._try_acquire_leadership()
+            self._apply_leadership(got)
         except Exception as e:
             logger.error(f"[Scheduler Heartbeat] Failed to update heartbeat: {e}")
 

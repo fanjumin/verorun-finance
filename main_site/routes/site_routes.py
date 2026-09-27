@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Site Routes — Multi-tenant site routing"""
+"""Site Routes — Multi-site routing"""
 
 import os
 import json
@@ -103,9 +103,9 @@ def _inject_site_context(site):
     }
 
 
-# 多租户路由配置
+# 多站点路由配置
 # 不要在此定义 /、/pricing、/features、/contact 等静态路由 — 与主 app.py 路由冲突
-# 保留 <slug>/ 动态路由用于后续多租户建站功能
+# 保留 <slug>/ 动态路由用于后续多站点建站功能
 
 
 @site_bp.route('/api/site/config')

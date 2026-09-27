@@ -564,7 +564,7 @@ def kb_search():
         scored = scored[:top_k]
 
         # Update hit_count
-        for row, _ in scored:
+        for row, _score in scored:
             try:
                 with get_db() as upd:
                     upd.execute(

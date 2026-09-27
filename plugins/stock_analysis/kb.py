@@ -84,7 +84,10 @@ def ensure_stock_research_project(user_id: str) -> str:
             "INSERT INTO projects (id, owner_type, owner_id, name, description, tags)"
             " VALUES (?, 'system', ?, ?, ?, ?)",
             (project_id, user_id, STOCK_RESEARCH_PROJECT_NAME,
-             "股票分析插件研报知识库，自动创建", json.dumps(["stock_analysis", "research"]))
+             "股票分析插件研报知识库，自动创建", ["stock_analysis", "research"])
+            # ★ 实测修正：projects.tags 是 text[]，原来传 json.dumps(...) 的字符串，
+            #   触发 malformed array literal → 项目建不出来 → QA 永远返回"研报库尚未初始化"。
+            #   psycopg2 会把 Python list 适配成 PG 数组，直接传 list 即可。
         )
         conn.execute(
             "INSERT INTO project_members (project_id, user_id, role)"
@@ -139,11 +142,15 @@ def list_research_docs(keyword: str = "", symbol: str = "",
             params.append(symbol)
         where = " AND ".join(conditions)
         rows = conn.execute(
+            # ★ 同 get_kb_stats：documents 无 chunk_count 列，改由 document_chunks 子查询统计
             f"SELECT id, original_name, file_ext, file_size, status,"
-            f" error_msg, chunk_count, page_count, summary, tags, metadata,"
-            f" uploaded_by, created_at, processed_at"
-            f" FROM documents WHERE {where}"
-            f" ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            f" error_msg,"
+            f" (SELECT COUNT(*) FROM document_chunks c WHERE c.document_id = d.id)"
+            f"     AS chunk_count,"
+            f" page_count, summary, tags, metadata,"
+            f" uploaded_by, uploaded_at AS created_at, processed_at"
+            f" FROM documents d WHERE {where}"
+            f" ORDER BY uploaded_at DESC LIMIT ? OFFSET ?",
             params + [limit, offset]
         ).fetchall()
         result = []
@@ -166,8 +173,10 @@ def get_doc_status(doc_id: str) -> dict | None:
     conn = _get_pw_db()
     try:
         row = conn.execute(
-            "SELECT id, status, error_msg, chunk_count, page_count,"
-            " processed_at FROM documents WHERE id = ?",
+            "SELECT id, status, error_msg,"
+            " (SELECT COUNT(*) FROM document_chunks c WHERE c.document_id = d.id)"
+            "     AS chunk_count,"
+            " page_count, processed_at FROM documents d WHERE d.id = ?",
             (doc_id,)
         ).fetchone()
         return dict(row) if row else None
@@ -218,11 +227,16 @@ def qa_research(query: str, top_k: int = 5, user_id: str = "") -> dict:
         )
         if not chunks:
             return {"answer": "未找到相关研报内容", "sources": []}
-        context = "\n\n---\n\n".join(
-            c.get("content", "") or c.get("text", "") for c in chunks
-        )
         researcher = ResearchService({})
-        answer = researcher.answer_question(query, context)
+        # ★ 实测修正：ResearchService.answer_question(query, context_chunks: **list**) -> **dict**
+        #   原实现把拼好的字符串当第二个参数传，并返回整个 dict 当答案 —— 一旦 project
+        #   初始化过（此前本机因 project_workspace 未迁移而一直走不到这里），QA 就会
+        #   把 dict 直接塞给前端。现改为传 chunks 原列表，并取返回 dict 的 answer 字段。
+        result = researcher.answer_question(query, chunks)
+        answer = result.get("answer", "") if isinstance(result, dict) else str(result)
+        if isinstance(result, dict) and result.get("ok") is False:
+            # LLM 侧失败是**可回答的失败**，不当异常处理，但要让用户看得见"为什么"
+            answer = f"{answer}（模型调用未成功，以上为降级文案）"
         sources = [
             {
                 "document_id": c.get("document_id", ""),
@@ -250,13 +264,16 @@ def get_kb_stats() -> dict:
     conn = _get_pw_db()
     try:
         row = conn.execute(
+            # ★ 实测修正：documents 表**没有 chunk_count 列**（只有 page/word/char_count），
+            #   原 SQL 抛 UndefinedColumn → /kb/stats 500。分片数必须从 document_chunks 统计。
+            #   这个 bug 此前一直被掩盖：project 未初始化时本函数走上面的 early return。
             "SELECT COUNT(*) AS total_docs,"
-            " SUM(CASE WHEN status = 'ready' THEN 1 ELSE 0 END) AS ready_docs,"
-            " SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending_docs,"
-            " SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed_docs,"
-            " COALESCE(SUM(chunk_count), 0) AS total_chunks"
+            " COALESCE(SUM(CASE WHEN status = 'ready' THEN 1 ELSE 0 END), 0) AS ready_docs,"
+            " COALESCE(SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END), 0) AS pending_docs,"
+            " COALESCE(SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0) AS failed_docs,"
+            " (SELECT COUNT(*) FROM document_chunks WHERE project_id = ?) AS total_chunks"
             " FROM documents WHERE project_id = ?",
-            (project_id,)
+            (project_id, project_id)
         ).fetchone()
         return dict(row) if row else {"total_docs": 0, "ready_docs": 0,
                                        "total_chunks": 0, "pending_docs": 0,

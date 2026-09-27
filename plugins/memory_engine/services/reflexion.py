@@ -4,10 +4,15 @@
 import hashlib
 import json
 import logging
+import os
 import re
 from concurrent.futures import ThreadPoolExecutor
 
 logger = logging.getLogger('memory_engine.reflexion')
+
+# v1.6 统一网关注册：curator 提示词取自插件内置文件（不再声明独立 Agent 行）。
+_PLUGIN_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_CURATOR_PROMPT_FILE = os.path.join(_PLUGIN_DIR, 'agents', 'memory_curator_prompt.md')
 
 
 def _keywords(text: str) -> list:
@@ -64,16 +69,22 @@ class ReflexionService:
         try:
             agent_config = self._load_curator_config()
             if not agent_config:
+                logger.warning(
+                    '[memory_engine] curator config unavailable (agent_role resolution '
+                    'failed); reflexion skipped for task %s', task.get('task_id'))
                 return
             from agent_matrix.agent_runner import AgentRunner
             runner = AgentRunner(agent_config)
-            payload = json.dumps({
-                'query': task.get('user_query') or task.get('query'),
-                'result': str(result)[:2000],
+            from .extractor import (
+                _task_query, _cap_curator_input, _cap_curator_payload)
+            payload = _cap_curator_payload(json.dumps({
+                'query': _cap_curator_input(_task_query(task)),
+                'result': _cap_curator_input(result),
                 'failed': failed,
                 'retries': retries,
-            }, ensure_ascii=False)
+            }, ensure_ascii=False))
             resp = runner.execute({
+                'task_id': 'MEMREFLEX-%s' % (task.get('task_id') or 'x'),
                 'title': 'Memory Reflexion',
                 'description': payload,
             })
@@ -138,10 +149,23 @@ class ReflexionService:
         )
 
     def _load_curator_config(self) -> dict:
-        from agent_matrix.models import get_db
+        """v1.6 统一网关注册：复用承载本插件能力的核心角色行（不再依赖独立 Agent 行）。"""
+        from agent_matrix.models import get_db, resolve_agent_roles
+        try:
+            with open(_CURATOR_PROMPT_FILE, 'r', encoding='utf-8') as f:
+                curator_prompt = f.read().strip()
+        except OSError as e:
+            logger.warning('[memory_engine] curator prompt unreadable: %s', e)
+            return {}
+        roles = resolve_agent_roles('memory_engine', {'agent_role': 'athena'}) or ['athena']
         with get_db() as conn:
             row = conn.execute(
-                "SELECT * FROM agent_matrix"
-                " WHERE slug = 'memory_curator' AND is_active = 1"
+                "SELECT * FROM agent_matrix WHERE slug = %s AND is_system = 1",
+                (roles[0],),
             ).fetchone()
-        return dict(row) if row else {}
+        if not row:
+            return {}
+        cfg = dict(row)
+        cfg['name'] = 'memory_curator'          # 仅用于 token 日志归因
+        cfg['system_prompt'] = curator_prompt   # 覆盖为核心角色的模型配置 + curator 提示词
+        return cfg

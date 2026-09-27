@@ -95,7 +95,11 @@ class AgentRunner:
             try:
                 if tools:
                     logs.append(f'[Tools] Enabled {len(tools)} tools, entering ReAct loop')
-                    response = self._run_react_loop(engine, user_query, history, tools, logs, task_id)
+                    # C-2: max_rounds configurable (task/agent config > default 5)
+                    _max_rounds = int(task.get('max_tool_rounds')
+                                      or self.config.get('max_tool_rounds') or 5)
+                    response = self._run_react_loop(engine, user_query, history, tools, logs, task_id,
+                                                    max_rounds=_max_rounds)
                 elif history:
                     response = engine.ask_with_history(history, user_query)
                 else:
@@ -118,6 +122,10 @@ class AgentRunner:
                 self._log(task_id, 'error', 'execution', response)
                 return self._fail(f'{response} (after {attempt + 1} attempts)', logs)
             break
+
+        if not isinstance(response, str):
+            response = '' if response is None else str(response)
+            logs.append(f'[LLM] Non-string response coerced to str (len={len(response)})')
 
         logs.append(f'[LLM] Response length: {len(response)} characters')
         self._log(task_id, 'info', 'execution', f'LLM Response Completed ({len(response)} characters)')
@@ -162,7 +170,16 @@ class AgentRunner:
                 f"请针对上述问题重新执行任务。\n\n"
                 f"Original task: {user_query}"
             )
-            response = engine.ask(retry_query)
+            # A3.1：重试必须沿用首轮的执行形态（带工具则继续走 ReAct，带历史则继续带）
+            if tools:
+                response = self._run_react_loop(engine, retry_query, history,
+                                                tools, logs, task_id)
+            elif history:
+                response = engine.ask_with_history(history, retry_query)
+            else:
+                response = engine.ask(retry_query)
+            if not isinstance(response, str):        # A3.2：None 兜底
+                response = '' if response is None else str(response)
             if response.startswith('Error:'):
                 break
             self_review = self._self_critique(response, task)
@@ -210,7 +227,15 @@ class AgentRunner:
         """按 Agent 的 allowed_tools 返回可用工具 schema，无则返回 []"""
         try:
             from agent_matrix.tools import get_tools_for_agent
-            return get_tools_for_agent(self.config.get('allowed_tools'))
+            allowed = self.config.get('allowed_tools')
+            parsed = allowed
+            if isinstance(parsed, str):
+                try:
+                    parsed = json.loads(parsed)
+                except (json.JSONDecodeError, TypeError):
+                    parsed = None
+            self.config['allowed_tools_parsed'] = parsed if isinstance(parsed, list) else None
+            return get_tools_for_agent(allowed)
         except Exception as e:
             logger.warning(f"[{self.name}] 加载工具失败，退回单轮: {e}")
             return []
@@ -222,6 +247,8 @@ class AgentRunner:
         任何异常/达到轮次上限均安全收尾，返回已有的文本（或错误字符串）。
         """
         from agent_matrix.tools import execute_tool
+        from agent_matrix.context_manager import (
+            fit_messages, estimate_tokens, get_context_budget)
 
         # 构建初始消息
         messages = [{"role": "system", "content": self.config.get('system_prompt', '')}]
@@ -231,8 +258,24 @@ class AgentRunner:
                 messages.append({"role": role, "content": h.get('content', '')})
         messages.append({"role": "user", "content": user_query})
 
+        # WP-A（6.3）：预算只读一次（循环外），循环内复用，避免每轮打库。
+        # 读取失败按关闭处理（0 = 直通），与引入前行为逐字节一致。
+        try:
+            ctx_budget = get_context_budget()
+        except Exception as e:
+            logger.warning(f'[{self.name}] 读取上下文预算失败，按关闭处理: {e}')
+            ctx_budget = 0
+        TOOL_RESULT_NORMAL = 4000
+        TOOL_RESULT_TIGHT = 1200
+
         last_text = ''
         for round_i in range(1, max_rounds + 1):
+            # WP-A：每轮进模型前按预算裁剪。循环内会追加 assistant(tool_calls) 与 tool
+            # 响应，正是配对风险所在 —— fit_messages 按不可分割单元整体保留或丢弃。
+            tight = False
+            if ctx_budget > 0:
+                messages = fit_messages(messages, ctx_budget, keep_recent=6)
+                tight = estimate_tokens(messages) >= int(ctx_budget * 0.9)
             msg = engine.chat_with_tools(messages, tools)
             if msg is None:
                 logs.append(f'[ReAct #{round_i}] 工具调用返回空，退回普通对话')
@@ -275,11 +318,16 @@ class AgentRunner:
                     args = {}
                 self._log(task_id, 'info', 'tool_call', f'Call tool {name} args={args}')
                 logs.append(f'[ReAct #{round_i}] 调用工具 {name}')
-                result = execute_tool(name, args)
+                result = execute_tool(
+                    name, args, self.config.get('allowed_tools_parsed'),
+                    # WP-B（6.5）：透传调用上下文，供审批门回调落单/判定
+                    context={'agent_id': self.agent_id, 'task_id': task_id,
+                             'name': self.name})
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tc.id,
-                    "content": str(result)[:4000]
+                    # WP-A：预算紧张时收紧单条工具结果上限，避免观察回灌挤爆上下文
+                    "content": str(result)[:TOOL_RESULT_TIGHT if tight else TOOL_RESULT_NORMAL]
                 })
 
         # 达到轮次上限，做最后一次无工具收尾
@@ -381,7 +429,7 @@ class AgentRunner:
         critique_prompt = (
             "你是严格的质量审查员。请评估下面的【任务】与【输出】是否达标，"
             "只输出纯 JSON（不要 markdown 代码块），格式：\n"
-            '{"confidence_": 0.0-1.0 Floating Point Number, "issues": [_("Question 1"), ...], "suggestion": _("Improvement suggestions")}\n\n'
+            '{"confidence": 0.0-1.0, "issues": ["问题1", ...], "suggestion": "改进建议"}\n\n'
             f"【任务】{task.get('title', '')}\n{task.get('description', '')}\n\n"
             f"【输出】\n{response[:2000]}"
         )
@@ -394,7 +442,7 @@ class AgentRunner:
             if not match:
                 return None
             data = json.loads(match.group())
-            conf = float(data.get('confidence', 0.85))
+            conf = float(data.get('confidence', data.get('confidence_', 0.85)))
             conf = round(max(0.0, min(1.0, conf)), 2)
             issues = data.get('issues', []) or []
             suggestion = data.get('suggestion', '') or ''

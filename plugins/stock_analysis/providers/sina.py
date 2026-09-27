@@ -7,7 +7,7 @@ import pandas as pd
 import requests
 
 from .base import DataCategory, ProviderError
-from .base_v2 import BaseProviderV2, FetchResult
+from .base_v2 import BaseProviderV2, FetchResult, egress_get
 
 _UA = {"User-Agent": "VeroRun-StockAnalysis/1.0.0"}   # 与 v1.3.0 原值一致
 _POS = ("利好", "增长", "回升", "突破", "增持", "盈利", "上涨")   # 原词表原样
@@ -42,7 +42,10 @@ class SinaProvider(BaseProviderV2):
         url = "https://hq.sinajs.cn/list=" + mkt
         for attempt in range(2):
             try:
-                response = requests.get(url, headers=headers, timeout=5)
+                # 2026-09-22：改走 egress_get（net_proxy 治理链路，不可用时降级直连）
+                response = egress_get(url, caller="stock_analysis.sina",
+                                      timeout=5, headers=headers,
+                                      usage_tags=("market",))
                 response.raise_for_status()
                 break
             except requests.RequestException:
@@ -65,11 +68,14 @@ class SinaProvider(BaseProviderV2):
     def _fetch_kline(self, market_symbol: str, datalen: int = 120) -> pd.DataFrame:
         for attempt in range(2):
             try:
-                response = requests.get(
+                # 2026-09-22：改走 egress_get（同上）
+                response = egress_get(
                     "https://quotes.sina.cn/cn/api/json_v2.php/CN_MarketDataService.getKLineData",
+                    caller="stock_analysis.sina", timeout=10,
+                    headers=_UA,
                     params={"symbol": market_symbol, "scale": "240", "ma": "no",
                             "datalen": str(datalen)},
-                    headers=_UA, timeout=10)
+                    usage_tags=("market",))
                 response.raise_for_status()
                 break
             except requests.RequestException:
@@ -94,7 +100,10 @@ class SinaProvider(BaseProviderV2):
                f"symbol/{market_symbol}.phtml")
         for attempt in range(2):
             try:
-                response = requests.get(url, headers=_UA, timeout=10)
+                # 2026-09-22：改走 egress_get（同上）
+                response = egress_get(url, caller="stock_analysis.sina",
+                                      timeout=10, headers=_UA,
+                                      usage_tags=("news",))
                 response.raise_for_status()
                 break
             except requests.RequestException:

@@ -138,6 +138,52 @@ class TestEvidenceBundle(unittest.TestCase):
         self.assertIn("suspects", result)
         self.assertTrue(result["evidence_values"] >= 1)
 
+    # ── 复测 N2/N3 回归锚点（原用例只校验返回键存在、从不校验语义，
+    #    故"日期误标"与"两步换算误报"两个缺陷长期无人发现）──
+
+    def test_date_tokens_are_excluded(self):
+        """N2：日期/期数 token 不得计入疑似幻觉（否则 clean 对真实研报恒为 False）。"""
+        from plugins.stock_analysis.evidence_bundle import (
+            EvidenceItem, EvidenceBundle, verify_against_evidence,
+        )
+        bundle = EvidenceBundle(uid="CN:600519", items=[
+            EvidenceItem(key="quote.close", label="收盘价", value=150.0, source="fmp"),
+        ])
+        report = "报告日期：2026 年 9 月 18 日，数据截至 2025Q3，收盘价 150.0 元。"
+        result = verify_against_evidence(report, bundle)
+        self.assertEqual(result["suspects"], [])
+        self.assertTrue(result["clean"])
+        self.assertGreaterEqual(result["excluded_date_tokens"], 3)
+
+    def test_two_step_derivation_is_allowed(self):
+        """N3：两值相减后再换算亿（两级推导）不得误报。"""
+        from plugins.stock_analysis.evidence_bundle import (
+            EvidenceItem, EvidenceBundle, verify_against_evidence,
+        )
+        bundle = EvidenceBundle(uid="CN:600519", items=[
+            EvidenceItem(key="income.revenue_ttm", label="营业收入(TTM)",
+                         value=1.395e10, unit="CNY", source="tushare"),
+            EvidenceItem(key="income.revenue_prev", label="营业收入(上年同期)",
+                         value=5.45e9, unit="CNY", source="tushare"),
+        ])
+        # (1.395e10 − 5.45e9) / 1e8 = 85.0 亿
+        result = verify_against_evidence("同比增加 85.00 亿元。", bundle)
+        self.assertEqual(result["suspects"], [])
+        self.assertTrue(result["clean"])
+
+    def test_genuine_hallucination_is_still_caught(self):
+        """放宽日期剥除与两级派生后，检出能力不得退化（真幻觉仍须被标出）。"""
+        from plugins.stock_analysis.evidence_bundle import (
+            EvidenceItem, EvidenceBundle, verify_against_evidence,
+        )
+        bundle = EvidenceBundle(uid="CN:600519", items=[
+            EvidenceItem(key="quote.close", label="收盘价", value=150.0, source="fmp"),
+        ])
+        report = "报告日期：2026 年 9 月 18 日，预计净利润 88888.88 亿元。"
+        result = verify_against_evidence(report, bundle)
+        self.assertFalse(result["clean"])
+        self.assertEqual(result["suspects"], ["88888.88"])
+
 
 class TestFinancialQuality(unittest.TestCase):
     """FinancialQuality TTM + DuPont + 质量指标测试。"""
@@ -162,7 +208,10 @@ class TestFinancialQuality(unittest.TestCase):
         self.assertIn("interest_burden", result)
         self.assertIn("operating_margin", result)
         self.assertIn("asset_turnover", result)
-        self.assertIn("equity_multiplier", result)
+        # 实现自 2026-09 起把权益乘数键名由 equity_multiplier 改为 leverage（复测 N1-2）
+        self.assertIn("leverage", result)
+        # 五层乘积须自洽等于 ROE（杜邦恒等式）
+        self.assertAlmostEqual(result["check_product"], result["roe"], places=6)
 
     def test_altman_z_score(self):
         from plugins.stock_analysis.financial_quality import altman_z
@@ -278,6 +327,7 @@ class TestGatewayRoute(unittest.TestCase):
 
     def test_route_has_v2_providers(self):
         from plugins.stock_analysis.gateway import ROUTE
+        from plugins.stock_analysis.providers.base import DataCategory
         from plugins.stock_analysis.providers.fmp_provider import FMPProvider
         from plugins.stock_analysis.providers.polygon_provider import PolygonProvider
         from plugins.stock_analysis.providers.user_supplied import UserSuppliedProvider

@@ -17,10 +17,33 @@ from .models_store import get_registry_db     # F2
 from .skill_availability import AvailabilityResolver
 
 
+def _system_config_getter(key: str, default: str = '') -> str:
+    """system_config 读取器（F15）——技能求值器的默认配置来源。
+
+    重要：求值器必须从 system_config 读 `skill_circuit_breaker` / `install_type`，
+    否则这些开关读到的永远是默认值（熔断成死开关：管理端写入 system_config，
+    求值器却无感）。读失败按 default 处理（可用性优先，不因配置读不到而阻塞求值）。
+    """
+    try:
+        with get_registry_db() as conn:
+            row = conn.execute(
+                "SELECT value FROM system_config WHERE key=%s", (key,)).fetchone()
+        return row['value'] if row else default
+    except Exception:
+        return default
+
+
+def _config_enabled(key: str) -> bool:
+    """system_config 布尔开关（F15 惯例），读失败按启用处理（可用性优先）。"""
+    return _system_config_getter(key, '1') not in ('0', 'false', 'off', '')
+
+
 class SkillRegistry:
     def __init__(self, plugin_manager, license_manager=None, config_getter=None):
         self._pm = plugin_manager
-        self.resolver = AvailabilityResolver(plugin_manager, license_manager, config_getter)
+        # config_getter 缺省即 system_config 读取器：任何装配路径都不会漏接开关
+        self.resolver = AvailabilityResolver(plugin_manager, license_manager,
+                                             config_getter or _system_config_getter)
         self.resolver._req_loader = self
         self._reverse_idx: Dict[str, Set[int]] = {}   # plugin_slug -> skill_ids
         self._init_events()
@@ -111,21 +134,10 @@ class SkillRegistry:
 _skill_registry = None
 
 
-def _config_enabled(key: str) -> bool:
-    """system_config 开关读取（F15 惯例），读失败按启用处理（可用性优先）。"""
-    try:
-        from .models_store import get_registry_db
-        with get_registry_db() as conn:
-            row = conn.execute(
-                "SELECT value FROM system_config WHERE key=%s", (key,)).fetchone()
-        return (row['value'] if row else '1') not in ('0', 'false', 'off', '')
-    except Exception:
-        return True
-
-
 def init_skill_registry(plugin_manager):
     """由应用装配处调用（与 PluginManager(app) 同一位置），全局仅一次。
-    注意：main_site / admin / auth_server 三个服务各自进程独立初始化。"""
+    注意：main_site / admin / auth_server 三个服务各自进程独立初始化。
+    配置来源由 SkillRegistry 默认注入 system_config 读取器，此处无需重复传参。"""
     global _skill_registry
     if _skill_registry is not None:
         return _skill_registry

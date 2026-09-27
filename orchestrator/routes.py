@@ -77,6 +77,14 @@ def init_automation(app):
     # 6. 注册蓝图
     app.register_blueprint(automation_bp)
 
+    # 6.5 注册工作流管理 REST API（/admin/workflows，uuid 模型，独立管理面）
+    try:
+        from .workflow_api import workflow_admin_bp
+        app.register_blueprint(workflow_admin_bp)
+    except Exception as e:
+        m.add_log('system', 0, 'warn',
+                   f'⚠️ Workflow admin API registration failed: {e}')
+
     m.add_log('system', 0, 'info', _('✅ Automation System Initialized'))
     return _scheduler, _worker_pool
 
@@ -105,6 +113,142 @@ def _success(data=None, message='ok'):
 def _error(message, code=400):
     """错误响应"""
     return jsonify({'success': False, 'error': message}), code
+
+
+# ═══════════════════════════════════════════════════════════
+# A5.3：危险节点分级授权（script / http_request）
+# ═══════════════════════════════════════════════════════════
+# 背景：script 节点会让服务端以子进程执行代码，http_request 节点代表平台外呼。
+# 此前工作流 POST/PUT 只校验 _require_admin()、不校验节点类型 ——
+# 「任意 is_admin 即可让服务端执行代码」这条链未断开。
+# 权限判定与 auth-center/routes/admin.py::_enforce_admin_perm 同源同语义
+# （super_admin 旁路；否则需 admin_profiles.permissions 含该权限点）。
+# B1 收敛为 shared.admin_auth 后，本处改为直接复用，不再保留副本。
+
+DANGEROUS_NODE_TYPES = ('script', 'http_request')
+DANGEROUS_NODE_PERM = 'workflow.script.author'
+
+
+def _normalize_definition(definition) -> dict:
+    """把 definition 统一成 {'nodes': [...], 'edges': [...]}。
+    容忍 dict / JSON 字符串 / None；形状不合法时返回空结构（fail-closed）。"""
+    if isinstance(definition, str):
+        try:
+            definition = m.from_json(definition)
+        except Exception:
+            definition = None
+    if not isinstance(definition, dict):
+        return {'nodes': [], 'edges': []}
+    return {'nodes': definition.get('nodes') or [],
+            'edges': definition.get('edges') or []}
+
+
+def _node_type(node) -> str:
+    """取节点类型：兼容引擎形状 {'type': ...} 与 workflow_api 的 API 形状
+    {'data': {'nodeType': ...}}。"""
+    if not isinstance(node, dict):
+        return ''
+    ntype = node.get('type')
+    if ntype:
+        return ntype
+    data = node.get('data')
+    if isinstance(data, dict):
+        return data.get('nodeType') or ''
+    return ''
+
+
+def _find_dangerous_nodes(definition) -> list:
+    """返回需分级授权的危险节点 id 列表（type ∈ DANGEROUS_NODE_TYPES）。"""
+    d = _normalize_definition(definition)
+    ids = []
+    for n in d['nodes']:
+        if _node_type(n) in DANGEROUS_NODE_TYPES and isinstance(n, dict) \
+                and n.get('id') is not None:
+            ids.append(str(n['id']))
+    return ids
+
+
+def _has_approval_before(definition, node_ids) -> bool:
+    """按 edges 反向可达判断：每个危险节点是否都有上游 approval 节点。
+
+    拓扑不完整（危险节点无上游）视为不满足 —— fail-closed。"""
+    d = _normalize_definition(definition)
+    nodes = {}
+    for n in d['nodes']:
+        if isinstance(n, dict) and n.get('id') is not None:
+            nodes[str(n['id'])] = n
+    incoming = {}
+    for e in d['edges']:
+        if not isinstance(e, dict):
+            continue
+        src = e.get('from') if e.get('from') is not None else e.get('source')
+        dst = e.get('to') if e.get('to') is not None else e.get('target')
+        if src is None or dst is None:
+            continue
+        incoming.setdefault(str(dst), set()).add(str(src))
+    for nid in node_ids:
+        seen, stack, ok = set(), list(incoming.get(str(nid), ())), False
+        while stack:
+            cur = stack.pop()
+            if cur in seen:
+                continue
+            seen.add(cur)
+            if _node_type(nodes.get(cur)) == 'approval':
+                ok = True
+                break
+            stack.extend(incoming.get(cur, ()))
+        if not ok:
+            return False
+    return True
+
+
+def _require_perm_or_403(perm, admin):
+    """细粒度权限校验（与 auth-center 的 _enforce_admin_perm 同源同语义）。
+
+    返回 (响应, 状态码) 或 None（None = 放行）。"""
+    if not perm:
+        return None
+    user_id = (admin or {}).get('user_id') or (admin or {}).get('id')
+    prof = None
+    try:
+        with m.get_db() as conn:
+            conn.execute(
+                'SELECT role, permissions FROM admin_profiles WHERE user_id=%s',
+                (user_id,))
+            prof = conn.fetchone()
+    except Exception as e:
+        # fail-closed：危险节点的授权面读不到时拒绝，不接受"查询失败即放行"
+        m.add_log('system', 0, 'error',
+                   f'⚠️ A5.3 permission probe failed: {e}')
+        return _error(_('Failed to verify "%s" permission') % perm, 403)
+    if prof and prof.get('role') == 'super_admin':
+        return None
+    perms = []
+    if prof and prof.get('permissions'):
+        try:
+            perms = json.loads(prof['permissions']) or []
+        except Exception:
+            perms = []
+    if perm in perms:
+        return None
+    return _error(_('No "%s" permission') % perm, 403)
+
+
+def _guard_dangerous_nodes(definition, admin):
+    """A5.3：含危险节点的工作流需 ① 持有细粒度权限 ② 危险节点上游存在 approval 节点。
+
+    返回错误响应或 None。*两条工作流管理面（orchestrator.routes 的 /workflows、
+    orchestrator.workflow_api 的 /admin/workflows）必须调用同一函数*，否则构成旁路。"""
+    dangerous = _find_dangerous_nodes(definition)
+    if not dangerous:
+        return None
+    perm_err = _require_perm_or_403(DANGEROUS_NODE_PERM, admin)
+    if perm_err:
+        return perm_err
+    if not _has_approval_before(definition, dangerous):
+        return _error(_('Workflows containing script/http_request nodes must '
+                        'place an approval node before them'), 400)
+    return None
 
 
 # ============================================================
@@ -340,6 +484,11 @@ def create_workflow():
     if not data or not data.get('name'):
         return _error(_('Workflow name cannot be empty'))
 
+    # A5.3：危险节点（script/http_request）分级授权 + 强制前置审批节点
+    guard = _guard_dangerous_nodes(data.get('definition'), admin)
+    if guard:
+        return guard
+
     data['created_by'] = admin.get('id', 0)
     wf_id = m.create_workflow(data)
 
@@ -376,6 +525,11 @@ def update_workflow(wf_id):
     data = request.get_json()
     if not data:
         return _error(_('Updated data cannot be empty'))
+
+    # A5.3：危险节点（script/http_request）分级授权 + 强制前置审批节点
+    guard = _guard_dangerous_nodes(data.get('definition'), admin)
+    if guard:
+        return guard
 
     # 确保 definition 存为 JSON 字符串
     if 'definition' in data and isinstance(data['definition'], dict):

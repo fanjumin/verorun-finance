@@ -188,6 +188,29 @@ _NUM_RE = re.compile(r"-?\d[\d,]*(?:\.\d+)?%?")
 _ALLOW_LITERALS = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 20, 30, 50, 100,
                    0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 5.0}
 
+# #SA-20260921-01（复测 N2）：日期/期数表达式不属于"数值论断"，扫描前整段剥除。
+# 否则真实研报里的"2026 年""18 日""2025Q3"会被当作疑似幻觉数字，suspects 被噪声
+# 稀释、clean 对几乎所有真实报告恒为 False（可用性缺陷，非检出能力缺陷）。
+_DATE_PATTERNS = (
+    re.compile(r"\d{4}\s*[-/.]\s*\d{1,2}\s*[-/.]\s*\d{1,2}"),        # 2026-09-18 / 2026/9/18
+    re.compile(r"\d{4}\s*年"),                                        # 2026 年
+    re.compile(r"\d{1,2}\s*月"),                                      # 9 月
+    re.compile(r"\d{1,2}\s*日"),                                      # 18 日
+    re.compile(r"\d{4}\s*[QH]\s*[1-4]", re.IGNORECASE),               # 2025Q3 / 2025H1
+    re.compile(r"\d{4}\s*(?:年报|中报|半年报|一季报|三季报|季报)"),      # 2025 年报
+    re.compile(r"第\s*\d{4}\s*期"),                                   # 第 2026 期
+)
+
+
+def _strip_date_tokens(text: str) -> str:
+    """把日期/期数表达式替换为等长空白，返回剩余正文。
+
+    等长替换（而非直接删除）使剩余文本的位置与原文对齐，便于回溯定位。
+    """
+    for pat in _DATE_PATTERNS:
+        text = pat.sub(lambda m: " " * len(m.group(0)), text)
+    return text
+
 
 def verify_against_evidence(
     report: str,
@@ -202,7 +225,9 @@ def verify_against_evidence(
     allow_derived=True 时，允许"证据值的简单派生"：
       - 百分比形式（×100）与原始值互认
       - 亿/万 单位换算
-      - 证据值之间的加减组合（如两个季度相减）
+      - 证据值之间的加减组合（如两个季度相减），以及**差值再换算亿/万**（两级推导）
+
+    日期/期数表达式（2026 年、18 日、2025Q3…）在扫描前被剥除，不计入 suspects。
     """
     allowed = bundle.numeric_values()
     # 扩展允许的派生值
@@ -215,10 +240,18 @@ def verify_against_evidence(
             # 两两差值（同比/环比增量常由两个证据值相减得到）
             d = (arr[:, None] - arr[None, :]).ravel()
             derived.extend(d.tolist())
+            # #SA-20260921-02（复测 N3）：差值再做单位换算，覆盖"两值相减后报 85.0 亿"
+            # 这类两级推导。注意这会放大允许池、提高漏检风险，故保留 len(allowed)<=60 门限。
+            for scale in (1e8, 1e-8, 1e4, 1e-4):
+                derived.extend((d * scale).tolist())
     pool = set(allowed) | set(derived) | _ALLOW_LITERALS
 
+    raw = report or ""
+    scanned = _strip_date_tokens(raw)
+    tokens = _NUM_RE.findall(scanned)
+
     suspects: List[str] = []
-    for tok in _NUM_RE.findall(report or ""):
+    for tok in tokens:
         clean = tok.replace(",", "")
         is_pct = clean.endswith("%")
         try:
@@ -235,8 +268,12 @@ def verify_against_evidence(
         "clean": len(suspects) == 0,
         "suspect_count": len(suspects),
         "suspects": suspects[:30],
-        "checked_tokens": len(_NUM_RE.findall(report or "")),
+        "checked_tokens": len(tokens),
         "evidence_values": len(allowed),
+        # 被剥除的日期/期数 token 数（原文 token 数 − 剥除后 token 数），供审计留痕
+        "excluded_date_tokens": len(_NUM_RE.findall(raw)) - len(tokens),
+        # 允许池规模：误报率复测时用于观察"放宽派生"带来的漏检风险
+        "pool_size": len(pool),
     }
 
 

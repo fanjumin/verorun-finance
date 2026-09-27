@@ -1,0 +1,14 @@
+# VeroRun 标准版（公共版）发行配置
+# 对应服务器版的标准版：桌面端连接远程 standard 服务器使用。
+# 与 enterprise（企业版）并列：标准版面向公开市场，企业版面向私有部署。
+# 未设 VR_EDITION 的老部署仍按 standard 兜底（见 shared/edition.py）。
+edition: standard
+label: 标准版
+services:
+  user_login: true
+  user_console: true
+  main_site: true
+plugins:
+  # 插件可见性由各插件 plugin.json 的 compatible_editions 决定：
+  #   stock_analysis=["finance"]、veroscholar=["research"] —— 标准版不预装方向版插件
+  # 边缘插件（iot_hub/ros_bridge/cogevolution_substrate）目录可见、可商店安装

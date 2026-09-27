@@ -11,6 +11,8 @@ from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 import time as _time
 
+from cryptography.fernet import InvalidToken  # SB-BUG-1：解密失败显式告警
+
 from agent_matrix.cache_utils import get_llm_cache
 
 logger = logging.getLogger(__name__)
@@ -57,6 +59,16 @@ PROVIDER_CONFIGS = {
         'default_model': 'deepseek-ai/DeepSeek-V3',
         'key_ref': 'siliconflow_api_key',
     },
+    'anthropic': {
+        'base_url': 'https://api.anthropic.com/v1/',
+        'default_model': 'claude-sonnet-4-5',
+        'key_ref': 'anthropic_api_key',
+    },
+    'hunyuan': {
+        'base_url': 'https://api.hunyuan.cloud.tencent.com/v1',
+        'default_model': 'hunyuan-turbos',
+        'key_ref': 'hunyuan_api_key',
+    },
 }
 
 
@@ -69,23 +81,171 @@ def _get_system_key(key_name):
     return val
 
 
-def _resolve_key_from_provider_api_keys(provider_slug):
-    """从 provider_api_keys 表读取并解密 API Key"""
+# ============================================================
+# Provider Key 连接池（多 Agent 共用 Key 的限流分摊）
+# ============================================================
+# - 轮转：同 provider 多把 primary Key 轮换使用，分摊 RPM/TPM 配额
+# - 429 冷却：某 Key 被限流 → 冷却落库（provider_api_keys.cooldown_until），
+#   gunicorn 多 worker 共享冷却状态；冷却期内自动跳过换下一把
+# - 角色调度：primary 主力轮转；backup 仅当主力全冷却时启用；
+#   dedicated 不参与轮转，仅被 api_key_id 显式命中
+class _ProviderKeyPool:
+    COOLDOWN_DEFAULT_SECONDS = 60
+    MAX_COOLDOWN_SECONDS = 600
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._rr = {}  # provider -> 上一次选中的 key id（round-robin 指针）
+
+    @staticmethod
+    def _is_cooling(row):
+        return bool(row.get('cooling'))
+
+    def pick(self, provider_slug, prefer_key_id=None):
+        """从池中选一把 Key。返回 (key_id, key_str)；无可用 Key 返回 (None, '')。
+        prefer_key_id：显式绑定（dedicated 语义），命中且 active 则直接返回，不轮转不冷却。"""
+        if not provider_slug:
+            return None, ''
+        try:
+            from models import get_db as _get_db
+            from services.crypto import decrypt as _decrypt
+            with _get_db() as conn:
+                # cooling 在 SQL 内按 NOW() 判定，避免过期冷却被误判（跨进程落库共享）
+                rows = [dict(r) for r in conn.execute(
+                    "SELECT id, key_value_enc, COALESCE(pool_role,'primary') AS pool_role, "
+                    "CASE WHEN cooldown_until IS NOT NULL AND cooldown_until > NOW() THEN 1 ELSE 0 END AS cooling, "
+                    "cooldown_until "
+                    "FROM provider_api_keys "
+                    "WHERE provider=%s AND is_active=1 AND key_value_enc != '' "
+                    "ORDER BY id",
+                    (provider_slug,)
+                ).fetchall()]
+        except Exception as e:
+            logger.warning(f"[KeyPool] load keys failed for {provider_slug}: {e}")
+            return None, ''
+
+        if not rows:
+            return None, ''
+
+        # 显式绑定优先（含 dedicated）：仅要求 active + 有值
+        if prefer_key_id:
+            try:
+                prefer_id = int(prefer_key_id)
+            except (TypeError, ValueError):
+                prefer_id = None
+            if prefer_id:
+                for r in rows:
+                    if r['id'] == prefer_id:
+                        return self._decrypt_row(r, _decrypt)
+                logger.warning(f"[KeyPool] bound key id={prefer_key_id} not found/active for {provider_slug}, falling back to pool")
+
+        # 候选分级：主力轮转 → 备用 → 兜底（全冷却时取最早解冻的，保证可用性不低于单 Key）
+        healthy_primary = [r for r in rows if r['pool_role'] == 'primary' and not self._is_cooling(r)]
+        healthy_backup = [r for r in rows if r['pool_role'] == 'backup' and not self._is_cooling(r)]
+        degraded = sorted(
+            [r for r in rows if self._is_cooling(r)],
+            key=lambda r: r['cooldown_until'],
+        )
+        fallback_any = [r for r in rows if r['pool_role'] not in ('primary', 'backup')]
+        candidates = healthy_primary or healthy_backup or degraded or fallback_any or rows
+
+        with self._lock:
+            last = self._rr.get(provider_slug)
+        after_last = [r for r in candidates if r['id'] > (last or 0)]
+        chosen = after_last[0] if after_last else candidates[0]
+        with self._lock:
+            self._rr[provider_slug] = chosen['id']
+        return self._decrypt_row(chosen, _decrypt)
+
+    @staticmethod
+    def _decrypt_row(row, decrypt_fn):
+        """解密选中行；解密失败大声报错（SB-BUG-1）并返回空 key"""
+        try:
+            return row['id'], (decrypt_fn(row['key_value_enc']) or '')
+        except InvalidToken:
+            logger.error(
+                '[KeyPool] DECRYPT FAILED for key id=%s (%s): salt or ENCRYPTION_KEY changed '
+                'since key was encrypted. Check .crypto_salt / ENCRYPTION_KEY consistency, '
+                'or re-enter API keys.', row['id'], row.get('pool_role', ''))
+            return row['id'], ''
+        except Exception as e:
+            logger.warning(f"[KeyPool] decrypt key id={row['id']} failed: {e}")
+            return row['id'], ''
+
+    def report_429(self, key_id, retry_after_seconds=None):
+        """Key 被限流 → 冷却落库（多 worker 共享）。优先读 Retry-After。"""
+        if not key_id:
+            return
+        try:
+            secs = int(retry_after_seconds) if retry_after_seconds else self.COOLDOWN_DEFAULT_SECONDS
+            secs = max(1, min(secs, self.MAX_COOLDOWN_SECONDS))
+            from models import get_db
+            with get_db() as conn:
+                conn.execute(
+                    "UPDATE provider_api_keys SET cooldown_until = NOW() + make_interval(secs => %s) "
+                    "WHERE id=%s", (secs, key_id))
+                conn.commit()
+            logger.warning(f"[KeyPool] key id={key_id} hit 429 → cooling {secs}s (shared across workers)")
+        except Exception as e:
+            logger.warning(f"[KeyPool] report_429 key id={key_id} failed: {e}")
+
+    def record_success(self, key_id):
+        """调用成功 → 清除冷却（该 Key 已恢复）"""
+        if not key_id:
+            return
+        try:
+            from models import get_db
+            with get_db() as conn:
+                conn.execute(
+                    "UPDATE provider_api_keys SET cooldown_until = NULL WHERE id=%s AND cooldown_until IS NOT NULL",
+                    (key_id,))
+                conn.commit()
+        except Exception:
+            pass  # 清冷却失败不影响主链路
+
+    def active_key_count(self, provider_slug):
+        """该 provider 当前参与轮转的 Key 数（有界重试用）"""
+        try:
+            from models import get_db
+            with get_db() as conn:
+                row = conn.execute(
+                    "SELECT COUNT(*) AS cnt FROM provider_api_keys "
+                    "WHERE provider=%s AND is_active=1 AND key_value_enc != ''",
+                    (provider_slug,)).fetchone()
+            return int(row['cnt']) if row else 0
+        except Exception:
+            return 0
+
+
+# Key 池进程内单例（与 _failover_engine 同级，gunicorn worker 内共享）
+_key_pool = _ProviderKeyPool()
+
+
+def _is_rate_limit_error(exc):
+    """识别 429 限流错误（OpenAI SDK RateLimitError 或带 status_code=429 的异常）"""
+    if exc is None:
+        return False
+    if getattr(exc, 'status_code', None) == 429:
+        return True
+    status = getattr(getattr(exc, 'response', None), 'status_code', None)
+    return status == 429
+
+
+def _extract_retry_after(exc):
+    """从 429 响应头提取 Retry-After（秒），取不到返回 None"""
+    resp = getattr(exc, 'response', None)
+    headers = getattr(resp, 'headers', None) or {}
     try:
-        from models import get_db as _get_db
-        from services.crypto import decrypt as _decrypt
-        with _get_db() as conn:
-            row = conn.execute(
-                "SELECT key_value_enc FROM provider_api_keys "
-                "WHERE provider=%s AND is_active=1 AND key_value_enc != '' "
-                "ORDER BY id LIMIT 1",
-                (provider_slug,)
-            ).fetchone()
-        if row and row['key_value_enc']:
-            return _decrypt(row['key_value_enc'])
-    except Exception as e:
-        logger.warning(f"[KeyResolver] provider_api_keys lookup failed for {provider_slug}: {e}")
-    return ''
+        val = headers.get('Retry-After') or headers.get('retry-after')
+        return float(val) if val else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _resolve_key_from_provider_api_keys(provider_slug):
+    """从 provider_api_keys 表读取并解密 API Key（经 Key 连接池轮转调度）"""
+    _key_id, key = _key_pool.pick(provider_slug)
+    return key
 
 
 def _resolve_agent_model_config(config: dict) -> dict:
@@ -313,6 +473,8 @@ class UnifiedLLM:
             'siliconflow': 'https://api.siliconflow.cn/v1',
             'gemini': 'https://generativelanguage.googleapis.com/v1beta/openai/',
             'grok': 'https://api.x.ai/v1',
+            'anthropic': 'https://api.anthropic.com/v1/',
+            'hunyuan': 'https://api.hunyuan.cloud.tencent.com/v1',
         }
         return defaults.get(provider, '')
 
@@ -335,6 +497,8 @@ class UnifiedLLM:
             'siliconflow': 'SILICONFLOW_API_KEY',
             'gemini': 'GEMINI_API_KEY',
             'grok': 'XAI_API_KEY',
+            'anthropic': 'ANTHROPIC_API_KEY',
+            'hunyuan': 'HUNYUAN_API_KEY',
         }
         key_name = env_map.get(provider, '')
         if key_name:
@@ -350,12 +514,14 @@ class UnifiedLLM:
             'openrouter': 'openrouter_api_key',
             'gemini': 'gemini_api_key',
             'grok': 'grok_api_key',
+            'anthropic': 'anthropic_api_key',
+            'hunyuan': 'hunyuan_api_key',
         }
         config_key = key_map.get(provider, f'{provider}_api_key')
         return _get_system_key(config_key)
 
-    def _resolve_api_key(self, provider_slug, api_key_id=None):
-        """优先通过 api_key_id 查 provider_api_keys，回退到 _fallback_key"""
+    def _resolve_api_key_pair(self, provider_slug, api_key_id=None):
+        """返回 (picked_key_id, key)。优先显式 api_key_id（dedicated），否则走 Key 连接池，最后回退 env/system_config。"""
         if api_key_id:
             try:
                 with self._get_conn() as conn:
@@ -365,14 +531,18 @@ class UnifiedLLM:
                     ).fetchone()
                 if row and row['key_value_enc']:
                     from services.crypto import decrypt as _decrypt
-                    return _decrypt(row['key_value_enc'])
+                    return int(api_key_id), _decrypt(row['key_value_enc'])
             except Exception as e:
                 logger.warning(f"[UnifiedLLM] api_key_id={api_key_id} lookup failed: {e}")
-        # 降级路径：按 provider slug 从 provider_api_keys 查找（BUG-001 修复）
-        key = _resolve_key_from_provider_api_keys(provider_slug)
+        # 降级路径：按 provider slug 从 Key 连接池轮转取（BUG-001 修复）
+        picked_id, key = _key_pool.pick(provider_slug)
         if key:
-            return key
-        return self._fallback_key(provider_slug)
+            return picked_id, key
+        return None, self._fallback_key(provider_slug)
+
+    def _resolve_api_key(self, provider_slug, api_key_id=None):
+        """优先通过 api_key_id 查 provider_api_keys，回退到 _fallback_key"""
+        return self._resolve_api_key_pair(provider_slug, api_key_id)[1]
 
     def _resolve_model(self, provider_model_id=None, provider=None, model=None):
         """解析模型配置。优先使用 provider_model_id"""
@@ -390,11 +560,14 @@ class UnifiedLLM:
                 raise ValueError(f'Model not found or inactive: id={provider_model_id}')
             pm = dict(pm)
             base_url = self._normalize_base_url(pm['endpoint_url'], pm['provider_slug'])
+            picked_id, api_key = self._resolve_api_key_pair(pm['provider_slug'], pm.get('api_key_id'))
             return {
                 'provider': pm['provider_slug'],
                 'model': pm['model_name'],
                 'base_url': base_url,
-                'api_key': self._resolve_api_key(pm['provider_slug'], pm.get('api_key_id')),
+                'api_key': api_key,
+                'api_key_id': picked_id,
+                'api_key_bound_id': pm.get('api_key_id'),
                 'model_id': provider_model_id,
             }
 
@@ -413,15 +586,80 @@ class UnifiedLLM:
             if pm:
                 pm = dict(pm)
                 base_url = self._normalize_base_url(pm['endpoint_url'], provider)
+                picked_id, api_key = self._resolve_api_key_pair(provider, pm.get('api_key_id'))
                 return {
                     'provider': pm['provider_slug'],
                     'model': pm['model_name'],
                     'base_url': base_url,
-                    'api_key': self._resolve_api_key(provider, pm.get('api_key_id')),
+                    'api_key': api_key,
+                    'api_key_id': picked_id,
+                    'api_key_bound_id': pm.get('api_key_id'),
                     'model_id': pm['id'],
                 }
 
         raise ValueError('Cannot resolve model: provide provider_model_id or (provider + model)')
+
+    # ── Key 级 429 重试（Key 连接池配套）──
+    _KEY_RETRY_MAX_ATTEMPTS = 5  # 有界：单次请求最多换 Key 次数
+
+    def _call_with_key_retry(self, cfg_, once_fn):
+        """非流式：当前 Key 撞 429 → 冷却落库（多 worker 共享）→ 换池内下一把 Key 重试。
+        专属绑定（api_key_bound_id）不侵占共享池，直接抛给 failover 引擎。
+        有界：最多 _KEY_RETRY_MAX_ATTEMPTS 次尝试；无其他可用 Key 立即抛出。"""
+        provider = cfg_.get('provider', '')
+        bound_id = cfg_.get('api_key_bound_id')
+        cfg_cur = cfg_
+        for attempt in range(max(self._KEY_RETRY_MAX_ATTEMPTS, 1)):
+            try:
+                resp = once_fn(cfg_cur)
+                if cfg_cur.get('api_key_id'):
+                    _key_pool.record_success(cfg_cur['api_key_id'])
+                return resp
+            except Exception as e:
+                if not _is_rate_limit_error(e) or attempt >= self._KEY_RETRY_MAX_ATTEMPTS - 1:
+                    raise
+                _key_pool.report_429(cfg_cur.get('api_key_id'), _extract_retry_after(e))
+                if bound_id:
+                    raise  # 专属 Key 被限流：不占用共享池，交给 failover
+                picked_id, new_key = self._resolve_api_key_pair(provider)
+                if not new_key or (picked_id is not None and picked_id == cfg_cur.get('api_key_id')):
+                    raise  # 池内无其他可用 Key
+                logger.warning(f'[UnifiedLLM] provider={provider} key#{cfg_cur.get("api_key_id")} rate-limited, retrying with key#{picked_id}')
+                cfg_cur = dict(cfg_cur, api_key=new_key, api_key_id=picked_id)
+        raise RuntimeError('key retry loop exhausted')
+
+    def _stream_with_key_retry(self, cfg_, stream_fn):
+        """流式 Key 级 429 重试：仅首个 chunk 前失败才允许换 Key 重试（防重复输出）"""
+        provider = cfg_.get('provider', '')
+        bound_id = cfg_.get('api_key_bound_id')
+
+        def _gen():
+            cfg_cur = cfg_
+            for attempt in range(max(self._KEY_RETRY_MAX_ATTEMPTS, 1)):
+                started = False
+                try:
+                    stream = stream_fn(cfg_cur)
+                    for chunk in stream:
+                        started = True
+                        yield chunk
+                    if cfg_cur.get('api_key_id'):
+                        _key_pool.record_success(cfg_cur['api_key_id'])
+                    return
+                except Exception as e:
+                    if started:
+                        raise  # 已产出内容：换 Key 会重复输出，直接上抛
+                    if not _is_rate_limit_error(e) or attempt >= self._KEY_RETRY_MAX_ATTEMPTS - 1:
+                        raise
+                    _key_pool.report_429(cfg_cur.get('api_key_id'), _extract_retry_after(e))
+                    if bound_id:
+                        raise
+                    picked_id, new_key = self._resolve_api_key_pair(provider)
+                    if not new_key or (picked_id is not None and picked_id == cfg_cur.get('api_key_id')):
+                        raise
+                    logger.warning(f'[UnifiedLLM] stream provider={provider} key#{cfg_cur.get("api_key_id")} rate-limited, retrying with key#{picked_id}')
+                    cfg_cur = dict(cfg_cur, api_key=new_key, api_key_id=picked_id)
+            raise RuntimeError('key retry loop exhausted')
+        return _gen()
 
     def resolve_model(self, provider_model_id=None, provider=None, model=None):
         """公开解析模型配置（供状态检测等只读场景使用，避免直接调用内部 _resolve_model）。"""
@@ -563,14 +801,18 @@ class UnifiedLLM:
 
         def _call_once(cfg_, is_fallback=False):
             _msgs = _fallback_msgs if (is_fallback and _fallback_msgs) else messages
-            client_ = self._get_client(cfg_['base_url'], cfg_['api_key'])
-            return client_.chat.completions.create(
-                model=cfg_['model'],
-                messages=_msgs,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                **kwargs
-            )
+
+            def _do(c):
+                client_ = self._get_client(c['base_url'], c['api_key'])
+                return client_.chat.completions.create(
+                    model=c['model'],
+                    messages=_msgs,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    **kwargs
+                )
+            # Key 连接池：429 时冷却当前 Key 并换下一把重试，全部失败再交给 failover 引擎
+            return self._call_with_key_retry(cfg_, _do)
         resp, used_cfg = _failover_engine.call_with_failover(
             cfg, self._build_fallback_cfgs(cfg), _call_once, request_id='chat')
         elapsed = _time.time() - start_time
@@ -647,14 +889,18 @@ class UnifiedLLM:
 
         def _stream_call(cfg_, is_fallback=False):
             _msgs = _fallback_msgs if (is_fallback and _fallback_msgs) else messages
-            client_ = self._get_client(cfg_['base_url'], cfg_['api_key'])
-            return client_.chat.completions.create(
-                model=cfg_['model'],
-                messages=_msgs,
-                stream=True,
-                stream_options={'include_usage': True},
-                **kwargs
-            )
+
+            def _do(c):
+                client_ = self._get_client(c['base_url'], c['api_key'])
+                return client_.chat.completions.create(
+                    model=c['model'],
+                    messages=_msgs,
+                    stream=True,
+                    stream_options={'include_usage': True},
+                    **kwargs
+                )
+            # Key 连接池：首个 chunk 前撞 429 → 冷却换 Key 重试，已产出内容则直接上抛
+            return self._stream_with_key_retry(cfg_, _do)
         failover_gen = _failover_engine.stream_with_failover(
             cfg, self._build_fallback_cfgs(cfg), _stream_call, request_id='chat_stream')
 
@@ -866,7 +1112,9 @@ class UnifiedLLM:
                 msg['tool_call_id'] = h['tool_call_id']
             messages.append(msg)
         messages.append({"role": "user", "content": user_query})
-        return self.chat(messages, temperature=temperature, module='ask_history')
+        # WP-A（6.3）：统一 token 预算层；预算为 0 或任意异常时原样返回（fail-open）
+        from agent_matrix.context_manager import _fit
+        return self.chat(_fit(messages), temperature=temperature, module='ask_history')
 
     def chat_with_tools(self, messages, tools, temperature=0.7, max_tokens=4096):
         return self.chat(messages, temperature=temperature, max_tokens=max_tokens,
@@ -892,7 +1140,9 @@ class UnifiedLLM:
                 msg['tool_call_id'] = h['tool_call_id']
             messages.append(msg)
         messages.append({"role": "user", "content": user_query})
-        yield from self.chat_stream(messages, temperature=temperature, module='ask_history')
+        # WP-A（6.3）：与 ask_with_history 同构。本函数当前全仓无调用者，属防御性覆盖
+        from agent_matrix.context_manager import _fit
+        yield from self.chat_stream(_fit(messages), temperature=temperature, module='ask_history')
 
     def is_ready(self):
         """P2-F17: 检查 AI 引擎是否就绪（provider 存在且能解析出 API key）。
@@ -919,18 +1169,37 @@ class UnifiedLLM:
             model_id 为 provider_models.id（仅用于日志/配额），
             API 调用使用 model_name（缓存于 self._embed_model_name）。
         """
+        # 动态切换 embedding 供应商：system_config.embedding_provider 指定 provider slug
+        # （如 'hunyuan'）。为空时回退到 ORDER BY sort_order 默认第一条，行为与升级前一致。
+        pref_provider = None
+        try:
+            from agent_matrix.models import get_db as _embed_get_db
+            with _embed_get_db() as conn:
+                pr = conn.execute(
+                    "SELECT value FROM system_config WHERE key='embedding_provider'"
+                ).fetchone()
+            if pr and pr['value'] and str(pr['value']).strip():
+                pref_provider = str(pr['value']).strip()
+        except Exception as e:
+            logger.warning('[Embedding] read embedding_provider config failed: %s', e)
         try:
             with self._get_conn() as conn:
-                row = conn.execute(
-                    """SELECT pm.id AS model_id, pm.model_name, pm.endpoint_url,
+                sql = ("""SELECT pm.id AS model_id, pm.model_name, pm.endpoint_url,
                               pm.api_key_id, p.slug AS provider_slug,
                               COALESCE(pm.embedding_dim, 1536) AS dim
                        FROM provider_models pm
                        JOIN providers p ON p.id = pm.provider_id
-                       WHERE pm.capabilities LIKE '%embedding%'
-                         AND pm.is_active = 1 AND p.is_active = 1
-                       ORDER BY pm.sort_order, pm.id LIMIT 1"""
-                ).fetchone()
+                       WHERE pm.capabilities LIKE %s
+                         AND pm.is_active = 1 AND p.is_active = 1""")
+                # 通配符 % 作为参数传入，避免 psycopg2 把 LIKE 内的 % 当格式符解析
+                like_pat = ('%' + 'embedding' + '%')
+                if pref_provider:
+                    sql += " AND p.slug = %s"
+                    row = conn.execute(sql + " ORDER BY pm.sort_order, pm.id LIMIT 1",
+                                       (like_pat, pref_provider)).fetchone()
+                else:
+                    row = conn.execute(sql + " ORDER BY pm.sort_order, pm.id LIMIT 1",
+                                       (like_pat,)).fetchone()
             if not row:
                 logger.warning('[Embedding] no active embedding model configured')
                 return (None, None, None, None)
@@ -966,7 +1235,8 @@ class UnifiedLLM:
             client = self._get_client(base_url, api_key)
             start = _time.time()
             resp = client.embeddings.create(
-                model=self._embed_model_name, input=str(text)
+                model=self._embed_model_name, input=str(text),
+                encoding_format='float',
             )
             vec = [float(v) for v in resp.data[0].embedding]
             self._log_usage(
@@ -996,7 +1266,8 @@ class UnifiedLLM:
             client = self._get_client(base_url, api_key)
             start = _time.time()
             resp = client.embeddings.create(
-                model=self._embed_model_name, input=[str(t) for t in texts]
+                model=self._embed_model_name, input=[str(t) for t in texts],
+                encoding_format='float',
             )
             # OpenAI-compatible 接口返回顺序与输入一致；按 index 防乱序
             by_index = {d.index: [float(v) for v in d.embedding] for d in resp.data}

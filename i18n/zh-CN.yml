@@ -110,6 +110,7 @@ Accuracy 1-5: 准确性 1-5
 Action: 操作
 Activate Now: 立即开通
 Activated: 已激活
+Activates when all Primary keys are cooling down: 所有主力 Key 冷却中时启用
 Activating: 开通中
 Activation failed: 开通失败
 Active Subscriptions: 活跃订阅
@@ -206,6 +207,7 @@ Average: 平均
 Back: 返回
 Backend Access Control: 后台访问控制
 Background Removal: 抠图
+Backup: 备用
 Baoding: 保定
 Baoding City: 保定市
 Baoji: 宝鸡
@@ -252,6 +254,7 @@ Cannot downgrade yourself to non-super admin: 不能将自己降级为非超级�
 Capabilities: 能力
 Capture: 截取
 Case: 案例
+Catalog behind: 目录版本落后
 Category: 类目
 Category Statistics: 分类统计
 Category created: 分类已创建
@@ -361,6 +364,7 @@ Decrease: 减小
 Deduction plan ID (WECHAT_PLAN_ID) not configured: 未配置扣费计划ID (WECHAT_PLAN_ID)
 Deep AI Interpretation: AI深度解读
 Default: 默认
+Dedicated: 专属
 Default Sound: 默认声音
 Delete: 删除
 Circuit Open: 熔断开启
@@ -719,6 +723,7 @@ Management Backend: 管理后台
 Manual review: 人工审核
 'Manually Approved': '已人工批准'
 Manually renewed: 已手动续费
+Markdown preview module is not ready (markdown/bleach is not available): Markdown 预览模块未就绪（markdown/bleach 不可用）
 Marked as completed: 已标记为已完成
 Master Agent does not exist: Master Agent 不存在
 Matrix Dialogue Engine (Master Agent): 矩阵对话引擎 (Master Agent)
@@ -1058,6 +1063,7 @@ Plugin submission is not open yet: 插件提交功能暂未开放
 'Please enter execution steps as a JSON array.': '请以 JSON 数组格式输入执行步骤。'
 Please login first: 请先登录
 Politeness Level 1-5: 礼貌程度 1-5
+Pool Role: Key 池角色
 Popular Articles: 热门文章
 Post Comment: 发布评论
 Poster: 海报
@@ -1065,8 +1071,10 @@ Preview: 预览
 'Preview mode — admin only': 预览模式 — 仅管理员可见
 Price: 价格
 Price Calculator - VeroRun AI · AI Website Builder Platform: 价格计算器 — VeroRun · AI智能建站平台
+Primary: 主力
 Privacy Policy: 隐私政策
 Processed: 已处理
+Only used when explicitly bound to a model/agent: 仅在显式绑定到模型/Agent 时使用
 Processed Content Does Not Exist: 加工内容不存在
 Processed_id and action are required: processed_id 和 action 必填
 Processed_id is required: processed_id 必填
@@ -1171,6 +1179,7 @@ Restore: 恢复
 Retry: 重试
 Retry Failed: 重试失败
 Retry Payment: 缴费重试
+Rotates to absorb rate limits: 轮转分摊限流压力
 Return to List: 返回列表
 Return to draft: 退回草稿
 Returning: 退货中
@@ -1310,7 +1319,6 @@ Sub Agent - : 子 Agent -
 Sub-task Summary Title: 子任务简要标题
 Subdomain Does Not Exist: 子域名不存在
 Subdomain and Display Name Cannot Be Empty: 子域名和显示名不能为空
-Submit: 提交
 'Submit Version': '提交版本'
 Submit for Review: 提交审核
 Submitting...: 提交中...
@@ -1481,6 +1489,7 @@ Unprocessed: 未处理
 Untitled topic: 未命名主题
 Untitled Workflow: 未命名工作流
 Unverified: 未验证
+Update check unavailable: 更新检查不可用
 Update successful: 更新成功
 Updated: 已更新
 Updated data cannot be empty: 更新数据不能为空
@@ -2157,7 +2166,6 @@ stub confirm is disabled outside dev: stub 确认仅限开发模式
 'Enterprise Verification Failed:': '企业认证失败：'
 'Enterprise Verified': '企业已验证'
 'Enterprises Served': '服务企业数'
-'Estimated Pending Payout': '预估待结算'
 'Expand': '展开'
 'Expired This Month': '本月到期'
 'Expires': '到期时间'
@@ -2760,6 +2768,7 @@ stub confirm is disabled outside dev: stub 确认仅限开发模式
 'leave blank to keep current': '留空则不更改'
 'leave empty to auto': '留空则自动生成'
 'Invalid target_type': '无效的目标类型'
+'A quota for this target already exists': '该目标已存在配额配置'
 'Key is referenced by %(count)s model(s), please unlink first': '该 Key 被 %(count)s 个模型引用，请先解除关联'
 'Name and Key cannot be empty': '名称和 Key 不能为空'
 'No changes': '无变更'
@@ -3352,6 +3361,22 @@ Please enter a GitHub repo URL: 请输入 GitHub 仓库地址
 'Role Definition': '角色定义'
 'Role Description': '角色描述'
 'Roles & Abilities': '角色与能力'
+# ── 金融桌面版投研角色（角色名/描述以英文为原文，此处提供中文译文）──
+# 依据壳层红线（src/i18n/agentNames.ts）：角色名的多语言由内核提供，壳层不得自建字典。
+'System Ops': '系统运维'
+'System operations — backup, health monitoring, alert channels, workflow scheduling': '系统运维 — 备份、健康监控、告警通道与工作流调度'
+'Research Planner': '研究规划师'
+'Research planning — decompose a question into testable hypotheses and a data checklist': '研究规划 — 把研究问题拆解为可验证假设与数据清单'
+'Fundamental Analyst': '基本面分析师'
+'Fundamental analysis — TTM financials, valuation range and earnings quality': '基本面分析 — TTM 财报口径、估值区间与盈利质量'
+'Quant Analyst': '量价分析师'
+'Quant analysis — adjusted klines, capital flows, positioning and sentiment': '量价分析 — 复权 K 线、资金流、筹码与情绪'
+'Risk Officer': '风险官'
+'Risk officer — bear cases, stress tests and red-team challenge to the house view': '风险官 — 反方意见、压力测试与对主观点的红队挑战'
+'Portfolio Manager': '组合经理'
+'Portfolio manager — position sizing and the final research call': '组合经理 — 收敛仓位并给出最终研判'
+'Compliance Officer': '合规官'
+'Compliance gate — suitability, quiet period, data provenance and disclaimer': '合规把关 — 适当性、静默期、数据溯源与免责'
 'Core Instructions': '核心指令'
 'Code of Conduct': '行为准则'
 'Basic Settings': '基本设置'
@@ -4167,3 +4192,19 @@ Please enter a GitHub repo URL: 请输入 GitHub 仓库地址
 'Edition Research': '科研版'
 'Edition Mini Program': '小程序版'
 'Edition Edge': '边缘版'
+
+# ── Notifications & Rewards templates (keys are the zh source text) ──
+'实名认证通过': '实名认证通过'
+'手机验证成功': '手机验证成功'
+'邀请成功': '邀请成功'
+'好友完成首单': '好友完成首单'
+'获得奖励': '获得奖励'
+'优惠券即将过期': '优惠券即将过期'
+'资料完成度100%': '资料完成度100%'
+'恭喜您已通过实名认证，解锁全部功能权益。': '恭喜您已通过实名认证，解锁全部功能权益。'
+'恭喜您获得 {reward_name}！请前往优惠券中心查看。': '恭喜您获得 {reward_name}！请前往优惠券中心查看。'
+'恭喜邀请成功！您的好友 {friend_name} 已注册，奖励已发放。': '恭喜邀请成功！您的好友 {friend_name} 已注册，奖励已发放。'
+'您已完成全部个人资料填写，获得专属福利！': '您已完成全部个人资料填写，获得专属福利！'
+'您已成功验证手机号，账户安全等级已提升。': '您已成功验证手机号，账户安全等级已提升。'
+'您有一张 {coupon_name} 即将在 {expire_days} 天后过期，请尽快使用。': '您有一张 {coupon_name} 即将在 {expire_days} 天后过期，请尽快使用。'
+'您的好友 {friend_name} 已完成首次操作，您的推广奖励已到账。': '您的好友 {friend_name} 已完成首次操作，您的推广奖励已到账。'

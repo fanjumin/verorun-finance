@@ -96,7 +96,7 @@ window.editor = (function() {
     ],
     script: [
       { key: 'script', type: 'text', label: 'Script Name', default: '', placeholder: 'builtin: check_new_posts / generate_static_incremental, or file name in scripts/' },
-      { key: 'lang', type: 'select', label: 'Language', options: ['builtin','python','shell'], default: 'builtin' },
+      { key: 'lang', type: 'select', label: 'Language', options: ['builtin','python'], default: 'builtin' },
       { key: 'args', type: 'tags', label: 'Script Args', default: [], placeholder: 'Arguments, comma-separated' },
       { key: 'timeout_seconds', type: 'number', label: 'Timeout (seconds)', default: 120 }
     ],

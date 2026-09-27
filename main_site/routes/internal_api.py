@@ -164,12 +164,22 @@ def internal_cms_draft_documents():
 
 @internal_api_bp.route('/cms/page-blocks')
 def internal_cms_page_blocks():
-    """指定 page 的区块；?published=1 时仅返回已发布（is_published=1），供渲染网关使用。
+    """指定 page 的区块；?view=draft|published|all 控制层级（SB-OPEN-2）。
 
-    缺省返回全部（含草稿），兼容 LLM 修改上下文等既有消费方。
+    - view=draft：仅草稿层（is_published=0）——LLM 修改上下文/摘要的默认视图
+    - view=published：仅已发布层（is_published=1），供渲染网关使用
+    - 缺省 view=all：双层全量（向后兼容既有消费方；旧值查找需含已发布判定）
+    软删块（extra_json.deleted=true，发布清场产生的旧代际垃圾）一律不返回。
     """
     page = request.args.get('page', '')
-    published = request.args.get('published', '0') == '1'
+    view = request.args.get('view', '')
+    # 兼容旧参数：?published=1（渲染网关 get_published_blocks 在用）等价 view=published
+    if not view and request.args.get('published', '0') == '1':
+        view = 'published'
+    if not view:
+        view = 'all'
+    if view not in ('draft', 'published', 'all'):
+        view = 'all'
     if not page:
         return jsonify({'error': 'page required'}), 400
     try:
@@ -177,10 +187,12 @@ def internal_cms_page_blocks():
         with get_db() as conn:
             q = "SELECT * FROM cms_blocks WHERE page=%s"
             args = [page]
-            if published:
+            if view == 'draft':
+                q += " AND is_published=0"
+            elif view == 'published':
                 q += " AND is_published=1"
-                # DEF-N2：已发布查询同样过滤软删块（纵深防御，历史污染不渲染）
-                q += " AND (extra_json::jsonb->>'deleted') IS DISTINCT FROM 'true'"
+            # DEF-N2：软删块过滤（所有视图统一，历史污染不外泄）
+            q += " AND (extra_json::jsonb->>'deleted') IS DISTINCT FROM 'true'"
             q += " ORDER BY position"
             rows = conn.execute(q, args).fetchall()
         return jsonify([dict(r) for r in rows])
@@ -216,6 +228,20 @@ def internal_cms_draft_blocks_replace():
             for b in blocks:
                 if not isinstance(b, dict):
                     continue
+                extra = b.get('extra_json', {})
+                if isinstance(extra, str):
+                    try:
+                        extra = json.loads(extra)
+                    except (json.JSONDecodeError, TypeError):
+                        extra = {}
+                if not isinstance(extra, dict):
+                    extra = {}
+                if not is_published:
+                    # SB-BUG-4：整页构建产物打 build_full 代际标记。本端点的三个
+                    # 调用方（apply_page_blocks / apply_page_text / restore_pages）
+                    # 写入的都是「整页完整状态」，发布时据此整页替换清场旧代际；
+                    # 增量 add_block 走 /cms/blocks/add 不带标记，发布走合并语义。
+                    extra = dict(extra, build_full=True)
                 conn.execute(
                     "INSERT INTO cms_blocks "
                     "(page, section, block_type, position, title, subtitle, content, "
@@ -233,7 +259,7 @@ def internal_cms_draft_blocks_replace():
                         b.get('link_url', ''),
                         b.get('link_text', ''),
                         b.get('icon', ''),
-                        _safe_extra_json(b.get('extra_json', {})),
+                        _safe_extra_json(extra),
                         is_published,
                     )
                 )
@@ -433,11 +459,17 @@ def internal_cms_document():
 
 @internal_api_bp.route('/cms/publish', methods=['POST'])
 def internal_cms_publish():
-    """发布草稿：cms_blocks / cms_posts 的 is_published 0→1（合并语义）。
+    """发布草稿：cms_blocks / cms_posts 的 is_published 0→1（SB-BUG-2/4 修复）。
 
-    DEF-P1-2 修复：发布只提升草稿、不删除现存已发布块。作用域化：请求体
-    可带 {pages: [cms_blocks.page...], slugs: [cms_posts.slug...]}；缺省
-    （空列表）时全量提升，向后兼容历史调用方。
+    区块发布按页判定语义：
+    - 本页任一被提升块携带 extra_json.build_full=true（整页构建/恢复产物，
+      由 /cms/draft-blocks/replace 写入）→ **整页替换**：软删本页所有未被
+      本次提升的已发布块（旧代际孤儿清场）。
+    - 否则（增量 add_block 等无标记草稿）→ **合并**：不动现存已发布块
+      （继承 DEF-P1-2 语义，防止遗留部分草稿发布时误删同页内容）。
+    发布完成后把本页最终已发布态整页回填为草稿副本（build_full=true、剔除
+    deleted）→ 草稿区恒为完整镜像：发布后可继续增量编辑，删除草稿块后再
+    次发布即从生产移除，无需整站重建。
     """
     data = request.get_json(force=True, silent=True) or {}
     pages = data.get('pages') or None
@@ -445,19 +477,51 @@ def internal_cms_publish():
     try:
         from models import get_db
         with get_db() as conn:
-            # DEF-P1-2 修复（合并模式，已与产品确认）：
-            # 发布"只提升草稿、不删除已发布块"，避免"部分草稿"（如 add-block 增补）
-            # 发布时误删同页其余已发布块造成内容丢失。
-            # 注：重新生成整站时被移除的旧区块不会自动清场，需显式软删/重新生成。
             if pages:
-                conn.execute(
+                rows = conn.execute(
                     "UPDATE cms_blocks SET is_published=1 "
                     "WHERE is_published=0 AND page = ANY(%s) "
-                    "AND (extra_json::jsonb->>'deleted') IS DISTINCT FROM 'true'", (pages,))
+                    "AND (extra_json::jsonb->>'deleted') IS DISTINCT FROM 'true' "
+                    "RETURNING id, page, extra_json", (pages,)).fetchall()
             else:
-                conn.execute(
+                rows = conn.execute(
                     "UPDATE cms_blocks SET is_published=1 WHERE is_published=0 "
-                    "AND (extra_json::jsonb->>'deleted') IS DISTINCT FROM 'true'")
+                    "AND (extra_json::jsonb->>'deleted') IS DISTINCT FROM 'true' "
+                    "RETURNING id, page, extra_json").fetchall()
+            promoted = [dict(r) for r in rows]
+            if promoted:
+                promoted_ids = [r['id'] for r in promoted]
+                scope_pages = sorted({r['page'] for r in promoted})
+                # 按页判定：build_full 标记 → 整页替换；无标记 → 合并
+                replace_pages = []
+                for r in promoted:
+                    try:
+                        extra = json.loads(r.get('extra_json') or '{}')
+                    except (json.JSONDecodeError, TypeError):
+                        extra = {}
+                    if isinstance(extra, dict) and extra.get('build_full') \
+                            and r['page'] not in replace_pages:
+                        replace_pages.append(r['page'])
+                if replace_pages:
+                    conn.execute(
+                        "UPDATE cms_blocks SET extra_json="
+                        "(COALESCE(extra_json,'{}')::jsonb "
+                        "|| '{\"deleted\": true}'::jsonb)::text, updated_at=NOW() "
+                        "WHERE is_published=1 AND page = ANY(%s) AND id != ALL(%s) "
+                        "AND (extra_json::jsonb->>'deleted') IS DISTINCT FROM 'true'",
+                        (replace_pages, promoted_ids))
+                # 整页回填草稿镜像（build_full=true、剔除 deleted）
+                conn.execute(
+                    "INSERT INTO cms_blocks (page, section, block_type, position, "
+                    "title, subtitle, content, image_url, link_url, link_text, icon, "
+                    "extra_json, is_published) "
+                    "SELECT page, section, block_type, position, title, subtitle, "
+                    "content, image_url, link_url, link_text, icon, "
+                    "((COALESCE(extra_json,'{}')::jsonb - 'deleted' - 'build_full') "
+                    "|| '{\"build_full\": true}'::jsonb)::text, 0 "
+                    "FROM cms_blocks WHERE is_published=1 AND page = ANY(%s) "
+                    "AND (extra_json::jsonb->>'deleted') IS DISTINCT FROM 'true'",
+                    (scope_pages,))
             if slugs:
                 conn.execute(
                     "UPDATE cms_posts SET is_published=1 "

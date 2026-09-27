@@ -13,33 +13,37 @@ services:
 # 均拒绝，不"默认放行+事后告警"）。其它发行版不写这一行 → 不启用（opt-in 语义）。
 license_enforcement: true
 plugins:
+  # ── 设计定稿（2026-09-21）：include 只做「发包裁剪」，运行时可见性走动态分流规则 ──
+  #
+  #  ① 发包：include 决定哪些插件目录进安装包（stage-verorun-core.mjs / sync-to-pro.yml
+  #      按它物理拷贝），故金融桌面版**包里只有这 6 项**（含 _base），不适用插件根本进不来。
+  #      实测：staging 产物 8 个目录 = _base + 5 个业务插件 + data/_templates（非插件）。
+  #      2026-09-21：currency_converter（多币种）整插件移出 —— 本版无结算/换算场景，
+  #      留着只是"设置页一张卡 + 一个无归属插件"。
+  #   ② 运行时：声明 runtime_whitelist: false，让 include 退出运行时门控，可见性回到
+  #      「默认放行 + 显式隐藏」。这一条是必须的 —— 商店上架的适用插件不在 include 里，
+  #      若 include 兼任运行时白名单，装完会被门控跳过（_edition_hidden_map 的隐藏集
+  #      只做并集，没有"反隐藏"路径），"上架后可加载"就不成立。
+  #   ③ "本版不适用"由 plugin_distribution_rules 表达（与商店准入共用
+  #      distribution.resolve_visible_set）：单插件规则的 editions 不含本版 → 隐藏，
+  #      reason = not_in_rule_editions；无规则的插件（含商店新上架的）默认可见。
+  #
+  #   health_check：不在 include（不进包），且已由上述分流规则显式隐藏 —— 单机桌面版
+  #   （Windows / macOS）无巡检意义。它与服务端 health_service(8085) 无关（后者是核心
+  #   组件，不依赖本插件），但其定时巡检任务在本版不再注册，此为预期。
+  runtime_whitelist: false
   include:
     - _base
-    - captcha_embedded
+    - stock_analysis
+    - im_gateway
     - email
-    - health_check
-    - sms
-    - site_domains
-    - two_factor_auth
-    - analytics
     - memory_engine
     - vault
-    - content_factory
-    - stock_analysis
-    - shop
-    - payment
-    - subscription
-    - coupons
-    - logistics
-    - wishlist
-    - order_notify
-    - reviews
-    - ali_api
-    - currency_converter
-    - ads
-    - social_push
-    - im_gateway
-    - enterprise_verify
+    - net_proxy
+  # ⚠️ 运行时无效（勿依赖）：agent_matrix.models.edition_plugin_excludes() 已废弃、恒返回
+  #   空列表 —— 插件可见性现由各插件 plugin.json 的 compatible_editions 决定。
+  #   本段保留仅作"本版明确不提供"的登记与发包侧参考；**实际运行时闸门是上面的 include**。
+  #   若将来要恢复黑名单语义，须先改 edition_plugin_excludes()，否则这里写了也不会生效。
   exclude:
     - project_workspace
     - veroscholar
@@ -48,21 +52,27 @@ plugins:
     # （R1 注册表 last_error 即此）。金融版不承载 HR 招聘域 → 显式排除；
     # 不把 agent_role 改成 ops：那会为修一个版本的报错而改掉另一版本已成立的角色契约。
     - hr_recruit
+    # cogevolution_substrate：物联网（边缘）场景的认知进化，金融桌面版不适用。
+    # 当前核心仓库尚未收录该插件目录，此处先登记 —— 将来它若被同步进仓库，
+    # 打包与门控会自动排除，无需再想起来处理（源中不存在时打包断言亦容忍）。
+    - cogevolution_substrate
 roles:
+  # 投研版角色排班 —— 恢复 2026-09-07 e6da88d8「落地投研版角色编排」的原始裁决，并按
+  # 「插件 / 版本 / 桌面环境 / 行业惯例」四条依据定稿（2026-09-21）：
+  #   · 投研流水线（行业惯例 = 卖方/买方投研分工）：rs_planner(规划) → rs_fundamental
+  #     (基本面) / rs_quant(量价·数据) → rs_risk(反方风控) → rs_pm(组合决策) → rs_compliance(合规)
+  #   · 平台通用：athena(编排 Master)、ops(系统运维：备份/健康/告警通道) —— 桌面单机版必需
+  #   · 移出 finance：其主题为"订阅/计费/订单/支付/发票"，桌面单机版 services 全关、
+  #     无 subscription/payment/order_notify 插件（原始裁决与 plugin-standard-v1.8 §2.2
+  #     亦将 finance 归官方版）
   - athena
-  - finance
   - ops
-  - business          # shop/coupons/logistics/wishlist/reviews/ali_api/currency_converter
-  - content           # content_factory/analytics/ads/social_push
-  - service           # email/sms/two_factor_auth/im_gateway/enterprise_verify
-  - builder           # site_domains
   - rs_planner
   - rs_fundamental
   - rs_quant
   - rs_risk
   - rs_pm
   - rs_compliance
-  - stock_analyst
 core_files:
   - agent_matrix/models.py
   - agent_matrix/routes.py

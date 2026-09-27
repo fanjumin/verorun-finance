@@ -3,5 +3,6 @@ numpy>=2.0
 pandas>=2.0
 requests>=2.31
 tushare>=1.4.0
-# optional 备源（阶段3，延迟导入，缺装不影响主链路）：
-# akshare>=1.14.0
+# —— 可选加速件（缺失时自动降级，不影响功能）——
+# scipy>=1.11         # Spearman 秩相关 / 正态分位加速（已内置 numpy 降级实现）
+# akshare>=1.14.0     # 免费备源

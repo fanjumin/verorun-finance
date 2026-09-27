@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<!--
+  agent_matrix/templates/approvals.html
+  系统级 Agent Tools 审批管理页（iframe 形态）。
+-->
+<html lang="{{ g.lang_code or 'zh-CN' }}">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>{{ _('Tool Approvals') }}</title>
+  <link rel="stylesheet" href="/static/css/design-system.css"/>
+  <link rel="stylesheet" href="/static/css/themes.css"/>
+  <script>window.__SSO_TOKEN = {{ sso_token | default('') | tojson }};</script>
+  <script>
+  (function () {
+    var KEY = 'verorun_admin_theme';
+    function apply() {
+      try {
+        var t = localStorage.getItem(KEY);
+        if (t === 'slate' || t === 'light') {
+          document.documentElement.setAttribute('data-theme', t);
+        } else if (document.documentElement.hasAttribute('data-theme')) {
+          document.documentElement.removeAttribute('data-theme');
+        }
+      } catch (e) {}
+    }
+    apply();
+    window.addEventListener('storage', function (e) {
+      if (e.key === KEY || e.key === null) apply();
+    });
+    setInterval(apply, 1000);
+  })();
+  </script>
+  <style>
+    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text);
+                 font-family: var(--font-cn); font-size: 14px; }
+    .at-wrap { padding: 18px 20px 32px; }
+    .at-head h1 { margin: 0 0 6px; font-size: 17px; font-weight: 600; }
+    .at-head p { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.75; }
+    .at-bar { display: flex; align-items: center; gap: 8px; margin: 16px 0 12px; flex-wrap: wrap; }
+    .at-tab { border: 1px solid var(--border); background: var(--card); color: var(--muted);
+              border-radius: var(--radius); padding: 6px 12px; font-size: 12.5px; cursor: pointer; }
+    .at-tab.on { color: var(--accent); border-color: var(--accent); }
+    .at-tab .n { margin-left: 6px; color: var(--dim); }
+    .at-spacer { flex: 1; }
+    .at-btn { border: 1px solid var(--border); background: var(--card); color: var(--text);
+              border-radius: var(--radius); padding: 6px 12px; font-size: 12.5px; cursor: pointer; }
+    .at-btn:hover { background: var(--hover-bg); }
+    .at-btn.at-ok { color: var(--success); border-color: var(--success); }
+    .at-btn.at-no { color: var(--danger); border-color: var(--danger); margin-left: 6px; }
+    .at-panel { border: 1px solid var(--border); border-radius: var(--radius);
+                background: var(--card); overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border);
+             font-size: 12.5px; vertical-align: top; }
+    th { color: var(--muted); font-weight: 500; white-space: nowrap; }
+    .at-mono { font-family: var(--font-en); color: var(--muted); word-break: break-all; }
+    .at-tag { display: inline-block; padding: 1px 7px; border-radius: var(--radius-full);
+              border: 1px solid var(--border); color: var(--muted); font-size: 11.5px; }
+    .at-tag.pending { color: var(--warn); border-color: var(--warn); }
+    .at-tag.approved { color: var(--success); border-color: var(--success); }
+    .at-tag.rejected { color: var(--danger); border-color: var(--danger); }
+    .at-exp { color: var(--warn); font-size: 11.5px; margin-top: 3px; }
+    .at-msg { padding: 22px 12px; color: var(--muted); text-align: center; font-size: 12.5px; }
+  </style>
+</head>
+<body>
+  <div class="at-wrap">
+    <div class="at-head">
+      <h1>{{ _('Tool Approvals') }}</h1>
+      <p>{{ _('High-risk tool calls are intercepted by the approval gate and ticketed. Once approved, subsequent calls to the same tool within the same task proceed without re-approval; if rejected they will continue to be blocked.') }}</p>
+    </div>
+
+    <div class="at-bar" id="at-tabs"></div>
+
+    <div class="at-panel">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>{{ _('Tool') }}</th>
+            <th>{{ _('Status') }}</th>
+            <th>{{ _('Task') }}</th>
+            <th>Agent</th>
+            <th>{{ _('Requested') }}</th>
+            <th>{{ _('Decision / Reason') }}</th>
+            <th>{{ _('Action') }}</th>
+          </tr>
+        </thead>
+        <tbody id="at-rows"></tbody>
+      </table>
+      <div class="at-msg" id="at-msg">{{ _('Loading...') }}</div>
+    </div>
+  </div>
+
+  <script>
+  (function () {
+    var TOKEN = (function () {
+      try {
+        var q = new URLSearchParams(window.location.search);
+        return q.get('token') || window.__SSO_TOKEN || '';
+      } catch (e) {
+        return window.__SSO_TOKEN || '';
+      }
+    })();
+
+    var ORDER = ['pending', 'approved', 'rejected'];
+    var LABELS = {
+      pending: {{ _('Pending') | tojson }},
+      approved: {{ _('Approved') | tojson }},
+      rejected: {{ _('Rejected') | tojson }}
+    };
+    var TXT = {
+      approve: {{ _('Approve') | tojson }},
+      reject: {{ _('Reject') | tojson }},
+      refresh: {{ _('Refresh') | tojson }},
+      expired: {{ _('Expired') | tojson }},
+      empty: {{ _('No records') | tojson }},
+      failed: {{ _('Failed to load') | tojson }},
+      needAdmin: {{ _('Admin required — please re-login') | tojson }},
+      confirmReject: {{ _('Confirm reject this ticket?') | tojson }},
+      rejectNote: {{ _('Reject reason (optional)') | tojson }}
+    };
+    var current = 'pending';
+
+    // Phase C: API 路径从 /admin/agent-tools/* 迁移到 /admin/agent-matrix/approvals/*
+    var API_BASE = '/admin/agent-matrix/approvals';
+
+    function api(path, options) {
+      var opt = options || {};
+      var headers = { 'Accept': 'application/json' };
+      if (TOKEN) headers['Authorization'] = 'Bearer ' + TOKEN;
+      if (opt.body) headers['Content-Type'] = 'application/json';
+      opt.headers = headers;
+      return fetch(path, opt).then(function (resp) {
+        return resp.json().catch(function () { return {}; }).then(function (data) {
+          return { status: resp.status, data: data };
+        });
+      });
+    }
+
+    function el(tag, cls, text) {
+      var node = document.createElement(tag);
+      if (cls) node.className = cls;
+      if (text !== undefined && text !== null) node.textContent = String(text);
+      return node;
+    }
+
+    function fmt(value) {
+      if (!value) return '';
+      return String(value).replace('T', ' ').slice(0, 19);
+    }
+
+    function statusClass(value) {
+      return ORDER.indexOf(value) >= 0 ? value : '';
+    }
+
+    function renderTabs(counts) {
+      var box = document.getElementById('at-tabs');
+      box.textContent = '';
+      ORDER.forEach(function (key) {
+        var btn = el('button', 'at-tab' + (key === current ? ' on' : ''), LABELS[key]);
+        var n = (counts && counts[key] !== undefined) ? counts[key] : 0;
+        btn.appendChild(el('span', 'n', n));
+        btn.addEventListener('click', function () { current = key; load(); });
+        box.appendChild(btn);
+      });
+      box.appendChild(el('div', 'at-spacer'));
+      var refresh = el('button', 'at-btn', TXT.refresh);
+      refresh.addEventListener('click', load);
+      box.appendChild(refresh);
+    }
+
+    function renderRows(rows) {
+      var body = document.getElementById('at-rows');
+      body.textContent = '';
+      rows.forEach(function (row) {
+        var tr = el('tr');
+        tr.appendChild(el('td', 'at-mono', row.id));
+
+        var tool = el('td');
+        tool.appendChild(el('div', null, row.tool_name || ''));
+        if (row.args_digest) {
+          tool.appendChild(el('div', 'at-mono', String(row.args_digest).slice(0, 12)));
+        }
+        tr.appendChild(tool);
+
+        var st = el('td');
+        st.appendChild(el('span', 'at-tag ' + statusClass(row.status),
+                          LABELS[row.status] || row.status || ''));
+        if (row.is_expired) st.appendChild(el('div', 'at-exp', TXT.expired));
+        tr.appendChild(st);
+
+        tr.appendChild(el('td', 'at-mono', row.task_id || ''));
+        tr.appendChild(el('td', 'at-mono', row.agent_id || ''));
+        tr.appendChild(el('td', 'at-mono', fmt(row.requested_at)));
+
+        var decided = el('td');
+        decided.appendChild(el('div', 'at-mono', row.decided_by || ''));
+        decided.appendChild(el('div', 'at-mono', row.reason || ''));
+        tr.appendChild(decided);
+
+        var ops = el('td');
+        if (row.status === 'pending') {
+          var okBtn = el('button', 'at-btn at-ok', TXT.approve);
+          okBtn.addEventListener('click', function () { act(row.id, 'approve'); });
+          var noBtn = el('button', 'at-btn at-no', TXT.reject);
+          noBtn.addEventListener('click', function () {
+            if (!window.confirm(TXT.confirmReject)) return;
+            var note = window.prompt(TXT.rejectNote, '');
+            if (note === null) return;
+            act(row.id, 'reject', note);
+          });
+          ops.appendChild(okBtn);
+          ops.appendChild(noBtn);
+        }
+        tr.appendChild(ops);
+        body.appendChild(tr);
+      });
+    }
+
+    function show(counts, message) {
+      renderTabs(counts || {});
+      document.getElementById('at-rows').textContent = '';
+      var msg = document.getElementById('at-msg');
+      msg.textContent = message || TXT.empty;
+      msg.style.display = '';
+    }
+
+    function act(id, kind, note) {
+      var opts = { method: 'POST' };
+      if (note !== undefined) opts.body = JSON.stringify({ note: note });
+      api(API_BASE + '/' + encodeURIComponent(id) + '/' + kind, opts)
+        .then(function (res) {
+          if (res.status === 401 || res.status === 403) { show(null, TXT.needAdmin); return; }
+          load();
+        })
+        .catch(function () { show(null, TXT.failed); });
+    }
+
+    function load() {
+      api(API_BASE + '/list?status=' + encodeURIComponent(current))
+        .then(function (res) {
+          if (res.status === 401 || res.status === 403) { show(null, TXT.needAdmin); return; }
+          var data = res.data || {};
+          if (!data.ok) {
+            show(data.counts, res.status === 503 ? TXT.failed : (data.error || TXT.failed));
+            return;
+          }
+          renderTabs(data.counts);
+          var rows = data.rows || [];
+          if (!rows.length) { show(data.counts, TXT.empty); return; }
+          document.getElementById('at-msg').style.display = 'none';
+          renderRows(rows);
+        })
+        .catch(function () { show(null, TXT.failed); });
+    }
+
+    load();
+  })();
+  </script>
+</body>
+</html>

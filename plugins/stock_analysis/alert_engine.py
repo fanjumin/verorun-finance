@@ -84,7 +84,12 @@ def coerce_channel(raw):
 
 
 def serialize_rule(row: dict) -> dict:
-    """规则行 → 契约 DTO（threshold Decimal→float|null，id 转字符串对齐桌面）。"""
+    """规则行 → 契约 DTO（threshold Decimal→float|null，id 转字符串对齐桌面）。
+
+    trigger_count：累计触发次数（list_alerts 的聚合列）。桌面端此前自行按
+    alert_id 统计事件流，属统计口径 —— 现由插件给出（2026-09-21 整改）；
+    非 list_alerts 来源的行（如 get_alert_row）无该列时按 0 处理。
+    """
     th = row.get("threshold")
     return {
         "id": str(row["id"]),
@@ -98,6 +103,7 @@ def serialize_rule(row: dict) -> dict:
         "silent_to": row.get("silent_to"),
         "last_triggered_at": row.get("last_triggered_at"),
         "created_at": row.get("created_at"),
+        "trigger_count": int(row.get("trigger_count") or 0),
     }
 
 

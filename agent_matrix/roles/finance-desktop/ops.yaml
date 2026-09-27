@@ -1,9 +1,9 @@
-name: Ops
+name: System Ops
 slug: ops
 role_type: sub
 editions:
   - finance-desktop
-description: System ops engineer — automation, health monitoring, alerting, deployment, captcha
+description: System operations — backup, health monitoring, alert channels, workflow scheduling
 domain: ops
 managed_modules:
   - automation
@@ -15,6 +15,13 @@ managed_modules:
   - deployment
   - provision
   - captcha_embedded
+  # 桌面单机版的通知/告警**外发通道**归属本角色（行业惯例：通知通道属系统运维，
+  # 非"客服"业务）——email 是告警规则的 channel 之一，im_gateway 监听
+  # stock.alert.triggered。二者 plugin.json 仍声明 agent_role=service（官方版语义），
+  # 在本版由本角色的 managed_modules 认领（见 models.resolve_agent_roles ②）。
+  - email
+  - im_gateway
+  - vault
 provider_model_id: 401638
 provider: deepseek
 model_name: deepseek-v4-flash

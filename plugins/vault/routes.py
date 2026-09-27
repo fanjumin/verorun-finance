@@ -209,7 +209,7 @@ def _require_vault_auth(f):
     """Decorator: require admin login for API access.
     
     - 仅接受 HttpOnly Cookie（sso_token）或 Authorization Bearer 头，禁止 URL 参数传 token
-    - 校验 CSRF（状态变更方法）
+    - 校验 CSRF（状态变更方法；仅 Cookie 鉴权路径，Bearer 头鉴权免校验）
     - 放行内部定时任务（X-Internal-Secret 匹配 HEALTH_SECRET）
     """
     @wraps(f)
@@ -221,11 +221,13 @@ def _require_vault_auth(f):
             request.vault_user = {'is_admin': True, 'role': 'super_admin', 'internal': True}
             return f(*args, **kwargs)
 
+        used_header_auth = False
         token = request.cookies.get('sso_token')
         if not token:
             auth_header = request.headers.get('Authorization', '')
             if auth_header.startswith('Bearer '):
                 token = auth_header[7:]
+                used_header_auth = True
 
         if not token:
             if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or \
@@ -244,8 +246,12 @@ def _require_vault_auth(f):
                 return jsonify({'success': False, 'error': 'Authentication required'}), 401
             return redirect('/admin/login')
 
-        # CSRF 防护（状态变更方法）
-        if not _validate_csrf():
+        # CSRF 防护（状态变更方法）—— 仅 Cookie 鉴权需要：
+        #   双重提交 Cookie 的目的是防"浏览器自动携带凭证"的跨站伪造，
+        #   而 Origin=null 的桌面壳（Electron file://）既拿不到 csrf_token Cookie，
+        #   也无法伪造带 Bearer 的 Authorization 头（需先持有令牌）。
+        #   故头鉴权路径跳过 CSRF，Cookie 鉴权路径维持原校验，浏览器安全性不变。
+        if not used_header_auth and not _validate_csrf():
             return jsonify({'success': False, 'error': 'CSRF validation failed'}), 403
 
         request.vault_user = payload
@@ -404,6 +410,15 @@ def api_save_settings():
         for section in ('encryption', 'retention', 'notifications', 'storage'):
             if section in data and isinstance(data[section], dict):
                 cfg[section] = data[section]
+
+        # 顶层 keep_days 必须可写：/api/cleanup 直接读顶层 cfg['keep_days']（见
+        # api_cleanup_backups），若只允许写入 retention 段，界面会「保存成功」而清理
+        # 仍按旧值执行（口径分叉）。桌面端保留天数即走此键。
+        if 'keep_days' in data:
+            try:
+                cfg['keep_days'] = max(1, int(data['keep_days']))
+            except (TypeError, ValueError):
+                return jsonify({'success': False, 'error': 'keep_days must be an integer'}), 400
 
         # 通知渠道敏感字段加密
         notify = cfg.get('notifications', {})

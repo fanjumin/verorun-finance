@@ -31,9 +31,9 @@ def _require_admin():
 
 def _sanitize_filename(name):
     """移除路径遍历字符"""
-    return re.sub(r'[/\\]', '_(', name)
+    return re.sub(r'[/\\]', '_', name)
 
-@theme_bp.route(')/themes', methods=['GET'])
+@theme_bp.route('/themes', methods=['GET'])
 def list_themes():
     err = _require_admin()
     if err: return err

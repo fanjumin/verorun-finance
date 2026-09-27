@@ -1,0 +1,440 @@
+// ============================================================
+// net_proxy —— 网络代理中心（裸 JS partial）
+// 由 admin.html 外层统一 script 标签包裹，切勿在此再加 script 标签
+// 依赖全局工具：T(token)、esc()（由 admin core 提供）
+// 前置：admin.html 需 include 本文件，导航 key = net_proxy（调用 window.l_net_proxy）
+// 数据源：真实接口 /plugin/net_proxy/admin/status|channels|rules|logs（P5 已实现）
+// ============================================================
+
+window.l_net_proxy=function(){
+  var pt=document.getElementById("pt");
+  if(pt)pt.textContent={{ _('Net Proxy') | tojson }};
+  var mc=document.getElementById("mc");
+  if(!mc)return;
+
+  var h='';
+  // ── 五张状态卡（§11 P6 验收：Dashboard 五指标有值）──
+  h+='<div class="gr">';
+  h+='<div class="cd"><div class="l">'+{{ _('Proxy Enabled') | tojson }}+'</div><div class="v" id="np-enabled">-</div></div>';
+  h+='<div class="cd"><div class="l">'+{{ _('Channels') | tojson }}+'</div><div class="v" id="np-channels">-</div></div>';
+  h+='<div class="cd"><div class="l">'+{{ _('Healthy') | tojson }}+'</div><div class="v" id="np-healthy">-</div></div>';
+  h+='<div class="cd"><div class="l">'+{{ _('Fused') | tojson }}+'</div><div class="v" id="np-fused">-</div></div>';
+  h+='<div class="cd"><div class="l">'+{{ _('Success Rate (24h)') | tojson }}+'</div><div class="v" id="np-rate">-</div></div>';
+  h+='</div>';
+
+  // ── 第二排：环境信息 ──
+  h+='<div class="gr">';
+  h+='<div class="cd"><div class="l">'+{{ _('Current Region') | tojson }}+'</div><div class="v" id="np-region">-</div></div>';
+  h+='<div class="cd"><div class="l">'+{{ _('Default Policy') | tojson }}+'</div><div class="v" id="np-policy">-</div></div>';
+  h+='<div class="cd"><div class="l">'+{{ _('Direct Ratio (24h)') | tojson }}+'</div><div class="v" id="np-direct">-</div></div>';
+  h+='<div class="cd"><div class="l">'+{{ _('Avg Latency (24h)') | tojson }}+'</div><div class="v" id="np-latency">-</div></div>';
+  h+='<div class="cd"><div class="l">'+{{ _('Crypto Available') | tojson }}+'</div><div class="v" id="np-crypto">-</div></div>';
+  h+='<div class="cd"><div class="l">'+{{ _('Blocked Networks') | tojson }}+'</div><div class="v" id="np-blocked">-</div></div>';
+  h+='</div>';
+
+  // ── Tab 切换 ──
+  h+='<div class="sbar" style="margin-top:6px">';
+  h+='<button class="btn bp" id="np-tab-ch" onclick="npTab(\'ch\')">'+{{ _('Channels') | tojson }}+'</button>';
+  h+='<button class="btn bo" id="np-tab-ru" onclick="npTab(\'ru\')">'+{{ _('Routing Rules') | tojson }}+'</button>';
+  h+='<button class="btn bo" id="np-tab-lo" onclick="npTab(\'lo\')">'+{{ _('Recent Logs') | tojson }}+'</button>';
+  h+='<span style="flex:1"></span>';
+  h+='<button class="btn bo" onclick="npLoadStatus()">'+{{ _('Refresh') | tojson }}+'</button>';
+  h+='</div>';
+
+  // ── 通道面板 ──
+  h+='<div id="np-panel-ch">';
+  h+='<div class="sbar"><button class="btn bp" onclick="npChannelForm()">'+{{ _('Add Channel') | tojson }}+'</button></div>';
+  h+='<table><thead><tr>';
+  h+='<th>ID</th><th>'+{{ _('Name') | tojson }}+'</th><th>'+{{ _('Protocol') | tojson }}+'</th>';
+  h+='<th>'+{{ _('Host') | tojson }}+'</th><th>'+{{ _('Port') | tojson }}+'</th>';
+  h+='<th>'+{{ _('Region') | tojson }}+'</th><th>'+{{ _('Weight') | tojson }}+'</th>';
+  h+='<th>'+{{ _('Enabled') | tojson }}+'</th><th>'+{{ _('Last Latency') | tojson }}+'</th>';
+  h+='<th>'+{{ _('Actions') | tojson }}+'</th></tr></thead>';
+  h+='<tbody id="np-ch-tbody"><tr><td colspan="10" class="em">'+{{ _('Loading...') | tojson }}+'</td></tr></tbody></table>';
+  h+='</div>';
+
+  // ── 规则面板 ──
+  h+='<div id="np-panel-ru" style="display:none">';
+  h+='<div class="sbar"><button class="btn bp" onclick="npRuleForm()">'+{{ _('Add Rule') | tojson }}+'</button></div>';
+  h+='<table><thead><tr>';
+  h+='<th>ID</th><th>'+{{ _('Priority') | tojson }}+'</th><th>'+{{ _('Target Pattern') | tojson }}+'</th>';
+  h+='<th>'+{{ _('Caller') | tojson }}+'</th><th>'+{{ _('Region') | tojson }}+'</th>';
+  h+='<th>'+{{ _('Action') | tojson }}+'</th><th>'+{{ _('Note') | tojson }}+'</th>';
+  h+='<th>'+{{ _('Enabled') | tojson }}+'</th><th>'+{{ _('Actions') | tojson }}+'</th>';
+  h+='</tr></thead>';
+  h+='<tbody id="np-ru-tbody"><tr><td colspan="9" class="em">'+{{ _('Loading...') | tojson }}+'</td></tr></tbody></table>';
+  h+='</div>';
+
+  // ── 日志面板 ──
+  h+='<div id="np-panel-lo" style="display:none">';
+  h+='<div class="sbar">';
+  h+='<button class="btn bp" id="np-log-req" onclick="npLogs(\'request\')">'+{{ _('Egress Logs') | tojson }}+'</button>';
+  h+='<button class="btn bo" id="np-log-prb" onclick="npLogs(\'probe\')">'+{{ _('Probe Logs') | tojson }}+'</button>';
+  h+='</div>';
+  h+='<div id="np-log-body"><div class="lo"><div class="s"></div>'+{{ _('Loading...') | tojson }}+'</div></div>';
+  h+='</div>';
+
+  mc.innerHTML=h;
+
+  npLoadStatus();
+  npLoadChannels();
+  npLoadRules();
+};
+
+// ─────────────────────────── 工具 ───────────────────────────
+
+// 本 partial 自带 toast：showToast() 在本仓库是分区各自定义的，不保证全局可见
+function npToast(msg,type){
+  var t=document.getElementById("adminToast");
+  if(!t)return;
+  t.textContent=msg;
+  t.className="toast show "+(type||"");
+  setTimeout(function(){t.classList.remove("show")},3000);
+}
+
+function npApi(path,opts){
+  opts=opts||{};
+  opts.headers=opts.headers||{};
+  opts.headers["Authorization"]="Bearer "+T;
+  if(opts.body&&typeof opts.body!=="string"){
+    opts.headers["Content-Type"]="application/json";
+    opts.body=JSON.stringify(opts.body);
+  }
+  return fetch("/plugin/net_proxy/admin"+path,opts).then(function(r){
+    return r.json().then(function(d){return {status:r.status,body:d};});
+  }).then(function(res){
+    if(!res.body||res.body.success!==true){
+      var msg=(res.body&&res.body.error)||("HTTP "+res.status);
+      npToast(msg,"r");
+      throw new Error(msg);
+    }
+    return res.body;
+  });
+}
+
+function npSet(id,val,cls){
+  var el=document.getElementById(id);
+  if(!el)return;
+  el.textContent=val;
+  el.className="v"+(cls?(" "+cls):"");
+}
+
+function npTab(which){
+  ["ch","ru","lo"].forEach(function(k){
+    var p=document.getElementById("np-panel-"+k);
+    var b=document.getElementById("np-tab-"+k);
+    if(p)p.style.display=(k===which)?"":"none";
+    if(b)b.className="btn "+((k===which)?"bp":"bo");
+  });
+  if(which==="lo")npLogs("request");
+}
+
+// ────────────────── 状态卡（真实数据源 /admin/status）──────────────────
+
+function npLoadStatus(){
+  npApi("/status").then(function(res){
+    var d=res.data||{};
+    npSet("np-enabled",d.proxy_enabled?{{ _('Yes') | tojson }}:{{ _('No') | tojson }},d.proxy_enabled?"g":"r");
+    var c=(d.channels_total||0)+" / "+(d.channels_enabled||0);
+    npSet("np-channels",c,"b");
+    npSet("np-healthy",d.channels_healthy||0,(d.channels_healthy>0)?"g":"");
+    npSet("np-fused",d.channels_fused||0,(d.channels_fused>0)?"r":"");
+    var rate=d.success_rate_24h;
+    npSet("np-rate",(rate===undefined||rate===null)?"-":(rate+"%"),(rate>=90)?"g":"r");
+    npSet("np-region",d.current_region||"-");
+    npSet("np-policy",d.default_policy||"-");
+    npSet("np-direct",(d.direct_ratio_24h===undefined||d.direct_ratio_24h===null)?"-":(d.direct_ratio_24h+"%"));
+    npSet("np-latency",(d.avg_latency_ms_24h===undefined||d.avg_latency_ms_24h===null)?"-":(d.avg_latency_ms_24h+" ms"));
+    var cr=document.getElementById("np-crypto");
+    if(cr){cr.textContent=d.crypto_available?{{ _('Yes') | tojson }}:{{ _('No') | tojson }};cr.className="v "+(d.crypto_available?"g":"r");}
+    npSet("np-blocked",d.blocked_networks||0);
+  }).catch(function(){});
+}
+
+// ─────────────────────────── 通道 ───────────────────────────
+
+function npLoadChannels(){
+  npApi("/channels").then(function(res){
+    var tb=document.getElementById("np-ch-tbody");
+    if(!tb)return;
+    var rows=(res.data&&res.data.channels)||[];
+    if(!rows.length){
+      tb.innerHTML='<tr><td colspan="10" class="em">'+{{ _('No data') | tojson }}+'</td></tr>';
+      return;
+    }
+    var h='';
+    rows.forEach(function(c){
+      var badge=c.fused?'<span class="bdg pd">'+{{ _('Fused') | tojson }}+'</span>'
+                       :(c.enabled?'<span class="bdg on">'+{{ _('Enabled') | tojson }}+'</span>'
+                                  :'<span class="bdg off">'+{{ _('Disabled') | tojson }}+'</span>');
+      h+='<tr>';
+      h+='<td>'+c.id+'</td>';
+      h+='<td>'+esc(c.name||'')+(c.has_password?' <span class="bdg on">'+{{ _('Password') | tojson }}+'</span>':'')+'</td>';
+      h+='<td>'+esc(c.protocol||'')+'</td>';
+      h+='<td>'+esc(c.host||'')+'</td>';
+      h+='<td>'+c.port+'</td>';
+      h+='<td>'+esc(c.region||'')+'</td>';
+      h+='<td>'+c.weight+'</td>';
+      h+='<td>'+badge+'</td>';
+      h+='<td>'+((c.last_latency_ms===null||c.last_latency_ms===undefined)?'-':(c.last_latency_ms+' ms'))+'</td>';
+      h+='<td>';
+      h+='<button class="btn bo bs" onclick="npProbeChannel('+c.id+')">'+{{ _('Probe') | tojson }}+'</button> ';
+      h+='<button class="btn bo bs" onclick="npChannelForm('+c.id+')">'+{{ _('Edit') | tojson }}+'</button> ';
+      h+='<button class="btn bo bs" onclick="npDelChannel('+c.id+')">'+{{ _('Delete') | tojson }}+'</button>';
+      h+='</td></tr>';
+    });
+    tb.innerHTML=h;
+    if(window._npChannels)window._npChannels=rows;
+  }).catch(function(){
+    var tb=document.getElementById("np-ch-tbody");
+    if(tb)tb.innerHTML='<tr><td colspan="10" class="em">'+{{ _('No data') | tojson }}+'</td></tr>';
+  });
+}
+
+function npChannelForm(id){
+  var c=null;
+  if(id&&window._npChannels){
+    window._npChannels.forEach(function(x){if(x.id===id)c=x;});
+  }
+  var title=id?{{ _('Edit Channel') | tojson }}:{{ _('Add Channel') | tojson }};
+  var v=function(k,d){return (c&&c[k]!==undefined&&c[k]!==null)?c[k]:(d||'');};
+  var L={
+    name:{{ _('Name') | tojson }},protocol:{{ _('Protocol') | tojson }},
+    host:{{ _('Host') | tojson }},port:{{ _('Port') | tojson }},
+    username:{{ _('Username') | tojson }},password:{{ _('Password') | tojson }},
+    region:{{ _('Region') | tojson }},usage:{{ _('Usage Tags') | tojson }},
+    weight:{{ _('Weight') | tojson }},maxc:{{ _('Max Concurrent') | tojson }}
+  };
+  var prot=v('protocol','http');
+  var opt=function(val,cur){return '<option value="'+val+'"'+(val===cur?' selected':'')+'>'+val+'</option>';};
+  var html='';
+  html+='<h3>'+title+'</h3>';
+  html+='<div class="fl"><label style="width:120px">'+L.name+'</label><input class="in" id="npc-name" style="flex:1" value="'+esc(v('name'))+'"></div>';
+  html+='<div class="fl"><label style="width:120px">'+L.protocol+'</label><select class="in" id="npc-protocol">'+opt('http',prot)+opt('https',prot)+opt('socks5',prot)+'</select></div>';
+  html+='<div class="fl"><label style="width:120px">'+L.host+'</label><input class="in" id="npc-host" style="flex:1" value="'+esc(v('host'))+'"></div>';
+  html+='<div class="fl"><label style="width:120px">'+L.port+'</label><input class="in" id="npc-port" style="flex:1" value="'+esc(v('port',8080))+'"></div>';
+  html+='<div class="fl"><label style="width:120px">'+L.username+'</label><input class="in" id="npc-username" style="flex:1" value="'+esc(v('auth_username'))+'"></div>';
+  html+='<div class="fl"><label style="width:120px">'+L.password+'</label><input class="in" type="password" id="npc-password" style="flex:1" placeholder="'+esc(v('auth_password_masked'))+'"></div>';
+  html+='<div class="fl"><label style="width:120px">'+L.region+'</label><select class="in" id="npc-region">'+opt('any',v('region','any'))+opt('cn',v('region','any'))+opt('os',v('region','any'))+'</select></div>';
+  html+='<div class="fl"><label style="width:120px">'+L.usage+'</label><input class="in" id="npc-usage" style="flex:1" value="'+esc((v('usage_tags',[])||[]).join(','))+'"></div>';
+  html+='<div class="fl"><label style="width:120px">'+L.weight+'</label><input class="in" id="npc-weight" style="flex:1" value="'+esc(v('weight',1))+'"></div>';
+  html+='<div class="fl"><label style="width:120px">'+L.maxc+'</label><input class="in" id="npc-maxc" style="flex:1" value="'+esc(v('max_concurrent',0))+'"></div>';
+  html+='<div class="fl" style="border:none"><label style="width:120px">'+{{ _('Enabled') | tojson }}+'</label><input type="checkbox" id="npc-enabled"'+(v('enabled',true)?' checked':'')+'></div>';
+  html+='<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">';
+  html+='<button class="btn bo" onclick="npCloseModal()">'+{{ _('Cancel') | tojson }}+'</button>';
+  html+='<button class="btn bp" id="npc-save">'+{{ _('Save') | tojson }}+'</button>';
+  html+='</div>';
+  npModal(html);
+  document.getElementById("npc-save").onclick=function(){npSaveChannel(id);};
+}
+
+function npSaveChannel(id){
+  var g=function(k){var e=document.getElementById(k);return e?e.value:'';};
+  var body={
+    name:g("npc-name"),protocol:g("npc-protocol"),host:g("npc-host"),
+    port:g("npc-port"),auth_username:g("npc-username"),
+    region:g("npc-region"),usage_tags:g("npc-usage"),
+    weight:g("npc-weight"),max_concurrent:g("npc-maxc"),
+    enabled:document.getElementById("npc-enabled").checked
+  };
+  var pw=g("npc-password");
+  if(pw)body.auth_password=pw;
+  var req=id?npApi("/channels/"+id,{method:"PUT",body:body})
+            :npApi("/channels",{method:"POST",body:body});
+  req.then(function(){
+    npCloseModal();
+    npToast(id?{{ _('Updated') | tojson }}:{{ _('Created') | tojson }},"g");
+    npLoadChannels();npLoadStatus();
+  }).catch(function(){});
+}
+
+function npDelChannel(id){
+  showConfirm({{ _('Delete') | tojson }},{{ _('Delete') | tojson }}+' #'+id+' ?',function(){
+    npApi("/channels/"+id,{method:"DELETE"}).then(function(){
+      npToast({{ _('Deleted') | tojson }},"g");
+      npLoadChannels();npLoadStatus();
+    }).catch(function(){});
+  },{{ _('Delete') | tojson }});
+}
+
+function npProbeChannel(id){
+  npApi("/channels/"+id+"/probe",{method:"POST",body:{}}).then(function(res){
+    var d=res.data||{};
+    if(d.skipped){
+      npToast(d.hint||{{ _('Probe target not configured, probe skipped') | tojson }},"");
+    }else{
+      npToast('#'+id+' '+(d.ok?{{ _('Healthy') | tojson }}:{{ _('Fused') | tojson }})+' '+(d.latency_ms||0)+' ms — '+(d.detail||''),d.ok?"g":"r");
+    }
+    npLoadChannels();npLoadStatus();
+  }).catch(function(){});
+}
+
+// ─────────────────────────── 规则 ───────────────────────────
+
+function npLoadRules(){
+  npApi("/rules").then(function(res){
+    var tb=document.getElementById("np-ru-tbody");
+    if(!tb)return;
+    var rows=(res.data&&res.data.rules)||[];
+    window._npRules=rows;
+    if(!rows.length){
+      tb.innerHTML='<tr><td colspan="9" class="em">'+{{ _('No data') | tojson }}+'</td></tr>';
+      return;
+    }
+    var h='';
+    rows.forEach(function(r){
+      var act=r.action||'';
+      var actCell=(act.indexOf('CHANNEL:')===0)
+        ? '<span class="bdg pd">'+esc(act)+'</span>'
+        : (act==='DENY'?'<span class="bdg off">'+{{ _('Deny') | tojson }}+'</span>'
+                       :'<span class="bdg on">'+{{ _('Direct') | tojson }}+'</span>');
+      h+='<tr>';
+      h+='<td>'+r.id+'</td>';
+      h+='<td>'+r.priority+'</td>';
+      h+='<td>'+esc(r.target_pattern||'')+'</td>';
+      h+='<td>'+esc(r.caller||'')+'</td>';
+      h+='<td>'+esc(r.region||'')+'</td>';
+      h+='<td>'+actCell+'</td>';
+      h+='<td>'+esc(r.note||'')+'</td>';
+      h+='<td>'+(r.enabled?'<span class="bdg on">'+{{ _('Enabled') | tojson }}+'</span>':'<span class="bdg off">'+{{ _('Disabled') | tojson }}+'</span>')+'</td>';
+      h+='<td>';
+      h+='<button class="btn bo bs" onclick="npRuleForm('+r.id+')">'+{{ _('Edit') | tojson }}+'</button> ';
+      h+='<button class="btn bo bs" onclick="npDelRule('+r.id+')">'+{{ _('Delete') | tojson }}+'</button>';
+      h+='</td></tr>';
+    });
+    tb.innerHTML=h;
+  }).catch(function(){
+    var tb=document.getElementById("np-ru-tbody");
+    if(tb)tb.innerHTML='<tr><td colspan="9" class="em">'+{{ _('No data') | tojson }}+'</td></tr>';
+  });
+}
+
+function npRuleForm(id){
+  var r=null;
+  if(id&&window._npRules)window._npRules.forEach(function(x){if(x.id===id)r=x;});
+  var title=id?{{ _('Edit Rule') | tojson }}:{{ _('Add Rule') | tojson }};
+  var v=function(k,d){return (r&&r[k]!==undefined&&r[k]!==null)?r[k]:(d||'');};
+  var chans=window._npChannels||[];
+  var act=v('action','DIRECT');
+  var actOpts='<option value="DIRECT"'+(act==='DIRECT'?' selected':'')+'>Direct</option>'+
+              '<option value="DENY"'+(act==='DENY'?' selected':'')+'>Deny</option>';
+  chans.forEach(function(c){
+    var val='CHANNEL:'+c.id;
+    actOpts+='<option value="'+val+'"'+(act===val?' selected':'')+'>'+val+' ('+esc(c.name||'')+')</option>';
+  });
+  var html='';
+  html+='<h3>'+title+'</h3>';
+  html+='<div class="fl"><label style="width:120px">'+{{ _('Priority') | tojson }}+'</label><input class="in" id="npr-priority" style="flex:1" value="'+esc(v('priority',100))+'"></div>';
+  html+='<div class="fl"><label style="width:120px">'+{{ _('Target Pattern') | tojson }}+'</label><input class="in" id="npr-pattern" style="flex:1" value="'+esc(v('target_pattern','*'))+'"></div>';
+  html+='<div class="fl"><label style="width:120px">'+{{ _('Caller') | tojson }}+'</label><input class="in" id="npr-caller" style="flex:1" value="'+esc(v('caller','*'))+'"></div>';
+  html+='<div class="fl"><label style="width:120px">'+{{ _('Region') | tojson }}+'</label><input class="in" id="npr-region" style="flex:1" value="'+esc(v('region'))+'"></div>';
+  html+='<div class="fl"><label style="width:120px">'+{{ _('Action') | tojson }}+'</label><select class="in" id="npr-action" style="flex:1">'+actOpts+'</select></div>';
+  html+='<div class="fl"><label style="width:120px">'+{{ _('Usage Tags') | tojson }}+'</label><input class="in" id="npr-usage" style="flex:1" value="'+esc((v('usage_tags',[])||[]).join(','))+'"></div>';
+  html+='<div class="fl"><label style="width:120px">'+{{ _('Note') | tojson }}+'</label><input class="in" id="npr-note" style="flex:1" value="'+esc(v('note'))+'"></div>';
+  html+='<div class="fl" style="border:none"><label style="width:120px">'+{{ _('Enabled') | tojson }}+'</label><input type="checkbox" id="npr-enabled"'+(v('enabled',true)?' checked':'')+'></div>';
+  html+='<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">';
+  html+='<button class="btn bo" onclick="npCloseModal()">'+{{ _('Cancel') | tojson }}+'</button>';
+  html+='<button class="btn bp" id="npr-save">'+{{ _('Save') | tojson }}+'</button>';
+  html+='</div>';
+  npModal(html);
+  document.getElementById("npr-save").onclick=function(){npSaveRule(id);};
+}
+
+function npSaveRule(id){
+  var g=function(k){var e=document.getElementById(k);return e?e.value:'';};
+  var body={
+    priority:g("npr-priority"),target_pattern:g("npr-pattern"),
+    caller:g("npr-caller"),region:g("npr-region"),action:g("npr-action"),
+    usage_tags:g("npr-usage"),note:g("npr-note"),
+    enabled:document.getElementById("npr-enabled").checked
+  };
+  var req=id?npApi("/rules/"+id,{method:"PUT",body:body})
+            :npApi("/rules",{method:"POST",body:body});
+  req.then(function(){
+    npCloseModal();
+    npToast(id?{{ _('Updated') | tojson }}:{{ _('Created') | tojson }},"g");
+    npLoadRules();
+  }).catch(function(){});
+}
+
+function npDelRule(id){
+  showConfirm({{ _('Delete') | tojson }},{{ _('Delete') | tojson }}+' #'+id+' ?',function(){
+    npApi("/rules/"+id,{method:"DELETE"}).then(function(){
+      npToast({{ _('Deleted') | tojson }},"g");
+      npLoadRules();
+    }).catch(function(){});
+  },{{ _('Delete') | tojson }});
+}
+
+// ─────────────────────────── 日志 ───────────────────────────
+
+function npLogs(kind){
+  var rb=document.getElementById("np-log-req");
+  var pb=document.getElementById("np-log-prb");
+  if(rb)rb.className="btn "+((kind==="request")?"bp":"bo");
+  if(pb)pb.className="btn "+((kind==="probe")?"bp":"bo");
+  var body=document.getElementById("np-log-body");
+  if(body)body.innerHTML='<div class="lo"><div class="s"></div>'+{{ _('Loading...') | tojson }}+'</div>';
+  npApi("/logs?kind="+kind+"&limit=50").then(function(res){
+    var rows=(res.data&&res.data.logs)||[];
+    var b=document.getElementById("np-log-body");
+    if(!b)return;
+    if(!rows.length){b.innerHTML='<div class="em">'+{{ _('No data') | tojson }}+'</div>';return;}
+    var h='<table><thead><tr>';
+    if(kind==="request"){
+      h+='<th>'+{{ _('Time') | tojson }}+'</th><th>'+{{ _('Caller') | tojson }}+'</th>';
+      h+='<th>'+{{ _('Host') | tojson }}+'</th><th>'+{{ _('Action') | tojson }}+'</th>';
+      h+='<th>'+{{ _('Channel') | tojson }}+'</th><th>'+{{ _('Status') | tojson }}+'</th>';
+      h+='<th>'+{{ _('Last Latency') | tojson }}+'</th><th>'+{{ _('Error') | tojson }}+'</th>';
+    }else{
+      h+='<th>'+{{ _('Time') | tojson }}+'</th><th>'+{{ _('Channel') | tojson }}+'</th>';
+      h+='<th>'+{{ _('Healthy') | tojson }}+'</th><th>'+{{ _('Last Latency') | tojson }}+'</th>';
+      h+='<th>'+{{ _('Detail') | tojson }}+'</th>';
+    }
+    h+='</tr></thead><tbody>';
+    rows.forEach(function(x){
+      h+='<tr>';
+      if(kind==="request"){
+        h+='<td>'+esc(x.ts||'')+'</td><td>'+esc(x.caller||'')+'</td>';
+        h+='<td>'+esc(x.target_host||'')+'</td><td>'+esc(x.action||'')+'</td>';
+        h+='<td>'+(x.channel_id===null||x.channel_id===undefined?'-':x.channel_id)+'</td>';
+        h+='<td>'+(x.status_code===null||x.status_code===undefined?'-':x.status_code)+'</td>';
+        h+='<td>'+(x.latency_ms===null||x.latency_ms===undefined?'-':(x.latency_ms+' ms'))+'</td>';
+        h+='<td>'+esc(x.error||'')+'</td>';
+      }else{
+        h+='<td>'+esc(x.ts||'')+'</td>';
+        h+='<td>'+esc(x.channel_name||('#'+(x.channel_id||'')))+'</td>';
+        h+='<td>'+(x.ok?'<span class="bdg on">'+{{ _('Yes') | tojson }}+'</span>':'<span class="bdg off">'+{{ _('No') | tojson }}+'</span>')+'</td>';
+        h+='<td>'+(x.latency_ms===null||x.latency_ms===undefined?'-':(x.latency_ms+' ms'))+'</td>';
+        h+='<td>'+esc(x.detail||'')+'</td>';
+      }
+      h+='</tr>';
+    });
+    h+='</tbody></table>';
+    b.innerHTML=h;
+  }).catch(function(){
+    var b=document.getElementById("np-log-body");
+    if(b)b.innerHTML='<div class="em">'+{{ _('No data') | tojson }}+'</div>';
+  });
+}
+
+// ─────────────────────────── 弹窗 ───────────────────────────
+
+function npModal(inner){
+  var old=document.getElementById("np-modal");
+  if(old)old.parentNode.removeChild(old);
+  var ov=document.createElement("div");
+  ov.id="np-modal";
+  ov.className="modal-overlay";
+  var box=document.createElement("div");
+  box.className="modal-box";
+  box.innerHTML=inner;
+  ov.appendChild(box);
+  ov.onclick=function(e){if(e.target===ov)npCloseModal();};
+  document.body.appendChild(ov);
+}
+
+function npCloseModal(){
+  var m=document.getElementById("np-modal");
+  if(m&&m.parentNode)m.parentNode.removeChild(m);
+}

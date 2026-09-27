@@ -201,6 +201,31 @@ PYTHONPATH="F:/Sites/VeroRun/.stock_deps" \
 | `tools/capture_baseline.py` | 基线录制（各类 analyze 快照） |
 | `tools/compare_baseline.py` | 双模式对比：实时容差 ±0.5% / mock 回放严格；自动过滤 timestamp/fetched_at |
 
+### 5.1 单元测试（一键，无需数据库 / 无需网络）
+
+本目录单元测试共 **147 例**，已纳入 CI 门禁
+（`.github/workflows/tests.yml` → `Run stock_analysis plugin tests`）。
+
+```bash
+# 在仓库根执行（全量，推荐）
+python -m unittest discover -s plugins/stock_analysis/tests -p "test_*.py" -v
+
+# 单模块
+python -m unittest plugins.stock_analysis.tests.test_backtest_invariants -v
+```
+
+约定与边界（2026-09-21 复测整改后确认）：
+
+- **框架为 unittest**，与同目录其余 9 个测试文件一致；**不引入 pytest 依赖**，
+  故 CI 的 `unittest` 步骤与本地 venv 用同一条命令即可跑通（复测 N4）。
+- **不依赖数据库**：PG 不可达（指向无效端口）时 147 例全绿，实测已验证。
+- **不依赖外部数据源**：插件对 tushare / akshare 均为**函数内延迟导入**，缺失时自动降级。
+- **不依赖 LLM 凭据**：`discuss_research` 等模块提供 `LLM_FACTORY` 注入缝，测试须
+  显式接线（曾因漏接线落到真实 UnifiedLLM 而在无凭据环境报错）。
+- 唯一第三方依赖为 `numpy` / `pandas`（CI 安装清单已含）。
+- 用例变更纪律：**实现侧改键名/口径时，必须同步本目录断言**——2026-09-21 复测发现的
+  4 例失败全部源于"实现已改、测试未跟"，根因是该套件此前长期未被持续运行。
+
 ---
 
 ## 6. 基线管理

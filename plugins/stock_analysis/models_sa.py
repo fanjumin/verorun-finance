@@ -25,8 +25,15 @@ _ensure_lock = threading.Lock()
 TABLES = ("sa_watchlist", "sa_analysis_run", "sa_analysis_result",
           "sa_signal_log", "sa_signal_realized", "sa_jobs",
           "sa_alerts", "sa_alert_events", "sa_sse_events",
+          "sa_flow_spans",
           "sa_corp_action", "sa_adj_factor", "sa_classification",
-          "sa_compliance_audit", "sa_compliance_approval", "sa_compliance_silence")
+          # B 段 S2：申万成分股明细（含权重）——分类表无权重列，另表存以便热力按权重聚合
+          "sa_sector_constituent",
+          "sa_compliance_audit", "sa_compliance_approval", "sa_compliance_silence",
+          # 方案 §4.7 仿真账户（默认通道，不涉真实资金）
+          "sa_paper_order", "sa_paper_position", "sa_paper_account",
+          # 证券主数据（全市场代码+名称），供 /api/search 检索
+          "sa_symbol_master")
 
 DDL = [
     # 标的池
@@ -155,6 +162,20 @@ DDL = [
         payload    JSONB NOT NULL,
         created_at TIMESTAMPTZ DEFAULT now()
     )""",
+    # 神经中枢 flow span 归档（P1，方案 §6.1.5 ①）：回放/钻取专用，保留 30 天。
+    # trace_id 贯穿（analyze/discuss=job_id，research DAG=_instance_id 兜底 config.job_id），
+    # 回放端点按 trace_id 聚合、按 id/created_at 排序（双时基纪律）。
+    """
+    CREATE TABLE IF NOT EXISTS sa_flow_spans (
+        id         BIGSERIAL PRIMARY KEY,
+        trace_id   VARCHAR(64) NOT NULL,
+        payload    JSONB NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT now()
+    )""",
+    """
+    CREATE INDEX IF NOT EXISTS idx_sfs_created ON sa_flow_spans (created_at)""",
+    """
+    CREATE INDEX IF NOT EXISTS idx_sfs_trace  ON sa_flow_spans (trace_id)""",
     # ---- v2 新增：复权与股本事件 ----
     # 除权除息事件（分红/送转/配股）。锚点 symbol+ex_date+action_type 幂等。
     # 只存 div_proc='实施' 的记录，预案会反复修改导致因子跳变。
@@ -199,6 +220,25 @@ DDL = [
         source        VARCHAR(32)  DEFAULT 'tushare',
         created_at    TIMESTAMPTZ  DEFAULT now(),
         CONSTRAINT uq_classification UNIQUE (symbol, standard, effective_from)
+    )""",
+    # B 段 S2：申万成分股明细。分类表 sa_classification 是 point-in-time 分类本体
+    # （无权重列，不宜为热力图改其语义），**权重与成分名另存此表**：
+    # 热力聚合按权重加权才接近申万指数真实涨跌（指数本身无免费行情源，见 sector_sw）。
+    """
+    CREATE TABLE IF NOT EXISTS sa_sector_constituent (
+        id            SERIAL PRIMARY KEY,
+        standard      VARCHAR(16)  NOT NULL,
+        industry_code VARCHAR(16)  NOT NULL,
+        industry_name VARCHAR(32)  NOT NULL,
+        symbol        VARCHAR(12)  NOT NULL,
+        name          VARCHAR(32),
+        weight        NUMERIC(10, 6),
+        in_date       DATE,
+        as_of         DATE         NOT NULL,
+        source        VARCHAR(32)  DEFAULT 'akshare_sw',
+        created_at    TIMESTAMPTZ  DEFAULT now(),
+        CONSTRAINT uq_sector_constituent
+            UNIQUE (standard, industry_code, symbol, as_of)
     )""",
     # ---- P2：合规与审计 ----
     # 审计留痕：所有分析请求留 who/when/symbol/evidence_hash/model/cost，保留 ≥3 年
@@ -247,15 +287,117 @@ DDL = [
         created_at   TIMESTAMPTZ  DEFAULT now(),
         CONSTRAINT uq_silence_user_sym UNIQUE (user_id, symbol, position_date)
     )""",
+    # ---- P4：仿真账户（方案 §4.7）----
+    # 说明：这里只存**仿真**账本，不涉真实资金；实盘适配器若将来启用，
+    # 其订单/持仓不得复用这三张表（避免仿真与真实混账）。
+    """
+    CREATE TABLE IF NOT EXISTS sa_paper_account (
+        id           SERIAL PRIMARY KEY,
+        user_id      VARCHAR(64)  NOT NULL,
+        cash         NUMERIC(16, 2) NOT NULL DEFAULT 1000000,
+        initial_cash NUMERIC(16, 2) NOT NULL DEFAULT 1000000,
+        created_at   TIMESTAMPTZ  DEFAULT now(),
+        updated_at   TIMESTAMPTZ  DEFAULT now(),
+        CONSTRAINT uq_paper_account_user UNIQUE (user_id)
+    )""",
+    """
+    CREATE TABLE IF NOT EXISTS sa_paper_order (
+        id            BIGSERIAL PRIMARY KEY,
+        order_id      VARCHAR(40)  NOT NULL,
+        user_id       VARCHAR(64)  NOT NULL,
+        symbol        VARCHAR(12)  NOT NULL,
+        side          VARCHAR(4)   NOT NULL,
+        qty           INT          NOT NULL,
+        price         NUMERIC(12, 4),
+        order_type    VARCHAR(8)   NOT NULL DEFAULT 'limit',
+        status        VARCHAR(12)  NOT NULL,
+        filled_qty    INT          NOT NULL DEFAULT 0,
+        filled_price  NUMERIC(12, 4),
+        amount        NUMERIC(16, 4) NOT NULL DEFAULT 0,
+        fee           NUMERIC(12, 4) NOT NULL DEFAULT 0,
+        reason        TEXT,
+        created_at    TIMESTAMPTZ  DEFAULT now(),
+        CONSTRAINT uq_paper_order_id UNIQUE (order_id)
+    )""",
+    """
+    CREATE TABLE IF NOT EXISTS sa_paper_position (
+        id         SERIAL PRIMARY KEY,
+        user_id    VARCHAR(64)  NOT NULL,
+        symbol     VARCHAR(12)  NOT NULL,
+        qty        INT          NOT NULL,
+        avg_cost   NUMERIC(12, 4) NOT NULL,
+        updated_at TIMESTAMPTZ  DEFAULT now(),
+        CONSTRAINT uq_paper_position UNIQUE (user_id, symbol)
+    )""",
+    """CREATE INDEX IF NOT EXISTS ix_paper_order_user_time
+       ON sa_paper_order (user_id, created_at DESC)""",
+    # A 股 T+1 需要建仓日；用幂等 ALTER 追加，已有库不必重建表
+    """ALTER TABLE sa_paper_position
+       ADD COLUMN IF NOT EXISTS first_buy_date DATE""",
+    # 证券主数据缓存（代码+名称）：/api/search 的检索底座
+    # 外部源（akshare 全市场清单）单次抓取约 17s，故落库缓存、按 TTL 刷新，
+    # 搜索走本地表，避免每次请求打外部源。
+    """
+    CREATE TABLE IF NOT EXISTS sa_symbol_master (
+        symbol      VARCHAR(16) PRIMARY KEY,   -- 归一化代码（A 股 6 位）
+        name        VARCHAR(64) NOT NULL,      -- 原始名称（展示用）
+        name_norm   VARCHAR(64) NOT NULL,      -- 归一化名称（去空格/全角转半角/大写），供 LIKE
+        market      VARCHAR(8)  NOT NULL DEFAULT 'CN',
+        exchange    VARCHAR(8)  DEFAULT '',
+        updated_at  TIMESTAMPTZ DEFAULT now()
+    )""",
+    """CREATE INDEX IF NOT EXISTS ix_symbol_master_name
+       ON sa_symbol_master (name_norm)""",
 ]
 
 
+# ── 落盘吞吐埋点（方案 §4.5）──
+# 只在这一个地方挂钩子：凡经 get_db() 发出的 INSERT/UPDATE/DELETE 都按
+# cursor.rowcount 计入 metrics_collector 的滑窗，插件全部写路径自动被统计，
+# 不需要逐个函数加代码，也不会漏掉将来新增的写。只读语句不计数。
+_SINK_VERBS = ("INSERT", "UPDATE", "DELETE")
+
+
+class _SinkConn:
+    """池连接的只转发代理：execute 后统计写行数。任何统计失败都吞掉，不影响业务。"""
+
+    def __init__(self, conn):
+        self._conn = conn
+
+    def __getattr__(self, name):                      # 转发其余属性/方法
+        if name == "_conn":
+            raise AttributeError(name)                # 防 __getattr__ 递归
+        return getattr(object.__getattribute__(self, "_conn"), name)
+
+    def execute(self, sql, *args, **kwargs):
+        cur = self._conn.execute(sql, *args, **kwargs)
+        self._tally(sql, cur)
+        return cur
+
+    @staticmethod
+    def _tally(sql, cur):
+        try:
+            head = str(sql).lstrip().split(None, 1)
+            if not head or head[0].upper() not in _SINK_VERBS:
+                return
+            from .metrics_collector import record_write
+            n = getattr(cur, "rowcount", -1)
+            # rowcount > 0 用真实值（ON CONFLICT DO NOTHING 未写入时为 0，如实不计行数）；
+            # -1（驱动无法给出）退化为 1 行，避免整条写被漏统计。
+            record_write(n if isinstance(n, int) and n > 0 else 1)
+        except Exception:                             # 统计失败绝不能影响业务写
+            pass
+
+
 @contextmanager
-def get_db():
-    """借池连接并切换到插件 schema；with 块退出自动 commit/rollback + 归还池。"""
+def get_db(count_sink: bool = True):
+    """借池连接并切换到插件 schema；with 块退出自动 commit/rollback + 归还池。
+
+    count_sink=True（默认）时返回 _SinkConn 代理，写入行数计入落盘吞吐（§4.5）。
+    """
     with get_pooled_connection() as conn:
         conn.execute("SET search_path TO %s, public" % SCHEMA)
-        yield conn
+        yield _SinkConn(conn) if count_sink else conn
 
 
 def ensure_tables():
@@ -443,6 +585,19 @@ def get_job(job_id: str):
     return dict(row) if row else None
 
 
+def delete_job(job_id: str) -> bool:
+    """删除任务行；不存在返回 False。
+
+    归属说明：sa_jobs 归本插件所有，删除是插件侧操作 —— 调用方（运维复位、
+    自测夹具）不应自行拼 SQL 触碰插件 schema，否则绕过任务表的状态不变量
+    （见 2026-09-21 架构整改：脚本直连 DB 写业务表一律收敛回插件）。
+    """
+    with get_db() as conn:
+        row = conn.execute("DELETE FROM sa_jobs WHERE job_id = ? RETURNING job_id",
+                           (job_id,)).fetchone()
+    return row is not None
+
+
 def find_today_done_job(symbol: str, scope: str):
     """同日同标的同 scope 的成功任务（幂等复用锚点，契约 §3 force=false 语义）。"""
     with get_db() as conn:
@@ -461,6 +616,88 @@ def list_queued_jobs(limit: int = 5) -> list:
             "SELECT job_id FROM sa_jobs WHERE status = 'queued' "
             "ORDER BY id ASC LIMIT ?", (limit,)).fetchall()
         return [r["job_id"] for r in rows]
+
+
+def list_jobs(limit: int = 50, status: str = None) -> list:
+    """工作流任务列表（契约 §3 列表视图）。
+
+    status 可选 queued|running|done|failed；默认按 id 倒序返回近 50 条。
+    不含 result 大字段（列表视图不需要，详情走 GET /api/jobs/<job_id>）。
+    """
+    limit = max(1, min(int(limit or 50), 200))
+    # 字段对齐前端 JobItem（src/types/stock.ts），供 WorkflowListV3 直接渲染；
+    # 排除 result 大字段（列表不需要，详情走 GET /api/jobs/<job_id>）。
+    sql = ("SELECT id, job_id, type, symbol, scope, status, progress, pct, "
+           "error_code, error, created_at, started_at, finished_at FROM sa_jobs")
+    args = []
+    if status:
+        sql += " WHERE status = ?"
+        args.append(status)
+    sql += " ORDER BY id DESC LIMIT ?"
+    args.append(limit)
+    with get_db() as conn:
+        rows = conn.execute(sql, args).fetchall()
+        return [dict(r) for r in rows]
+
+
+def count_jobs(status: str = None, symbol: str = None) -> int:
+    """按状态/标的计数（智能体实时负载 / 看板 / 自测基线用）。两者都空则计全部。
+
+    symbol 维度供调用方做「某标的的新增前后对比」而无需自行 SELECT COUNT ——
+    保持任务表口径由插件统一提供（2026-09-21 架构整改）。
+    """
+    sql = "SELECT COUNT(*) n FROM sa_jobs"
+    clauses: list[str] = []
+    args: list = []
+    if status:
+        clauses.append("status = ?")
+        args.append(status)
+    if symbol:
+        clauses.append("symbol = ?")
+        args.append(symbol)
+    if clauses:
+        sql += " WHERE " + " AND ".join(clauses)
+    with get_db() as conn:
+        row = conn.execute(sql, args).fetchone()
+    return int(row["n"]) if row else 0
+
+
+def sector_symbols(per_sector: int = 5, max_symbols: int = 100) -> dict:
+    """取行业 → 成分股映射（方案 §4.1 的数据准备）。
+
+    point-in-time：只取当前有效分类（effective_to 为空或 >= 今天），回测铁律 #5。
+    每行业最多 per_sector 只，总数截断 max_symbols —— 避免一次性拉全市场行情
+    （tencent 批量上限 50/次，且热力图用样本均值即可，全量反而拖慢首屏）。
+
+    返回 {"sector|standard": {"standard","sector","symbols":[...]}}；无分类数据返回 {}。
+    """
+    per_sector = max(1, min(int(per_sector or 5), 50))
+    max_symbols = max(1, min(int(max_symbols or 100), 500))
+    sql = ("SELECT symbol, standard, industry_l1 FROM sa_classification "
+           "WHERE industry_l1 IS NOT NULL AND industry_l1 <> '' "
+           "AND (effective_to IS NULL OR effective_to >= CURRENT_DATE) "
+           "ORDER BY industry_l1, id")
+    grouped: dict = {}
+    total = 0
+    with get_db() as conn:
+        rows = conn.execute(sql).fetchall()
+    for r in rows:
+        if total >= max_symbols:
+            break
+        sector = (r["industry_l1"] or "").strip()
+        standard = (r["standard"] or "").strip()
+        if not sector:
+            continue
+        key = f"{standard}|{sector}"
+        g = grouped.setdefault(key, {"standard": standard, "sector": sector, "symbols": []})
+        if len(g["symbols"]) >= per_sector:
+            continue
+        # 分类表存的是 secmaster UID（CN:600519），行情接口要裸代码（600519）
+        sym = str(r["symbol"]).split(":")[-1].strip()
+        if sym and sym not in g["symbols"]:
+            g["symbols"].append(sym)
+            total += 1
+    return grouped
 
 
 def claim_job(job_id: str) -> bool:
@@ -504,17 +741,25 @@ def recover_stale_jobs(minutes: int = 30) -> int:
 # status 枚举与桌面零转换：active | triggered | expired | disabled。
 
 def list_alerts(symbol: str = None) -> list:
-    """规则列表（时间列已格式化为文本，供 API 直出）。"""
+    """规则列表（时间列已格式化为文本，供 API 直出）。
+
+    trigger_count = 该规则累计触发事件数（sa_alert_events 聚合）。
+    2026-09-21 整改：此前由桌面端自行把事件流按 alert_id 计数 ——
+    统计口径属业务，改由插件一条 SQL 给出，壳层只渲染。
+    """
     with get_db() as conn:
         rows = conn.execute(
-            "SELECT id, symbol, name, type, threshold, channel, status, "
-            "to_char(silent_from, 'HH24:MI') AS silent_from, "
-            "to_char(silent_to, 'HH24:MI') AS silent_to, "
-            "to_char(last_triggered_at, 'YYYY-MM-DD HH24:MI:SS') AS last_triggered_at, "
-            "to_char(created_at, 'YYYY-MM-DD HH24:MI:SS') AS created_at "
-            "FROM sa_alerts"
-            + (" WHERE symbol = ?" if symbol else "")
-            + " ORDER BY id DESC", (symbol,) if symbol else ()).fetchall()
+            "SELECT a.id, a.symbol, a.name, a.type, a.threshold, a.channel, a.status, "
+            "to_char(a.silent_from, 'HH24:MI') AS silent_from, "
+            "to_char(a.silent_to, 'HH24:MI') AS silent_to, "
+            "to_char(a.last_triggered_at, 'YYYY-MM-DD HH24:MI:SS') AS last_triggered_at, "
+            "to_char(a.created_at, 'YYYY-MM-DD HH24:MI:SS') AS created_at, "
+            "COALESCE(ev.n, 0) AS trigger_count "
+            "FROM sa_alerts a "
+            "LEFT JOIN (SELECT alert_id, COUNT(*) AS n FROM sa_alert_events "
+            "           GROUP BY alert_id) ev ON ev.alert_id = a.id"
+            + (" WHERE a.symbol = ?" if symbol else "")
+            + " ORDER BY a.id DESC", (symbol,) if symbol else ()).fetchall()
         return [dict(r) for r in rows]
 
 
@@ -672,6 +917,61 @@ def prune_sse_events(retention_days: int = 1) -> int:
         return cur.rowcount if cur is not None else 0
 
 
+# ── 神经中枢：flow span 归档通道（P1，方案 §6.1.5 方案①）──
+# sa_sse_events 仅保留 1 天且无 created_at 索引（prune 每 60s 全表 DELETE），只做实时出流；
+# flow 回放/钻取走独立归档表 sa_flow_spans，保留 30 天并入每日清理节奏。
+# span 语义见方案 §5：span_id 幂等去重 + id/created_at 双时基（ts 仅供前端显示，禁止排序/过滤）。
+
+def insert_flow_span(payload: dict) -> int | None:
+    """落一条 flow span 归档行；返回新行 id。可视化是旁路，失败仅告警不上抛（调用方决定）。"""
+    with get_db() as conn:
+        cur = conn.execute(
+            "INSERT INTO sa_flow_spans (trace_id, payload) VALUES (?, ?::jsonb) "
+            "RETURNING id",
+            (str(payload.get("trace_id", "")),
+             json.dumps(payload, ensure_ascii=False, default=_json_default)))
+        row = cur.fetchone()
+        return int(row["id"]) if row else None
+
+
+def list_flow_spans(from_ts=None, to_ts=None, trace_id: str = None,
+                    limit: int = 200) -> list:
+    """查询 flow span 归档（回放/钻取，方案 §6.1.6）。
+
+    - 排序/游标一律用创建时间（created_at）与 id，payload.ts 仅显示（双时基纪律）；
+    - created_at 为 TIMESTAMPTZ，直接参数比较无 TEXT 转型问题（区别于 agent_token_logs）。
+    """
+    limit = max(1, min(int(limit or 200), 1000))
+    filters, args = [], []
+    if from_ts is not None:
+        filters.append("created_at >= ?")
+        args.append(from_ts)
+    if to_ts is not None:
+        filters.append("created_at <= ?")
+        args.append(to_ts)
+    if trace_id:
+        filters.append("trace_id = ?")
+        args.append(trace_id)
+    where = (" WHERE " + " AND ".join(filters)) if filters else ""
+    sql = ("SELECT id, trace_id, created_at, payload::text AS payload "
+           "FROM sa_flow_spans%s ORDER BY id ASC LIMIT ?" % where)
+    args.append(limit)
+    with get_db() as conn:
+        rows = conn.execute(sql, args).fetchall()
+    return [{"id": r["id"], "trace_id": r["trace_id"],
+             "created_at": str(r["created_at"]), "payload": json.loads(r["payload"])}
+            for r in rows]
+
+
+def prune_flow_spans(retention_days: int = 30) -> int:
+    """清理超期 flow span 归档；返回删除行数（幂等，并入每日清理节奏）。"""
+    with get_db() as conn:
+        cur = conn.execute(
+            "DELETE FROM sa_flow_spans WHERE created_at < now() - make_interval(days => ?)",
+            (retention_days,))
+        return cur.rowcount if cur is not None else 0
+
+
 # ── v2：复权事件 / 复权因子 / 行业分类 ──
 
 def upsert_corp_action(symbol: str, ex_date, cash_div: float, split_ratio: float,
@@ -754,6 +1054,77 @@ def upsert_classification(symbol: str, standard: str, industry_l1: str = None,
             "industry_l3 = EXCLUDED.industry_l3, effective_to = EXCLUDED.effective_to",
             (symbol, standard, industry_l1, industry_l2, industry_l3,
              effective_from, effective_to, source))
+
+
+def replace_sector_constituents(standard: str, industry_code: str,
+                                industry_name: str, rows: list, as_of: str,
+                                source: str = "akshare_sw") -> int:
+    """整段替换某行业某日的成分股明细（权重/名称）。
+
+    申万成分按半年调整，同一 (standard, industry_code, as_of) 重灌时旧行可能已失效
+    （成分被调出），故先删后插而非 UPSERT —— 否则调出的票会永久留在热力里。
+    """
+    if not rows:
+        return 0
+    with get_db() as conn:
+        conn.execute(
+            "DELETE FROM sa_sector_constituent "
+            "WHERE standard = ? AND industry_code = ? AND as_of = ?",
+            (standard, industry_code, as_of))
+        for r in rows:
+            conn.execute(
+                "INSERT INTO sa_sector_constituent "
+                "(standard, industry_code, industry_name, symbol, name, weight, "
+                " in_date, as_of, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT (standard, industry_code, symbol, as_of) DO UPDATE SET "
+                "weight = EXCLUDED.weight, name = EXCLUDED.name",
+                (standard, industry_code, industry_name, r.get("symbol"),
+                 r.get("name"), r.get("weight"), r.get("in_date"), as_of, source))
+    return len(rows)
+
+
+def sector_constituents(standard: str = "sw", as_of: str = None) -> dict:
+    """行业 → 成分股明细（权重降序）。as_of 为空取最新一日。
+
+    返回 {industry_name: [{"symbol","code","name","weight"}]}。
+    """
+    with get_db() as conn:
+        if as_of:
+            rows = conn.execute(
+                "SELECT industry_name, symbol, name, weight FROM sa_sector_constituent "
+                "WHERE standard = ? AND as_of = ?", (standard, as_of)).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT industry_name, symbol, name, weight FROM sa_sector_constituent "
+                "WHERE standard = ? AND as_of = (SELECT MAX(as_of) FROM sa_sector_constituent "
+                "WHERE standard = ?)", (standard, standard)).fetchall()
+    out: dict = {}
+    for r in rows:
+        sym = r["symbol"] or ""
+        out.setdefault(r["industry_name"], []).append({
+            "symbol": sym,
+            "code": sym.split(":")[-1],
+            "name": r["name"],
+            "weight": float(r["weight"]) if r["weight"] is not None else None,
+        })
+    for v in out.values():
+        v.sort(key=lambda x: (x["weight"] is None, -(x["weight"] or 0)))
+    return out
+
+
+def sector_member_counts(standard: str = "sw") -> dict:
+    """行业 → 当前有效成分股**总数**（自 sa_classification，point-in-time 口径）。
+
+    用于热力覆盖率分母：成分明细表缺失、走 sa_classification 采样路径时，
+    若分母取采样数会出现"8/8 = 100% 覆盖"的假象 —— 实际是 5218 只里取了 8 只。
+    """
+    sql = ("SELECT industry_l1, COUNT(*) AS n FROM sa_classification "
+           "WHERE standard = ? AND industry_l1 IS NOT NULL AND industry_l1 <> '' "
+           "AND (effective_to IS NULL OR effective_to >= CURRENT_DATE) "
+           "GROUP BY industry_l1")
+    with get_db() as conn:
+        rows = conn.execute(sql, (standard,)).fetchall()
+    return {r["industry_l1"]: int(r["n"]) for r in rows}
 
 
 def get_classification(symbol: str, standard: str = "sw", as_of=None) -> dict:
@@ -962,3 +1333,68 @@ def _json_default(obj):
         return float(obj)
     except (TypeError, ValueError):
         return str(obj)
+
+
+# ── 证券主数据（sa_symbol_master）：/api/search 的检索底座 ──
+# 全市场清单约 5500 行，写入按批拼多值 INSERT，避免 5500 次单行往返。
+
+_SYMBOL_MASTER_BATCH = 500
+
+
+def upsert_symbol_master(rows) -> int:
+    """批量写入证券主数据（幂等：symbol 冲突则更新）。rows = [(symbol, name, name_norm, market, exchange)]"""
+    if not rows:
+        return 0
+    total = 0
+    with get_db(count_sink=False) as conn:
+        for start in range(0, len(rows), _SYMBOL_MASTER_BATCH):
+            chunk = rows[start:start + _SYMBOL_MASTER_BATCH]
+            placeholders = ",".join(["(?,?,?,?,?)"] * len(chunk))
+            params = []
+            for item in chunk:
+                params.extend(list(item))
+            conn.execute(
+                "INSERT INTO sa_symbol_master "
+                "(symbol, name, name_norm, market, exchange) VALUES " + placeholders +
+                " ON CONFLICT (symbol) DO UPDATE SET "
+                "name = EXCLUDED.name, name_norm = EXCLUDED.name_norm, "
+                "market = EXCLUDED.market, exchange = EXCLUDED.exchange, "
+                "updated_at = now()",
+                params)
+            total += len(chunk)
+    return total
+
+
+def symbol_master_stats() -> dict:
+    """主数据规模与新鲜度 → {'rows': int, 'age_seconds': float|None}。"""
+    with get_db(count_sink=False) as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) AS n, "
+            "EXTRACT(EPOCH FROM (now() - MAX(updated_at))) AS age "
+            "FROM sa_symbol_master").fetchone()
+    if not row:
+        return {"rows": 0, "age_seconds": None}
+    age = row["age"]
+    return {"rows": int(row["n"] or 0),
+            "age_seconds": float(age) if age is not None else None}
+
+
+def search_symbol_master(query: str, limit: int = 10) -> list:
+    """按 代码前缀 / 名称包含 检索；排序优先级：代码精确 > 代码前缀 > 名称包含。
+
+    query 需已归一化（去空格、全角转半角、大写）；中文名称不参与大写变换也无妨。
+    """
+    if not query:
+        return []
+    prefix = query + "%"
+    contains = "%" + query + "%"
+    with get_db(count_sink=False) as conn:
+        rows = conn.execute(
+            "SELECT symbol, name, market, exchange FROM sa_symbol_master "
+            "WHERE symbol LIKE ? OR name_norm LIKE ? "
+            "ORDER BY CASE WHEN symbol = ? THEN 0 "
+            "              WHEN symbol LIKE ? THEN 1 "
+            "              ELSE 2 END, symbol "
+            "LIMIT ?",
+            [prefix, contains, query, prefix, int(limit)]).fetchall()
+    return rows or []

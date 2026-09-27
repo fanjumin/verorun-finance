@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "_note": [
+    "黄金任务集（WP-B6.1）。**离线模式下不调用任何模型**——",
+    "  * kind=json_contract     → 断言「期望 JSON 键」确实写在提示词契约里，且禁止键不出现；",
+    "  * kind=prompt_enumeration→ 断言「期望枚举值」确实被提示词列举（改枚举名即断链）。",
+    "samples 里的 expect_* 是**在线评测的评分锚点**，留给后续接入 LLM 凭据后自动判分；",
+    "离线只校验数据集自洽 + 契约存在性，**不校验模型真实输出质量**，不夸大覆盖度。",
+    "新增样例请保持 id 唯一、input 必填、每例至少一个 expect* 字段。"
+  ],
+  "tasks": [
+    {
+      "id": "self_review_json_contract",
+      "kind": "json_contract",
+      "snapshot": "critique_self_eval",
+      "expect_keys": ["confidence", "issues", "suggestion"],
+      "expect_absent_keys": ["confidence_"],
+      "samples": [
+        {
+          "input": "任务：生成一篇 800 字产品介绍。输出：（空）",
+          "expect_confidence_max": 0.69,
+          "expect_issue_count_min": 1,
+          "rationale": "空输出必须被判低分并触发重试（A1 之前因键名不匹配恒为 0.85，此例永远不触发重试）"
+        },
+        {
+          "input": "任务：把标题改写为 20-40 字。输出：完成。",
+          "expect_confidence_max": 0.69,
+          "expect_issue_count_min": 1,
+          "rationale": "明显不满足字段要求，应给出 issues"
+        },
+        {
+          "input": "任务：输出 3 个卖点，每点不超过 15 字。输出：①轻至 980g ②续航 12 小时 ③支持快充",
+          "expect_confidence_min": 0.7,
+          "expect_issue_count_max": 0,
+          "rationale": "完全达标，应判高分且无 issues"
+        }
+      ],
+      "note": "守护 A1 事故本身：置信度键名与阈值闭环（<0.7 触发重试）"
+    },
+    {
+      "id": "intent_classification",
+      "kind": "prompt_enumeration",
+      "snapshot": "intent_classify",
+      "expect_labels": [
+        "purchase", "aftersale", "complaint", "consult", "technical", "other",
+        "positive", "neutral", "negative", "urgent"
+      ],
+      "samples": [
+        {"input": "这个多少钱？我想买两个", "expect_intent": "purchase", "expect_sentiment": "positive"},
+        {"input": "我上周买的东西还没到，帮我查一下", "expect_intent": "aftersale", "expect_sentiment": "neutral"},
+        {"input": "太差了，第三次出问题了，我要投诉！", "expect_intent": "complaint", "expect_sentiment": "urgent"},
+        {"input": "请问你们支持企业批量采购吗", "expect_intent": "consult", "expect_sentiment": "neutral"},
+        {"input": "后台登录一直提示 token 失效，怎么解决", "expect_intent": "technical", "expect_sentiment": "negative"}
+      ],
+      "note": "守护意图/情绪枚举口径；枚举改名会导致统计与路由静默错配"
+    },
+    {
+      "id": "tool_routing_priority",
+      "kind": "prompt_enumeration",
+      "snapshot": "tool_router",
+      "expect_labels": [
+        "ppt", "image", "voice", "video", "cms",
+        "supply_chain", "clean", "site_build", "ads", "chat"
+      ],
+      "samples": [
+        {"input": "帮我建一个律师事务所的网站", "expect_tool": "site_build"},
+        {"input": "看看现在有哪些广告位", "expect_tool": "ads"},
+        {"input": "帮我创建一个首页 banner 广告", "expect_tool": "ads",
+         "rationale": "含“创建”即 ads，且 ads 优先级高于 site_build —— 易错点"},
+        {"input": "生成一份关于新能源的 PPT", "expect_tool": "ppt"},
+        {"input": "把这段白皮书内容清洗一下：……", "expect_tool": "clean"},
+        {"input": "你好，你是谁", "expect_tool": "chat"}
+      ],
+      "note": "守护路由枚举与 site_build/ads 的优先级关系（A1 在此处产生 6 处污染，其中 4 处为英文关键词被 _() 包裹）"
+    }
+  ]
+}

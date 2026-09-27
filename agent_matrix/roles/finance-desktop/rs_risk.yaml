@@ -1,9 +1,9 @@
-name: 风险官（反方）
+name: Risk Officer
 slug: rs_risk
 role_type: sub
 editions:
   - finance-desktop
-description: 反方质证 — 最强反证、熊市情景与压力测试 / Devil's advocate — counter-evidence, bear cases, stress tests
+description: Risk officer — bear cases, stress tests and red-team challenge to the house view
 domain: research
 managed_modules:
   - stock_analysis

@@ -2,6 +2,24 @@
 # 自 stock_skill._market_symbol / _index_symbol 逐字平移（v1.3.0），规则不得改动
 import re
 
+# 境外/港股等指数前缀白名单（小写）；已带这些前缀的符号在 index_symbol 中幂等原样返回
+FOREIGN_INDEX_PREFIXES = ("us", "hk", "jp", "kr", "gb", "uk")
+
+# 指数候选清单（设置页「指数选择」多选候选；nameKey 与前端 i18n 对齐，
+# symbol 为规范形态——index_symbol() 幂等输出的小写形式，如 usDJI → usdji）
+INDEX_CANDIDATES = [
+    {"symbol": "sh000001", "name": "上证指数", "nameKey": "stock.indexSh"},
+    {"symbol": "sz399001", "name": "深证成指", "nameKey": "stock.indexSz"},
+    {"symbol": "sz399006", "name": "创业板指", "nameKey": "stock.indexCy"},
+    {"symbol": "sh000300", "name": "沪深300", "nameKey": "stock.indexHs300"},
+    {"symbol": "hkhsi", "name": "恒生指数", "nameKey": "stock.indexHsi"},
+    {"symbol": "hkhscei", "name": "恒生国企指数", "nameKey": "stock.indexHscei"},
+    {"symbol": "usdji", "name": "道琼斯", "nameKey": "stock.indexDji"},
+    {"symbol": "usixic", "name": "纳斯达克", "nameKey": "stock.indexIxic"},
+    {"symbol": "usinx", "name": "标普500", "nameKey": "stock.indexInx"},
+    {"symbol": "jpn225", "name": "日经225", "nameKey": "stock.indexN225"},
+]
+
 
 def market_symbol(symbol: str) -> str:
     clean = re.sub(r"^(?:SH|SZ|BJ)(?=\d)", "", symbol.upper())
@@ -30,4 +48,11 @@ def index_symbol(code: str) -> str:
     """
     clean = re.sub(r"^(?:SH|SZ|BJ)(?=\d)", "", code.upper())
     clean = clean.replace(".SH", "").replace(".SZ", "").replace(".BJ", "")
+    low = clean.lower()
+    # 境外/港股/日韩/英指数：已带白名单前缀的符号幂等返回「小写市场前缀 + 大写代码」
+    # （usDJI / hkHSI）——腾讯行情对境外指数大小写敏感，全小写 usdji 返回
+    # v_pv_none_match（实测 2026-09-19：usDJI/hkHSI/usIXIC 正常，usdji/hkhsi/usixic 无匹配）。
+    for prefix in FOREIGN_INDEX_PREFIXES:
+        if low.startswith(prefix):
+            return prefix + clean[len(prefix):].upper()
     return ("sh" if clean in {"000001", "000300"} else "sz") + clean

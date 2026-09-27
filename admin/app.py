@@ -570,7 +570,9 @@ def _csrf_origin_guard():
 # 桌面版（standalone native，科研/金融无服务器版）入口门控：
 # 本机浏览器手动访问 8084 时不再渲染管理面板登录页，而返回友好提示，
 # 避免普通用户误入管理后台而无所适从。服务器版（official）保持原逻辑。
-_DESKTOP_EDITIONS = ('research-desktop', 'finance-desktop')
+# 取值用 canonical ID（current_edition() 口径）：连字符名会被归一化掉，
+# 按旧名比较会恒为 False，使本门控静默失效。
+_DESKTOP_EDITIONS = ('research', 'finance')
 
 
 def _desktop_entry_gate() -> bool:
@@ -585,7 +587,9 @@ def _desktop_only_response():
     from flask import make_response
     from agent_matrix.models import current_edition
     edition = current_edition()
-    label = '科研版' if edition == 'research-desktop' else '金融版'
+    # canonical ID 口径：current_edition() 返回 'research'，不是磁盘名 'research-desktop'。
+    # 按磁盘名比较恒为 False → 科研桌面版会被显示成"金融版"（第五轮 N5-1）。
+    label = '科研版' if edition == 'research' else '金融版'
     return make_response(render_template('desktop_redirect.html', edition=edition, edition_label=label), 200)
 
 
@@ -594,6 +598,18 @@ def index():
     if _desktop_entry_gate():
         return _desktop_only_response()
     return redirect('/admin/login')
+
+
+def _admin_skip_net_proxy():
+    """net_proxy 面板逃生开关（P6）。
+
+    admin.html 的 86 个插件 include 同处一个 <script> 块（head.html 开、
+    tail.html 闭），任一 partial 渲染异常都会冒泡致整个 admin.html 500，
+    现象是管理面板一直转圈进不去。设 VR_ADMIN_SKIP_NET_PROXY=1 可跳过该
+    partial 以恢复面板；默认渲染。仅接受 1/true/yes/on（与项目既有风格一致）。
+    """
+    return os.environ.get('VR_ADMIN_SKIP_NET_PROXY', '').strip().lower() in (
+        '1', 'true', 'yes', 'on')
 
 
 @app.route('/admin', strict_slashes=False)
@@ -608,8 +624,22 @@ def admin_page():
     if not payload or not payload.get('is_admin'):
         return redirect('/admin/login')
     from agent_matrix.models import current_edition
+    from plugin_manager.license import _is_official_edition
+    # brand 注入：head.html 的徽标版号 / currentVer2 / logo / title 均依赖 brand
+    brand_ctx = None
+    try:
+        from services.brand_service import get_brand_settings
+        brand_ctx = get_brand_settings()
+        if brand_ctx:
+            from i18n import _ as _i18n
+            brand_ctx['software_name'] = _i18n('app_name')
+    except Exception as _e:
+        brand_ctx = None
     resp = make_response(render_template('admin.html', sso_token=token,
-                                         edition=current_edition()))
+                                         edition=current_edition(),
+                                         brand=brand_ctx,
+                                         admin_skip_net_proxy=_admin_skip_net_proxy(),
+                                         is_enterprise_store=_is_official_edition()))
     resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
     resp.headers['Pragma'] = 'no-cache'
     resp.headers['Expires'] = '0'
@@ -1105,6 +1135,21 @@ def health():
         'issues': degraded,
     }), code
 
+
+# ══ 发行版语义下发（公开只读）：edition + 是否 standalone（无服务器形态）══
+# 供桌面壳层（electron/services/edition.ts 的 STANDALONE_PAYLOAD_EDITIONS 硬编镜像）消费。
+# standalone 判定依据（单一事实源）：deploy/editions/<edition>.yaml 的 services: 段
+#   —— 财务/科研桌面版把三个用户向服务全置 false（如 research-desktop.yaml:
+#      user_login/user_console/main_site: false），official/minipro 则为 true；
+#   经 agent_matrix/models.py:67 edition_services() 解析后，无任何服务开启即视为 standalone
+#   （yaml 缺失 / 无 services 段 → 返回 {}，同样判定为 standalone）。
+@app.route('/api/edition')
+def api_edition():
+    from agent_matrix.models import current_edition, edition_services
+    standalone = not any(edition_services().values())
+    return jsonify({'edition': current_edition(), 'standalone': standalone})
+
+
 def _is_plugin_embed_path(path: str) -> bool:
     """判断 path 是否为已注册插件 menu 声明的 embed_url 路径。
 
@@ -1195,8 +1240,22 @@ def admin_spa_catchall(subpath):
     if not payload or not payload.get('is_admin'):
         return redirect('/admin/login')
     from agent_matrix.models import current_edition
+    from plugin_manager.license import _is_official_edition
+    # brand 注入：SPA 壳内 head.html 的徽标版号 / currentVer2 / logo / title 均依赖 brand
+    brand_ctx = None
+    try:
+        from services.brand_service import get_brand_settings
+        brand_ctx = get_brand_settings()
+        if brand_ctx:
+            from i18n import _ as _i18n
+            brand_ctx['software_name'] = _i18n('app_name')
+    except Exception as _e:
+        brand_ctx = None
     resp = make_response(render_template('admin.html', sso_token=token,
-                                         edition=current_edition()))
+                                         edition=current_edition(),
+                                         brand=brand_ctx,
+                                         admin_skip_net_proxy=_admin_skip_net_proxy(),
+                                         is_enterprise_store=_is_official_edition()))
     resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
     resp.headers['Pragma'] = 'no-cache'
     resp.headers['Expires'] = '0'

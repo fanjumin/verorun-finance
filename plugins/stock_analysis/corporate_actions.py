@@ -21,11 +21,14 @@ hfq  后复权：以**首日**价为锚，factor[0] = 1。用于算收益率、�
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Iterable, List, Optional, Sequence
 
 import numpy as np
 import pandas as pd
+
+_log = logging.getLogger("stock_analysis.corporate_actions")
 
 
 # ------------------------------------------------------------------ 事件
@@ -213,6 +216,34 @@ def from_tushare(rows: List[dict]) -> List[CorpAction]:
             )
         )
     return out
+
+
+# ------------------------------------------------------------------ 事件装载（DB）
+
+
+def load_events(symbol: str) -> List[CorpAction]:
+    """从 sa_corp_action 读取某标的的分红送转事件（插件自有 schema，不触外网）。
+
+    设计：复权是"数据口径"而非"数据内容"，必须可缓存、可审计、可回溯版本，
+    因此落库读取；缺失时返回空列表由调用方 fail-open（保持 raw 并如实标注口径）。
+    """
+    try:
+        from .models_sa import get_db
+        with get_db(count_sink=False) as conn:
+            rows = conn.execute(
+                "SELECT ex_date, cash_div, split_ratio, rights_ratio, rights_price, "
+                "action_type FROM sa_corp_action "
+                "WHERE symbol = ? ORDER BY ex_date ASC", (symbol,)).fetchall()
+    except Exception as err:                      # 表不存在/DB 不可用 → 降级
+        _log.warning("corp_action load failed %s: %s", symbol, err)
+        return []
+    return [CorpAction(ex_date=pd.Timestamp(r["ex_date"]),
+                       cash_div=float(r["cash_div"] or 0.0),
+                       split_ratio=float(r["split_ratio"] or 1.0),
+                       rights_ratio=float(r["rights_ratio"] or 0.0),
+                       rights_price=float(r["rights_price"] or 0.0),
+                       action_type=str(r["action_type"] or "dividend"))
+            for r in rows]
 
 
 # ------------------------------------------------------------------ 自检

@@ -14,8 +14,10 @@ managed_modules:
   - oauth_config
   - captcha_embedded
 provider_model_id: 401638
-provider: openai
-model_name: gpt-4o
+# 桌面单机版统一 provider=deepseek（其余 7 个角色同款）：单机部署只需配 1 个 key
+# 即可点亮全部 8 个角色；原值 openai/gpt-4o 属服务端形态，本版无 key 会直接不可用。
+provider: deepseek
+model_name: deepseek-v4-flash
 system_prompt: prompts/master_prompt.md
 is_system: true
 auto_approve: 0

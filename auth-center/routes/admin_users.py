@@ -158,10 +158,10 @@ def user_profile_admin(uid):
                 d.name as district_name,
                 s.name as street_name
             FROM user_addresses ua
-            LEFT JOIN regions p ON ua.province_code = p.code
-            LEFT JOIN regions c ON ua.city_code = c.code
-            LEFT JOIN regions d ON ua.district_code = d.code
-            LEFT JOIN regions s ON ua.street_code = s.code
+            LEFT JOIN regions p ON p.code::text = ua.province_code
+            LEFT JOIN regions c ON c.code::text = ua.city_code
+            LEFT JOIN regions d ON d.code::text = ua.district_code
+            LEFT JOIN regions s ON s.code::text = ua.street_code
             WHERE ua.user_id=%s AND ua.status=1
             ORDER BY ua.is_default DESC, ua.created_at DESC
         ''', (uid,)).fetchall()
@@ -345,8 +345,8 @@ def admin_me_phone():
     from models import get_db
     with get_db() as conn:
         row = conn.execute(
-            'SELECT * FROM sms_codes WHERE phone=%s AND code=%s AND purpose=%s AND used=0 AND expires_at>NOW() ORDER BY id DESC LIMIT 1',
-            (new_phone, code, 'change_phone')
+            'SELECT * FROM sms_codes WHERE phone=%s AND code=%s AND purpose=%s AND used=0 AND expires_at>%s ORDER BY id DESC LIMIT 1',
+            (new_phone, code, 'change_phone', datetime.now().isoformat())
         ).fetchone()
         if not row:
             return jsonify({'success': False, 'error': _('Invalid or expired verification code')}), 400
@@ -487,8 +487,8 @@ def admin_update(uid):
                 return jsonify({'success': False, 'error': '请输入短信验证码'}), 400
             # 验证 SMS 验证码
             row = conn.execute(
-                'SELECT * FROM sms_codes WHERE phone=%s AND code=%s AND purpose=%s AND used=0 AND expires_at>NOW() ORDER BY id DESC LIMIT 1',
-                (target['phone'], code, 'modify_password')
+                'SELECT * FROM sms_codes WHERE phone=%s AND code=%s AND purpose=%s AND used=0 AND expires_at>%s ORDER BY id DESC LIMIT 1',
+                (target['phone'], code, 'modify_password', datetime.now().isoformat())
             ).fetchone()
             if not row:
                 return jsonify({'success': False, 'error': _('Invalid or expired verification code')}), 400
@@ -789,6 +789,10 @@ ALL_PERMISSIONS = [
     {'key': 'system', 'label': _('System Settings'), 'desc': _('Community Section/System Configuration/Operation Log')},
     {'key': 'matrix', 'label': _('Agent Matrix'), 'desc': _('Manage Agent Matrix/Automatic Scheduling')},
     {'key': 'admins', 'label': _('Administrator Management'), 'desc': _('Manage Other Administrators (Only super_admin)')},
+    # 细粒度权限点（dot-notation）。此键允许创建/修改含 script / http_request
+    # 节点的工作流（A5.3 危险节点分级授权）；未持有者提交此类工作流会被 403。
+    {'key': 'workflow.script.author', 'label': _('Author Dangerous Workflow Nodes'),
+     'desc': _('Create/Update Workflows Containing script or http_request Nodes')},
 ]
 
 @admin_bp.route('/admins/permissions-list', methods=['GET'])

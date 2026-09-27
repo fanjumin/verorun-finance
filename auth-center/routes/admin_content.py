@@ -285,6 +285,10 @@ def delete_brand_logo_icon():
     with get_db() as conn:
         conn.execute("UPDATE brand_settings SET logo_icon_url='', updated_at=NOW() WHERE id=1")
         conn.commit()
+    _log(admin['user_id'], 'delete_brand_logo_icon')
+    return jsonify({'success': True})
+
+
 @admin_bp.route('/interests', methods=['GET'])
 def admin_interests_list():
     admin, err = _require_admin()

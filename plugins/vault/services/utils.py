@@ -192,7 +192,15 @@ def ensure_schema():
 
 
 def get_pg_env() -> Dict[str, str]:
-    """Read .env for PostgreSQL connection info."""
+    """Read PostgreSQL connection info.
+
+    Priority: process environment first, then fall back to the .env file.
+    Desktop standalone 下 Electron 会向 admin 进程注入真实本地 PG 配置
+    （PG_HOST=127.0.0.1 等，见 electron nativeCoreEnv），与核心插件
+    os.environ 的连接语义一致；而 verorun-code/.env 可能残留远程/服务器
+    PG 地址（如 192.168.168.107），若让 .env 覆盖运行时注入值，会导致
+    pg_dump/pg_restore 连错库、认证失败（根因审计 2026-09-19）。
+    """
     env = {}
     env_path = os.path.join(BASE_DIR, '.env')
     if os.path.exists(env_path):
@@ -202,4 +210,8 @@ def get_pg_env() -> Dict[str, str]:
                 if line and not line.startswith('#') and '=' in line:
                     k, v = line.split('=', 1)
                     env[k.strip()] = v.strip().strip('"').strip("'")
+    for key in ('PG_HOST', 'PG_PORT', 'PG_DB', 'PG_USER', 'PG_PASSWORD'):
+        val = os.environ.get(key)
+        if val is not None:
+            env[key] = val
     return env

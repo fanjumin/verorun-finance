@@ -6,7 +6,7 @@
     "required": [],
     "optional": {}
   },
-  "version": "1.5.1",
+  "version": "1.6.0",
   "description": "Hierarchical agent memory with vector retrieval, Reflexion-based self-evolution and prompt metrics.",
   "author": "VeroRun",
   "min_app_version": "0.10.0",
@@ -24,8 +24,6 @@
   "readme_url": "",
   "dependencies": {},
   "config": {
-    "embedding_model": "",
-    "embedding_dim": 1536,
     "top_k": 5,
     "max_memory_block_len": 1200,
     "enable_auto_extract": true,
@@ -42,7 +40,9 @@
     "sedimentation_fact_min_confidence": 0.9,
     "sedimentation_lesson_min_rating": 4,
     "sedimentation_min_quality_score": 0.7,
-    "sedimentation_daily_budget": 50
+    "sedimentation_daily_budget": 50,
+    "abtest_enabled": false,
+    "abtest_control_pct": 50
   },
   "permissions": [
     "api:read",
@@ -103,17 +103,6 @@
   "settings_schema": {
     "type": "object",
     "properties": {
-      "embedding_model": {
-        "title": "Embedding Model",
-        "type": "string",
-        "description": "Model identifier with embedding capability in provider_models. Empty = auto-detect."
-      },
-      "embedding_dim": {
-        "title": "Embedding Dimension",
-        "type": "integer",
-        "default": 1536,
-        "minimum": 64
-      },
       "top_k": {
         "title": "Top-K Memories",
         "type": "integer",
@@ -221,6 +210,19 @@
         "default": 50,
         "minimum": 0,
         "description": "Max candidates scanned per daily sedimentation run."
+      },
+      "abtest_enabled": {
+        "title": "Enable Injection A/B Test",
+        "type": "boolean",
+        "default": false,
+        "description": "Split users 50/50 (deterministic hash) and record task outcomes to measure injection benefit."
+      },
+      "abtest_control_pct": {
+        "title": "Control Group Percent",
+        "type": "integer",
+        "default": 50,
+        "minimum": 0,
+        "maximum": 100
       }
     }
   }

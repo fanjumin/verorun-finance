@@ -57,9 +57,14 @@ function renderStoreList(container){
       var priceLabel=p.price_type==='free'?'{{ _('Free') }}': priceSymbol+(p.price_amount/100).toFixed(2)+(p.price_interval==='year'?'/yr':p.price_interval==='month'?'/mo':'');
       var priceClass=p.price_type==='free'?'on':'';
       var vHtml='v'+esc(p.version);
-      if(p.has_update){
-        /* 版本发现：商店有更高版本时显示升级徽标 */
-        vHtml+=' <span class="bdg" style="background:rgba(63,185,80,.15);color:#3fb950">&#x1F504; v'+esc(p.latest_version||p.version)+' {{ _('Upgrade available') }}</span>';
+      /* 商店侧不再展示升级入口（已安装 tab / 页内版本条统一负责插件更新）
+         仅保留诊断态徽标：更新检查失败 / 目录落后 */
+      if(p.update_check_failed){
+        /* 2026-09-18：本次版本对比未得出结果，显式告知而非静默 */
+        vHtml+=' <span class="bdg" style="background:rgba(139,139,139,.12);color:#8b8b8b">{{ _('Update check unavailable') }}</span>';
+      }else if(p.catalog_behind){
+        /* 2026-09-18：目录版本低于已装版本 */
+        vHtml+=' <span class="bdg" style="background:rgba(210,153,34,.15);color:#d29922">{{ _('Catalog behind') }} v'+esc(p.latest_version||p.version)+'</span>';
       }
       /* ★ 改动1：卡片缩略图 — icon_url 优先，否则规范渐变 Banner（方案 §2.4） */
       var iconHtml='';
@@ -148,21 +153,6 @@ function storeInstallPlugin(id){
       if(typeof renderStoreList==="function")renderStoreList();
     }).catch(function(){_storeInstallState(id,false);showToast("{{ _('Network error') }}","error")});
   },"{{ _('Install') }}");
-}
-
-/* ── Store upgrade (online update) ─────────────────── */
-function storeUpgradePlugin(id){
-  showConfirm("{{ _('Upgrade Plugin') }}","{{ _('Upgrade to latest version?') }} <b>"+esc(id)+"</b>",function(){
-    fetch("/admin/plugins/store/"+encodeURIComponent(id)+"/upgrade",{method:"POST",headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
-      if(!d.success){showToast(d.error||"{{ _('Upgrade failed') }}","error");return}
-      var oldV=d.data.old_version||'';
-      var newV=d.data.new_version||'';
-      var msg=esc(id)+" v"+oldV+" → v"+newV;
-      if(d.data.needs_restart){msg+=" ({{ _('Restarting service') }})"}
-      showToast(msg,"success");
-      setTimeout(function(){renderStoreList&&renderStoreList()},1500);
-    }).catch(function(){showToast("{{ _('Network error') }}","error")});
-  },"{{ _('Upgrade') }}");
 }
 
 /* ── Store uninstall (remove installed plugin) ─────────────── */
@@ -676,9 +666,13 @@ function showPluginDetail(pid){
     var priceClass=p.price_type==='free'?'on':'';
 
     var vHtml='v'+esc(p.version);
-    if(p.has_update){
-      /* 版本发现：商店有更高版本时显示升级徽标 */
-      vHtml+=' <span class="bdg" style="background:rgba(63,185,80,.15);color:#3fb950">&#x1F504; v'+esc(p.latest_version||p.version)+' {{ _('Upgrade available') }}</span>';
+    /* 商店侧不再展示升级入口（已安装 tab / 页内版本条统一负责插件更新） */
+    if(p.update_check_failed){
+      /* 2026-09-18：本次版本对比未得出结果，显式告知而非静默 */
+      vHtml+=' <span class="bdg" style="background:rgba(139,139,139,.12);color:#8b8b8b">{{ _('Update check unavailable') }}</span>';
+    }else if(p.catalog_behind){
+      /* 2026-09-18：目录版本低于已装版本 */
+      vHtml+=' <span class="bdg" style="background:rgba(210,153,34,.15);color:#d29922">{{ _('Catalog behind') }} v'+esc(p.latest_version||p.version)+'</span>';
     }
 
     /* ★ 改动1(详情页)：详情弹窗也展示缩略图 */
@@ -740,10 +734,10 @@ function showPluginDetail(pid){
     /* ★ 改动4：详情弹窗底部安装/购买按钮 */
     var actionHtml='<div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--bd);display:flex;justify-content:flex-end;gap:8px">';
     if(p.installed){
+      /* 2026-09-18：已安装且目录有更高版本时，升级按钮必须与"已安装"并存
+         （原实现把 Upgrade 放在 else if，而 has_update 蕴含 installed，故恒不可达） */
       actionHtml+='<span class="bdg" style="background:rgba(88,166,255,.12);color:#58a6ff;padding:6px 16px">✅ {{ _('Installed') }}</span>'+
         '<button class="btn bo bs" style="color:#f85149;border-color:rgba(248,81,73,.4)" onclick="storeUninstallPlugin(\''+escAttr(p.identifier)+'\')">{{ _('Uninstall') }}</button>';
-    }else if(p.has_update){
-      actionHtml+='<button class="btn bp bs" onclick="storeUpgradePlugin(\''+escAttr(p.identifier)+'\')">🔄 {{ _('Upgrade') }}</button>';
     }else if(p.price_type==='free'){
       actionHtml+='<button class="btn bp bs" id="storeInstallBtn" onclick="storeInstallPlugin(\''+escAttr(p.identifier)+'\')">{{ _('Install') }}</button>';
     }else{

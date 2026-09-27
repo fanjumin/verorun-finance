@@ -632,6 +632,8 @@ def handle_market_check(node_def: dict, input_data: dict) -> dict:
       - metric: 'change_pct' | 'volume' | 'price'
       - operator: '>' | '<' | '>=' | '<='
       - threshold: float
+
+    取数统一委托 stock_analysis 插件（见 _get_market_data）。
     """
     config = node_def.get('config', {})
     symbol = config.get('symbol', '000001.SH')
@@ -639,7 +641,6 @@ def handle_market_check(node_def: dict, input_data: dict) -> dict:
     operator = config.get('operator', '>')
     threshold = config.get('threshold', 0)
 
-    # 尝试从 TradeMind API 获取实时数据
     try:
         market_data = _get_market_data(symbol)
         value = market_data.get(metric, 0)
@@ -667,28 +668,41 @@ def handle_market_check(node_def: dict, input_data: dict) -> dict:
 
 
 def _get_market_data(symbol: str) -> dict:
-    """获取市场数据（模拟实现，可替换为真实 API）"""
-    # Tencent 行情 API
-    url = f"https://qt.gtimg.cn/q={symbol}"
-    req = urllib.request.Request(url)
-    req.add_header('User-Agent', 'Mozilla/5.0')
+    """获取市场数据 —— 委托 stock_analysis 插件数据网关（股票业务唯一入口）。
+
+    2026-09-21 整改：此前本函数直连腾讯行情（qt.gtimg.cn）并自行正则解析，
+    绕过插件重复实现了取数职责 —— 既不受插件级限流/冷却/failover 治理，
+    也不产生 data_sources 合规留痕，插件更换主源（Tushare/Wind/Choice）时
+    本节点不会跟随。现一律经插件 gateway；插件未启用时明确抛错，由工作流
+    引擎按 on_error 策略处理（而非静默返回 0 值做出错误判定）。
+    """
     try:
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            text = resp.read().decode('gbk')
-            # 解析腾讯格式
-            import re
-            match = re.search(r'~([^~]+)~([^~]+)~([^~]+)~([^~]+)~([^~]+)~([^~]+)~([^~]+)', text)
-            if match:
-                return {
-                    'name': match.group(2),
-                    'price': float(match.group(3)),
-                    'change_pct': float(match.group(4).replace('%', '')),
-                    'volume': int(match.group(6)) if match.group(6).isdigit() else 0
-                }
-    except Exception:
-        pass
-    # API 失败时抛出异常，由工作流引擎按 on_error 策略处理
-    raise RuntimeError(f"Market data API unavailable for symbol: {symbol}")
+        from plugins.stock_analysis.gateway import gateway
+        from plugins.stock_analysis.providers.base import DataCategory
+        from plugins.stock_analysis.providers.commons import (INDEX_CANDIDATES,
+                                                              index_symbol,
+                                                              market_symbol)
+    except ImportError as err:
+        raise RuntimeError(
+            "market_check 节点依赖 stock_analysis 插件，当前发行版未启用该插件"
+        ) from err
+
+    clean = (symbol or "").strip()
+    if not clean:
+        raise RuntimeError("market_check 缺少 symbol 配置")
+
+    # 指数与个股走不同链路：指数须先过 index_symbol（腾讯对 sh000001 类
+    # 指数符号规范敏感），个股走 market_symbol 补交易所前缀。
+    if index_symbol(clean) in {index_symbol(c["symbol"]) for c in INDEX_CANDIDATES}:
+        code, category = index_symbol(clean), DataCategory.INDEX
+    else:
+        code, category = market_symbol(clean), DataCategory.QUOTE
+
+    quote = gateway.get_quote(code, category=category)
+    return {"name": quote.get("name"),
+            "price": quote.get("price"),
+            "change_pct": quote.get("change_pct"),
+            "volume": quote.get("volume")}
 
 
 # ============================================================
@@ -795,12 +809,22 @@ def run_script_safely(script_path: str, script_args: list = None,
     real_script = os.path.realpath(os.path.join(SCRIPTS_DIR, os.path.basename(script_path)))
     if not real_script.startswith(os.path.realpath(SCRIPTS_DIR)):
         return {'success': False, 'error': f'脚本路径被拒绝：{script_path}'}
+    base = os.path.basename(real_script)
+    allow = _script_allowlist()
+    if '*' not in allow and base not in allow:
+        return {'success': False,
+                'error': f'脚本未登记白名单：{base}（system_config.automation_script_allowlist）'}
     if not os.path.isfile(real_script):
         return {'success': False, 'error': f'脚本不存在：{script_path}'}
     try:
+        # A5.4：env 白名单清洗，剔除密钥类环境变量（API Key/DB 凭据等）
+        env = {k: v for k, v in os.environ.items()
+               if k in ('PATH', 'LANG', 'LC_ALL', 'HOME', 'SYSTEMROOT', 'TEMP', 'TMP',
+                        'PYTHONIOENCODING', 'VERORUN_EDITION')}
         result = subprocess.run(
             [sys.executable, real_script] + list(script_args or []),
-            capture_output=True, text=True, timeout=timeout
+            capture_output=True, text=True, timeout=timeout, env=env,
+            cwd=SCRIPTS_DIR,
         )
         return {
             'success': result.returncode == 0,
@@ -812,6 +836,21 @@ def run_script_safely(script_path: str, script_args: list = None,
         return {'success': False, 'error': f'脚本执行超时（{timeout}s）'}
     except Exception as e:
         return {'success': False, 'error': str(e)}
+
+
+# A5：外部脚本白名单（scripts/ 目录下的 .py 文件名）。默认空 = 只允许 BUILTIN_SCRIPTS。
+# 需要放开时经 system_config 键 'automation_script_allowlist'（JSON 数组）显式登记，
+# 使"能跑哪些脚本"成为可审计的配置项，而不是目录里有什么就能跑什么。
+# 应急回退：登记 '*' 视为放行任意脚本名，恢复本工作包上线前的旧行为（需文档标注为临时手段）。
+def _script_allowlist() -> set:
+    try:
+        with m.get_db() as conn:
+            row = conn.execute(
+                "SELECT value FROM system_config WHERE key='automation_script_allowlist'"
+            ).fetchone()
+        return set(json.loads(row['value']) if row and row.get('value') else [])
+    except Exception:
+        return set()
 
 
 def _run_builtin_script(func, ctx: dict, cfg: dict, timeout: int = 120) -> dict:
@@ -877,8 +916,10 @@ def handle_script(node_def: dict, input_data: dict) -> dict:
     """
     脚本节点处理器。
     配置:
-      - script:          内置脚本名（lang=builtin）或 scripts/ 目录下的文件名
-      - lang:            'builtin' | 'python' | 'shell'
+      - script:          内置脚本名（lang=builtin）或 scripts/ 目录下的文件名（需登记
+                          system_config.automation_script_allowlist，见 A5）
+      - lang:            'builtin' | 'python'；'shell' 目前显式拒绝（契约与实现不符，
+                          run_script_safely 硬编码 sys.executable，从未真正支持 shell）
       - args:            参数列表（subprocess 路径）
       - timeout_seconds: 超时秒数（默认 120s）
     """
@@ -896,11 +937,18 @@ def handle_script(node_def: dict, input_data: dict) -> dict:
         return _run_builtin_script(BUILTIN_SCRIPTS[name],
                                    input_data.get('context', {}) or {}, cfg, timeout)
 
-    if lang in ('python', 'shell'):
+    if lang == 'python':
         res = run_script_safely(name, cfg.get('args', []), timeout)
         if not res.get('success'):
             raise RuntimeError(res.get('error', '脚本执行失败'))
         return res
+
+    if lang == 'shell':
+        # A5：run_script_safely 硬编码 sys.executable，从未真正支持 shell。
+        # 在实现真 shell 执行（需容器沙箱 + 资源限额）之前，显式拒绝而不是静默失败。
+        raise ValueError(
+            "lang='shell' 暂不支持：脚本节点只会以 Python 解释器执行。"
+            "如需 shell，请改用 lang='python' 包装，或等待 Stage C 的容器化执行器。")
 
     raise ValueError(f'不支持的脚本语言：{lang}')
 

@@ -12,7 +12,7 @@ Cron 任务调度系统 + Workflow 工作流引擎的 SQLite 数据模型。
 """
 
 from i18n import _
-import json, time
+import json, time, uuid
 from datetime import datetime
 from contextlib import contextmanager
 import psycopg2
@@ -109,6 +109,9 @@ def init_orchestrator_tables():
                                 CHECK(target_type IN ('workflow','api','script','agent_task')),
                 target_config   TEXT NOT NULL DEFAULT '{}', -- JSON: 根据target_type不同
 
+                -- workflow 调度联动（workflow_defs.uuid → cron_jobs 幂等映射键）
+                workflow_def_id TEXT DEFAULT NULL,
+
                 -- 优先级与资源
                 priority        TEXT NOT NULL DEFAULT 'normal'
                                 CHECK(priority IN ('critical','high','normal','low')),
@@ -139,6 +142,12 @@ def init_orchestrator_tables():
                 ON cron_jobs(is_active, next_run_at);
             CREATE INDEX IF NOT EXISTS idx_cron_jobs_type
                 ON cron_jobs(job_type, priority);
+
+            -- 兼容存量库：workflow_def_id 列由 workflow 管理面（workflow_api）新增，
+            -- CREATE TABLE IF NOT EXISTS 不会为已存在的表补列，这里显式 ALTER 补列。
+            ALTER TABLE cron_jobs ADD COLUMN IF NOT EXISTS workflow_def_id TEXT DEFAULT NULL;
+            CREATE INDEX IF NOT EXISTS idx_cron_jobs_workflow_def
+                ON cron_jobs(workflow_def_id);
 
             -- =====================================================
             -- 3. 任务依赖关系表（DAG 边）
@@ -171,15 +180,15 @@ def init_orchestrator_tables():
                 -- 结构: {
                 --   "nodes": [{
                 --     "id": "node_1",
-                --     "type": "ai_agent|data_collect|ai_process|condition|approval|publish|notify|wait|sub_workflow|market_check",
+                --     "type": "ai_agent|data_collect|ai_process|condition|approval|publish|notify|wait|sub_workflow|market_check|http_request|script",
                 --     "name": _("Scrape 36Kr"),
-                --     "config": {...},   -- 节点类型特定配置
+                --     "config": {...},   -- 节点类型特定配置（script 节点的 lang 仅支持 'builtin'|'python'；'shell' 自 A5.2 起显式拒绝，见 orchestrator/nodes.py::handle_script）
                 --     "position": {x, y}  -- 可视化编辑器坐标
                 --   }],
                 --   "edges": [{
                 --     "from": "node_1",
                 --     "to": "node_2",
-                --     "condition": "_("  -- Conditional Branch: ")success"|"failure"|"${var} > 0.05"
+                --     "condition": ""  -- Conditional Branch: "success"|"failure"|"${var} > 0.05"
                 --   }]
                 -- }
                 definition      TEXT NOT NULL DEFAULT '{"nodes":[],"edges":[]}',
@@ -376,6 +385,62 @@ def init_orchestrator_tables():
                     '你是平台的自动化调度助手。你的职责是执行定时任务、处理工作流、生成内容、监控市场数据。请严格按照任务要求输出结果。',
                     '["content_factory","market_monitor","data_analysis","report_generation"]')
             ON CONFLICT (name) DO NOTHING;
+
+            -- =====================================================
+            -- 11. 工作流管理定义表（REST API 面，uuid TEXT id）
+            --     节点/边结构对齐壳层 WorkflowDefinitionLite：
+            --       nodes: [{id, data: {label, nodeType, config, serverId}}]
+            --       edges: [{source, target, condition}]
+            --     engine_id 为桥接到 workflow_definitions 的引擎侧 id
+            --     （引擎按 DB id 取定义执行，无 execute(definition) 入口）
+            -- =====================================================
+            CREATE TABLE IF NOT EXISTS workflow_defs (
+                id              TEXT PRIMARY KEY,
+                name            TEXT NOT NULL,
+                description     TEXT DEFAULT '',
+                nodes           TEXT NOT NULL DEFAULT '[]',   -- JSON
+                edges           TEXT NOT NULL DEFAULT '[]',   -- JSON
+                cron_expr       TEXT DEFAULT NULL,            -- 调度意图（实际调度走 cron_jobs）
+                enabled         BOOLEAN DEFAULT TRUE,
+                engine_id       BIGINT DEFAULT NULL REFERENCES workflow_definitions(id) ON DELETE SET NULL,
+                created_by      BIGINT DEFAULT 0,
+                created_at      TEXT DEFAULT NOW(),
+                updated_at      TEXT DEFAULT NOW()
+            );
+
+            -- =====================================================
+            -- 12. 工作流运行记录表（API 面运行历史）
+            -- =====================================================
+            CREATE TABLE IF NOT EXISTS workflow_runs (
+                id              TEXT PRIMARY KEY,
+                workflow_id     TEXT NOT NULL REFERENCES workflow_defs(id) ON DELETE CASCADE,
+                status          TEXT NOT NULL DEFAULT 'running'
+                                CHECK(status IN ('running','paused','completed','failed','cancelled','timeout')),
+                progress        TEXT DEFAULT '{}',            -- JSON: {instance_id, current_node_id}
+                started_at      TEXT DEFAULT NOW(),
+                finished_at     TEXT DEFAULT '',
+                error           TEXT DEFAULT ''
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_workflow_runs_wf
+                ON workflow_runs(workflow_id, started_at);
+
+            -- =====================================================
+            -- 13. 调度器选主租约表（A6：多副本真选主）
+            -- =====================================================
+            -- 背景：此前 scheduler_state.is_leader 硬编码为 1，N 个副本 = N 个 leader
+            -- → 同一 cron 被重复触发（重复发文/重复下单/重复扣费）。
+            -- 未采用 pg_try_advisory_lock：本仓 get_db() 为短连接上下文管理器，
+            -- 会话级 advisory lock 随连接关闭立即释放，不构成持锁。
+            -- 故用本表做行级 CAS 抢主（见 SchedulerEngine._try_acquire_leadership）。
+            -- 注意：expires_at 必须是 TIMESTAMPTZ 才能与 NOW() 直接比较
+            --（scheduler_state.last_heartbeat 沿用 TEXT，仅作展示，不参与比较）。
+            CREATE TABLE IF NOT EXISTS scheduler_leader (
+                name        TEXT PRIMARY KEY,
+                holder      TEXT NOT NULL DEFAULT '',
+                expires_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
         """)
 
 
@@ -411,10 +476,10 @@ def create_cron_job(data):
                 (name, description, job_type, cron_expr, natural_expr,
                  interval_seconds, timezone, calendar, start_at, end_at,
                  next_run_at, max_runs, agent_type, agent_id,
-                 target_type, target_config, priority, worker_pool,
+                 target_type, target_config, workflow_def_id, priority, worker_pool,
                  max_retries, retry_delay, retry_backoff, timeout_seconds,
                  is_active, created_by)
-            VALUES (%s,%s,%s,%s,%s, %s,%s,%s,%s,%s, %s,%s,%s,%s, %s,%s,%s,%s, %s,%s,%s,%s, %s,%s)
+            VALUES (%s,%s,%s,%s,%s, %s,%s,%s,%s,%s, %s,%s,%s,%s,%s, %s,%s,%s,%s,%s, %s,%s,%s,%s,%s)
             RETURNING id
         """, (
             data.get('name'), data.get('description', ''),
@@ -428,6 +493,7 @@ def create_cron_job(data):
             data.get('agent_type', 'system'), data.get('agent_id'),
             data.get('target_type', 'workflow'),
             to_json(data.get('target_config', {})),
+            data.get('workflow_def_id'),
             data.get('priority', 'normal'),
             data.get('worker_pool', 'shared'),
             data.get('max_retries', 3), data.get('retry_delay', 10),
@@ -444,7 +510,7 @@ def update_cron_job(job_id, data):
     for key in ('name','description','job_type','cron_expr','natural_expr',
                 'interval_seconds','timezone','calendar','start_at','end_at',
                 'next_run_at','max_runs','agent_type','agent_id',
-                'target_type','target_config','priority','worker_pool',
+                'target_type','target_config','workflow_def_id','priority','worker_pool',
                 'max_retries','retry_delay','retry_backoff','timeout_seconds',
                 'is_active','last_run_at','last_status','last_duration_ms'):
         if key in data:
@@ -508,6 +574,21 @@ def delete_cron_job(job_id):
         conn.execute("DELETE FROM job_dependencies WHERE job_id=%s OR depends_on_job_id=%s", (job_id, job_id))
         conn.execute("DELETE FROM cron_jobs WHERE id=%s", (job_id,))
         return conn.rowcount > 0
+
+
+def get_cron_job_by_workflow(workflow_def_id):
+    """按 workflow_defs.uuid 定位其专属调度任务（幂等 upsert 的查找键）。
+
+    一个 workflow_def 至多对应一条 target_type='workflow' 的 cron_jobs。
+    """
+    with get_db() as conn:
+        conn.execute(
+            "SELECT * FROM cron_jobs WHERE workflow_def_id=%s "
+            "AND target_type='workflow' ORDER BY id LIMIT 1",
+            (workflow_def_id,)
+        )
+        row = conn.fetchone()
+        return dict(row) if row else None
 
 
 # ========== 工作流 CRUD ==========
@@ -611,6 +692,193 @@ def delete_workflow(wf_id):
         conn.execute("DELETE FROM workflow_instances WHERE workflow_id=%s", (wf_id,))
         # 最后删除定义
         conn.execute("DELETE FROM workflow_definitions WHERE id=%s", (wf_id,))
+        return conn.rowcount > 0
+
+
+# ========== 工作流管理定义 CRUD（REST API 面，workflow_defs） ==========
+
+def create_workflow_def(data):
+    """创建工作流管理定义（uuid TEXT id，节点/边存 API 形状 JSON）"""
+    with get_db() as conn:
+        conn.execute("""
+            INSERT INTO workflow_defs
+                (id, name, description, nodes, edges, cron_expr,
+                 enabled, engine_id, created_by)
+            VALUES (%s,%s,%s,%s,%s,%s, %s,%s,%s)
+        """, (
+            data['id'], data.get('name'), data.get('description', ''),
+            to_json(data.get('nodes', [])), to_json(data.get('edges', [])),
+            data.get('cron_expr'),
+            data.get('enabled', True), data.get('engine_id'),
+            data.get('created_by', 0)
+        ))
+        return data['id']
+
+
+def get_workflow_def(def_id):
+    """获取工作流管理定义"""
+    with get_db() as conn:
+        conn.execute("SELECT * FROM workflow_defs WHERE id=%s", (def_id,))
+        row = conn.fetchone()
+        return dict(row) if row else None
+
+
+def list_workflow_defs(page=1, limit=50):
+    """列出工作流管理定义"""
+    offset = (page - 1) * limit
+    with get_db() as conn:
+        conn.execute("SELECT COUNT(*) FROM workflow_defs")
+        total = conn.fetchone()['count']
+        conn.execute(
+            "SELECT * FROM workflow_defs ORDER BY updated_at DESC LIMIT %s OFFSET %s",
+            (limit, offset)
+        )
+        rows = conn.fetchall()
+        return {
+            "total": total,
+            "page": page,
+            "limit": limit,
+            "workflows": [dict(r) for r in rows]
+        }
+
+
+def update_workflow_def(def_id, data):
+    """更新工作流管理定义"""
+    fields = []
+    values = []
+    for key in ('name', 'description', 'nodes', 'edges', 'cron_expr',
+                'enabled', 'engine_id'):
+        if key in data:
+            fields.append(f"{key}=%s")
+            v = data[key]
+            if isinstance(v, (dict, list)):
+                v = to_json(v)
+            values.append(v)
+    if not fields:
+        return False
+    values.append(def_id)
+    with get_db() as conn:
+        fields.append("updated_at=NOW()")
+        conn.execute(
+            f"UPDATE workflow_defs SET {', '.join(fields)} WHERE id=%s",
+            values
+        )
+        return conn.rowcount > 0
+
+
+def delete_workflow_def(def_id):
+    """删除工作流管理定义（workflow_runs 级联删除）"""
+    with get_db() as conn:
+        conn.execute("DELETE FROM workflow_defs WHERE id=%s", (def_id,))
+        return conn.rowcount > 0
+
+
+def get_workflow_def_by_engine_id(engine_id):
+    """按引擎侧 id 反查工作流管理定义（引擎侧触发路径回写运行历史用）"""
+    if not engine_id:
+        return None
+    with get_db() as conn:
+        conn.execute("SELECT * FROM workflow_defs WHERE engine_id=%s", (engine_id,))
+        row = conn.fetchone()
+        return dict(row) if row else None
+
+
+# ========== 工作流运行记录 CRUD（REST API 面，workflow_runs） ==========
+
+def create_workflow_run(data):
+    """创建工作流运行记录"""
+    with get_db() as conn:
+        conn.execute("""
+            INSERT INTO workflow_runs
+                (id, workflow_id, status, progress, started_at)
+            VALUES (%s,%s,%s,%s,%s)
+        """, (
+            data['id'], data['workflow_id'], data.get('status', 'running'),
+            to_json(data.get('progress', {})), data.get('started_at', now_str())
+        ))
+        return data['id']
+
+
+def get_workflow_run(run_id):
+    """获取工作流运行记录"""
+    with get_db() as conn:
+        conn.execute("SELECT * FROM workflow_runs WHERE id=%s", (run_id,))
+        row = conn.fetchone()
+        return dict(row) if row else None
+
+
+def record_workflow_run(workflow_id, instance_id=None, trigger_type='manual'):
+    """记录一条 workflow_runs 运行历史。
+
+    手动（REST `/admin/workflows/<id>/run`）与定时（cron → WorkerPool）两条
+    触发路径共用本函数，保证运行历史对两种触发都可追溯。
+
+    Args:
+        workflow_id: workflow_defs.id（API 面 uuid）
+        instance_id: 引擎侧 workflow_instances.id，供懒刷新状态用
+        trigger_type: 'manual' | 'cron' | ...
+
+    Returns:
+        run_id；workflow_id 为空时返回 None（纯引擎侧定义无 API 面记录）
+    """
+    if not workflow_id:
+        return None
+    run_id = str(uuid.uuid4())
+    progress = {'trigger_type': trigger_type}
+    if instance_id:
+        progress['instance_id'] = instance_id
+    create_workflow_run({
+        'id': run_id,
+        'workflow_id': workflow_id,
+        'status': 'running',
+        'progress': progress,
+        'started_at': now_str(),
+    })
+    return run_id
+
+
+def list_workflow_runs(workflow_id, page=1, limit=50):
+    """列出指定工作流的运行记录"""
+    offset = (page - 1) * limit
+    with get_db() as conn:
+        conn.execute(
+            "SELECT COUNT(*) FROM workflow_runs WHERE workflow_id=%s",
+            (workflow_id,)
+        )
+        total = conn.fetchone()['count']
+        conn.execute(
+            "SELECT * FROM workflow_runs WHERE workflow_id=%s "
+            "ORDER BY started_at DESC LIMIT %s OFFSET %s",
+            (workflow_id, limit, offset)
+        )
+        rows = conn.fetchall()
+        return {
+            "total": total,
+            "page": page,
+            "limit": limit,
+            "runs": [dict(r) for r in rows]
+        }
+
+
+def update_workflow_run(run_id, updates):
+    """更新工作流运行记录"""
+    fields = []
+    values = []
+    for key in ('status', 'progress', 'finished_at', 'error'):
+        if key in updates:
+            fields.append(f"{key}=%s")
+            v = updates[key]
+            if isinstance(v, (dict, list)):
+                v = to_json(v)
+            values.append(v)
+    if not fields:
+        return False
+    values.append(run_id)
+    with get_db() as conn:
+        conn.execute(
+            f"UPDATE workflow_runs SET {', '.join(fields)} WHERE id=%s",
+            values
+        )
         return conn.rowcount > 0
 
 

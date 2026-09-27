@@ -1,6 +1,6 @@
 # VeroRun — 企业多核 AI 操作系统
 
-[![Version](https://img.shields.io/badge/version-0.61.1-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.62.0-blue.svg)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-EULA%20v1.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)]()
 [![Plugins](https://img.shields.io/badge/plugins-30-orange.svg)]()
@@ -264,7 +264,11 @@ v2 另外补齐一整套研究栈（源自专项实施方案）：`secmaster` �
 | 心跳上报 | 300s | AES-256-GCM + HMAC-SHA256 签名 + TLS1.3，5 分钟防重放窗口 |
 
 - **自我保护**：双进程（`guardian` 监控业务服务，`self_protect` 监控 guardian），pipe / pidfile 心跳，父进程死亡自动重启。
-- **远程命令**（6 个）：`warn`、`lock_ai`、`lock_full`、`shutdown`、`self_destruct`、`update_config`。
+- **阶梯恢复**：重启 → GitHub 回滚（`guardian.py --rollback-now` 支持手动触发），带冷却期防止循环回滚。
+- **每日快照**：`verorun-guardian-snapshot.timer`（systemd，每日）在回滚前预先快照状态。
+- **签名发布链**：Ed25519 签名的发布清单 + 完整性清单 + 官方 token 校验；版本降级保护（`min/max_version`）；构建期 `build_id` 来源水印。
+- **CI 新鲜度门禁**：`tests.yml` 每次运行都校验 `veroguard/data/manifest.json` 与 `VERSION` 一致，清单过期则 CI 直接失败（修复方式：GitHub Actions 手动触发 "Refresh VeroGuard Manifest"）。
+- **远程命令**（6 个）：`warn`、`lock_ai`、`lock_full`、`shutdown`、`self_destruct`、`update_config`；破坏性命令（`shutdown` / `self_destruct`）额外要求本地 ops-token 确认。
 
 ---
 
@@ -333,6 +337,32 @@ v2 另外补齐一整套研究栈（源自专项实施方案）：`secmaster` �
 | `@verorun/sdk-douyin` | 抖音 | 抖音 / 头条小程序封装 |
 | `@verorun/sdk-telegram` | Telegram | Bot API + WebApp |
 | `@verorun/sdk-line` | LINE | LIFF + Messaging API |
+| `verorun` CLI | Python / 跨平台 | 轻量 REST 客户端：对话、Agent、任务、自动化、插件；JWT 鉴权 + SSE 流式输出（`sdks/cli/`） |
+
+### `verorun` CLI 命令树
+
+`sdks/cli/` 轻量 REST 客户端完整命令面（详见 `sdks/cli/README.md`）：
+
+```
+verorun login | logout | whoami                       # login 支持 --password-stdin，避免密码
+                                                        # 出现在进程列表 / shell 历史中
+verorun chat <message> [--session] [--agent <int>] [--stream/--no-stream] [--input <json>]
+verorun dispatch <description> --agent <int> [--title] [--input <json>]
+verorun agents list | get | toggle | test | capabilities <id>
+verorun sessions
+verorun session <sid> [--clear | --rm]
+verorun search <keyword>
+verorun tasks [--recent] [--limit N] | task <id> [--cancel|--retry|--logs]
+verorun automation jobs [--page] [--limit] | job-run | job-toggle
+verorun automation workflows [--page] [--limit] | workflow-run
+verorun automation instances [--page] [--limit] | instance <id> [--pause|--resume|--cancel]
+verorun plugins list [--status] | install | enable | disable | config <id> [--set <json>]
+verorun status
+verorun config get|set|list <key> [<value>]
+verorun version
+```
+
+全部命令支持全局 `--json` 参数，便于脚本集成。
 
 ---
 
@@ -384,7 +414,7 @@ verorun-pro/
 
 ## 已知生产约束
 
-- Admin 服务 Gunicorn worker 限制为 2，避免低配服务器 OOM。
+- Gunicorn worker 数按物理内存自动分四档（`<2GB→2`、`2–4GB→4`、`4–8GB→6`、`≥8GB→8`），再取 `min(档位, nproc, 8)`；可用 `.env` 的 `VR_WORKERS` 覆盖（改完只需 restart，无需重装），线程数由 `VR_THREADS` 控制（默认 4）；非法值回退 2。
 - SQLite 模式禁用 `--preload`，避免跨进程连接冲突。
 - systemd `TimeoutStartSec` 需大于 `health_check.sh` 的 `MAX_WAIT=180`。
 - 插件连接包装类必须实现 commit / rollback / close，避免连接池 idle in transaction。

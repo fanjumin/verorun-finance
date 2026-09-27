@@ -107,13 +107,15 @@ function go(s){
   document.querySelectorAll(".ni").forEach(function(n){n.classList.remove("sel")});
   var el=document.getElementById("n-"+s);if(el)el.classList.add("sel");
   document.getElementById("mc").innerHTML='<div class="lo"><div class="s"></div>{{ _('Loading...') }}...</div>';
+  _renderPluginVerBar("");
   var maxRetries=sectionMap.hasOwnProperty(s)?100:3;
   var _tries=0;
   (function _try(){_tries++;if(typeof window["l_"+s]=="function"){window["l_"+s]()}else if(_tries<maxRetries)setTimeout(_try,50);else document.getElementById("mc").innerHTML='<div class="em">{{ _('Plugin render function') }} l_'+s+'() {{ _('not found') }}. {{ _('Try refreshing the page') }}.'})();
 }
 
 // Phase 2 (2026-08-09): dual-channel — l_<key>() inline preferred; embed_url iframe as fallback
-function goPlugin(key,embedUrl){
+// pluginId: 插件标识（非菜单 key）。用于版本条取 window.PLUGIN_META[pluginId]。
+function goPlugin(key,embedUrl,pluginId){
   document.querySelectorAll(".ni").forEach(function(n){n.classList.remove("sel")});
   var el=document.getElementById("n-"+key);if(el)el.classList.add("sel");
   document.getElementById("mc").innerHTML='<div class="lo"><div class="s"></div>{{ _('Loading...') }}</div>';
@@ -125,6 +127,7 @@ function goPlugin(key,embedUrl){
     if(typeof window["l_"+key]=="function"){
       window["l_"+key]();
       if(embedUrl)console.log("[goPlugin] l_"+key+"() used (embed_url on "+esc(key)+" ignored)");
+      _renderPluginVerBar(pluginId);
       return;
     }
     if(_tries<_maxTries){setTimeout(_try,100);return}
@@ -140,7 +143,68 @@ function goPlugin(key,embedUrl){
     }else{
       document.getElementById("mc").innerHTML='<div class="em">{{ _('Plugin render function') }} l_'+esc(key)+'() {{ _('not found') }}. {{ _('Try refreshing the page') }}.</div>';
     }
+    _renderPluginVerBar(pluginId);
   })();
+}
+
+// ── 插件版本条（系统侧统一注入 plugin_meta；插件自身无需实现版本 UI）──
+// 数据源：后端 get_plugin_menus() 注入的 plugin_meta → icons.html 收集进 window.PLUGIN_META
+// 显示：已装版本（始终）＋ 有更新时显示升级按钮（页内更新，不跳转商店页）
+var _PLG_I18N={
+  version:{{ _('Version') | tojson }},
+  upgrade:{{ _('Upgrade') | tojson }},
+  upgrading:{{ _('Upgrading') | tojson }},
+  upgraded:{{ _('Upgraded') | tojson }},
+  upgradeFailed:{{ _('Upgrade failed') | tojson }},
+  upgradeConfirm:{{ _('Upgrade to latest version?') | tojson }},
+  restarting:{{ _('Restarting service') | tojson }},
+  netErr:{{ _('Network error') | tojson }}
+};
+function _renderPluginVerBar(pid){
+  var el=document.getElementById("plgVerBar");if(!el)return;
+  el.innerHTML="";
+  var m=pid?((window.PLUGIN_META||{})[pid]||null):null;
+  if(!m||!m.version){el.style.display="none";return}
+  el.style.display="inline-flex";
+  el.style.alignItems="center";el.style.gap="10px";el.style.marginLeft="14px";el.style.fontSize="11px";el.style.color="var(--dim)";
+  var v=document.createElement("span");
+  v.style.cssText="padding:2px 8px;border:1px solid var(--border);border-radius:999px;font-family:monospace";
+  v.textContent=_PLG_I18N.version+" v"+m.version;
+  el.appendChild(v);
+  if(m.has_update){
+    var b=document.createElement("button");
+    b.className="btn bp";b.style.cssText="height:22px;padding:0 10px;font-size:11px";
+    b.textContent=_PLG_I18N.upgrade+" → v"+(m.latest_version||"");
+    b.onclick=function(){pluginUpgradeInline(pid)};
+    el.appendChild(b);
+  }
+}
+function pluginUpgradeInline(pid){
+  var m=((window.PLUGIN_META||{})[pid])||{};
+  showConfirm(_PLG_I18N.upgradeConfirm,esc(pid)+"  v"+esc(m.version||"")+" → v"+esc(m.latest_version||""),
+    function(){_doPluginUpgradeInline(pid)},_PLG_I18N.upgrade);
+}
+function _doPluginUpgradeInline(pid){
+  var el=document.getElementById("plgVerBar");
+  var btn=el?el.querySelector("button"):null;
+  if(btn){btn.disabled=true;btn.textContent=_PLG_I18N.upgrading}
+  fetch("/admin/plugins/store/"+encodeURIComponent(pid)+"/upgrade",{method:"POST",headers:{"Authorization":"Bearer "+T}})
+    .then(function(r){return r.json()}).then(function(d){
+      if(!d.success){
+        if(btn){btn.disabled=false;btn.textContent=_PLG_I18N.upgrade}
+        showToast(esc(d.error||_PLG_I18N.upgradeFailed),"error");return;
+      }
+      var dd=d.data||{},nv=dd.new_version||"";
+      var meta=(window.PLUGIN_META||{})[pid]||{};
+      meta.version=nv||meta.version;meta.latest_version=meta.version;meta.has_update=false;
+      window.PLUGIN_META=window.PLUGIN_META||{};window.PLUGIN_META[pid]=meta;
+      /* 只刷新版本条，不重渲染插件页面 —— 避免顶掉用户当前所在页面 */
+      _renderPluginVerBar(pid);
+      showToast(_PLG_I18N.upgraded+" "+esc(pid)+" v"+esc(dd.old_version||"")+" → v"+esc(nv)+(dd.needs_restart?" ("+_PLG_I18N.restarting+")":""),"success");
+    }).catch(function(){
+      if(btn){btn.disabled=false;btn.textContent=_PLG_I18N.upgrade}
+      showToast(_PLG_I18N.netErr,"error");
+    });
 }
 
 // ── Plugin Bridges: 插件内联渲染函数 ──

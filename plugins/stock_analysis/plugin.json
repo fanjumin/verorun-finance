@@ -25,8 +25,8 @@
   "dependencies": {},
   "conflicts": [],
   "python_dependencies": {
-    "required": ["pyyaml", "pandas", "requests", "tushare>=1.4.0"],
-    "optional": {"akshare": "akshare>=1.14.0"}
+    "required": ["pyyaml", "pandas", "requests", "tushare>=1.4.0", "akshare>=1.14.0"],
+    "optional": {}
   },
   "mcp_servers": [
     {
@@ -111,6 +111,16 @@
         "title": "Auto Deep Research After Batch",
         "description": "After the daily batch analysis finishes, automatically enqueue LLM deep research for high-confidence symbols. Disabled by default.",
         "default": false
+      },
+      "index_selection": {
+        "type": "array",
+        "title": "Index Selection",
+        "description": "Indices shown on the market overview page. Empty = fall back to the three major A-share indices (SSE, SZSE Component, ChiNext).",
+        "items": {
+          "type": "string",
+          "enum": ["sh000001", "sz399001", "sz399006", "sh000300", "hkhsi", "hkhscei", "usdji", "usixic", "usinx", "jpn225"]
+        },
+        "default": ["sh000001", "sz399001", "sz399006"]
       }
     }
   }

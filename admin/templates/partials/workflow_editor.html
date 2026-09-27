@@ -108,8 +108,12 @@ window.__t = window.__t || {
 // ── 惰性加载：仅首次进入时注入编辑器资源（幂等，可重复进入）──
 var __WF_LOADED = {};
 
+// key 计算唯一事实源：注入与查询必须同源，避免字面值漂移导致缓存判定恒假
+// （2026-09-18 修复：b51f16b0 给 app.js 加 ?v=2 后，L179 的字面 key 未同步 → 二次进入画布不挂载）
+function wfKey(url){ return url.replace(/[^a-zA-Z0-9]/g, '_'); }
+
 function wfInjectOnce(url, isCss){
-  var key = url.replace(/[^a-zA-Z0-9]/g, '_');
+  var key = wfKey(url);
   if (__WF_LOADED[key]) return Promise.resolve();
   return new Promise(function(resolve){
     var el = isCss ? document.createElement('link') : document.createElement('script');
@@ -176,7 +180,7 @@ window.l_workflow_editor = function(){
     + '</div>';
 
   // 非首次进入：脚本已缓存，需手动重新挂载 React 实例
-  var wasLoaded = !!__WF_LOADED['_admin_static_js_workflow_editor_app_js'];
+  var wasLoaded = !!__WF_LOADED[wfKey('/admin/static/js/workflow_editor_app.js?v=2')];
   loadEditorAssets().then(function(){
     if (wasLoaded && window.mountFlowEditor) {
       if (window.unmountWorkflowEditor) window.unmountWorkflowEditor();

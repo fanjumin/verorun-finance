@@ -192,6 +192,11 @@ class WorkerPool:
         else:
             wf_id = job_data
             trigger_config = {}
+        # Cron 调度回调（SchedulerEngine → cron_jobs）：cron_jobs 行没有
+        # 顶层 workflow_id 字段，target_config 才是解析后的配置，其中
+        # workflow_id = 引擎侧定义 id（与 scheduler 默认分支语义一致）
+        if not wf_id and isinstance(target_config, dict):
+            wf_id = target_config.get('workflow_id')
 
         if not wf_id:
             return {'success': False, 'error': _('Missing workflow_id')}
@@ -201,9 +206,38 @@ class WorkerPool:
                 wf_id, trigger_type='cron',
                 trigger_config=trigger_config
             )
-            return {'success': True, 'instance_id': inst_id}
         except Exception as e:
             return {'success': False, 'error': str(e)}
+
+        # 回写 API 面运行历史：与手动触发（workflow_api.run_workflow_def）共用
+        # models.record_workflow_run，避免定时执行在 /admin/workflows/<id>/runs 里"隐身"
+        self._record_workflow_run(job_data, target_config, wf_id, inst_id)
+        return {'success': True, 'instance_id': inst_id}
+
+    def _record_workflow_run(self, job_data, target_config, engine_id, inst_id):
+        """回写 cron 触发的工作流运行历史（失败仅记日志，不影响执行结果）。
+
+        定位 workflow_defs.id 的优先级：
+        1. cron_jobs.workflow_def_id —— workflow_api._sync_workflow_cron 写入，最可靠
+        2. target_config.workflow_def_id —— 同上（部分调用方透传）
+        3. 按引擎侧 id 反查 —— 兜底；纯引擎侧定义查不到则跳过
+        """
+        def_id = None
+        if isinstance(job_data, dict):
+            def_id = job_data.get('workflow_def_id')
+        if not def_id and isinstance(target_config, dict):
+            def_id = target_config.get('workflow_def_id')
+        if not def_id:
+            wf_def = m.get_workflow_def_by_engine_id(engine_id)
+            def_id = wf_def.get('id') if wf_def else None
+        if not def_id:
+            return None
+        try:
+            return m.record_workflow_run(def_id, inst_id, trigger_type='cron')
+        except Exception as e:
+            m.add_log('workflow', inst_id, 'error',
+                       f'⚠️ Failed to record workflow run history: {e}')
+            return None
 
     def _execute_cron_job(self, job_data: dict) -> dict:
         """执行直接的 Cron 任务"""

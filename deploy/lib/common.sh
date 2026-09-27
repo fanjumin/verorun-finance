@@ -773,8 +773,9 @@ assert_debug_disabled() {
 # 并发 worker / 线程数解析（审计 PERF-002：动态适应 + .env 可覆盖 + 免重装）
 # ══════════════════════════════════════════════════════════════════════
 # 优先级：调用者环境变量 > .env 中的值 > 按物理内存自动计算。
-# 自动档位：<2048MB→1；2048–4095MB→2；≥4096MB→4；再取 min(档位, nproc, VR_WORKERS_MAX)。
-# 上限：VR_WORKERS 最高 8（超出即警告并收敛为 8）；非法值（空/非数字/0）回退默认 2 / 4。
+# 自动档位（2-4-6-8 四档）：<2048MB→2；2048–4095MB→4；4096–8191MB→6；≥8192MB→8；
+# 再取 min(档位, nproc, VR_WORKERS_MAX)。
+# 上限：VR_WORKERS 最高 8（超出即警告并收敛为 8）；非法值（空/非数字/0）回退默认 2。
 # 生效方式：解析结果写入 .env，systemd 单元在服务启动时读取 → 改 .env 后只需 restart，无需重装。
 VR_WORKERS_MAX=8
 resolve_vr_workers() {
@@ -789,9 +790,10 @@ resolve_vr_workers() {
         case "${mem_mb}" in ''|*[!0-9]*) mem_mb=2048 ;; esac
         ncpu="$(nproc 2>/dev/null || echo 1)"
         case "${ncpu}" in ''|*[!0-9]*|0*) ncpu=1 ;; esac
-        if   [ "${mem_mb}" -lt 2048 ]; then tier=1
-        elif [ "${mem_mb}" -lt 4096 ]; then tier=2
-        else tier=4
+        if   [ "${mem_mb}" -lt 2048 ]; then tier=2
+        elif [ "${mem_mb}" -lt 4096 ]; then tier=4
+        elif [ "${mem_mb}" -lt 8192 ]; then tier=6
+        else tier=8
         fi
         [ "${ncpu}" -lt "${tier}" ] && tier="${ncpu}"
         [ "${tier}" -gt "${VR_WORKERS_MAX}" ] && tier="${VR_WORKERS_MAX}"

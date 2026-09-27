@@ -220,6 +220,7 @@ Cannot delete main Agent: Cannot delete main Agent
 Cannot downgrade yourself to non-super admin: Cannot downgrade yourself to non-super admin
 Capture: Capture
 Case: Case
+Catalog behind: Catalog behind
 Category Statistics: Category Statistics
 Category created: Category created
 Category name cannot be empty: Category name cannot be empty
@@ -644,6 +645,7 @@ Management Backend: Management Backend
 Manual review: Manual review
 'Manually Approved': 'Manually Approved'
 Manually renewed: Manually renewed
+Markdown preview module is not ready (markdown/bleach is not available): Markdown preview module is not ready (markdown/bleach is not available)
 Marked as completed: Marked as completed
 Master Agent does not exist: Master Agent does not exist
 Matrix Dialogue Engine (Master Agent): Matrix Dialogue Engine (Master Agent)
@@ -940,7 +942,6 @@ Pending delivery: Pending delivery
 Pending payment: Pending payment
 Pending posts: Pending posts
 Pending processing: Pending processing
-'Pending Review': 'Pending Review'
 Pending review: Pending review
 Pending shipment: Pending shipment
 Pending tickets: Pending tickets
@@ -1189,7 +1190,6 @@ Sub Agent - : Sub Agent -
 Sub-task Summary Title: Sub-task Summary Title
 Subdomain Does Not Exist: Subdomain Does Not Exist
 Subdomain and Display Name Cannot Be Empty: Subdomain and Display Name Cannot Be Empty
-Submit: Submit
 'Submit Version': 'Submit Version'
 Submit for Review: Submit for Review
 Subscription reactivated: Subscription reactivated
@@ -1343,6 +1343,7 @@ Unknown user: Unknown user
 Unprocessed: Unprocessed
 Untitled topic: Untitled topic
 Untitled Workflow: Untitled Workflow
+Update check unavailable: Update check unavailable
 Update successful: Update successful
 Updated: Updated
 Updated data cannot be empty: Updated data cannot be empty
@@ -2066,7 +2067,6 @@ stub confirm is disabled outside dev: stub confirm is disabled outside dev
 'Enterprise Verification Failed:': 'Enterprise Verification Failed:'
 'Enterprise Verified': 'Enterprise Verified'
 'Enterprises Served': 'Enterprises Served'
-'Estimated Pending Payout': 'Estimated Pending Payout'
 'Expand': 'Expand'
 'Expired This Month': 'Expired This Month'
 'Expires': 'Expires'
@@ -2745,6 +2745,7 @@ stub confirm is disabled outside dev: stub confirm is disabled outside dev
 'leave blank to keep current': 'leave blank to keep current'
 'leave empty to auto': 'leave empty to auto'
 'Invalid target_type': 'Invalid target_type'
+'A quota for this target already exists': 'A quota for this target already exists'
 'Key is referenced by %(count)s model(s), please unlink first': 'Key is referenced by %(count)s model(s), please unlink first'
 'Name and Key cannot be empty': 'Name and Key cannot be empty'
 'No changes': 'No changes'
@@ -3414,6 +3415,30 @@ Please enter a GitHub repo URL: Please enter a GitHub repo URL
 'Role Definition': 'Role Definition'
 'Role Description': 'Role Description'
 'Roles & Abilities': 'Roles & Abilities'
+# ── 金融桌面版投研角色（原文即英文，英文侧取原文本身）──
+# 与 i18n/zh-CN.yml 的同名块成对维护：i18n_check.py 要求两侧顶层 Key 集完全一致。
+'System Ops': 'System Ops'
+'System operations — backup, health monitoring, alert channels, workflow scheduling': 'System operations — backup, health monitoring, alert channels, workflow scheduling'
+'Research Planner': 'Research Planner'
+'Research planning — decompose a question into testable hypotheses and a data checklist': 'Research planning — decompose a question into testable hypotheses and a data checklist'
+'Fundamental Analyst': 'Fundamental Analyst'
+'Fundamental analysis — TTM financials, valuation range and earnings quality': 'Fundamental analysis — TTM financials, valuation range and earnings quality'
+'Quant Analyst': 'Quant Analyst'
+'Quant analysis — adjusted klines, capital flows, positioning and sentiment': 'Quant analysis — adjusted klines, capital flows, positioning and sentiment'
+'Risk Officer': 'Risk Officer'
+'Risk officer — bear cases, stress tests and red-team challenge to the house view': 'Risk officer — bear cases, stress tests and red-team challenge to the house view'
+'Portfolio Manager': 'Portfolio Manager'
+'Portfolio manager — position sizing and the final research call': 'Portfolio manager — position sizing and the final research call'
+'Compliance Officer': 'Compliance Officer'
+'Compliance gate — suitability, quiet period, data provenance and disclaimer': 'Compliance gate — suitability, quiet period, data provenance and disclaimer'
+# ── Provider Key 池：角色与轮转状态（AI Hub）──
+'Primary': 'Primary'
+'Backup': 'Backup'
+'Dedicated': 'Dedicated'
+'Pool Role': 'Pool Role'
+'Rotates to absorb rate limits': 'Rotates to absorb rate limits'
+'Activates when all Primary keys are cooling down': 'Activates when all Primary keys are cooling down'
+'Only used when explicitly bound to a model/agent': 'Only used when explicitly bound to a model/agent'
 'Core Instructions': 'Core Instructions'
 'Code of Conduct': 'Code of Conduct'
 'Basic Settings': 'Basic Settings'
@@ -4243,3 +4268,13 @@ Please enter a GitHub repo URL: Please enter a GitHub repo URL
 'Edition Research': 'Research'
 'Edition Mini Program': 'Mini Program'
 'Edition Edge': 'Edge'
+
+# ── Plugin management & profile validation (en source keys, identity) ──
+'Alias is required': 'Alias is required'
+'Display name cannot exceed 30 characters': 'Display name cannot exceed 30 characters'
+'Installed but not enabled': 'Installed but not enabled'
+'Invalid active value, must be 0 or 1': 'Invalid active value, must be 0 or 1'
+'Nickname cannot exceed 30 characters': 'Nickname cannot exceed 30 characters'
+'Notification template does not exist': 'Notification template does not exist'
+'Plan/Subscriptions/Orders/Revenue': 'Plan/Subscriptions/Orders/Revenue'
+'Plugin menu load failed': 'Plugin menu load failed'

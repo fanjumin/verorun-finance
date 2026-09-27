@@ -1,0 +1,167 @@
+{
+  "version": 1,
+  "_note": [
+    "锚点断言（WP-B6.1）：用【原文子串】断言修复点仍然存在，禁止写行号或类名——",
+    "行号会漂移；且像 ThreadingHTTPServer 那种「import + 实例化」并非 class 定义，按类名断言必然 FAIL。",
+    "必须用文本文件跑；跑前 export PYTHONIOENCODING=utf-8（Windows GBK 环境防崩）。",
+    "must_contain：全部必须出现；must_not_contain：全部必须不出现（仅用于该文件内确实唯一的情形）。",
+    "pending=true 表示该断言对应的改造尚未落地：文件不存在时记 SKIP（不判红），",
+    "一旦文件落地即自动接管为硬断言。"
+  ],
+  "claims": [
+    {
+      "id": "A1.2_critique_contract_decontaminated",
+      "file": "agent_matrix/agent_runner.py",
+      "must_contain": [
+        "\"confidence\": 0.0-1.0",
+        "\"issues\": [\"问题1\"",
+        "\"suggestion\": \"改进建议\""
+      ],
+      "note": "自评提示词 JSON 契约不得再被 i18n 工具写成 _(\"...\")，且键名必须是 confidence"
+    },
+    {
+      "id": "A1.2_confidence_dual_key",
+      "file": "agent_matrix/agent_runner.py",
+      "must_contain": ["data.get('confidence', data.get('confidence_'"],
+      "note": "读取端 confidence_ 双键兼容（模型漂移/历史缓存兜底）"
+    },
+    {
+      "id": "A1_sql_literal_decontaminated",
+      "file": "agent_matrix/routes.py",
+      "must_contain": ["'Chatbot Knowledge Base'"],
+      "must_not_contain": ["_('Chatbot Knowledge Base')"],
+      "note": "SQL 字面量里的 _() 只是文本、不会求值，必须还原为纯字符串"
+    },
+    {
+      "id": "A1_shop_title_contract_decontaminated",
+      "file": "plugins/shop/routes/admin.py",
+      "must_contain": [
+        "\"title\":\"标题1\"",
+        "\"reason\":\"选择理由\"",
+        "[\"标签1\",\"标签2\",\"标签3\"]"
+      ],
+      "note": "商品标题 + 商品标签两处 JSON 契约（标签一处为本次审计新发现，第三方方案未列）"
+    },
+    {
+      "id": "A2.1_cjk_prefix_not_identifier",
+      "file": "scripts/i18n_check.py",
+      "must_contain": ["return ch.isascii() and (ch.isalnum() or ch == '_')"],
+      "note": "CJK 汉字 satisfies isalnum()，会导致 `关键词包括_(\"...\")` 整体漏报——必须限定 ASCII 标识符延续"
+    },
+    {
+      "id": "A2.2_gate_self_exclusion",
+      "file": "scripts/i18n_check.py",
+      "must_contain": ["PROMPT_LITERAL_SKIP_DIRS = {'tools', 'scripts', 'evals'}"],
+      "note": "门禁自述型目录（tools/scripts/evals）必须排除在提示词污染基线之外，否则改脚本或文档引用被禁模式即误红；evals/ 为 WP-B6 新增的同类目录"
+    },
+    {
+      "id": "A2.3_fstring_fields_stripped",
+      "file": "scripts/i18n_check.py",
+      "must_contain": ["def _strip_fstring_fields(s):"],
+      "note": "f-string 插值区段内 _() 属合法调用，需先挖空——基于原始 token 文本实现，3.11/3.13 口径一致"
+    },
+    {
+      "id": "A3.1_retry_keeps_tools",
+      "file": "agent_matrix/agent_runner.py",
+      "must_contain": ["self._run_react_loop(engine, retry_query, history,"],
+      "note": "重试必须沿用首轮执行形态（带工具走 ReAct / 带历史带历史），否则越重试越笨"
+    },
+    {
+      "id": "A3.2_non_string_response_guard",
+      "file": "agent_matrix/agent_runner.py",
+      "must_contain": ["Non-string response coerced to str"],
+      "note": "engine.ask 返回 None 时 len(None) 会抛未捕获 TypeError"
+    },
+    {
+      "id": "A4.1_execute_tool_allowlist_param",
+      "file": "agent_matrix/tools.py",
+      "must_contain": ["def execute_tool(name, args, allowed_tools=None"],
+      "note": "白名单必须落到执行层，而不能只过滤给模型看的 schema"
+    },
+    {
+      "id": "A4.2_allowlist_enforced_at_call",
+      "file": "agent_matrix/tools.py",
+      "must_contain": [
+        "if allowed_tools is not None",
+        "Permission denied: tool {name} is not in allowed_tools"
+      ],
+      "note": "allowed_tools 非 None 时强制校验并拒绝越权工具"
+    },
+    {
+      "id": "A5.1_script_allowlist_read",
+      "file": "orchestrator/nodes.py",
+      "must_contain": [
+        "automation_script_allowlist",
+        "BUILTIN_SCRIPTS = {"
+      ],
+      "note": "外部脚本白名单，默认空 = 只允许内置脚本（fail-closed）"
+    },
+    {
+      "id": "A5.3_guard_implemented",
+      "file": "orchestrator/routes.py",
+      "must_contain": [
+        "def _find_dangerous_nodes(definition) -> list:",
+        "def _has_approval_before(definition, node_ids) -> bool:",
+        "def _guard_dangerous_nodes(definition, admin):"
+      ],
+      "note": "危险节点（含 script / http_request）需更高权限，且必须有前置 approval 节点"
+    },
+    {
+      "id": "A5.3_guard_wired_routes",
+      "file": "orchestrator/routes.py",
+      "must_contain": ["_guard_dangerous_nodes(data"],
+      "note": "接入主管理面 create/update 工作流端点"
+    },
+    {
+      "id": "A5.3_guard_wired_workflow_api",
+      "file": "orchestrator/workflow_api.py",
+      "must_contain": ["_guard_dangerous_nodes"],
+      "note": "第二条完整管理面（workflow_api.py）是第三方方案漏掉的旁路，必须同样接入"
+    },
+    {
+      "id": "A5.3_permission_registered",
+      "file": "auth-center/routes/admin_users.py",
+      "must_contain": ["{'key': 'workflow.script.author'"],
+      "note": "权限点必须在 ALL_PERMISSIONS 登记，否则后台无法授予、只能 super_admin 旁路"
+    },
+    {
+      "id": "A5.2_frontend_lang_no_shell",
+      "file": "admin/static/js/workflow_editor.js",
+      "must_contain": ["options: ['builtin','python']"],
+      "must_not_contain": ["options: ['builtin','python','shell']"],
+      "note": "前端 lang 下拉不得再暴露 shell（后端已拒绝，前端若仍提供即诱导用户提交必失败配置）"
+    },
+    {
+      "id": "A6.1_leader_cas_acquire",
+      "file": "orchestrator/scheduler.py",
+      "must_contain": [
+        "INSERT INTO scheduler_leader",
+        "def _try_acquire_leadership(self) -> bool:",
+        "def _apply_leadership(self, leader: bool)"
+      ],
+      "note": "行级 CAS 真选主（方案原推荐的 pg_try_advisory_lock 不成立：get_db() 是短连接，锁随连接关闭即释）"
+    },
+    {
+      "id": "A6.2_leader_table_ddl",
+      "file": "orchestrator/models.py",
+      "must_contain": ["CREATE TABLE IF NOT EXISTS scheduler_leader"],
+      "note": "选主表 DDL 必须是幂等 IF NOT EXISTS，并入既有 init 流程"
+    },
+    {
+      "id": "A6.3_leader_election_switch",
+      "file": "orchestrator/scheduler.py",
+      "must_contain": [
+        "SCHEDULER_LEADER_ELECTION_KEY",
+        "def _leader_election_enabled(self) -> bool:"
+      ],
+      "note": "缝位④ 回退开关，可一键退回旧的单副本行为"
+    },
+    {
+      "id": "B1.2_admin_auth_dual_contract",
+      "file": "shared/admin_auth.py",
+      "must_contain": ["def require_admin_or_none("],
+      "pending": true,
+      "note": "WP-B1 未启动。该模块落地后本断言自动生效（(payload, err) 与 payload|None 两种返回契约必须同时导出，直接统一会把 44 处调用点改坏）"
+    }
+  ]
+}

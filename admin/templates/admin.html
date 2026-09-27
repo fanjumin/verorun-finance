@@ -79,7 +79,7 @@
 {% include 'plugins/ros_bridge/templates/ros_admin.html' ignore missing %}
 {% include 'partials/plugins_admin.html' %}
 {% include 'partials/skills_admin.html' %}
-{% if edition == 'official' %}
+{% if is_enterprise_store %}
 {% include 'partials/plugins_store.html' %}
 {% else %}
 {% include 'partials/plugins_store_user.html' %}
@@ -90,4 +90,11 @@
 {% include 'partials/site_settings.html' %}
 {% include 'plugins/mini_app_builder/admin_templates/mini_apps.html' ignore missing %}
 {% include 'plugins/mini_app_builder/admin_templates/admin_publish.html' ignore missing %}
+{# net_proxy（P6）：裸 JS partial，必须置于 tail.html（闭合 </script>）之前。
+   逃生通道：本页 86 个 include 同处一个 <script> 块，任一 partial 渲染异常都会
+   冒泡导致整个 admin.html 500（表现为面板一直转圈进不去）。故用
+   VR_ADMIN_SKIP_NET_PROXY=1 提供一键摘除开关，默认不跳过。 #}
+{% if not admin_skip_net_proxy %}
+{% include 'plugins/net_proxy/templates/net_proxy.html' ignore missing %}
+{% endif %}
 {% include 'partials/tail.html' %}

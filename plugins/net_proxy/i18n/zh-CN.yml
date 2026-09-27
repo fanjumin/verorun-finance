@@ -1,0 +1,108 @@
+# net_proxy 插件中文翻译（源串英文，本文件提供 zh-CN 映射）
+# 契约：i18n/__init__.py::seed_plugin_translations() 读取本目录下
+#       zh-CN.yml / en.yml，UPSERT 进 i18n_strings 表；
+#       `_(source)` 走 DB → YAML → 原文三级回退。
+
+# ── 插件身份 ──────────────────────────────────────────────
+plugin.name: 网络代理中心
+plugin.net_proxy.name: 网络代理中心
+menu.net_proxy: 网络代理
+
+# ── 页面 / 卡片标题 ────────────────────────────────────────
+Net Proxy: 网络代理
+Network Proxy Center: 网络代理中心
+Egress Status: 出口状态
+Channels: 出口通道
+Routing Rules: 路由规则
+Recent Logs: 最近日志
+Egress Logs: 出站日志
+Probe Logs: 探测日志
+
+# ── 状态指标 ──────────────────────────────────────────────
+Proxy Enabled: 代理开关
+Proxy Disabled: 代理已关闭
+Current Region: 当前区域
+Default Policy: 默认策略
+Crypto Available: 凭据加密
+Blocked Networks: 阻断网段
+Total: 总数
+Enabled: 已启用
+Healthy: 健康
+Fused: 已熔断
+Direct Ratio (24h): 直连占比（24h）
+Success Rate (24h): 成功率（24h）
+Avg Latency (24h): 平均延迟（24h）
+Requests (24h): 请求数（24h）
+'Yes': 是
+'No': 否
+
+# ── 通道字段 ──────────────────────────────────────────────
+Name: 名称
+Protocol: 协议
+Host: 主机
+Port: 端口
+Region: 区域
+Profile Tags: 环境标签
+Usage Tags: 用途标签
+Weight: 权重
+Max Concurrent: 并发上限
+Username: 用户名
+Password: 密码
+Last Latency: 最近延迟
+Last Probe: 最近探测
+Consecutive Failures: 连续失败
+Fused Until: 熔断截止
+Created At: 创建时间
+Updated At: 更新时间
+
+# ── 规则字段 ──────────────────────────────────────────────
+Priority: 优先级
+Target Pattern: 目标匹配
+Caller: 调用方
+Action: 动作
+Note: 备注
+Direct: 直连
+Deny: 拒绝
+Channel: 通道
+First Available: 首个可用
+
+# ── 操作 ──────────────────────────────────────────────────
+Add Channel: 新建通道
+Edit Channel: 编辑通道
+Add Rule: 新建规则
+Edit Rule: 编辑规则
+Delete: 删除
+Edit: 编辑
+Save: 保存
+Cancel: 取消
+Test: 测试
+Probe: 探测
+Refresh: 刷新
+Reload: 重新加载
+Filter: 筛选
+All: 全部
+
+# ── 交互反馈 ──────────────────────────────────────────────
+Created: 已创建
+Updated: 已更新
+Deleted: 已删除
+Saved: 已保存
+Loading...: 加载中...
+No data: 暂无数据
+
+# ── 表格列头 / 列表状态（P6 templates/net_proxy.html 消费）────
+Actions: 操作
+Status: 状态码
+Detail: 详情
+Error: 错误
+Disabled: 已停用
+Time: 时间
+
+# ── API 文案（routes.py 消费，源串必须与代码内字符串逐字一致）──
+Unauthorized: 未登录或权限不足
+Channel not found: 通道不存在
+Rule not found: 规则不存在
+No fields to update: 没有需要更新的字段
+kind must be request or probe: kind 只能是 request 或 probe
+channel_id must be an integer: channel_id 必须是整数
+Probe target not configured, probe skipped: 未配置探测目标，已跳过探测

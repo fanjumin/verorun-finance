@@ -11,10 +11,12 @@
 # 并行靠 DAG 依赖边 + worker 池（内核无 parallel 节点类型）。
 from __future__ import annotations
 
+import functools
 import json
 import logging
 import os
 import re
+import time
 from typing import Any, Dict, Optional
 
 _log = logging.getLogger("stock_analysis.research_dag")
@@ -22,6 +24,55 @@ _log = logging.getLogger("stock_analysis.research_dag")
 # 测试注入缝（生产保持 None）
 LLM_FACTORY = None
 EVIDENCE_FETCHER = None
+
+
+def flow_span(node_slug: str):
+    """神经中枢 flow span 装饰器（P1，方案 §6.1.2④）。
+
+    - trace_id = input_data['_instance_id']（引擎原生键，workflow_engine 只组 config/
+      _instance_id/context/node_X_output 四类键，_trace_id 会被丢弃——零侵入取原生键）；
+      兜底 config.job_id（DAG 被其他 runner 调用时）。
+    - 运行时包裹 handler 回调（延迟到 handler 调用前取 input_data，而非注册时）；
+    - 旁路：span 发射任一失败不影响 handler 正常执行与返回。
+    """
+    def decorator(handler):
+        @functools.wraps(handler)
+        def wrapper(node_def, input_data):
+            data = input_data or {}
+            trace_id = (data.get("_instance_id")
+                        or (data.get("config") or {}).get("job_id")
+                        or "research_%s" % node_slug)
+            symbol = ((data.get("config") or {}).get("symbol")
+                      or _find_upstream_field(data, "symbol"))
+            ctx = {"node": node_slug}
+            try:
+                from .flow_events import emit_flow_span as _emit
+                _emit(trace_id, "research", "dag_node", "start", symbol=symbol, meta=ctx)
+            except Exception as _err:
+                _log.debug("flow span start failed node=%s: %s", node_slug, _err)
+            start = time.time()
+            try:
+                out = handler(node_def, input_data)
+                try:
+                    from .flow_events import emit_flow_span as _emit
+                    _emit(trace_id, "research", "dag_node", "end", symbol=symbol,
+                          latency_ms=round((time.time() - start) * 1000.0, 1),
+                          status="ok" if out and out.get("success") else "failed",
+                          message=str((out or {}).get("error") or "")[:200], meta=ctx)
+                except Exception as _err:
+                    _log.debug("flow span end failed node=%s: %s", node_slug, _err)
+                return out
+            except Exception as err:
+                try:
+                    from .flow_events import emit_flow_span as _emit
+                    _emit(trace_id, "research", "dag_node", "end", symbol=symbol,
+                          latency_ms=round((time.time() - start) * 1000.0, 1),
+                          status="failed", message=str(err)[:200], meta=ctx)
+                except Exception:
+                    pass
+                raise
+        return wrapper
+    return decorator
 
 
 # ================================================================ LLM 工具
@@ -314,17 +365,71 @@ def handle_rs_pm(node_def, input_data):
         return {"success": False, "symbol": symbol, "error": str(err)}
 
 
+def handle_rs_compliance(node_def, input_data):
+    """stock.rs_compliance — 合规把关（投研流水线末道门禁）。
+
+    复用插件**已实现**的确定性规则引擎 `compliance.run_compliance_check`
+    （适当性等级 / 静默期 / 数据溯源标注 / 免责声明），而不是让 LLM 自由裁量 ——
+    合规判定必须可复现、可审计（prompts/rs_compliance.md 里的 compliance_flags
+    JSON 是对外契约，口径以规则引擎为准）。
+
+    输出 passed=false 表示存在 error 级 flag（如静默期），上游工作流可据此阻断发布。
+    2026-09-21 接线：该角色此前只有 prompt 与合规页面端点、无任何流程调用点。
+    """
+    symbol = _find_upstream_field(input_data, "symbol") or ""
+    conclusion = _find_upstream_field(input_data, "conclusion") or {}
+    conclusion = conclusion if isinstance(conclusion, dict) else {}
+    cfg = _cfg(node_def)
+    user_context = {
+        "user_id": cfg.get("user_id", "anonymous"),
+        "suitability_level": cfg.get("suitability_level", "normal"),
+    }
+    try:
+        from . import compliance
+        checked = compliance.run_compliance_check({
+            "symbol": symbol,
+            "signal": conclusion.get("view"),
+            "confidence": conclusion.get("confidence"),
+            "data_sources": _find_upstream_field(input_data, "data_sources") or [],
+            "indicators": _find_upstream_field(input_data, "indicators") or [],
+            "model": cfg.get("model"),
+        }, user_context)
+        try:                                    # 审计留痕：失败不阻塞门禁本身
+            compliance.log_analysis(who=user_context["user_id"], symbol=symbol,
+                                    action="rs_compliance_gate",
+                                    result_summary={"passed": checked.get("passed"),
+                                                    "flags": checked.get("flags")})
+        except Exception:                       # noqa: BLE001
+            _log.warning("compliance audit log failed symbol=%s", symbol)
+        return {
+            "success": True,
+            "symbol": symbol,
+            "passed": checked.get("passed"),
+            "flags": checked.get("flags", []),
+            "disclaimer": checked.get("disclaimer"),
+            "evidence_hash": checked.get("evidence_hash"),
+            "version": checked.get("version"),
+        }
+    except Exception as err:
+        return {"success": False, "symbol": symbol, "error": str(err)}
+
+
 # ================================================================ 注册
 
+
 def get_dag_nodes() -> dict:
-    """返回全部投研 DAG 节点处理器，供 __init__.register_dag_nodes() 合并。"""
+    """返回全部投研 DAG 节点处理器，供 __init__.register_dag_nodes() 合并。
+
+    P1：每个节点处理器包一层 flow_span（_instance_id 贯穿 + 节点级 span），旁路失败不影响主链路。
+    """
     return {
-        "stock.rs_planner": handle_rs_planner,
-        "stock.collect": handle_collect,
-        "stock.audit": handle_audit,
-        "stock.rs_fundamental": handle_rs_fundamental,
-        "stock.rs_quant": handle_rs_quant,
-        "stock.valuation": handle_valuation,
-        "stock.rs_risk": handle_rs_risk,
-        "stock.rs_pm": handle_rs_pm,
+        "stock.rs_planner": flow_span("rs_planner")(handle_rs_planner),
+        "stock.collect": flow_span("collect")(handle_collect),
+        "stock.audit": flow_span("audit")(handle_audit),
+        "stock.rs_fundamental": flow_span("rs_fundamental")(handle_rs_fundamental),
+        "stock.rs_quant": flow_span("rs_quant")(handle_rs_quant),
+        "stock.valuation": flow_span("valuation")(handle_valuation),
+        "stock.rs_risk": flow_span("rs_risk")(handle_rs_risk),
+        "stock.rs_pm": flow_span("rs_pm")(handle_rs_pm),
+        "stock.rs_compliance": flow_span("rs_compliance")(handle_rs_compliance),
     }

@@ -15,7 +15,7 @@ import time
 
 _log = logging.getLogger("stock_analysis.sse_stream")
 
-TOPICS = ("alerts", "jobs", "discuss")    # quotes 暂缓（D1-d）；discuss = 对辩逐轮过程（阶段 B）
+TOPICS = ("alerts", "jobs", "discuss", "flow")    # quotes 暂缓（D1-d）；discuss = 对辩逐轮过程（阶段 B）；flow = 神经中枢 span（P1）
 DEFAULT_TOPICS = "alerts,jobs"
 POLL_INTERVAL = 1.0               # 出流轮询间隔（秒）
 HEARTBEAT_INTERVAL = 15.0         # 心跳注释行间隔（秒）
@@ -59,11 +59,17 @@ _JOB_EVENT = {"running": "job.running", "done": "job.completed", "failed": "job.
 
 
 def event_name(topic: str, payload: dict) -> str:
-    """出流行 → SSE 命名帧事件名（契约 §4.1）。"""
+    """出流行 → SSE 命名帧事件名（契约 §4.1）。
+
+    ★ flow 分支必须置于 _JOB_EVENT 兜底之前（方案 §5.3）：jobs 兜底会把未知 topic
+      映射成 job.status，若 flow 走兜底会帧名错乱且丢失 span 语义。
+    """
     if topic == "alerts":
         return "alert.triggered"
     if topic == "discuss":
         return "discuss.round"
+    if topic == "flow":
+        return "flow.span"
     return _JOB_EVENT.get((payload or {}).get("status"), "job.status")
 
 

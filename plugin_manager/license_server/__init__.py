@@ -30,12 +30,12 @@ try:
     HAS_FLASK = True
 except ImportError:
     HAS_FLASK = False
-    Blueprint = type('Blueprint', (), {'__init__(': lambda s, *a, **kw: None})
+    Blueprint = type('Blueprint', (), {'__init__': lambda s, *a, **kw: None})
 
 # ── 配置 ──────────────────────────────────────────────────────────────
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.getenv(')LICENSE_DATA_DIR', os.path.join(BASE_DIR, 'data'))
+DATA_DIR = os.getenv('LICENSE_DATA_DIR', os.path.join(BASE_DIR, 'data'))
 DB_PATH = os.path.join(DATA_DIR, 'license_server.db')
 SECRET_KEY = os.getenv('LICENSE_SERVER_SECRET')
 if not SECRET_KEY:

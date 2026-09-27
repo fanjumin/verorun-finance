@@ -299,6 +299,33 @@ Internet
 | `platform.yourdomain.com` | 8083 | `main_site:app` | User console, subscriptions |
 | `agent.yourdomain.com` | 8084 | `admin:app` | Admin panel, plugin management |
 
+### Gunicorn Worker / Thread Tuning
+
+Worker count is resolved by `resolve_vr_workers()` in `deploy/lib/common.sh` during install/update and persisted to `.env`.
+
+Priority: caller environment variable > `.env` (`VR_WORKERS`) > auto tier by physical memory.
+
+| Physical memory | Auto tier |
+|------|------|
+| `< 2048 MB` | 2 |
+| `2048 – 4095 MB` | 4 |
+| `4096 – 8191 MB` | 6 |
+| `≥ 8192 MB` | 8 |
+
+The tier is then clamped by `min(tier, nproc, VR_WORKERS_MAX=8)`. Values above 8 are warned about and coerced to 8; malformed values (empty / non-numeric / 0) fall back to 2.
+
+All four services (8081 / 8083 / 8084 / 8085) read `VR_WORKERS` and `VR_THREADS` (default 4) from `.env` at startup, so tuning needs only a restart — no reinstall:
+
+```bash
+sudo systemctl restart verorun-main verorun-auth verorun-admin verorun-health
+```
+
+Notes:
+
+- `update_env()` is fill-if-missing: an existing `VR_WORKERS=` line in `.env` is never overwritten by a re-install, so on an existing installation edit that line manually to change the tier.
+- Because of the `nproc` clamp, the 6 and 8 tiers only appear on hosts with ≥6 / ≥8 CPUs.
+- The container path (`deploy/entrypoint.sh` + supervisord) honours only an explicitly set `VR_WORKERS`; it has no memory auto-tiering.
+
 ### LAN / Professional 模式（无域名）
 
 - 单 server 代理：`/admin/` → :8084、`/auth/`、`/subscribe` → :8083、`/` → :8081；
@@ -373,6 +400,36 @@ After updating, restart services:
 ```bash
 sudo bash deploy/install.sh restart
 ```
+
+### 5. Automation Hardening Switches (A5 / A6)
+
+Two runtime switches control the hardened behavior of the automation subsystem. Both live in
+the `system_config` table (key/value) and are read on the fly — no restart required.
+
+| `system_config.key` | Default | Effect |
+|---|---|---|
+| `automation_script_allowlist` | empty (`[]`) | JSON array of script file names under `scripts/` that a `script` node with `lang='python'` may execute. **Empty = only the two built-in scripts (`check_new_posts`, `generate_static_incremental`) are runnable**; any unregistered external script is rejected with `脚本未登记白名单：<name>`. Setting it to `["*"]` restores the pre-A5 behavior and must be treated as a **temporary emergency rollback only**. |
+| `scheduler_leader_election` | enabled | Set to `0` / `false` to disable scheduler leader election, falling back to "every replica schedules" (pre-A6 behavior). Env var `SCHEDULER_LEADER_ELECTION` takes precedence. **Single-replica deployments only** — on multi-replica it reintroduces duplicate cron execution. |
+
+Authoring dangerous workflows: creating or updating a workflow that contains `script` or
+`http_request` nodes requires either `super_admin`, or an admin profile whose `permissions`
+include `workflow.script.author`. In addition every such node must have an `approval` node
+upstream in the DAG, otherwise the API returns `400`.
+
+Leader election uses a row-level CAS lease in the `scheduler_leader` table (TTL 90s, renewed
+by the 30s heartbeat). On losing the lease a replica suspends its business jobs but **keeps
+the heartbeat job running** — pausing the whole APScheduler would self-lock the replica out
+of ever regaining leadership.
+
+> **Windows / desktop note — script nodes have NO resource limits.** `run_script_safely`
+> runs external scripts with a **sanitized environment** (only `PATH`, `LANG`, `LC_ALL`,
+> `HOME`, `SYSTEMROOT`, `TEMP`, `TMP`, `PYTHONIOENCODING`, `VERORUN_EDITION` are passed, so
+> API keys and DB credentials are stripped) and with a wall-clock timeout. However
+> **CPU / memory / process-count limits are NOT enforced on Windows** — there is no
+> `setrlimit` equivalent. On Linux add `preexec_fn` with `resource.setrlimit`, or wait for
+> the Stage C containerized executor. On Windows the compensating controls are the script
+> allowlist + `workflow.script.author` + the mandatory upstream `approval` node; record this
+> as an accepted risk.
 
 ---
 

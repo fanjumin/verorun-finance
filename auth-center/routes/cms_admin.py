@@ -252,9 +252,14 @@ def create_category():
 def update_category(cat_id):
     a, e = _check()
     if e: return e
-    data = request.get_json(force=True)
+    data = request.get_json(force=True) or {}
+    if not isinstance(data, dict) or not data.get('name'):
+        return _err(_("Column Name cannot be empty"))
     data['id'] = cat_id
-    return _ok(upsert_category(data))
+    result = upsert_category(data)
+    if result is None:
+        return _err(_('Record does not exist'), 404)
+    return _ok(result)
 
 
 @cms_admin_bp.route('/categories/<int:cat_id>', methods=['DELETE'])
@@ -300,29 +305,27 @@ def preview_post(slug):
         post = conn.execute("SELECT * FROM cms_posts WHERE slug=%s", (slug,)).fetchone()
     post = dict(post) if post else None
     if not post:
-        return _err(_('Article does not exist')), 404
+        return _err(_('Article does not exist'), 404)
     return f'''<!DOCTYPE html><html><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>{title}: {post_title}</title>
+<title>{_('Preview')}: {post.get("title","")}</title>
 <style>body{{font-family:sans-serif;max-width:800px;margin:0 auto;padding:40px 20px;background:#fff;color:#222;line-height:1.8}}
 .preview-banner{{background:#f0f8ff;border:1px solid #cce;padding:8px 16px;border-radius:6px;font-size:13px;color:#558;margin-bottom:24px;text-align:center}}
 h1{{font-size:28px;margin-bottom:8px}}.meta{{color:#888;font-size:13px;margin-bottom:24px}}
 img{{max-width:100%;border-radius:6px}}</style></head><body>
-<div class="preview-banner">{banner}</div>
+<div class="preview-banner">{_('Preview mode — admin only')}</div>
 <h1>{post.get("title","")}</h1>
 <div class="meta">{post.get("author","")} · {post.get("created_at","")[:10]}</div>
 {post.get("content",_("<p>No content</p>"))}
-</body></html>'''.format(
-        title=_('Preview'),
-        post_title=post.get("title",""),
-        banner=_('Preview mode — admin only')
-    )
+</body></html>'''
 
 
 @cms_admin_bp.route('/settings', methods=['PUT'])
 def update_setting():
     a, e = _check()
     if e: return e
-    data = request.get_json(force=True)
+    data = request.get_json(force=True) or {}
+    if not isinstance(data, dict) or not data.get('key') or 'value' not in data:
+        return _err(_("Missing required field"))
     set_setting(data['key'], data['value'])
     return _ok({"key": data['key']})

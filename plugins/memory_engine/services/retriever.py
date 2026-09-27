@@ -30,12 +30,17 @@ class MemoryRetriever:
             use_global = self._config.get('allow_global_memory', False)
             recency_expr = ("1.0 / (1.0 + extract(epoch FROM now() - "
                             "COALESCE(last_hit_at, updated_at)) / 86400.0)")
-            params = [user_id, use_global, top_k]
+            # F7 修复：agent 作用域——用户记忆按 agent 过滤（无归属/全局记忆豁免）。
+            # 参数序（关键词路径同序）：owner_id, global, agent_id, top_k
+            params = [user_id, use_global, agent_id or '', top_k]
             vec = self._embed.embed(query) if self._embed.is_ready() else None
             if vec:
                 vector_literal = '[' + ','.join(repr(v) for v in vec) + ']'
+                # ORDER BY 表达式内的 SELECT 别名在 PG 中不可见（仅裸别名可引用），
+                # 故把加权排序外提到子查询外层，别名在此处是真实列。
                 rows = conn.execute(
-                    "SELECT id, memory_type, content, keywords,"
+                    "SELECT * FROM ("
+                    " SELECT id, memory_type, content, keywords,"
                     " quality_score, importance, " + recency_expr + " AS recency,"
                     " 1 - (embedding <=> ?::vector) AS sim"
                     " FROM memories"
@@ -44,6 +49,8 @@ class MemoryRetriever:
                     " AND ((owner_type = 'user' AND owner_id = ?)"
                     " OR (owner_type = 'global' AND ? = TRUE))"
                     " AND embedding IS NOT NULL"
+                    " AND (agent_id = ? OR agent_id = '' OR owner_type = 'global')"
+                    ") t"
                     " ORDER BY (0.6*sim + 0.3*quality_score + 0.1*recency) DESC"
                     " LIMIT ?",
                     [vector_literal] + params,
@@ -70,18 +77,23 @@ class MemoryRetriever:
         like = ' OR '.join('content ILIKE ?' for _ in tokens)
         recency_expr = ("1.0 / (1.0 + extract(epoch FROM now() - "
                         "COALESCE(last_hit_at, updated_at)) / 86400.0)")
+        # 占位符顺序：owner_id → global → agent_id → N 个 LIKE → LIMIT（与 Edit 10-2 同序）。
         return conn.execute(
-            "SELECT id, memory_type, content, keywords,"
+            "SELECT * FROM ("
+            " SELECT id, memory_type, content, keywords,"
             " quality_score, importance, " + recency_expr + " AS recency, 0.0 AS sim"
             " FROM memories"
             " WHERE status = 'active'"
             " AND quality_score >= 0.3"
             " AND ((owner_type = 'user' AND owner_id = ?)"
             " OR (owner_type = 'global' AND ? = TRUE))"
+            " AND (agent_id = ? OR agent_id = '' OR owner_type = 'global')"
             " AND (" + like + ")"
+            ") t"
             " ORDER BY (0.6*quality_score + 0.4*recency) DESC"
             " LIMIT ?",
-            params + ['%' + t + '%' for t in tokens] + [params[2]],
+            [params[0], params[1], params[2]]
+            + ['%' + t + '%' for t in tokens] + [params[3]],
         ).fetchall()
 
     def _bump(self, conn, rows):

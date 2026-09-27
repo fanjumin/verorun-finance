@@ -118,7 +118,7 @@ class PluginDiscovery:
             plugin_dir = os.path.join(self.plugins_dir, entry)
             if not os.path.isdir(plugin_dir):
                 continue
-            if entry.startswith('_(') or entry.startswith(').'):
+            if entry.startswith('_') or entry.startswith('.'):
                 continue
             if not os.path.isfile(os.path.join(plugin_dir, '__init__.py')):
                 continue
@@ -179,17 +179,17 @@ class PluginDiscovery:
             tags=meta.get('tags', []),
             dashboard_meta=meta.get('dashboard', {}),
         )
-        # ★ v1.6 统一网关注册强制校验（插件标准 §2.2/§4）：
-        # agent_role 必须为核心角色之一，否则记录校验错误（enable 将拒绝）。
-        # 核心角色集由 agent_matrix/roles/*.yaml 动态推导（单一事实源）。
+        # ★ v1.6 统一网关注册归属校验（插件标准 §2.2/§4，2026-09-21 定稿）：
+        # 归属 = agent_role 命中本版核心角色，或本版某核心角色的 managed_modules 认领本插件；
+        # 两者都不满足才记 last_error（enable 将拒绝）。裁决逻辑集中在 resolve_agent_roles。
         try:
-            from agent_matrix.models import get_core_role_slugs
-            _core_roles = get_core_role_slugs()
+            from agent_matrix.models import resolve_agent_roles
+            _resolved = resolve_agent_roles(identifier, meta)
         except ImportError:
-            _core_roles = []
-        _ar = meta.get('agent_role', '')
-        if _ar not in _core_roles:
-            info.last_error = f'missing/invalid agent_role: {_ar!r}（须为核心角色之一）'
+            _resolved = []
+        if not _resolved:
+            info.last_error = (f'missing/invalid agent_role: {meta.get("agent_role", "")!r}'
+                               '（既不属本版核心角色，也无核心角色的 managed_modules 认领）')
         # ★ capabilities 声明→实现 轻量校验（架构评审 §3.4）：
         # 每个 capability 的 namespace（首个点号前）须在插件 .py 实现中出现，
         # 否则视为「假能力」告警（不阻断 enable）。

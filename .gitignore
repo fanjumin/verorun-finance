@@ -49,6 +49,9 @@ tmp_*.py
 tmp_*.ps1
 tmp_*.vbs
 tmp_*.bat
+tmp_*.diff
+tmp_*.txt
+tmp_*/
 ubprocess*
 *ubprocess*
 *sourcesappout*
@@ -80,6 +83,9 @@ data/*.db
 data/*.db-shm
 data/*.db-wal
 **/data/*.mmdb
+
+# vault 插件运行时备份归档（体积大、每台机器不同、含加密数据，永不入库）
+data/vault/
 
 # Runtime SQLite databases (plugins own DBs are created at runtime)
 plugins/*/*.db
@@ -192,6 +198,9 @@ data/cache/
 CONTRIBUTING.md
 TEST_PLAN_*.md
 
+# Agent scratch outputs (reports / plans / dumps — never commit)
+outputs/
+
 # Local one-off test / diagnostic scripts, temp files & backups (root, never commit)
 /-LLM*.md
 /fetch_server_files.py
@@ -222,3 +231,12 @@ deploy/VeroRun-Deploy-Report.html
 *.p12
 *.pfx
 .quarantine-*/
+
+# ── 运行时生成的加解密盐（auth-center/services/crypto.py 首次调用时落盘）──
+# 二进制、每台机器不同、泄漏即等于泄漏加密凭据 —— 永不入库。
+auth-center/services/.crypto_salt
+# 持久盐路径（SB-BUG-1 修复后 crypto.py 默认落盘 data/.crypto_salt，跨部署存活）
+data/.crypto_salt
+
+# ── 本地 SSH 远程运维/测试脚本（含服务器地址与用户名，仅本机使用，永不入库）──
+/_ssh/

@@ -54,6 +54,11 @@ def submit_job(symbol: str, scope: str = "full", force: bool = False) -> dict:
         existing = sa.find_today_done_job(symbol, scope)
         if existing:
             _ensure_poller()   # 即使只读复用也保证 worker 在场（本进程可能从未跑过任务）
+            # v1.3 §5.2：复用决策走独立 decision 帧（reuse 分流戏剧化的触发源）
+            _emit_flow_span(existing["job_id"], "stock", "decision", "decision",
+                            symbol=symbol, decision_type="reuse", cache_hit=True,
+                            latency_ms=0, status="ok",
+                            message="reuse today's done job (no LLM call)")
             return {"job_id": existing["job_id"], "status": "done",
                     "reuse": True, "result": existing.get("result")}
     job_id = _new_job_id()
@@ -72,12 +77,69 @@ def submit_discuss_job(symbol: str, force: bool = False) -> dict:
         existing = sa.find_today_done_job(symbol, "discuss")
         if existing:
             _ensure_poller()
+            _emit_flow_span(existing["job_id"], "stock", "discuss", "end",
+                            symbol=symbol, decision_type="reuse", cache_hit=True,
+                            status="ok", message="reuse today's discuss (no LLM call)")
             return {"job_id": existing["job_id"], "status": "done",
                     "reuse": True, "result": existing.get("result")}
     job_id = _new_job_id()
     sa.create_job(job_id, symbol, scope="discuss", job_type="discuss")
     _ensure_poller()
     return {"job_id": job_id, "status": "queued", "reuse": False}
+
+
+def submit_research_job(symbol: str, force: bool = False) -> dict:
+    """AI 深度研报任务（方案 §2③）。
+
+    幂等语义同 submit_job：同日同标的 scope='research' 已有 done 且未 force → 复用；
+    否则排队（type 与 scope 均为 research，与既有 analyze / discuss 任务区分）。
+
+    ★ 为什么走 job 而不是同步返回：handle_stock_deep_research 是**同步阻塞**的
+      （证据收集 + LLM 调用，实测一次数十秒），放进请求线程必然触发网关超时。
+    """
+    if not force:
+        existing = sa.find_today_done_job(symbol, "research")
+        if existing:
+            _ensure_poller()
+            _emit_flow_span(existing["job_id"], "stock", "research", "end",
+                            symbol=symbol, decision_type="reuse", cache_hit=True,
+                            status="ok", message="reuse today's research (no LLM call)")
+            return {"job_id": existing["job_id"], "status": "done",
+                    "reuse": True, "result": existing.get("result")}
+    job_id = _new_job_id()
+    sa.create_job(job_id, symbol, scope="research", job_type="research")
+    _ensure_poller()
+    return {"job_id": job_id, "status": "queued", "reuse": False}
+
+
+def _run_research_job(job: dict) -> None:
+    """执行深度研报：调 DAG 节点 handle_stock_deep_research（同步函数，在 worker 线程里跑）。
+
+    节点自身把所有异常收敛成 {"success": False, "error": ...}，这里只负责翻译成任务终态，
+    不做二次 try —— 让失败原因原样可见（LLM 缺 key / 无数据源是两类完全不同的问题，不能混）。
+    """
+    from .deep_research import handle_stock_deep_research
+
+    symbol = job["symbol"]
+    out = handle_stock_deep_research({"config": {"symbol": symbol}},
+                                     {"symbol": symbol})
+    if not out.get("success"):
+        code = _classify_error(out.get("error"))
+        sa.finish_job(job["job_id"], "failed", error_code=code,
+                      error=str(out.get("error")))
+        _emit_job_event(job["job_id"], "failed")
+        _emit_flow_span(job["job_id"], "stock", "research", "end",
+                        symbol=symbol, status="failed", message=str(out.get("error"))[:200])
+        return
+    sa.finish_job(job["job_id"], "done", result={
+        "symbol": out.get("symbol"),
+        "report": out.get("report"),
+        "signal": out.get("signal"),
+        "evidence_chars": out.get("evidence_chars"),
+        "generated_by": "stock_deep_research",
+    })
+    _emit_job_event(job["job_id"], "done")
+    _emit_flow_span(job["job_id"], "stock", "research", "end", symbol=symbol, status="ok")
 
 
 def get_job_status(job_id: str) -> dict:
@@ -140,6 +202,7 @@ def _dispatch(job_id: str):
         if not sa.claim_job(job_id):
             return                       # 已被认领，放弃
         _emit_job_event(job_id, "running")
+        _emit_flow_span(job_id, "stock", "job", "start", symbol=_job_symbol(job_id))
         _process(job_id)
     except Exception as err:
         _log.error("job %s dispatch failed: %s", job_id, err)
@@ -149,6 +212,11 @@ def _dispatch(job_id: str):
             pass
         try:
             _emit_job_event(job_id, "failed")
+        except Exception:
+            pass
+        try:
+            _emit_flow_span(job_id, "stock", "job", "end", symbol=_job_symbol(job_id),
+                            status="failed", message=("dispatch failed: %s" % err)[:200])
         except Exception:
             pass
     finally:
@@ -182,6 +250,9 @@ def _discuss_round_emitter(job_id: str, symbol: str):
         except Exception as err:
             _log.warning("discuss round event failed job=%s phase=%s: %s",
                          job_id, phase, err)
+        # 神经中枢双写：对辩逐轮 → flow span（P1，§6.1.2⑤）
+        _emit_flow_span(job_id, "stock", "discuss", "end", symbol=symbol,
+                        status="ok", meta={"phase": phase})
     return _emit
 
 
@@ -209,12 +280,15 @@ def _run_discuss_job(job: dict):
         except Exception as err:
             _log.warning("kb publish discuss failed job=%s: %s", job_id, err)
         _emit_job_event(job_id, "done")
+        _emit_flow_span(job_id, "stock", "discuss", "end", symbol=symbol, status="ok")
     except Exception as err:
         _log.error("discuss job %s crashed: %s", job_id, err)
         try:
             sa.finish_job(job_id, "failed", error_code=_classify_error(str(err)),
                           error=str(err))
             _emit_job_event(job_id, "failed")
+            _emit_flow_span(job_id, "stock", "discuss", "end", symbol=symbol,
+                            status="failed", message=str(err)[:200])
         except Exception:
             pass
 
@@ -228,13 +302,19 @@ def _process(job_id: str):
         if job["scope"] == "discuss":
             _run_discuss_job(job)
             return
+        if job["scope"] == "research":
+            _run_research_job(job)
+            return
         from .stock_skill import StockAnalysisSkill
         analysis_type = "llm" if job["scope"] == "full" else "technical"
-        result = StockAnalysisSkill().analyze(job["symbol"], analysis_type=analysis_type)
+        result = StockAnalysisSkill().analyze(job["symbol"], analysis_type=analysis_type,
+                                              trace_id=job_id)
         if result.error:
             code = _classify_error(result.error)
             sa.finish_job(job_id, "failed", error_code=code, error=result.error)
             _emit_job_event(job_id, "failed")
+            _emit_flow_span(job_id, "stock", "job", "end", symbol=job["symbol"],
+                            status="failed", message=(result.error or "")[:200])
         else:
             sa.finish_job(job_id, "done", result=result.to_json())
             try:
@@ -247,6 +327,8 @@ def _process(job_id: str):
             except Exception as err:
                 _log.warning("kb publish failed job=%s: %s", job_id, err)
             _emit_job_event(job_id, "done")
+            _emit_flow_span(job_id, "stock", "job", "end", symbol=job["symbol"],
+                            status="ok")
     except Exception as err:
         _log.error("job %s crashed: %s", job_id, err)
         try:
@@ -273,6 +355,31 @@ def _emit_job_event(job_id: str, status: str) -> None:
         })
     except Exception as err:
         _log.warning("sse job event emit failed job=%s: %s", job_id, err)
+
+
+def _job_symbol(job_id: str):
+    """取任务标的（span 展示用；缺失返回 None，失败静默）。"""
+    try:
+        row = sa.get_job(job_id)
+        return (row or {}).get("symbol")
+    except Exception:
+        return None
+
+
+def _emit_flow_span(job_id: str, domain: str, stage: str, event: str = "end",
+                    *, symbol=None, decision_type=None, status="ok",
+                    message="", meta=None, latency_ms=None, model=None,
+                    tokens=None, confidence=None, cache_hit=False):
+    """神经中枢 flow span 发射（P1；旁路，任一失败仅告警，绝不阻断主链路）。"""
+    try:
+        from .flow_events import emit_flow_span
+        emit_flow_span(job_id, domain, stage, event, symbol=symbol,
+                       decision_type=decision_type, status=status,
+                       message=message, meta=meta, latency_ms=latency_ms,
+                       model=model, tokens=tokens, confidence=confidence,
+                       cache_hit=cache_hit)
+    except Exception as err:
+        _log.warning("flow span emit failed job=%s stage=%s: %s", job_id, stage, err)
 
 
 def _classify_error(message: str) -> str | None:

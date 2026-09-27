@@ -12,47 +12,32 @@ from datetime import datetime
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROLES_DIR = os.path.join(BASE_DIR, 'roles')
 
-# ── 发行版 edition 归一化（单一事实源：VR_EDITION / RELEASE_EDITION / DEPLOY_TYPE）──
-# 现行发行版 ID 共 7 个（定稿后不再变更；显示名走 i18n，与 ID 解耦）：
-#   enterprise 企业版 / standard 标准版 / pro 专业版 / finance 金融版 /
-#   research 科研版 / minipro 小程序版 / edge 边缘版
-# 注意：pro（专业版）与 finance（金融版）是两个**独立** ID，不可再合并。
-_EDITION_IDS = ('enterprise', 'standard', 'pro', 'finance', 'research', 'minipro', 'edge')
-
-# 历史旧名 / 别名 → 现行 ID（大小写不敏感）
-_EDITION_ALIASES = {
-    'official': 'enterprise',
-    'enterprise-web': 'enterprise',
-    'standard-web': 'standard',
-    'pro-web': 'pro',
-    'finance-desktop': 'finance',
-    'research-desktop': 'research',
-    'edu': 'research',
-    'edu-desktop': 'research',
-    'mini': 'minipro',
-    'vr_test_edge': 'edge',
-    'edge-computing': 'edge',
-}
-
-
-def normalize_edition(e) -> str:
-    """归一化发行版标识（大小写不敏感）：旧名/别名→现行 ID，空→standard。"""
-    e = (e or '').strip().lower()
-    return _EDITION_ALIASES.get(e, e) or 'standard'
-
-
-def current_edition() -> str:
-    """全系统发行版唯一判定：VR_EDITION → RELEASE_EDITION → DEPLOY_TYPE。"""
-    return normalize_edition(os.getenv('VR_EDITION') or os.getenv('RELEASE_EDITION')
-                             or os.getenv('DEPLOY_TYPE') or '')
-
+# ── 发行版 edition 归一化（唯一事实源已抽到 shared/edition.py，此处仅再导出）──
+# 2026-09-18：原实现内联于本模块，而本模块 import 时会执行 DB 迁移，
+# 导致 license / CLI / guardian 等无 DB 上下文的进程无法判定发行版
+# （is_enterprise_edition() 因 import 抛错而 fail-closed 误判）。
+# 现抽到零依赖模块 shared/edition.py，本模块保持同样的公开符号，调用方无需改动。
+from shared.edition import (  # noqa: F401
+    _EDITION_IDS,
+    _EDITION_ALIASES,
+    _EDITION_ARTIFACT_STEMS,
+    normalize_edition,
+    current_edition,
+    edition_artifact_stem,
+)
 
 # 兼容别名：早期调用方沿用下划线私有名（agent_matrix/routes.py 等）
 _current_edition = current_edition
 
+
 # ── Edition 服务启用/禁用（单一事实源：deploy/editions/<edition>.yaml 的 services: 段）──
 # 与角色 YAML 的 _parse_role_yaml 无关，独立解析避免影响角色加载。
 EDITIONS_DIR = os.path.join(BASE_DIR, '..', 'deploy', 'editions')
+
+
+def _edition_yaml_path(edition: str = None) -> str:
+    """该发行版对应的 deploy/editions/*.yaml 路径（不建文件、不抛错）。"""
+    return os.path.join(EDITIONS_DIR, f'{edition_artifact_stem(edition)}.yaml')
 
 
 def _parse_edition_services(text):
@@ -81,8 +66,7 @@ def _parse_edition_services(text):
 
 def edition_services() -> dict:
     """当前 edition 的服务开关表；yaml 缺失 / 无 services 段 → 空 dict（调用方按全开处理）。"""
-    edition = current_edition()
-    path = os.path.join(EDITIONS_DIR, f'{edition}.yaml')
+    path = _edition_yaml_path()
     if not os.path.isfile(path):
         return {}
     try:
@@ -112,7 +96,7 @@ def edition_requires_license() -> bool:
     否则一次改动会把所有发行版锁死。
     桌面金融版显式置 true（2026-09-11 产品决策：订阅到期即锁，fail-closed）。
     """
-    path = os.path.join(EDITIONS_DIR, f'{current_edition()}.yaml')
+    path = _edition_yaml_path()
     if not os.path.isfile(path):
         return False
     try:
@@ -123,29 +107,46 @@ def edition_requires_license() -> bool:
 
 
 # ── Edition 插件白名单（deploy/editions/<edition>.yaml 的 plugins: include/exclude）──
-def _parse_edition_plugin_lists(text):
-    """从 edition yaml 提取 plugins: 段的 include/exclude 列表。
+# plugins: 段内**列表型**键；runtime_whitelist 是标量键，不在此列。
+_PLUGIN_LIST_SECTIONS = ('include', 'exclude')
 
-    仅识别顶层 plugins: 下 include:/exclude: 块的 '  - item' 行，其余内容忽略。
+
+def _parse_edition_plugin_lists(text):
+    """从 edition yaml 提取 plugins: 段的白名单/排除名单 + 运行时开关。
+
+    识别顶层 plugins: 下的两类内容，其余一概忽略：
+      - ``include:`` / ``exclude:`` 块内的 "  - item" 行
+      - ``runtime_whitelist: true|false`` 标量行（语义见 edition_runtime_whitelist）
+
+    :return: {'include': [...], 'exclude': [...], 'runtime_whitelist': bool|None}
+             runtime_whitelist 为 None = 未声明 → 调用方按"启用"处理（向后兼容）。
     """
-    lists = {'include': [], 'exclude': []}
+    lists = {'include': [], 'exclude': [], 'runtime_whitelist': None}
     section = None  # None | 'plugins' | 'include' | 'exclude'
     for line in text.splitlines():
-        if not line.strip() or line.strip().startswith('#'):
+        # 剥离行内注释：`  - _base   # 基座` 的说明部分不参与取值。
+        # 与 stage-verorun-core.mjs 的 parseYaml 同语义（它在解析前先 replace(/\s+#.*$/)）。
+        # 不剥离的后果（2026-09-21 实测）：include 项变成 '_base   # 基座'，
+        # 与插件 identifier 永不相符 → 白名单静默全量失效。
+        line = line.split('#', 1)[0]
+        if not line.strip():
             continue
         if re.match(r'^plugins:\s*$', line):
             section = 'plugins'
             continue
         if line.startswith(' '):
+            # 标量开关行（只在 plugins: 段内认；写成 `runtime_whitelist:` 空值不生效）
+            m_scalar = re.match(r'^ +runtime_whitelist\s*:\s*(true|false)\s*$', line,
+                                re.IGNORECASE)
+            if m_scalar and section == 'plugins':
+                lists['runtime_whitelist'] = m_scalar.group(1).lower() == 'true'
+                continue
             m = re.match(r'^ +(\w+)\s*:\s*$', line)
             if m:
-                if m.group(1) in lists:
-                    section = m.group(1)
-                else:
-                    section = 'plugins'
+                section = m.group(1) if m.group(1) in _PLUGIN_LIST_SECTIONS else 'plugins'
                 continue
             li = re.match(r'^ +- +(.+)$', line)
-            if li and section in lists:
+            if li and section in _PLUGIN_LIST_SECTIONS:
                 lists[section].append(li.group(1).strip())
             continue
         if re.match(r'^\w[\w_]*\s*:', line):
@@ -156,13 +157,12 @@ def _parse_edition_plugin_lists(text):
 def edition_plugin_lists() -> dict:
     """当前 edition 的插件 include/exclude 白名单。
 
-    standard（未设 VR_EDITION 的老部署）语义与官方一致，归一为 official；
+    standard/enterprise/official（未设 VR_EDITION 的老部署）语义与官方版一致，
+    经 edition_artifact_stem() 解析到同一份 official.yaml —— 原函数体内手工归一的
+    'standard' → 'official' 已收敛进桥接表，禁止再出现第二处。
     yaml 缺失 / 无 plugins 段 → 空列表（不排除任何插件）。
     """
-    edition = current_edition()
-    if edition in ('', 'standard'):
-        edition = 'official'
-    path = os.path.join(EDITIONS_DIR, f'{edition}.yaml')
+    path = _edition_yaml_path()
     if not os.path.isfile(path):
         return {'include': [], 'exclude': []}
     try:
@@ -183,14 +183,36 @@ def edition_plugin_excludes() -> list:
 
 
 def edition_plugin_includes() -> list:
-    """当前 edition 的插件白名单。
+    """当前 edition 的插件白名单（**发包裁剪**清单）。
 
     ⚠️ 返回空列表 = 该发行版**未启用白名单语义**（standard/未设版本键的老部署，
     或 yaml 缺 plugins 段）→ 调用方绝不能据此过滤，否则会把所有插件判为"本版不提供"。
     服务器版由 sync-to-pro.yml 按 include 物理拷贝（空 include 直接 fail），
-    故运行时同样遵守 include 即为与该产物口径对齐。
+    故打包侧遵守 include 即为与该产物口径对齐。
+
+    ★ 运行时是否仍按它做"默认拒绝"，另由 edition_runtime_whitelist() 决定。
     """
     return edition_plugin_lists().get('include', []) or []
+
+
+def edition_runtime_whitelist() -> bool:
+    """本版运行时是否仍启用 include 白名单语义（None = 未声明 → True，向后兼容）。
+
+    背景（2026-09-21）：include 被两个职责共用，而二者语义相反 ——
+      ① 发包裁剪：哪些插件目录进安装包（必须有白名单，否则包无限膨胀）
+      ② 运行时可见性：界面显示 / 挂载哪些插件
+
+    金融桌面版声明 ``plugins.runtime_whitelist: false``，是让 ② 退出：
+      - 进包的插件**默认可见可用**，不必逐个补写 include
+      - 不适用插件改用**显式排除**（plugins.exclude 或动态分流规则）表达 ——
+        默认值是"放行"而非"拒绝"
+      - 从根上消除「新发布的适用插件因漏写 include 而被静默隐藏」这一类问题
+
+    取舍：dev 环境（源码整树，未经 stage-verorun-core.mjs 裁剪）会加载 plugins/
+    下的全部插件，启动耗时上升；打包产物不受影响（其树已按 include 裁过）。
+    """
+    v = edition_plugin_lists().get('runtime_whitelist')
+    return True if v is None else bool(v)
 
 
 # ── 复用主应用 PostgreSQL 连接 ──
@@ -243,10 +265,14 @@ def _to_int(val, default=0):
 
 
 def _role_dir_for_edition() -> str:
-    """当前发行版角色目录：agent_matrix/roles/<edition>/ 存在则用该子目录，
+    """当前发行版角色目录：agent_matrix/roles/<stem>/ 存在则用该子目录，
     否则回退 roles/ 根（官方默认版）。方向版（research/finance/edge…）角色
-    目录各自独立，官方角色与方向版角色互不混载。"""
-    edition = current_edition()
+    目录各自独立，官方角色与方向版角色互不混载。
+
+    <stem> 走 edition_artifact_stem()：磁盘目录名仍是 roles/finance-desktop/，
+    直接用 canonical ID 拼会落空并静默回落根目录（= 加载了整套官方角色）。
+    """
+    edition = edition_artifact_stem()
     if edition:
         sub = os.path.join(ROLES_DIR, edition)
         if os.path.isdir(sub):
@@ -270,10 +296,16 @@ def _load_all_role_yamls():
                 raw = _parse_role_yaml(f.read())
             # edition 角色集过滤（editions 字段缺省 = 全版本包含）。
             # 方向版只加载归属角色；standard/official 全量。
+            #
+            # ⚠️ 两侧口径必须统一：`editions` 字段与角色目录名同用**磁盘名**
+            #    （finance-desktop / research-desktop / official），而 _edition 是
+            #    canonical ID → 直接比较会把本版角色全部过滤掉（角色集空集）。
             if _edition in ('research', 'research-desktop', 'finance', 'finance-desktop'):
-                _owned = raw.get('editions') or []
-                if _owned and _edition not in _owned:
-                    print(f'[RoleYAML] edition {_edition} skips role: {raw.get("slug")}')
+                _stem = edition_artifact_stem(_edition)
+                _owned = {edition_artifact_stem(str(v))
+                          for v in (raw.get('editions') or [])}
+                if _owned and _stem not in _owned:
+                    print(f'[RoleYAML] edition {_stem} skips role: {raw.get("slug")}')
                     continue
             # 类型转换
             raw['is_active'] = _to_int(raw.get('is_active', 1))
@@ -797,7 +829,9 @@ def seed_default_agents():
         #   上限护栏仅用于 official/standard 全集角色崩坏的保护。
         deleted = 0
         _ed_for_del = current_edition()
-        directional = _ed_for_del in ('research-desktop', 'finance-desktop')
+        # canonical ID 口径（finance/research）；连字符名在 b19c4aab 后已不是
+        # current_edition() 的返回值，按旧名比较会恒为 False。
+        directional = _ed_for_del in ('research', 'finance')
         if yaml_slugs:
             placeholders = ','.join(['%s'] * len(yaml_slugs))
             stale = 0
@@ -1056,76 +1090,118 @@ def _merge_unique(base: list, extra: list) -> list:
     return result
 
 
-def _declared_agent_role(metadata: dict) -> str:
-    """提取并校验插件声明的 agent_role，非法返回 ''。"""
+def resolve_agent_roles(plugin_id: str, metadata: dict) -> list:
+    """解析插件在**当前版本**该聚合到哪些核心角色（可多个）；空列表 = 本版不接纳该插件。
+
+    解析顺序（2026-09-21 定稿，取代旧的"单一 agent_role 硬校验"）：
+      ① **归属声明**：plugin.json 的 `agent_role` 落在本版核心角色集内 → 就是它
+         （官方版：stock_analysis → stock_analyst）；
+      ② **角色侧认领**：本版核心角色的 `managed_modules` 声明了本插件 → 全部命中角色
+         （桌面封装版按"功能区各自配一个角色"表达归属：stock_analysis 被 rs_quant /
+          rs_fundamental / rs_risk / rs_pm / rs_planner / rs_compliance 认领）；
+      ③ 都不命中 → 空列表，调用方按"本版不接纳"处理（enable 拒绝 / discovery 记 last_error）。
+
+    为什么必须有②：`agent_role` 是**单值且跨版本共用**的字段，而同一插件在不同版本里
+    归属本就不同（官方版整插件归一个角色；桌面版按功能区拆给多个角色）。把"版本相关"
+    的信息放在**角色侧**（本版角色目录里声明 managed_modules），插件清单保持版本无关 ——
+    这样版本差异不需要反复改插件字段，也不会为了消校验错去扩角色集。
+    """
     role = (metadata or {}).get('agent_role', '')
-    if role not in get_core_role_slugs():
-        return ''
-    return role
+    core = set(get_core_role_slugs())
+    if role and role in core:
+        return [role]
+    if not plugin_id:
+        return []
+    owned: list = []
+    try:
+        with get_db() as conn:
+            rows = conn.execute(
+                "SELECT slug, managed_modules FROM agent_matrix "
+                "WHERE is_system=1 AND slug != ''").fetchall()
+        for row in rows:
+            if row['slug'] in core and plugin_id in _json_list(row.get('managed_modules')):
+                owned.append(row['slug'])
+    except Exception as exc:                                    # noqa: BLE001
+        print(f'[PluginRoles] WARNING: {plugin_id} 角色侧认领查询失败: {exc}')
+    return owned
 
 
 def attach_plugin_capabilities(plugin_id: str, metadata: dict) -> int:
-    """将插件能力聚合到所选核心角色（幂等，插件标准 §4）。
+    """将插件能力聚合到本版归属的核心角色（幂等，插件标准 §4）。
 
-    校验失败（无合法 agent_role / 目标核心角色不存在）返回 -1，不抛异常。
-    返回受影响的核心角色数（成功为 1）。
+    归属由 `resolve_agent_roles()` 决定（可多个角色：桌面版按功能区拆分）。
+    本版无归属（空列表）返回 -1，不抛异常。返回受影响的核心角色数。
     """
-    role = _declared_agent_role(metadata or {})
-    if not role:
-        print(f'[PluginRoles] WARNING: {plugin_id} 缺少合法 agent_role '
-              f'（须为 {get_core_role_slugs()} 之一），跳过网关注册')
+    roles = resolve_agent_roles(plugin_id, metadata or {})
+    if not roles:
+        print(f'[PluginRoles] WARNING: {plugin_id} 在本版无归属角色'
+              f'（agent_role={(metadata or {}).get("agent_role")!r}，'
+              f'且无核心角色的 managed_modules 认领），跳过网关注册')
         return -1
     caps = _json_list((metadata or {}).get('capabilities', []))
+    attached = 0
     with get_db() as conn:
-        row = conn.execute(
-            "SELECT id, capabilities, managed_modules FROM agent_matrix WHERE slug=%s AND is_system=1",
-            (role,)
-        ).fetchone()
-        if not row:
-            print(f'[PluginRoles] WARNING: {plugin_id} 目标核心角色 {role} 不存在（is_system=1），跳过')
-            return -1
-        new_caps = _merge_unique(_json_list(row['capabilities']), caps)
-        new_mods = _merge_unique(_json_list(row['managed_modules']), [plugin_id])
-        conn.execute(
-            "UPDATE agent_matrix SET capabilities=%s, managed_modules=%s, updated_at=NOW() WHERE id=%s",
-            (json.dumps(new_caps, ensure_ascii=False),
-             json.dumps(new_mods, ensure_ascii=False),
-             row['id'])
-        )
+        for role in roles:
+            row = conn.execute(
+                "SELECT id, capabilities, managed_modules FROM agent_matrix "
+                "WHERE slug=%s AND is_system=1",
+                (role,)
+            ).fetchone()
+            if not row:
+                continue
+            new_caps = _merge_unique(_json_list(row['capabilities']), caps)
+            new_mods = _merge_unique(_json_list(row['managed_modules']), [plugin_id])
+            conn.execute(
+                "UPDATE agent_matrix SET capabilities=%s, managed_modules=%s, updated_at=NOW() "
+                "WHERE id=%s",
+                (json.dumps(new_caps, ensure_ascii=False),
+                 json.dumps(new_mods, ensure_ascii=False),
+                 row['id'])
+            )
+            attached += 1
         conn.commit()
-    print(f'[PluginRoles] Attach plugin capabilities: {plugin_id} → {role} ({len(caps)} caps)')
-    return 1
+    print(f'[PluginRoles] Attach plugin capabilities: {plugin_id} → {roles} ({len(caps)} caps)')
+    return attached
 
 
 def detach_plugin_capabilities(plugin_id: str, metadata: dict) -> int:
-    """从核心角色移除插件聚合的能力与模块标记（幂等，插件标准 §4）。"""
-    role = _declared_agent_role(metadata or {})
-    if not role:
+    """从所有归属核心角色移除该插件的能力与模块标记（幂等，插件标准 §4）。
+
+    与 attach 对称：按 `resolve_agent_roles()` 的全部命中角色清理，避免只清一个
+    而在其它角色上留下孤儿（多角色归属下的必要修正）。
+    """
+    roles = resolve_agent_roles(plugin_id, metadata or {})
+    if not roles:
         return 0
     caps = _json_list((metadata or {}).get('capabilities', []))
     cap_set = set(caps)
+    detached = 0
     with get_db() as conn:
-        row = conn.execute(
-            "SELECT id, capabilities, managed_modules FROM agent_matrix WHERE slug=%s AND is_system=1",
-            (role,)
-        ).fetchone()
-        if not row:
-            return 0
-        new_caps = [c for c in _json_list(row['capabilities']) if c not in cap_set]
-        new_mods = [m for m in _json_list(row['managed_modules']) if m != plugin_id]
-        conn.execute(
-            "UPDATE agent_matrix SET capabilities=%s, managed_modules=%s, updated_at=NOW() WHERE id=%s",
-            (json.dumps(new_caps, ensure_ascii=False),
-             json.dumps(new_mods, ensure_ascii=False),
-             row['id'])
-        )
+        for role in roles:
+            row = conn.execute(
+                "SELECT id, capabilities, managed_modules FROM agent_matrix "
+                "WHERE slug=%s AND is_system=1",
+                (role,)
+            ).fetchone()
+            if not row:
+                continue
+            new_caps = [c for c in _json_list(row['capabilities']) if c not in cap_set]
+            new_mods = [m for m in _json_list(row['managed_modules']) if m != plugin_id]
+            conn.execute(
+                "UPDATE agent_matrix SET capabilities=%s, managed_modules=%s, updated_at=NOW() "
+                "WHERE id=%s",
+                (json.dumps(new_caps, ensure_ascii=False),
+                 json.dumps(new_mods, ensure_ascii=False),
+                 row['id'])
+            )
+            detached += 1
         conn.commit()
-    print(f'[PluginRoles] Detach plugin capabilities: {plugin_id} ← {role}')
-    return 1
+    print(f'[PluginRoles] Detach plugin capabilities: {plugin_id} ← {roles}')
+    return detached
 
 
-def list_agents(role_type=None, domain=None, active_only=False):
-    """列出 Agent，支持筛选"""
+def list_agents(role_type=None, domain=None, active_only=False, slugs=None):
+    """列出 Agent，支持筛选（slugs：按核定角色 slug 列表过滤，供讨论协议选角用）"""
     with get_db() as conn:
         sql = "SELECT * FROM agent_matrix WHERE 1=1"
         params = []
@@ -1135,6 +1211,9 @@ def list_agents(role_type=None, domain=None, active_only=False):
         if domain:
             sql += " AND domain=%s"
             params.append(domain)
+        if slugs:
+            sql += " AND slug IN (" + ",".join(["%s"] * len(slugs)) + ")"
+            params.extend(list(slugs))
         if active_only:
             sql += " AND is_active=1"
         sql += " ORDER BY priority DESC, created_at ASC"

@@ -63,27 +63,44 @@ class VaultPlugin(BasePlugin):
 
         import json
         name = 'Vault — Daily Backup'
+        # 目标配置在「是否已存在」判断之前构建：存量行也需要与当前 HEALTH_SECRET 对齐
+        # （首次修复前注入为空 → X-Internal-Secret 为 null → vault before_request 放行分支
+        #  不匹配，回落 admin 登录鉴权 → 定时备份 401 失败；根因审计 2026-09-19）。
+        _secret = os.environ.get('HEALTH_SECRET', '') or None
+        target_config = json.dumps({
+            'url': 'http://127.0.0.1:8084/admin/vault/api/create',
+            'method': 'POST',
+            'headers': {
+                'Content-Type': 'application/json',
+                'X-Internal-Secret': _secret,
+            },
+            'body': {'trigger_type': 'scheduled'},
+        }, ensure_ascii=False)
+
         try:
             with orch_db() as conn:
                 # orchestrator 的 get_db() 返回裸 cursor，其 execute() 返回 None，
                 # 必须先 execute 再 fetchone，不能链式调用。
                 conn.execute(
-                    'SELECT id FROM cron_jobs WHERE name=%s', (name,)
+                    'SELECT id, target_config FROM cron_jobs WHERE name=%s', (name,)
                 )
                 existing = conn.fetchone()
                 if existing:
-                    print('[Vault] Backup schedule already registered')
+                    try:
+                        old_cfg = json.loads(existing['target_config'] or '{}')
+                        old_secret = (old_cfg.get('headers') or {}).get('X-Internal-Secret')
+                    except (json.JSONDecodeError, TypeError):
+                        old_secret = None
+                    if old_secret != _secret:
+                        conn.execute(
+                            'UPDATE cron_jobs SET target_config=%s, updated_at=NOW() '
+                            'WHERE id=%s',
+                            (target_config, existing['id'])
+                        )
+                        print('[Vault] Backup schedule secret synced (X-Internal-Secret)')
+                    else:
+                        print('[Vault] Backup schedule already registered')
                     return
-
-                target_config = json.dumps({
-                    'url': 'http://127.0.0.1:8084/admin/vault/api/create',
-                    'method': 'POST',
-                    'headers': {
-                        'Content-Type': 'application/json',
-                        'X-Internal-Secret': os.environ.get('HEALTH_SECRET', '') or None,
-                    },
-                    'body': {'trigger_type': 'scheduled'},
-                }, ensure_ascii=False)
 
                 conn.execute("""
                     INSERT INTO cron_jobs

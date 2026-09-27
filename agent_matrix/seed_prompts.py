@@ -18,7 +18,10 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROMPTS_DIR = os.path.join(BASE_DIR, 'prompts')
 
 # (slug, name, prompt_type, domain, tags, task_triggers, file_path, bind_agent_slugs, editions)
-# editions: None = 所有版本；['research-desktop'] / ['finance-desktop'] 等 = 仅该版（与 agent_matrix.models.current_edition() 一致）。
+# editions: None = 所有版本；['research-desktop'] / ['finance-desktop'] 等 = 仅该版。
+# 注意：此处值是 **磁盘产物名**，与 agent_matrix.models.current_edition() 返回的
+# canonical ID（research / finance）**不同名**，故本模块用 _detect_edition() 反向归一后再比对
+# （第五轮 N5-4：原注释误称此处与 current_edition() 一致，与实现相反）。
 # 未列出的版本跳过该 prompt 迁移（科研版只迁移 master-base + 5 领域 prompt，其余版跳过 research prompt）。
 # 覆盖当前 11 个角色对应的 prompt；bind_agent_slugs 对应的 Agent 不存在时自动跳过。
 # 旧角色（cms/user/automation/health_check/supply_chain）已不存在，其 prompt 不再入池。
@@ -28,22 +31,22 @@ PROMPT_SEEDS = [
      'master_prompt.md', ['athena'], None),
     ('content-role', 'Content Agent Role Base', 'system', 'content',
      '["content_creation"]', '[]',
-     'sub_content_prompt.md', ['content'], ['finance-desktop', 'standard']),
+     'sub_content_prompt.md', ['content'], ['standard']),
     ('builder-role', 'Builder Agent Role Base', 'system', 'site_builder',
      '["website_building","site_generation"]', '[]',
-     'sub_builder_prompt.md', ['builder'], ['finance-desktop', 'standard']),
+     'sub_builder_prompt.md', ['builder'], ['standard']),
     ('finance-role', 'Finance Agent Role Base', 'system', 'finance',
      '["finance","analysis"]', '[]',
-     'sub_finance_prompt.md', ['finance'], ['finance-desktop', 'standard']),
+     'sub_finance_prompt.md', ['finance'], ['standard']),
     ('ops-role', 'Ops Agent Role Base', 'system', 'ops',
      '["automation","health_monitor","workflow"]', '[]',
      'sub_ops_prompt.md', ['ops'], ['finance-desktop', 'standard']),
     ('chatbot-role', 'Chatbot Agent Role Base', 'system', 'service',
      '["chatbot","user_service"]', '[]',
-     'sub_chatbot_prompt.md', ['service'], ['finance-desktop', 'standard']),
+     'sub_chatbot_prompt.md', ['service'], ['standard']),
     ('business-role', 'Business Agent Role Base', 'system', 'business',
      '["business","planning"]', '[]',
-     'sub_business_prompt.md', ['business'], ['finance-desktop', 'standard']),
+     'sub_business_prompt.md', ['business'], ['standard']),
     ('discuss-planner', 'Discussion Planner Role', 'system', 'general',
      '["discussion_planner","discussion"]', '[]',
      'discuss_planner.md', [], None),
@@ -76,10 +79,15 @@ PROMPT_SEEDS = [
 
 
 def _detect_edition():
-    """轻量 edition 判定（与 agent_matrix.models.current_edition() 语义一致）。
+    """轻量 edition 判定，返回 **磁盘产物名**（供 PROMPT_SEEDS.editions 比对）。
 
     不 import agent_matrix.models，避免其模块级数据库副作用在迁移脚本上下文触发异常。
-    读取 VR_EDITION → RELEASE_EDITION → DEPLOY_TYPE，归一化：edu/research→research-desktop、pro/finance→finance-desktop、其余→standard。
+    读取 VR_EDITION → RELEASE_EDITION → DEPLOY_TYPE，归一化：edu/research/research-desktop
+    → research-desktop、pro/finance/finance-desktop → finance-desktop、其余→standard。
+
+    与 agent_matrix.models.current_edition() **口径不同**（后者返回 canonical ID：
+    research / finance，且 pro 不并入 finance）。两者对应关系见
+    agent_matrix.models._EDITION_ARTIFACT_STEMS（第五轮 N5-4 更正此处旧注释）。
     """
     e = (os.getenv('VR_EDITION') or os.getenv('RELEASE_EDITION')
          or os.getenv('DEPLOY_TYPE') or '').strip().lower()

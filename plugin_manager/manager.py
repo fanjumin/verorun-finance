@@ -57,14 +57,20 @@ from .guard import CIRCUIT_BREAKER_THRESHOLD, should_trip, record_failure
 # 启动时「磁盘 plugin.json → 注册表」一致性刷新的判定字段集。
 # ★ T3.3 修复：契约字段（provides_hooks/listens_hooks/permissions）必须在列内 ——
 #   原实现只比 version/name/min_app_version，插件改声明后注册表契约列永不更新。
+# ★ M-1 修复（2026-09-17 第三轮复审）：metadata 必须在列内 —— 它承载跨插件声明
+#   （如 site_capabilities）。原实现只把 metadata 放进「刷新集」，于是启动期内存被刷新、
+#   DB 却不回写（changed 取自本比对集，为空即跳过 _save_to_db）；一旦发生缓存重载
+#   （sync_cache_if_stale → _load_cache 为纯 DB 读），新声明即静默丢失，
+#   消费方能力判定退回 legacy 路径 —— 声明不可信且无任何告警。
 _DB_SYNC_COMPARE_FIELDS = (
     'version', 'name', 'min_app_version',
     'provides_hooks', 'listens_hooks', 'permissions',
+    'metadata',
 )
 
-# 判定不一致时随之一并回写的字段集。
-# metadata 保留原「每次同步」行为；刻意不同步 config（用户可编辑配置，回写会覆盖用户设置）。
-_DB_SYNC_REFRESH_FIELDS = _DB_SYNC_COMPARE_FIELDS + ('metadata',)
+# 判定不一致时随之一并回写的字段集（= 比对集；metadata 已入列，无需再追加）。
+# 刻意不同步 config（DB 里存的是用户可编辑配置，从清单回写会覆盖用户设置）。
+_DB_SYNC_REFRESH_FIELDS = _DB_SYNC_COMPARE_FIELDS
 
 # 敏感权限集合（软执行门卫，§10.2/§11.1）：声明即需管理员启用前审查
 SENSITIVE_PERMISSIONS = {
@@ -89,6 +95,17 @@ SHARED_PLUGIN_MODULES = ('_base',)
 
 # 锁获取超时（秒）：超时抛 PluginBusyError，避免单个异常操作挂起全部写操作
 LOCK_ACQUIRE_TIMEOUT = 30
+
+# 永久性错误前缀：这些错误在当前环境/发行版下不会自行消除，启动期自愈重试只会
+# 制造「error → enable 失败 → error」的无效弹跳与启动噪音，故一律跳过。
+# 对照可恢复的瞬态错误（如 missing/invalid agent_role —— 核心角色集随发行版动态
+# 推导，版本键纠正后旧 error 行应自动恢复），见 _recover_error_plugins()。
+_PERMANENT_ERROR_PREFIXES = (
+    'excluded_in_edition',
+    'not_in_edition_include',
+    'License required',
+    'circuit breaker',
+)
 
 
 def _dag_handler_conforms(handler) -> bool:
@@ -388,6 +405,15 @@ class PluginManager:
                     print(f'[PluginManager] ✅ 自动启用 {auto_enabled} 个插件')
                     self._load_cache()
 
+                # ── error 状态插件自愈重试（科研版 veroscholar「无数据」根因）──
+                # 自动启用只处理 INSTALLED；error 存量行永不恢复会让插件在一次瞬态
+                # 失败后永久不可用。此处仅重试可恢复的瞬态错误（如 missing/invalid
+                # agent_role —— 角色集随发行版动态推导，版本键纠正后应自动恢复）。
+                _recovered = self._recover_error_plugins(discovered)
+                if _recovered > 0:
+                    print(f'[PluginManager] ✅ error 自愈恢复 {_recovered} 个插件')
+                    self._load_cache()
+
             # 用磁盘 plugin.json 刷新已缓存插件的静态元信息与契约字段（行为与判据见方法 docstring）。
             self._refresh_static_meta(discovered)
             self._profile_mark('发现+装启+清单刷新')
@@ -499,6 +525,85 @@ class PluginManager:
                 print(f'[PluginManager] ⚠️ {pid}: 收口 disabled 失败: {e}')
         return converged
 
+    def _release_previously_excluded(self, hidden, edition: str) -> List[str]:
+        """把「曾被 include 白名单收口为 disabled、现已不再被排除」的行放回 INSTALLED。
+
+        背景（2026-09-21）：`_converge_excluded_rows` 是**单向**收敛（→ disabled）。
+        发行版一旦声明 ``plugins.runtime_whitelist: false`` 关闭运行时白名单，历史上被
+        它收口的那批行就永远停在 disabled（本进程从未加载它们，也没有钩子/定时任务要
+        回收），表现为「开关已关，插件却仍不可用」—— 开关成了半残。
+
+        保守边界：
+          - 只认 last_error 里含 ``not_in_edition_include`` 的行；用户/运维主动禁用的
+            插件（原因文本不同）一律不动。
+          - 恢复为 INSTALLED（已安装、未启用）而非 ENABLED：是否启用仍走既有 enable
+            流程，不替用户做决定。
+          - 仍在 ``hidden`` 中的行跳过（含 exclude 命中项）。
+
+        :param hidden: 当前仍应隐藏的集合
+        :return: 实际释放的 identifier 列表
+        """
+        released: List[str] = []
+        for pid, info in sorted(self._cache.items()):
+            if pid in hidden:
+                continue
+            if info.status != PluginStatus.DISABLED:
+                continue
+            if 'not_in_edition_include' not in (info.last_error or ''):
+                continue
+            info.status = PluginStatus.INSTALLED
+            info.last_error = ''
+            info.updated_at = datetime.now().isoformat()
+            try:
+                self._save_to_db(info)
+                released.append(pid)
+                print(f'[PluginManager] 🔓 {pid}: 运行时白名单已关闭，注册表状态由 disabled 放回 installed')
+            except Exception as e:
+                print(f'[PluginManager] ⚠️ {pid}: 释放 disabled 失败: {e}')
+        return released
+
+    # ── error 状态插件启动期自愈重试 ───────────────────────────────────
+    # 背景：`enable_all()`/自动启用只重试 INSTALLED，error 状态插件**永不自动
+    # 恢复** —— 任何一次瞬态失败（旧打包路径、版本键未设导致的 agent_role 校验
+    # 失败等）都会让插件永久卡死在 error，该插件在实例中彻底不可用（科研版
+    # veroscholar「无数据」根因，2026-09-12 / 09-14 两次验收复现，P0）。
+    # 现版本核心角色集由 deploy/editions/<edition>.yaml + roles/<edition>/*.yaml
+    # 动态推导，版本键纠正后，旧的 missing/invalid agent_role 报错应自动清除。
+
+    def _recover_error_plugins(self, discovered: List[PluginInfo]) -> int:
+        """启动期对 error 状态插件做一次自愈重试（仅限可恢复的瞬态错误）。
+
+        只对仍在磁盘上、且错误原因不属于 _PERMANENT_ERROR_PREFIXES 的 error 插件
+        重试 enable()：成功 → ENABLED 并清 last_error；失败 → 重新写回 error +
+        新原因（状态机 ERROR→ENABLED 合法，失败仍回 error，无状态漂移、无弹跳）。
+
+        :param discovered: 本次磁盘发现的插件列表（仅重试仍存在磁盘上的插件）
+        :return: 实际恢复的插件数
+        """
+        recovered = 0
+        for info in discovered:
+            cached = self._cache.get(info.identifier)
+            if cached is None or cached.status != PluginStatus.ERROR:
+                continue
+            if not self._is_recoverable_error(cached):
+                continue
+            try:
+                self.enable(cached.identifier)
+                recovered += 1
+                print(f'[PluginManager] ♻️ error 自愈: {cached.identifier} '
+                      f'→ {self._cache[cached.identifier].status.value}')
+            except Exception as e:
+                print(f'[PluginManager] ⚠️ error 自愈重试失败 {cached.identifier}: {e}')
+        return recovered
+
+    @staticmethod
+    def _is_recoverable_error(info: PluginInfo) -> bool:
+        """error 状态插件是否值得启动期自愈重试（仅可恢复的瞬态错误）。"""
+        reason = (info.last_error or '').strip()
+        if not reason:
+            return True  # 无错误原因的历史 error 行：重试一次以重估当前环境
+        return not reason.startswith(_PERMANENT_ERROR_PREFIXES)
+
     def _capability_allowed(self, info: PluginInfo, capability: str) -> bool:
         """能力注册权限门控（P0-1）。
 
@@ -567,20 +672,27 @@ class PluginManager:
 
         两类来源：
           1) deploy/editions/<edition>.yaml 的 plugins.exclude（显式排除）；
-          2) plugins.include 白名单**非空**时，未列入白名单的插件。
+          2) plugins.include 白名单**非空**、且该版**未声明**
+             ``plugins.runtime_whitelist: false`` 时，未列入白名单的插件。
              此前运行时只遵守 exclude，于是 include 外的插件（实测金融版 13 个，
              含 site_builder/mini_app_builder/chatbot/iot_hub 等）在服务器版由
              sync-to-pro.yml 物理不拷贝而"天然不存在"，桌面版整树拷贝却照样被
              加载、挂路由、占启动时间（金融版实测 site_builder 单插件 14.5s）。
 
-        ⚠️ include 为空 = 该发行版未启用白名单语义（standard/老部署），此时
-        只按 exclude 处理 —— 否则会把全部插件判为不提供，等于自己把系统锁死。
+        ⚠️ 不启用 ② 的两种情形（此时只按 exclude 处理；若强行过滤会把全部插件
+        判为"不提供"，等于自己把系统锁死）：
+          - include 为空：standard / 未设版本键的老部署，或 yaml 缺 plugins 段
+          - 该版显式声明 ``runtime_whitelist: false``：金融桌面版走这条 ——
+            include 退化为"仅发包裁剪"，运行时默认放行，语义见
+            agent_matrix.models.edition_runtime_whitelist 的 docstring
         """
         try:
             from agent_matrix.models import (current_edition, edition_plugin_excludes,
-                                             edition_plugin_includes)
+                                             edition_plugin_includes,
+                                             edition_runtime_whitelist)
             excluded = set(edition_plugin_excludes())
             included = set(edition_plugin_includes())
+            runtime_whitelist = edition_runtime_whitelist()
             edition = current_edition()
         except Exception as e:
             print(f'[PluginManager] ⚠️ edition 门控取数失败（按不排除处理）: {e}')
@@ -588,7 +700,13 @@ class PluginManager:
 
         hidden = {pid: f'excluded_in_edition: {edition}（deploy/editions 显式排除）'
                   for pid in excluded}
-        if included:
+        # ★ 2026-09-21：include 的"默认拒绝"分支受 plugins.runtime_whitelist 控制。
+        #   金融桌面版声明 runtime_whitelist: false → 跳过本分支，include 仅用于发包裁剪，
+        #   运行时默认放行（不适用插件改用 exclude / 动态分流规则显式表达）。
+        #   动机：运行时白名单会让"新发布的适用插件只要漏写 include 就静默不显示"，
+        #   而漏写的后果本应由打包环节暴露（不写进 include 本就不会进包 = 显式发版决策），
+        #   不该由运行时再静默隐藏一层。
+        if included and runtime_whitelist:
             for pid in candidates:
                 if pid not in included and pid not in hidden:
                     hidden[pid] = (f'not_in_edition_include: {edition}'
@@ -656,6 +774,13 @@ class PluginManager:
         # ⚠️ 只收敛**版侧**来源：动态分流规则（_dist_hidden_map）不写库，见其 docstring。
         if _hidden:
             self._converge_excluded_rows(_hidden, _edition_name)
+
+        # ★ 2026-09-21 反向释放：收敛是单向的，关掉运行时白名单后必须把历史收口行放回，
+        #   否则开关形同半残（见 _release_previously_excluded 的 docstring）。
+        try:
+            self._release_previously_excluded(_hidden, _edition_name)
+        except Exception as e:
+            print(f'[PluginManager] ⚠️ 释放历史收口行失败（不影响本次启动）: {e}')
 
         # v1.8 动态分流：仅并入**挂载门控**（决定是否装载实例 / 挂路由与钩子），不写库。
         # 规则表为空或 resolver 关闭时 _gate == _hidden，行为与 v1.7 完全一致。
@@ -886,16 +1011,24 @@ class PluginManager:
                 print(f'[PluginManager] ⚠️ {identifier}: integrity check skipped: {_e}')
 
             # ── 发行版插件门控：exclude 或未列入 include 白名单者禁止启用（与装载/列表同口径）──
+            # ⚠️ 口径必须与 _edition_hidden_map() 逐字一致：include 的"默认拒绝"分支同样受
+            #    plugins.runtime_whitelist 控制（金融桌面版声明 runtime_whitelist: false）。
+            #    2026-09-22 修复：此前本分支只判 `_ed_incl and identifier not in _ed_incl`，
+            #    漏判 runtime_whitelist —— 于是同一次 enable 在两处门控得出相反结论，
+            #    金融版上任何不在 include 内的插件（含商店新上架的适用插件）永远 enable 失败、
+            #    路由 404（实测 net_proxy 400 + 404）。此为 207c69c2 漏改的第二处。
             try:
                 from agent_matrix.models import (edition_plugin_excludes,
-                                                 edition_plugin_includes)
+                                                 edition_plugin_includes,
+                                                 edition_runtime_whitelist)
                 _ed_excl = set(edition_plugin_excludes())
                 _ed_incl = set(edition_plugin_includes())
+                _ed_runtime_whitelist = edition_runtime_whitelist()
                 _hidden_by = None
                 if identifier in _ed_excl:
                     _hidden_by = 'excluded_in_edition'
                     _why = '发行版 plugins.exclude 显式排除，不适用于本版安装'
-                elif _ed_incl and identifier not in _ed_incl:
+                elif _ed_incl and _ed_runtime_whitelist and identifier not in _ed_incl:
                     _hidden_by = 'not_in_edition_include'
                     _why = ('未列入本版 plugins.include 白名单（服务器版亦不随包分发）；'
                             '如需提供请先登记到 deploy/editions/<edition>.yaml')
@@ -903,8 +1036,12 @@ class PluginManager:
                     info.last_error = f'{_hidden_by}: {identifier}（{_why}）'
                     info.status = PluginStatus.ERROR
                     self._save_to_db(info)
+                    # 注意：第二个参数是"当前状态"，必须传 info.status.value。
+                    # 此前误传 _hidden_by（一个"原因标识"），使错误文案伪装成状态机问题
+                    # （实测："状态 not_in_edition_include 不能转换到 enable"，而真实状态是 error，
+                    #   且 ERROR→ENABLED 本就合法），排查时被误导。
                     raise PluginStateError(
-                        identifier, _hidden_by,
+                        identifier, info.status.value,
                         f'enable failed: plugin not provided in current edition ({_hidden_by})'
                     )
             except PluginStateError:
@@ -912,23 +1049,27 @@ class PluginManager:
             except Exception:
                 pass
 
-            # ── 统一网关注册强制校验（插件标准 §2.2/§4）────────────
-            # 官方插件必须声明 agent_role（核心角色之一），否则拒绝启用。
-            # 核心角色集由 agent_matrix/roles/*.yaml 动态推导（单一事实源）。
+            # ── 统一网关注册归属校验（插件标准 §2.2/§4，2026-09-21 定稿）──
+            # 放行条件（二选一，由 agent_matrix.models.resolve_agent_roles 统一裁决）：
+            #   ① plugin.json 的 agent_role 命中本版核心角色（官方版整插件归属）；
+            #   ② 本版某核心角色的 managed_modules 认领了本插件（桌面版按功能区拆分归属）。
+            # 都不满足 = 本版不接纳该插件 → 拒绝启用。
+            # 核心角色集由 agent_matrix/roles/ 或 roles/<edition>/ 动态推导（单一事实源）。
             try:
-                from agent_matrix.models import get_core_role_slugs
-                _core_roles = get_core_role_slugs()
+                from agent_matrix.models import resolve_agent_roles
+                _roles = resolve_agent_roles(identifier, info.metadata or {})
             except ImportError:
-                _core_roles = []
-            if (info.metadata or {}).get('agent_role') not in _core_roles:
+                _roles = []
+            if not _roles:
                 info.last_error = ('missing/invalid agent_role: '
                                    f'{(info.metadata or {}).get("agent_role")!r} '
-                                   '（须为核心角色之一）')
+                                   '（既不属本版核心角色，也无核心角色的 managed_modules 认领）')
                 info.status = PluginStatus.ERROR
                 self._save_to_db(info)
                 raise PluginStateError(
                     identifier, 'missing_agent_role',
-                    'enable failed: plugin.json 必须声明 agent_role（核心角色之一）'
+                    'enable failed: 插件在本版无归属角色（plugin.json 的 agent_role 与'
+                    '本版角色的 managed_modules 均未命中）'
                 )
 
             # 执行插件 setup()
@@ -1858,14 +1999,21 @@ class PluginManager:
         from .base import localize_plugin_dict
 
         # ── 发行版插件白名单：本版"不提供"的插件不进本地/商店列表 ──
-        # 口径与 _preload_routes / enable() 完全一致：显式 exclude ∪（include 非空时）未列入白名单
+        # 口径与 _preload_routes / _edition_hidden_map / enable() 完全一致：
+        #   显式 exclude ∪（include 非空 **且 runtime_whitelist 为真** 时）未列入白名单。
+        # ⚠️ 2026-09-22 修复：此前漏判 runtime_whitelist，与 _edition_hidden_map() 相反，
+        #    金融版会把包外插件误标为"本版不提供"而从列表隐藏（207c69c2 漏改的第三处）。
         try:
-            from agent_matrix.models import edition_plugin_excludes, edition_plugin_includes
+            from agent_matrix.models import (edition_plugin_excludes,
+                                             edition_plugin_includes,
+                                             edition_runtime_whitelist)
             _edition_excluded = set(edition_plugin_excludes())
             _edition_include = set(edition_plugin_includes())
+            _edition_runtime_whitelist = edition_runtime_whitelist()
         except Exception:
             _edition_excluded = set()
             _edition_include = set()
+            _edition_runtime_whitelist = True  # fail-safe：取数失败退回白名单语义（同 models 默认）
 
         # ── 以 DB 为成员真相源：跨 worker 统一（增/删/状态一致）──────
         # 旧实现以 _cache 派生成员集：启动后新装/卸载的插件在不同 worker
@@ -1880,8 +2028,9 @@ class PluginManager:
             for row in db_rows:
                 r = dict(row)
                 db_plugins[r['identifier']] = r
-            # include 白名单非空时，未列入者同样视为"本版不提供"（为空则绝不隐藏任何东西）
-            if _edition_include:
+            # include 白名单非空**且本版仍启用运行时白名单**时，未列入者同样视为
+            # "本版不提供"（为空、或 runtime_whitelist: false 时绝不按 include 隐藏）
+            if _edition_include and _edition_runtime_whitelist:
                 _edition_excluded |= {pid for pid in db_plugins if pid not in _edition_include}
             local = []
             for identifier, row in db_plugins.items():
@@ -1915,12 +2064,17 @@ class PluginManager:
             localize_plugin_dict(p)
 
         # ── 版本发现：本地已安装版本 vs 商店目录版本 ──────────
+        # 2026-09-18：额外记录判定失败原因，供前端把"静默无徽标"变成可见状态
+        update_check_error = ''
         try:
             local_versions = {p['identifier']: str(p.get('version') or '0.0.0') for p in local}
             updates = self._store_client.check_updates(local_versions) if self._store_client else {}
+            if self._store_client:
+                update_check_error = getattr(self._store_client, '_last_check_error', '') or ''
         except Exception as e:
             print(f'[PluginManager] get_unified_list check_updates failed: {e}')
             updates = {}
+            update_check_error = str(e)
         for p in local:
             u = updates.get(p['identifier'])
             p['has_update'] = bool(u and u.get('has_update'))
@@ -1949,6 +2103,9 @@ class PluginManager:
                     u = updates.get(sp['identifier'])
                     sp['has_update'] = bool(u and u.get('has_update'))
                     sp['latest_version'] = (u or {}).get('latest') or sp.get('version')
+                    # 目录落后 / 判定不可用（2026-09-18）：让"该升级却没提示"可见
+                    sp['catalog_behind'] = bool(u and u.get('catalog_behind'))
+                    sp['update_check_failed'] = bool(update_check_error and installed and not u)
                     # 解析 JSON 字段
                     for field in ('tags', 'screenshots', 'depends_on'):
                         if isinstance(sp.get(field), str):
@@ -1959,6 +2116,16 @@ class PluginManager:
                     store_plugins.append(sp)
         except Exception as e:
             print(f'[PluginManager] get_unified_list store query failed: {e}')
+
+        # 本地列表的"目录落后 / 判定不可用"须在知道目录条目后补写（故置于商店查询之后）：
+        # 仅对"确实在目录里、且本次没能拿到对比结果"的已装插件标注不可用，避免误标
+        catalog_ids = {sp['identifier'] for sp in store_plugins}
+        for p in local:
+            u = updates.get(p['identifier'])
+            p['catalog_behind'] = bool(u and u.get('catalog_behind'))
+            p['update_check_failed'] = bool(
+                update_check_error and not u and p['identifier'] in catalog_ids
+            )
 
         return {
             'local': local,
@@ -2192,7 +2359,7 @@ class PluginManager:
         try:
             with get_registry_db() as conn:
                 rows = conn.execute(
-                    "SELECT identifier, metadata, path FROM plugin_registry "
+                    "SELECT identifier, metadata, path, version FROM plugin_registry "
                     "WHERE status IN ('enabled','active') "
                     "ORDER BY CASE WHEN identifier IN ('shop','subscription') THEN 0 ELSE 1 END, identifier"
                 ).fetchall()
@@ -2200,8 +2367,10 @@ class PluginManager:
             print(f'[PluginManager] get_plugin_menus db query failed: {e}')
             return menus
 
+        plugin_versions = {}
         for row in rows:
             pid = row['identifier']
+            plugin_versions[pid] = str(row.get('version') or '')
             # site_domains 仅网站版需要，企业版（lan/code/edu）不需要子域名管理
             if pid == 'site_domains' and deploy_type in ('lan', 'code', 'edu'):
                 continue
@@ -2281,6 +2450,29 @@ class PluginManager:
                 if not menu_cfg.get('label_i18n_key'):
                     menu_cfg['label'] = _(menu_cfg.get('label') or menu_cfg.get('key') or pid)
                 menus.append(menu_cfg)
+
+        # ── 插件版本条元数据（系统侧统一注入；插件自身无需实现版本 UI）──
+        # 已装版本 + 商店目录对比：has_update=True 时前端才显示升级按钮。
+        # 判定失败只丢更新标记，不影响菜单加载（菜单可用性是前提）。
+        try:
+            updates = self._store_client.check_updates(plugin_versions) \
+                if self._store_client else {}
+        except Exception as e:
+            print(f'[PluginManager] get_plugin_menus check_updates failed: {e}')
+            updates = {}
+        for m in menus:
+            for entry in ([m] + list(m.get('children') or [])):
+                e_pid = entry.get('_plugin_id') or m.get('_plugin_id')
+                if not e_pid:
+                    continue
+                ver = plugin_versions.get(e_pid, '')
+                u = updates.get(e_pid) or {}
+                entry['plugin_meta'] = {
+                    'identifier': e_pid,
+                    'version': ver,
+                    'latest_version': str(u.get('latest') or ver),
+                    'has_update': bool(u.get('has_update')),
+                }
         return menus
 
     # ── 日志 ──────────────────────────────────────────────────────────

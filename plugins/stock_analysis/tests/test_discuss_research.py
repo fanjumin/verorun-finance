@@ -71,6 +71,10 @@ class RunDiscussedResearchTest(unittest.TestCase):
         def emit(phase, content):
             emits.append((phase, content))
 
+        # 注入缝必须先接线：原用例只定义了 fake 却未赋给 dr.LLM_FACTORY，
+        # 于是 _chat 落到真实 UnifiedLLM → 无凭据时全候选失败并触发告警链路，
+        # 最终在 health_check.routes 的 health_bp=None（无 Flask 上下文）处报错。
+        dr.LLM_FACTORY = fake
         result = dr.run_discussed_research("600519", _EVIDENCE, emit=emit)
 
         # 恰好四轮 LLM，均为 user 单条消息

@@ -129,11 +129,20 @@ class AvailabilityResolver:
                                       'upgrade_plugin'))
             if self._lm is not None:
                 try:
-                    lic = self._lm.validate(slug)             # F9
-                    if not lic.get('valid'):
-                        reasons.append(Reason(PLUGIN_LICENSE_INVALID, slug,
-                                              _('Plugin {slug} license is invalid', slug=slug),
-                                              'renew_license'))
+                    # 仅"付费插件"参与许可门禁：口径对齐 manager.enable() 的
+                    # is_paid_plugin()（免费/自研插件无 License 概念）。
+                    # 缺该能力时不额外拦截，只对 validate 结果判定 —— 否则商业版下
+                    # 免费插件的技能会被 PLUGIN_LICENSE_INVALID 永久锁死。
+                    _need_lic = True
+                    _is_paid = getattr(self._lm, 'is_paid_plugin', None)
+                    if callable(_is_paid):
+                        _need_lic = bool(_is_paid(slug))
+                    if _need_lic:
+                        lic = self._lm.validate(slug)         # F9
+                        if not lic.get('valid'):
+                            reasons.append(Reason(PLUGIN_LICENSE_INVALID, slug,
+                                                  _('Plugin {slug} license is invalid', slug=slug),
+                                                  'renew_license'))
                 except Exception:
                     pass  # 许可查询失败不阻塞可用性（可用性优先）
 

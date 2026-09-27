@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "generated_by": "evals/run_evals.py --update-snapshots",
+  "note": "机器生成，勿手改。人工维护的契约在 contracts.json。",
+  "entries": [
+    {
+      "key": "critique_self_eval",
+      "file": "agent_matrix/agent_runner.py",
+      "anchor": "你是严格的质量审查员",
+      "line": 403,
+      "chars": 154,
+      "sha256": "d73cd3396888e5828e9f50d1496a4cd8931360fb8adca2f3ab12469bb6a79687"
+    },
+    {
+      "key": "intent_classify",
+      "file": "agent_matrix/intent.py",
+      "anchor": "分析以下用户消息，输出 JSON",
+      "line": 24,
+      "chars": 206,
+      "sha256": "2aada851c0fd042625ef48dcbe9a785a97012fe7d52c23465a862b538013cc63"
+    },
+    {
+      "key": "ppt_outline",
+      "file": "agent_matrix/routes.py",
+      "anchor": "你是一个PPT大纲生成器",
+      "line": 904,
+      "chars": 183,
+      "sha256": "1d9ccd597a0581211025c7c954e82c95fcbcae9fc60ed555f8375d39a3218036"
+    },
+    {
+      "key": "shop_tags",
+      "file": "plugins/shop/routes/admin.py",
+      "anchor": "请为以下商品生成 5-8 个相关标签",
+      "line": 1198,
+      "chars": 107,
+      "sha256": "9c571220554418a5680573d20ec9289d4e0aaeb52417cd0bc282acfab7ffd74a"
+    },
+    {
+      "key": "shop_title",
+      "file": "plugins/shop/routes/admin.py",
+      "anchor": "3 个标题风格不同",
+      "line": 1087,
+      "chars": 357,
+      "sha256": "8732c397c4abdb3a4b6ff7efa551966f8f5057ace211f73de207a3d8d077d832"
+    },
+    {
+      "key": "task_decompose",
+      "file": "agent_matrix/orchestrator.py",
+      "anchor": "请按以下 JSON 格式输出任务分解方案",
+      "line": 380,
+      "chars": 593,
+      "sha256": "a4bf7e100101b49b20f37227e3b6e38c44561352abc5bc56da1e645b35cb9885"
+    },
+    {
+      "key": "tool_router",
+      "file": "agent_matrix/routes.py",
+      "anchor": "你是一个意图分析器",
+      "line": 567,
+      "chars": 1252,
+      "sha256": "ab9530ce3db159f96be1453f331d217c57031622a882cd3fb5ba543f848d640c"
+    }
+  ]
+}

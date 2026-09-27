@@ -1,9 +1,9 @@
-name: 基本面分析师
+name: Fundamental Analyst
 slug: rs_fundamental
 role_type: sub
 editions:
   - finance-desktop
-description: 基本面分析 — TTM 标准化财务、杜邦拆解、盈利质量与风险视图 / Fundamental analyst — TTM financials, Dupont, quality views
+description: Fundamental analysis — TTM financials, valuation range and earnings quality
 domain: research
 managed_modules:
   - stock_analysis

@@ -1,0 +1,107 @@
+# net_proxy plugin — English locale (identity mapping)
+# 契约：源串即英文，本文件为 identity；仅补齐 zh-CN 独有的点号键，
+#       保证两种语言下 get_all_translations() 的键集一致。
+
+# ── 插件身份 ──────────────────────────────────────────────
+plugin.name: Net Proxy Center
+plugin.net_proxy.name: Net Proxy Center
+menu.net_proxy: Net Proxy
+
+# ── 页面 / 卡片标题 ────────────────────────────────────────
+Net Proxy: Net Proxy
+Network Proxy Center: Network Proxy Center
+Egress Status: Egress Status
+Channels: Channels
+Routing Rules: Routing Rules
+Recent Logs: Recent Logs
+Egress Logs: Egress Logs
+Probe Logs: Probe Logs
+
+# ── 状态指标 ──────────────────────────────────────────────
+Proxy Enabled: Proxy Enabled
+Proxy Disabled: Proxy Disabled
+Current Region: Current Region
+Default Policy: Default Policy
+Crypto Available: Crypto Available
+Blocked Networks: Blocked Networks
+Total: Total
+Enabled: Enabled
+Healthy: Healthy
+Fused: Fused
+Direct Ratio (24h): Direct Ratio (24h)
+Success Rate (24h): Success Rate (24h)
+Avg Latency (24h): Avg Latency (24h)
+Requests (24h): Requests (24h)
+'Yes': 'Yes'
+'No': 'No'
+
+# ── 通道字段 ──────────────────────────────────────────────
+Name: Name
+Protocol: Protocol
+Host: Host
+Port: Port
+Region: Region
+Profile Tags: Profile Tags
+Usage Tags: Usage Tags
+Weight: Weight
+Max Concurrent: Max Concurrent
+Username: Username
+Password: Password
+Last Latency: Last Latency
+Last Probe: Last Probe
+Consecutive Failures: Consecutive Failures
+Fused Until: Fused Until
+Created At: Created At
+Updated At: Updated At
+
+# ── 规则字段 ──────────────────────────────────────────────
+Priority: Priority
+Target Pattern: Target Pattern
+Caller: Caller
+Action: Action
+Note: Note
+Direct: Direct
+Deny: Deny
+Channel: Channel
+First Available: First Available
+
+# ── 操作 ──────────────────────────────────────────────────
+Add Channel: Add Channel
+Edit Channel: Edit Channel
+Add Rule: Add Rule
+Edit Rule: Edit Rule
+Delete: Delete
+Edit: Edit
+Save: Save
+Cancel: Cancel
+Test: Test
+Probe: Probe
+Refresh: Refresh
+Reload: Reload
+Filter: Filter
+All: All
+
+# ── 交互反馈 ──────────────────────────────────────────────
+Created: Created
+Updated: Updated
+Deleted: Deleted
+Saved: Saved
+Loading...: Loading...
+No data: No data
+
+# ── 表格列头 / 列表状态（P6 templates/net_proxy.html 消费）────
+Actions: Actions
+Status: Status
+Detail: Detail
+Error: Error
+Disabled: Disabled
+Time: Time
+
+# ── API 文案（与 routes.py 源串逐字一致）────────────────────
+Unauthorized: Unauthorized
+Channel not found: Channel not found
+Rule not found: Rule not found
+No fields to update: No fields to update
+kind must be request or probe: kind must be request or probe
+channel_id must be an integer: channel_id must be an integer
+Probe target not configured, probe skipped: Probe target not configured, probe skipped

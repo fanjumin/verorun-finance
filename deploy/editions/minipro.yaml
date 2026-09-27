@@ -1,0 +1,76 @@
+# VeroRun 小程序版发行配置（服务器端 profile · thin flavor 后端）
+# 消费方：
+#   1) .github/workflows/sync-to-minipro.yml（已存在）—— 发布到 verorun-minipro 仓库时读此裁剪
+#   2) plugin_manager/distribution.py:resolve_visible_set —— 运行时可见性
+#   3) agent_matrix/models.edition_requires_license() —— license_enforcement 生效
+#
+# 与 finance-desktop.yaml 的关键差异：
+#   ① 桌面壳不打包核心（minipro 是 thin flavor）→ include 只影响服务器端裁剪，与桌面包体积无关
+#   ② 允许 user_login / user_console / main_site 全开（面向终端用户登录与自助控制台的部署形态；
+#      本系统单实例、非多租户，"多用户"仅指同一部署实例内的终端用户登录功能开关，
+#      不构成组织级隔离或平台级多租户运营，见 agent_matrix/ARCHITECTURE.md §非多租户声明）
+#   ③ license_enforcement: true —— fail-closed，与金融版一致
+#   ④ include 只登记用户明确要求的 7 业务插件 + 3 依赖，其它一律排除
+#
+# 参见桌面壳文档：F:\Sites\verorun-workplace\docs\editions\minipro-desktop-plan.md §4.D1。
+# 版本键 'minipro' 已在 plugin_manager/models_store.py:598 种子，无需再登记。
+edition: minipro
+label: 小程序版
+
+# 服务启用与禁用（thin 版面向"终端用户可登录"的部署形态，与金融桌面版的单机自治形态相反）
+services:
+  user_login: true
+  user_console: true
+  main_site: true
+
+# 许可证 / 订阅到期强制：桌面壳 §8.1 fail-closed 语义
+license_enforcement: true
+
+plugins:
+  # 与 finance-desktop.yaml 同语义：include 只做"发包裁剪"，运行时可见性回到
+  # "默认放行 + 显式隐藏"（走 plugin_distribution_rules），商店新上架的适用插件仍可被装。
+  runtime_whitelist: false
+  include:
+    # ── 用户明确要求的 7 业务插件 ──
+    - mini_app_builder   # v2.8.4  compatible_editions: [enterprise,standard,pro,minipro]
+    - email              # v1.5.4   compatible_editions: [enterprise,standard,pro,finance,research,minipro]
+    - vault              # v2.6.4   compatible_editions: [enterprise,standard,pro,finance,research,minipro]
+    - sms                # v1.5.4   compatible_editions: [enterprise,standard,pro,finance,research,minipro]
+    - memory_engine      # v1.5.1   compatible_editions: [enterprise,standard,pro,finance,research,minipro]
+    - chatbot            # v1.7.1   compatible_editions: [enterprise,standard,pro,minipro]
+    - health_check       # v1.11.2  compatible_editions: [enterprise,standard,pro,finance,minipro]
+    # ── 订阅门控（minipro 版必须装，插件动态可见性依赖它） ──
+    - subscription       # v2.6.4   require_subscription(item_key) 装饰器入口
+    # ── 依赖：mini_app_builder 依赖 oauth_config；two_factor_auth 建议开（终端用户登录场景） ──
+    - oauth_config
+    - two_factor_auth
+    # ── 基础（stage-verorun-core.mjs NEVER_TRIM 亦包含 _base） ──
+    - _base
+  # exclude 仅作"本版明确不提供"的登记；运行时不生效（见 runtime_whitelist: false）。
+  exclude:
+    - stock_analysis         # 金融专属
+    - veroscholar            # 科研专属
+    - hr_recruit             # office 角色不在 minipro 角色集
+    - cogevolution_substrate # 边缘物联网，不适用
+    - iot_hub / ros_bridge   # 同上
+    - shop / coupons / logistics / wishlist / reviews / payment / order_notify
+    - ads / analytics / social_push / content_factory / site_builder / site_domains
+    - enterprise_verify / visitor_profile / currency_converter
+    - risk_control / im_gateway / captcha_embedded
+    # 说明：以上未列的插件默认不放行到 minipro 用户视野，除非在 plugin_distribution_rules
+    #       显式加一条 editions:[minipro] 的规则。
+
+# 角色集（agent_matrix/roles/*.yaml 里 editions 含 minipro 的角色）
+roles:
+  - athena           # memory_engine 挂
+  - ops              # vault / health_check
+  - service          # email / sms / chatbot / two_factor_auth
+  - builder          # mini_app_builder
+  - finance          # subscription（订阅计费域）
+
+core_files:
+  - agent_matrix/models.py
+  - agent_matrix/routes.py
+  - auth-center/models/database.py
+  - auth-center/services/kb_permission.py
+  - plugin_manager/distribution.py

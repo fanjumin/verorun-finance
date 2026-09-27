@@ -158,6 +158,80 @@ class ImGatewayPlugin(BasePlugin):
         from .scheduler import GATEWAY_JOBS
         return GATEWAY_JOBS
 
+    # ── 事件消费：把内核告警推到 IM ──
+
+    def get_event_handlers(self):
+        """订阅内核事件（管理器 activate 时自动 add_action，见 plugin_manager/manager.py:1122）。
+
+        当前订阅 stock.alert.triggered —— 由 stock_analysis.alert_engine.scheduled_scan
+        以 `do_action("stock.alert.triggered", ev)` **位置参数**派发（hooks.do_action 原样透传），
+        故处理器必须接受位置事件体。ev 结构见该插件 alert_engine._trigger()：
+        {alert_id, symbol, name, type, threshold, observed, message, channels, at}。
+        """
+        def _on_stock_alert(ev=None, **kwargs):
+            self.push_alert(ev if isinstance(ev, dict) else dict(kwargs))
+
+        return {'stock.alert.triggered': _on_stock_alert}
+
+    def push_alert(self, ev: dict) -> list:
+        """把告警事件推送到全部「已启用」IM 频道，返回逐频道结果（供日志/排障）。
+
+        仅在告警自身的 channels 含 'im' 时推送 —— 尊重用户在该条告警上选的渠道
+        （stock_analysis 的 CHANNEL_CODES = in_app/email/im），不把只勾了「站内信」的
+        告警擅自发到 IM。频道未配置时各适配器会返回失败原因，此处仅记日志不抛错。
+        """
+        results = []
+        if not ev or 'im' not in (ev.get('channels') or []):
+            return results
+        text = self._format_alert_text(ev)
+        for channel in self._enabled_channels():
+            try:
+                from .gateway import gateway
+                # to='' → 各适配器回落到自身配置的默认接收人（飞书 admin_open_id/chat_id、企微 touser）
+                r = gateway.send_message(channel=channel, to='', content=text)
+            except Exception as e:
+                r = {'success': False, 'error': str(e)}
+            if not (isinstance(r, dict) and r.get('success')):
+                logger.warning('alert push failed channel=%s: %s', channel, r)
+            results.append({'channel': channel, 'result': r})
+        return results
+
+    @staticmethod
+    def _format_alert_text(ev: dict) -> str:
+        """告警纯文本（各 IM 适配器均支持 text；长度截断由适配器各自负责）"""
+        symbol = ev.get('symbol') or ''
+        name = ev.get('name') or symbol
+        lines = ['【VeroRun 告警】', f'{name} ({symbol})'.strip()]
+        if ev.get('message'):
+            lines.append(str(ev['message']))
+        if ev.get('observed') is not None:
+            line = f'当前值: {ev["observed"]}'
+            if ev.get('threshold') is not None:
+                line += f' / 阈值: {ev["threshold"]}'
+            lines.append(line)
+        if ev.get('at'):
+            lines.append(f'时间: {ev["at"]}')
+        return '\n'.join(lines)
+
+    @staticmethod
+    def _enabled_channels() -> list:
+        """channel_configs 中 is_enabled=1 且属 IM 适配器的频道标识"""
+        try:
+            from .adapters import list_channels as _im_channels
+            im = set(_im_channels())
+        except Exception:
+            im = set()
+        try:
+            from .models import get_im_db
+            with get_im_db() as conn:
+                rows = conn.execute(
+                    'SELECT channel FROM channel_configs WHERE is_enabled=1'
+                ).fetchall()
+            return [r['channel'] for r in rows if r['channel'] in im]
+        except Exception as e:
+            logger.warning('load enabled channels failed: %s', e)
+            return []
+
     def on_disable(self, registry):
         """禁用时清理（停止自调度器）"""
         sched = getattr(self, '_token_scheduler', None)

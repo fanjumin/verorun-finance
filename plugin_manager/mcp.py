@@ -53,6 +53,13 @@ _IDLE_TTL = 60
 _CLIENTS: Dict[str, Tuple[Any, float]] = {}
 _CLIENTS_LOCK = threading.Lock()
 
+# ── Phase B: 系统内置 MCP（非插件声明，内核算子注册）─────────────
+#   与插件 MCP（存 DB plugin_mcp_servers）不同，系统 MCP 存内存，
+#   由 agent_matrix 等内核模块 init 时注册，不受插件 enable/disable 控制。
+#   _enabled_records() 合并双来源。
+_SYSTEM_MCP_SERVERS: List[Dict[str, Any]] = []
+_SYSTEM_MCP_LOCK = threading.Lock()
+
 
 class McpError(RuntimeError):
     """MCP 调用异常基类。"""
@@ -370,6 +377,69 @@ def stop_plugin_mcp(identifier: str) -> None:
         pass
 
 
+# ── Phase B: 系统内置 MCP 注册 API ──────────────────────────────
+
+def register_system_mcp_server(plugin_id: str, server_name: str,
+                               config: Optional[Dict[str, Any]] = None) -> None:
+    """注册一个系统内置 MCP server（内核算子调用，不走 plugin.json 流程）。
+
+    Args:
+        plugin_id:   工具前缀用的 plugin_id（如 'agent_tools'），决定 mcp__ 命名空间。
+                     注意：此处用 'agent_tools' 保持向后兼容的工具名。
+        server_name: MCP server 内部名（如 'agent_tools'）。
+        config:      同 plugin.json mcp_servers 结构（command/args/env/transport/url/headers）。
+                     缺省：transport='stdio', command='python'。
+
+    幂等：同一 (plugin_id, server_name) 重复注册 → 覆盖 config。
+    """
+    if not plugin_id or not server_name:
+        raise ValueError('plugin_id and server_name are required')
+    cfg = dict(config or {})
+    cfg.setdefault('transport', 'stdio')
+    cfg.setdefault('command', '')
+    cfg.setdefault('args', [])
+    cfg.setdefault('env', {})
+    cfg.setdefault('url', '')
+    cfg.setdefault('headers', {})
+    record = {
+        'plugin_id': plugin_id,
+        'server_name': server_name,
+        'config': cfg,
+        '_system': True,
+    }
+    with _SYSTEM_MCP_LOCK:
+        for i, existing in enumerate(_SYSTEM_MCP_SERVERS):
+            if existing['plugin_id'] == plugin_id and existing['server_name'] == server_name:
+                _SYSTEM_MCP_SERVERS[i] = record
+                return
+        _SYSTEM_MCP_SERVERS.append(record)
+    # 关闭旧连接（若 config 变了，下一次调用会用新 config 重建）
+    server_key = f'{plugin_id}:{server_name}'
+    with _CLIENTS_LOCK:
+        if server_key in _CLIENTS:
+            try:
+                _CLIENTS[server_key][0].close()
+            except Exception:
+                pass
+            del _CLIENTS[server_key]
+
+
+def unregister_system_mcp_server(plugin_id: str, server_name: str) -> None:
+    """移除系统内置 MCP server，关闭其运行时连接。"""
+    with _SYSTEM_MCP_LOCK:
+        _SYSTEM_MCP_SERVERS[:] = [
+            s for s in _SYSTEM_MCP_SERVERS
+            if not (s['plugin_id'] == plugin_id and s['server_name'] == server_name)]
+    server_key = f'{plugin_id}:{server_name}'
+    with _CLIENTS_LOCK:
+        if server_key in _CLIENTS:
+            try:
+                _CLIENTS[server_key][0].close()
+            except Exception:
+                pass
+            del _CLIENTS[server_key]
+
+
 # ── 运行时：连接管理与工具聚合 ─────────────────────────────────────
 
 def _get_client(plugin_id: str, server_name: str, config: Dict[str, Any]):
@@ -413,11 +483,52 @@ def _reap_idle_clients() -> None:
 
 
 def _enabled_records() -> List[Dict[str, Any]]:
-    with get_registry_db() as conn:
-        rows = conn.execute(
-            'SELECT plugin_id, server_name, config FROM plugin_mcp_servers '
-            'WHERE enabled=1 ORDER BY plugin_id, server_name').fetchall()
-    return [dict(r) for r in rows]
+    """返回当前活跃的 MCP server 记录（合并插件 MCP + 系统内置 MCP）。
+
+    返回结构统一为 {'plugin_id', 'server_name', 'config'(JSON string), '_system'(bool)}。
+    调用方（get_enabled_mcp_tool_schemas / call_mcp_tool）对 config 执行 json.loads()，
+    故此处统一序列化为 JSON 字符串以匹配 DB 记录形态。
+
+    去重：同一 (plugin_id, server_name) 若同时存在于 DB 和系统 MCP，
+    系统 MCP 优先（内核已接管的 server 覆盖插件 DB 残留记录）。
+    """
+    # 按 (plugin_id, server_name) 建 dict 实现覆盖式去重
+    merged: Dict[Tuple[str, str], Dict[str, Any]] = {}
+
+    # 1. 插件 MCP（从 DB，先入表）
+    try:
+        with get_registry_db() as conn:
+            rows = conn.execute(
+                'SELECT plugin_id, server_name, config FROM plugin_mcp_servers '
+                'WHERE enabled=1 ORDER BY plugin_id, server_name').fetchall()
+        for r in rows:
+            rec = dict(r)
+            # psycopg2 可能自动把 JSON 列反序列化为 dict —— 统一序列化回字符串
+            cfg = rec.get('config')
+            if isinstance(cfg, dict):
+                rec['config'] = json.dumps(cfg)
+            elif cfg is None:
+                rec['config'] = '{}'
+            rec['_system'] = False
+            merged[(rec['plugin_id'], rec['server_name'])] = rec
+    except Exception:
+        pass  # registry DB 不可用时跳过插件侧
+
+    # 2. 系统内置 MCP（内存注册，后入表 → 覆盖同键 DB 记录）
+    with _SYSTEM_MCP_LOCK:
+        for s in list(_SYSTEM_MCP_SERVERS):
+            rec = {
+                'plugin_id': s['plugin_id'],
+                'server_name': s['server_name'],
+                'config': json.dumps(s['config'] or {}),
+                '_system': True,
+            }
+            merged[(rec['plugin_id'], rec['server_name'])] = rec
+
+    # 按 (system 优先, plugin_id, server_name) 排序返回
+    records = list(merged.values())
+    records.sort(key=lambda r: (not r.get('_system', False), r['plugin_id'], r['server_name']))
+    return records
 
 
 def get_enabled_mcp_tool_schemas() -> List[Dict[str, Any]]:

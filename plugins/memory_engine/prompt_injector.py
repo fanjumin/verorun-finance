@@ -14,6 +14,7 @@ class PromptInjector:
     def __init__(self, config: dict):
         self._config = config or {}
         self._retriever = None  # lazy-init
+        self._last_injected_len = 0   # 最近一次实际注入块长（abtest 结局记录回查）
 
     @property
     def _retrieve(self):
@@ -48,10 +49,17 @@ class PromptInjector:
         query = ctx.get('user_query') or ''
         if not user_id or not self._user_opted_in(user_id):
             return prompt
+        # P2 A/B 门控：启用实验时，对照臂用户不注入（分流键=user_id，K2 约束）
+        from .services.abtest import assign_arm, ARM_TREATMENT
+        if self._config.get('abtest_enabled', False):
+            if assign_arm(str(user_id),
+                          int(self._config.get('abtest_control_pct', 50))) != ARM_TREATMENT:
+                return prompt
         try:
             block = self._retrieve.build_injection_block(user_id, agent_id, query)
             if not block:
                 return prompt
+            self._last_injected_len = len(block)   # 事件侧回查注入量的缓存
             return f"{prompt}\n\n=== Agent Memory (auto) ===\n{block}\n=== Memory End ==="
         except Exception as e:
             logger.warning('memory injection skipped: %s', e)

@@ -12,8 +12,9 @@ build_manifest.py — 生成 Ed25519 签名版完整性基准清单（Task 5）
     python3 veroguard/tools/build_manifest.py --verify --project-dir /opt/verorun
 
 扫描核心文件（含 plugins/ 下自动发现的插件核心文件 *.py / plugin.json /
-migrations/*.sql），计算 SHA256，生成签名清单。私钥 RELEASE_SIGN_KEY 仅存
-CI/发版机，服务器端无私钥，本地无法重生成有效清单。
+migrations/*.sql，以及内核提示词资产 agent_matrix/prompts/*.md），计算 SHA256，
+生成签名清单。私钥 RELEASE_SIGN_KEY 仅存 CI/发版机，服务器端无私钥，
+本地无法重生成有效清单。
 """
 import os
 import sys
@@ -95,6 +96,31 @@ def _discover_plugin_files(project_dir: str) -> list:
     return found
 
 
+# ── 内核提示词资产（WP-B6.3）──
+# agent_matrix/prompts/*.md 是内核 Agent 的角色提示词，属受保护的交付资产：
+# 被改动 = 行为漂移风险 + 已签发的完整性清单失配。纳入清单后，改动提示词而未
+# 同步刷新 veroguard/data/manifest.json，tests.yml 的 "veroguard manifest
+# freshness" 门禁即失败，强制走一次有留痕的刷新流程。
+# 边界（已确认口径）：插件侧 plugins/*/agents/*.md **暂不纳入** —— 插件提示词
+# 迭代频繁；其中 veroscholar 的三对提示词已由 tests.yml 的「双源一致性」步骤守护。
+# 如需扩容，把 _discover_plugin_files 的 _skip_dirs 中的 "agents" 放开、
+# 并把过滤条件放宽到 *.md 即可（注意排除集里 templates/static 等资源目录仍须保留）。
+CORE_PROMPT_DIR = os.path.join("agent_matrix", "prompts")
+
+
+def _discover_core_prompt_files(project_dir: str) -> list:
+    """动态发现内核提示词资产（agent_matrix/prompts/*.md）。
+
+    用目录扫描而非静态清单：新增提示词文件自动纳入保护，无需改本文件。
+    """
+    pdir = os.path.join(project_dir, CORE_PROMPT_DIR)
+    if not os.path.isdir(pdir):
+        return []
+    return [os.path.relpath(os.path.join(pdir, fname), project_dir)
+            for fname in sorted(os.listdir(pdir))
+            if fname.endswith(".md") and os.path.isfile(os.path.join(pdir, fname))]
+
+
 # ── 各文件前缀的严重级别 ──
 SEVERITY_MAP = [
     ("auth_server.py", "critical"),
@@ -102,6 +128,8 @@ SEVERITY_MAP = [
     ("plugin_manager/", "critical"),
     ("veroguard/", "critical"),
     ("deploy/", "critical"),
+    # 提示词资产：不涉及凭据/授权，但直接决定所有 Agent 的行为，故定为 high
+    ("agent_matrix/prompts/", "high"),
 ]
 
 
@@ -126,9 +154,12 @@ def _git_commit(project_dir: str) -> str:
 
 def build_manifest(project_dir: str) -> dict:
     """扫描 PROJECT_DIR 下的 PROTECTED_FILES + 动态发现的插件核心文件，生成清单"""
-    # 静态清单 + 动态发现的插件核心文件（去重）
+    # 静态清单 + 动态发现的插件核心文件 + 内核提示词资产（去重）
     files_to_scan = list(PROTECTED_FILES)
     for rel in _discover_plugin_files(project_dir):
+        if rel not in files_to_scan:
+            files_to_scan.append(rel)
+    for rel in _discover_core_prompt_files(project_dir):
         if rel not in files_to_scan:
             files_to_scan.append(rel)
 

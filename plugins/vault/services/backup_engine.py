@@ -20,6 +20,24 @@ from typing import Optional, Dict, List
 from .utils import get_pg_env, BASE_DIR, BACKUP_DIR
 
 
+def _resolve_pg_dump() -> str:
+    """定位 pg_dump 可执行文件。
+
+    Windows native 便携部署下 PG bin 目录不在 PATH（裸调 pg_dump 报 WinError 2），
+    而 electron 本地核心会注入 PG_BIN=<便携 PG 的 bin 目录>（见 nativeCoreEnv）。
+    解析优先级：PG_DUMP_PATH（显式文件路径）→ PG_BIN（bin 目录）→ PATH 搜索 → 原样兜底。
+    """
+    for key in ('PG_DUMP_PATH', 'PG_BIN'):
+        val = (os.environ.get(key) or '').strip()
+        if not val:
+            continue
+        cand = val if os.path.basename(val).startswith('pg_dump') else os.path.join(
+            val, 'pg_dump.exe' if os.name == 'nt' else 'pg_dump')
+        if os.path.isfile(cand):
+            return cand
+    return shutil.which('pg_dump') or 'pg_dump'
+
+
 class BackupEngine:
     """Unified backup engine supporting full, incremental, and differential modes."""
 
@@ -128,7 +146,7 @@ class BackupEngine:
             env_override = os.environ.copy()
             env_override['PGPASSWORD'] = env.get('PG_PASSWORD', '')
             cmd = [
-                'pg_dump', '-h', env.get('PG_HOST', 'localhost'),
+                _resolve_pg_dump(), '-h', env.get('PG_HOST', 'localhost'),
                 '-p', env.get('PG_PORT', '5432'),
                 '-U', env.get('PG_USER', 'app'),
                 '-d', env.get('PG_DB', 'appdb'),
@@ -137,10 +155,14 @@ class BackupEngine:
             if tables:
                 for t in tables:
                     cmd.extend(['-t', t])
+            # errors='replace'：PYTHONUTF8=1 下 pg_dump 的 GBK 中文 stderr 默认按
+            # utf-8 解码会在 _readerthread 内抛 UnicodeDecodeError → communicate
+            # 返回 stderr=None → 下方 .strip() 抛 TypeError（根因审计 2026-09-19）。
             proc = subprocess.run(cmd, env=env_override, capture_output=True,
-                                  text=True, timeout=600)
+                                  text=True, timeout=600, errors='replace')
             if proc.returncode != 0:
-                print(f'[Vault] pg_dump failed: {proc.stderr.strip()}')
+                print(f'[Vault] pg_dump failed (rc={proc.returncode}): '
+                      f'{(proc.stderr or "").strip()}')
                 return None
             return {'type': 'database', 'path': out_file, 'name': os.path.basename(out_file)}
         except Exception as e:

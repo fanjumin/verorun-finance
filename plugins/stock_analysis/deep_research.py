@@ -20,10 +20,22 @@ EVIDENCE_FETCHER = None
 
 
 def _default_evidence(symbol: str) -> str:
-    from gateway import gateway
-    from evidence import build_evidence_context
+    # ★ 相对导入优先（插件以 plugins.<id> 命名空间包加载，插件目录**不在** sys.path 上），
+    #   直接以脚本运行时无包上下文，回退绝对导入 —— 与 stock_skill.py:29 同款写法。
+    #   实测（scripts/research-selftest.py）：只写绝对导入时真实路径抛
+    #   "No module named 'gateway'"，被 handle_stock_deep_research 的 try 吞成 success=False，
+    #   表现为"研报永远失败且看不出原因"。
     try:
-        from valuation import pe_pb_percentile, valuation_line
+        from .gateway import gateway
+        from .evidence import build_evidence_context
+    except ImportError:
+        from gateway import gateway
+        from evidence import build_evidence_context
+    try:
+        try:
+            from .valuation import pe_pb_percentile, valuation_line
+        except ImportError:
+            from valuation import pe_pb_percentile, valuation_line
         val_text = valuation_line(pe_pb_percentile(symbol)) or ""
     except Exception:
         val_text = ""
@@ -64,7 +76,10 @@ def handle_stock_deep_research(node_def, input_data):
         report = _chat(PROMPT_TEMPLATE.format(symbol=symbol, evidence=evidence_text))
         signal = None
         try:
-            from evidence import parse_structured_output
+            try:
+                from .evidence import parse_structured_output
+            except ImportError:      # 顶层脚本运行兜底
+                from evidence import parse_structured_output
             signal = parse_structured_output(report)
         except Exception:
             signal = None

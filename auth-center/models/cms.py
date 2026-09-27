@@ -481,14 +481,23 @@ def get_categories(active_only=True, audience: str = None):
 
 
 def upsert_category(data: dict):
+    """Create or update a category.
+
+    Returns the category dict, or ``None`` when the caller supplied an ``id``
+    that does not exist (callers map that to 404 instead of silently reporting
+    success on a no-op UPDATE).
+    """
     with get_db() as conn:
         if data.get('id'):
-            conn.execute(
+            cur = conn.execute(
                 "UPDATE cms_categories SET name=%s, icon=%s, slug=%s, audience=%s, sort_order=%s, is_active=%s WHERE id=%s",
                 (data['name'], data.get('icon', '📄'), data.get('slug', ''),
                  data.get('audience', 'public'), int(data.get('sort_order', 0)),
                  data.get('is_active', 1), data['id'])
             )
+            conn.commit()
+            if not cur.rowcount:
+                return None
         else:
             cur = conn.execute(
                 "INSERT INTO cms_categories (name, icon, slug, audience, sort_order, is_active) VALUES (%s,%s,%s,%s,%s,%s) RETURNING id",
@@ -497,7 +506,7 @@ def upsert_category(data: dict):
                  data.get('is_active', 1))
             )
             data['id'] = cur.fetchone()['id']
-        conn.commit()
+            conn.commit()
     return data
 
 

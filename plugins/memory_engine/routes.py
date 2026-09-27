@@ -6,6 +6,9 @@ Includes: memories CRUD, reflexion logs, prompt metrics, and
 Evolution Ring APIs (C.3): phases, rounds, graph.
 """
 
+import hashlib
+import json
+import uuid
 from functools import wraps
 from flask import Blueprint, jsonify, request
 
@@ -43,6 +46,17 @@ def admin_required(fn):
     return wrapper
 
 
+def _is_uuid(value):
+    """Path ids are UUID primary keys (memories.id / sedimentation_queue.id);
+    handing a non-UUID string to a ``WHERE id = ?`` query makes PostgreSQL raise
+    ``invalid input syntax for type uuid`` → 500. Callers answer 404 instead."""
+    try:
+        uuid.UUID(str(value))
+    except (ValueError, TypeError, AttributeError):
+        return False
+    return True
+
+
 # ── Memories ─────────────────────────────────────────────────────
 
 @bp.route('/memories')
@@ -78,6 +92,8 @@ def list_memories():
 @admin_required
 def delete_memory(mem_id):
     """Soft-delete a memory (admin action)."""
+    if not _is_uuid(mem_id):
+        return jsonify({'ok': False, 'error': 'Memory not found'}), 404
     conn = get_memory_engine_db()
     try:
         conn.execute(
@@ -120,7 +136,13 @@ def list_prompt_metrics():
             " success_rate, avg_rating, updated_at"
             " FROM prompt_metrics ORDER BY agent_id, updated_at DESC"
         ).fetchall()
-        return jsonify({'ok': True, 'rows': [dict(r) for r in rows]})
+        from .services.prompt_evolution import PromptEvolutionService
+        suggestions = PromptEvolutionService().list_suggestions()
+        return jsonify({
+            'ok': True,
+            'rows': [dict(r) for r in rows],
+            'suggestions': suggestions,
+        })
     finally:
         conn.close()
 
@@ -345,6 +367,8 @@ def approve_sedimentation(queue_id):
     payload, err, status = _require_admin()
     if err:
         return err, status
+    if not _is_uuid(queue_id):
+        return jsonify({'ok': False, 'error': 'Sedimentation entry not found'}), 404
     from services.kb_permission import check_kb_permission
     conn = get_memory_engine_db()
     try:
@@ -380,3 +404,265 @@ def reject_sedimentation(queue_id):
     from .services.sedimentation import get_service
     res = get_service().reject(queue_id, note)
     return jsonify(res), (200 if res.get('ok') else 400)
+
+
+# ── 用户自助（GDPR 访问权/编辑权/删除权；JWT user_id，非管理员）────
+
+def _require_user():
+    """Require any authenticated user (JWT user_id claim)."""
+    from services.jwt_service import validate_token
+    auth = request.headers.get('Authorization', '')
+    token = auth.replace('Bearer ', '') if auth.startswith('Bearer ') else auth
+    if not token:
+        token = request.cookies.get('sso_token') or request.cookies.get('tm_token')
+    try:
+        payload = validate_token(token) if token else None
+    except Exception:
+        payload = None
+    if not payload or not payload.get('user_id'):
+        return None, jsonify({'ok': False, 'error': 'Authentication required'}), 401
+    return payload, None, None
+
+
+user_bp = Blueprint('memory_engine_user', __name__, url_prefix='/api/memory')
+
+
+@user_bp.route('/my')
+def my_memories():
+    """当前用户自己的活跃记忆（不含 embedding 向量）。"""
+    payload, err, status = _require_user()
+    if err:
+        return err, status
+    conn = get_memory_engine_db()
+    try:
+        rows = conn.execute(
+            "SELECT id, memory_type, content, agent_id, confidence, hit_count,"
+            " quality_score, source, created_at, updated_at"
+            " FROM memories"
+            " WHERE owner_type = 'user' AND owner_id = ? AND status = 'active'"
+            " ORDER BY updated_at DESC LIMIT 500",
+            (str(payload['user_id']),),
+        ).fetchall()
+        return jsonify({'ok': True, 'rows': [dict(r) for r in rows]})
+    finally:
+        conn.close()
+
+
+@user_bp.route('/my/<mem_id>', methods=['DELETE'])
+def my_memory_delete(mem_id):
+    """用户删除自己的记忆（软删，status → archived）。"""
+    payload, err, status = _require_user()
+    if err:
+        return err, status
+    if not _is_uuid(mem_id):
+        return jsonify({'ok': False, 'error': 'Memory not found'}), 404
+    conn = get_memory_engine_db()
+    try:
+        cur = conn.execute(
+            "UPDATE memories SET status = 'archived'"
+            " WHERE id = ? AND owner_type = 'user' AND owner_id = ?",
+            (mem_id, str(payload['user_id'])),
+        )
+        conn.commit()
+        return jsonify({'ok': bool(cur.rowcount)}), (200 if cur.rowcount else 404)
+    finally:
+        conn.close()
+
+
+@user_bp.route('/my/<mem_id>', methods=['PUT'])
+def my_memory_edit(mem_id):
+    """用户编辑自己的记忆内容（重算 content_hash 保持去重语义）。"""
+    payload, err, status = _require_user()
+    if err:
+        return err, status
+    data = request.get_json(silent=True) or {}
+    content = str(data.get('content', '')).strip()[:500]
+    if len(content) < 4:
+        return jsonify({'ok': False, 'error': 'content too short'}), 400
+    from .services.extractor import MemoryExtractor
+    if MemoryExtractor._contains_pii(content):
+        return jsonify({'ok': False, 'error': 'content contains sensitive data'}), 400
+    uid = str(payload['user_id'])
+    digest = hashlib.sha256(f"{uid}|{content}".encode('utf-8')).hexdigest()
+    conn = get_memory_engine_db()
+    try:
+        try:
+            cur = conn.execute(
+                "UPDATE memories SET content = ?, keywords = ?, content_hash = ?,"
+                " updated_at = now()"
+                " WHERE id = ? AND owner_type = 'user' AND owner_id = ?"
+                " AND status = 'active'",
+                (content, MemoryExtractor._keywords(content), digest, mem_id, uid),
+            )
+            conn.commit()
+            return jsonify({'ok': bool(cur.rowcount)}), (200 if cur.rowcount else 404)
+        except Exception:
+            conn.rollback()
+            return jsonify({'ok': False, 'error': 'duplicate content'}), 409
+    finally:
+        conn.close()
+
+
+def _ensure_user_profiles_meta(conn):
+    """user_profiles.meta 缺列时补建（auth-center 建表历史缺该列）。
+
+    用户级 memory_opt_in 覆盖存于 public.user_profiles.meta；老库无该列时
+    直接 SELECT 会抛 ``column "meta" does not exist``（500）。此处惰性自愈，
+    与 veroscholar kb_sync 同一做法；列已存在时仅多做一次目录查询。
+    """
+    try:
+        exists = conn.execute(
+            "SELECT 1 FROM information_schema.columns"
+            " WHERE table_schema = 'public' AND table_name = 'user_profiles'"
+            " AND column_name = 'meta' LIMIT 1").fetchone()
+        if not exists:
+            conn.execute(
+                "ALTER TABLE public.user_profiles"
+                " ADD COLUMN meta JSONB NOT NULL DEFAULT '{}'::jsonb")
+            conn.commit()
+    except Exception:
+        conn.rollback()
+
+
+@user_bp.route('/my/optin', methods=['GET'])
+def my_optin_get():
+    """查询本人 memory_opt_in（未设置时为 null）。"""
+    payload, err, status = _require_user()
+    if err:
+        return err, status
+    from agent_matrix.models import get_db
+    with get_db() as conn:
+        _ensure_user_profiles_meta(conn)
+        row = conn.execute(
+            "SELECT meta FROM public.user_profiles WHERE user_id = %s",
+            (str(payload['user_id']),),
+        ).fetchone()
+    if not row:
+        return jsonify({'ok': True, 'opted_in': None})
+    meta = row['meta'] or {}
+    if isinstance(meta, str):
+        meta = json.loads(meta)
+    return jsonify({'ok': True, 'opted_in': bool(meta.get('memory_opt_in'))
+                    if 'memory_opt_in' in meta else None})
+
+
+@user_bp.route('/my/optin', methods=['PUT'])
+def my_optin_put():
+    """设置本人 memory_opt_in（写入 user_profiles.meta，与注入/提取隐私门同源）。"""
+    payload, err, status = _require_user()
+    if err:
+        return err, status
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data.get('opted_in'), bool):
+        return jsonify({'ok': False, 'error': 'opted_in (boolean) required'}), 400
+    uid = str(payload['user_id'])
+    from agent_matrix.models import get_db
+    with get_db() as conn:
+        _ensure_user_profiles_meta(conn)
+        row = conn.execute(
+            "SELECT meta FROM public.user_profiles WHERE user_id = %s", (uid,)
+        ).fetchone()
+        if not row:
+            return jsonify({'ok': False, 'error': 'profile not found'}), 404
+        meta = row['meta'] or {}
+        if isinstance(meta, str):
+            meta = json.loads(meta)
+        meta['memory_opt_in'] = bool(data['opted_in'])
+        conn.execute(
+            "UPDATE public.user_profiles SET meta = %s::jsonb WHERE user_id = %s",
+            (json.dumps(meta), uid),
+        )
+        conn.commit()
+    return jsonify({'ok': True})
+
+
+# ── A/B 注入收益对照（P2）────────────────────────────────────────
+
+@bp.route('/abtest/report')
+@admin_required
+def abtest_report():
+    """A/B 对照报告：?days=14&min_sample=30。"""
+    from .services.abtest import AbTestService
+    days = min(max(request.args.get('days', 14, type=int), 1), 90)
+    min_sample = min(max(request.args.get('min_sample', 30, type=int), 1), 10000)
+    try:
+        report = AbTestService({}).report(days=days, min_sample=min_sample)
+        return jsonify({'ok': True, 'report': report})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+# ── 检索回归评测（P2）────────────────────────────────────────────
+
+@bp.route('/eval/cases')
+@admin_required
+def eval_cases_list():
+    """列出评测用例（?active=true 仅活跃）。"""
+    active_only = request.args.get('active', 'true') == 'true'
+    conn = get_memory_engine_db()
+    try:
+        sql = ("SELECT id, name, owner_id, agent_id, query,"
+               " expected_memory_id, expected_keywords, active, created_at"
+               " FROM eval_cases")
+        params = []
+        if active_only:
+            sql += " WHERE active = TRUE"
+        sql += " ORDER BY created_at LIMIT 500"
+        rows = conn.execute(sql, params).fetchall()
+        return jsonify({'ok': True, 'rows': [dict(r) for r in rows]})
+    finally:
+        conn.close()
+
+
+@bp.route('/eval/cases', methods=['POST'])
+@admin_required
+def eval_cases_add():
+    """新增评测用例。body: {name, owner_id, agent_id?, query,
+    expected_memory_id?, expected_keywords?: [..]}"""
+    data = request.get_json(silent=True) or {}
+    name = str(data.get('name', '')).strip()[:128]
+    owner_id = str(data.get('owner_id', '')).strip()
+    query = str(data.get('query', '')).strip()
+    if not (name and owner_id and query):
+        return jsonify({'ok': False, 'error': 'name, owner_id, query required'}), 400
+    kws = [str(k)[:64] for k in (data.get('expected_keywords') or [])][:12]
+    conn = get_memory_engine_db()
+    try:
+        conn.execute(
+            "INSERT INTO eval_cases"
+            " (name, owner_id, agent_id, query, expected_memory_id, expected_keywords)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            (name, owner_id, str(data.get('agent_id', '')), query[:1000],
+             str(data.get('expected_memory_id') or '') or None, kws),
+        )
+        conn.commit()
+        return jsonify({'ok': True})
+    finally:
+        conn.close()
+
+
+@bp.route('/eval/run', methods=['POST'])
+@admin_required
+def eval_run():
+    """手动跑一轮评测（幂等留档于 eval_runs）。"""
+    from .services.eval_harness import EvalHarness
+    try:
+        result = EvalHarness({}).run()
+        return jsonify({'ok': True, 'result': result})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+@bp.route('/eval/runs')
+@admin_required
+def eval_runs_list():
+    """历史评测运行（变更前后对比数据源）。"""
+    conn = get_memory_engine_db()
+    try:
+        rows = conn.execute(
+            "SELECT id, case_count, hit_at_k, mrr, metrics, created_at"
+            " FROM eval_runs ORDER BY created_at DESC LIMIT 50"
+        ).fetchall()
+        return jsonify({'ok': True, 'rows': [dict(r) for r in rows]})
+    finally:
+        conn.close()

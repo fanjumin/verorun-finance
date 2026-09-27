@@ -133,7 +133,7 @@ function _renderPluginUI(mc){
   h+='<button class="tab-btn' + (_pluginTab==='pending'?' active':'') + '" onclick="_switchTab(\'pending\')">' + _('Pending') + '</button>';
   h+='<button class="tab-btn' + (_pluginTab==='licenses'?' active':'') + '" onclick="_switchTab(\'licenses\')">' + _('Licenses') + '</button>';
   h+='<button class="tab-btn' + (_pluginTab==='subscriptions'?' active':'') + '" onclick="_switchTab(\'subscriptions\')">' + _('Subscriptions') + '</button>';
-{% if edition == 'official' %}
+{% if is_enterprise_store %}
   if(_isSuperAdmin){h+='<button class="tab-btn' + (_pluginTab==='store_admin'?' active':'') + '" onclick="_switchTab(\'store_admin\')">' + _('Store Management') + '</button>';}
 {% endif %}
   h+='</div>';
@@ -209,6 +209,12 @@ function _renderInstalledTab(plugins){
     if(p.has_update){
       /* 版本发现：商店有更高版本时显示升级徽标 */
       vHtml+=' <span class="bdg" style="background:rgba(63,185,80,.15);color:#3fb950">&#x1F504; v'+esc(p.latest_version||p.version)+' '+_('Upgrade available')+'</span>';
+    }else if(p.update_check_failed){
+      /* 2026-09-18：本次版本对比未得出结果（如目录查询失败），显式告知而非静默 */
+      vHtml+=' <span class="bdg" style="background:rgba(139,139,139,.12);color:#8b8b8b">'+_('Update check unavailable')+'</span>';
+    }else if(p.catalog_behind){
+      /* 2026-09-18：目录版本低于已装版本（典型：本地升了版但未发布进目录） */
+      vHtml+=' <span class="bdg" style="background:rgba(210,153,34,.15);color:#d29922">'+_('Catalog behind')+' v'+esc(p.latest_version||p.version)+'</span>';
     }
     h+='<td style="padding:10px 12px;color:var(--dim)">'+vHtml+'</td>';
     h+='<td style="padding:10px 12px;color:var(--dim)">'+esc(p.author||'-')+'</td>';
@@ -365,7 +371,6 @@ function _renderStoreTab(plugins){
       var stColor={'active':'#3fb950','enabled':'#f0c040','disabled':'#8b8b8b','error':'#f85149'}[st]||'#58a6ff';
       h+='<div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap">';
       h+='<span class="badge" style="background:rgba(63,185,80,.12);color:'+stColor+'">'+stTxt+'</span>';
-      if(p.has_update) h+='<button class="btn bp bs" style="color:#3fb950" onclick="pluginUpgrade(\''+escAttr(p.identifier)+'\')">&#x1F504; '+_('Upgrade')+'</button>';
       h+='</div>';
     }else if(p.price_type==='free'){
       h+='<button class="btn bp bs" onclick="storeInstall(\''+escAttr(p.identifier)+'\')">'+_('Install')+'</button>';

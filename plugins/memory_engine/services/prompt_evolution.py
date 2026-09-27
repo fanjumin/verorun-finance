@@ -15,9 +15,18 @@ class PromptEvolutionService:
     and opens a new round for each agent with pending evolution data.
     """
 
+    def __init__(self, config: dict = None):
+        self._config = config or {}
+
     def run_daily(self):
         """APScheduler job: aggregate task outcomes into prompt_metrics,
-        then finalize evolution rounds."""
+        then finalize evolution rounds.
+
+        Gated by `prompt_evolution_enabled`（plugin.json 既有声明，此前代码从未
+        读取——本改动使该开关真实生效；关闭时不做聚合与 round 归档）。
+        """
+        if not self._config.get('prompt_evolution_enabled', False):
+            return
         from ..models import get_memory_engine_db
         conn = get_memory_engine_db()
         try:
@@ -31,12 +40,17 @@ class PromptEvolutionService:
                 digest = hashlib.sha256(
                     str(r['system_prompt']).encode('utf-8')
                 ).hexdigest()
+                # 真实版本号：该 agent 既有 hash 数 +1（prompt 变更即产生新版本行）
+                seq = conn.execute(
+                    "SELECT COUNT(*) AS n FROM prompt_metrics WHERE agent_id = ?",
+                    (r['identifier'],),
+                ).fetchone()
                 conn.execute(
                     "INSERT INTO prompt_metrics"
                     " (agent_id, prompt_hash, prompt_version)"
                     " VALUES (?, ?, ?)"
                     " ON CONFLICT (agent_id, prompt_hash) DO NOTHING",
-                    (r['identifier'], digest, '1.0.0'),
+                    (r['identifier'], digest, 'v%d' % (int(seq['n'] or 0) + 1)),
                 )
             # 2. Recompute rolling metrics from reflexion_logs (last 7 days).
             conn.execute(
@@ -129,18 +143,47 @@ class PromptEvolutionService:
                 )
 
     def list_suggestions(self, min_sample: int = 10) -> list:
-        """Return version pairs where a newer prompt hash outperforms the baseline."""
+        """版本对比较：每个 agent 最近两个版本做双比例 z 检验。
+
+        仅当两版本样本均 >= min_sample 且 |z| > 1.96（95% 置信）时
+        标记 significant。返回列表按 |z| 降序。
+        """
+        import math
         from ..models import get_memory_engine_db
         conn = get_memory_engine_db()
         try:
-            rows = conn.execute(
-                "SELECT agent_id, prompt_hash, prompt_version,"
-                " sample_count, success_rate, avg_rating, updated_at"
-                " FROM prompt_metrics"
-                " WHERE sample_count >= ?"
-                " ORDER BY agent_id, success_rate DESC",
-                (min_sample,),
+            agents = conn.execute(
+                "SELECT DISTINCT agent_id FROM prompt_metrics"
             ).fetchall()
-            return [dict(r) for r in rows]
+            out = []
+            for a in agents:
+                rows = conn.execute(
+                    "SELECT agent_id, prompt_hash, prompt_version, sample_count,"
+                    " success_count, success_rate, avg_rating, updated_at"
+                    " FROM prompt_metrics WHERE agent_id = ?"
+                    " ORDER BY updated_at DESC LIMIT 2",
+                    (a['agent_id'],),
+                ).fetchall()
+                if len(rows) < 2:
+                    continue
+                new, old = rows[0], rows[1]
+                n1, n2 = int(old['sample_count']), int(new['sample_count'])
+                if min(n1, n2) < min_sample or n1 <= 0 or n2 <= 0:
+                    continue
+                x1, x2 = int(old['success_count']), int(new['success_count'])
+                p1, p2 = x1 / n1, x2 / n2
+                pooled = (x1 + x2) / (n1 + n2)
+                se = math.sqrt(pooled * (1 - pooled) * (1 / n1 + 1 / n2))
+                z = (p2 - p1) / se if se > 0 else 0.0
+                out.append({
+                    'agent_id': new['agent_id'],
+                    'old_version': old['prompt_version'], 'old_rate': round(p1, 4),
+                    'new_version': new['prompt_version'], 'new_rate': round(p2, 4),
+                    'delta': round(p2 - p1, 4), 'z': round(z, 3),
+                    'significant': abs(z) > 1.96,
+                    'samples': [n1, n2],
+                })
+            out.sort(key=lambda s: abs(s['z']), reverse=True)
+            return out
         finally:
             conn.close()

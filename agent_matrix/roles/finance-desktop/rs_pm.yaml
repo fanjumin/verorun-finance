@@ -1,9 +1,9 @@
-name: 组合经理
+name: Portfolio Manager
 slug: rs_pm
 role_type: sub
 editions:
   - finance-desktop
-description: 组合收敛 — 仓位建议、相关性、与现有持仓冲突 / Portfolio manager — sizing, correlation, holding conflicts
+description: Portfolio manager — position sizing and the final research call
 domain: research
 managed_modules:
   - stock_analysis

@@ -1,0 +1,142 @@
+{
+  "name": "Net Proxy",
+  "name_i18n_key": "plugin.name",
+  "identifier": "net_proxy",
+  "python_dependencies": {
+    "required": [],
+    "optional": {
+      "PySocks": ">=1.7.0"
+    }
+  },
+  "version": "1.0.0",
+  "description": "Net Proxy — Unified outbound network proxy & egress governance for plugins",
+  "tagline": "统一出站网络代理",
+  "tagline_subtitle": "出口通道管理 · 按域路由 · 请求日志 · 连通性探测",
+  "author": "VeroRun",
+  "min_app_version": "0.10.0",
+  "compatible_editions": ["enterprise", "standard", "pro", "finance", "minipro"],
+  "category": "tools",
+  "icon": "channels",
+  "icon_url": "",
+  "tags": [
+    "network",
+    "proxy",
+    "egress",
+    "ops"
+  ],
+  "screenshots": [],
+  "readme_url": "",
+  "dependencies": {},
+  "config": {
+    "default_timeout_s": 10,
+    "probe_interval_minutes": 5,
+    "probe_target": "",
+    "fuse_threshold": 3,
+    "fuse_cooldown_minutes": 10,
+    "log_retention_days": 30,
+    "default_policy": "DIRECT"
+  },
+  "permissions": [
+    "api:read",
+    "api:write",
+    "network:request",
+    "routes",
+    "scheduler",
+    "health"
+  ],
+  "hooks": {
+    "provides": [
+      "net_proxy/get_status",
+      "net_proxy/get_channels",
+      "net_proxy/get_request_log"
+    ],
+    "listens": []
+  },
+  "agent_role": "ops",
+  "capabilities": [
+    "net_proxy_status",
+    "net_proxy_channel_manage",
+    "net_proxy_egress_route"
+  ],
+  "dashboard": {
+    "stats": [
+      {
+        "key": "net_proxy_channels",
+        "title": "Egress Channels",
+        "type": "counter"
+      },
+      {
+        "key": "net_proxy_requests_today",
+        "title": "Requests Today",
+        "type": "counter"
+      },
+      {
+        "key": "net_proxy_probe_healthy",
+        "title": "Probe Healthy",
+        "type": "ratio"
+      },
+      {
+        "key": "net_proxy_probe_failed",
+        "title": "Probe Failed",
+        "type": "counter"
+      }
+    ]
+  },
+  "menu": {
+    "group": "System",
+    "key": "net_proxy",
+    "icon": "channels",
+    "label": "Net Proxy"
+  },
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "default_timeout_s": {
+        "type": "integer",
+        "default": 10,
+        "minimum": 1,
+        "maximum": 120,
+        "description": "Default outbound request timeout in seconds"
+      },
+      "probe_interval_minutes": {
+        "type": "integer",
+        "default": 5,
+        "minimum": 1,
+        "maximum": 1440,
+        "description": "Channel connectivity probe interval in minutes"
+      },
+      "probe_target": {
+        "type": "string",
+        "default": "",
+        "description": "Probe target URL; empty means probe the channel endpoint itself"
+      },
+      "fuse_threshold": {
+        "type": "integer",
+        "default": 3,
+        "minimum": 1,
+        "maximum": 20,
+        "description": "Consecutive failures before a channel is fused (熔断)"
+      },
+      "fuse_cooldown_minutes": {
+        "type": "integer",
+        "default": 10,
+        "minimum": 1,
+        "maximum": 1440,
+        "description": "Fuse cooldown duration in minutes before a channel may recover"
+      },
+      "log_retention_days": {
+        "type": "integer",
+        "default": 30,
+        "minimum": 1,
+        "maximum": 365,
+        "description": "Retention days for proxy request log"
+      },
+      "default_policy": {
+        "type": "string",
+        "default": "DIRECT",
+        "enum": ["DIRECT", "PROXY", "BLOCK"],
+        "description": "Default egress policy when no rule matches"
+      }
+    }
+  }
+}

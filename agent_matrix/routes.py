@@ -9,7 +9,7 @@ Agent Matrix — Flask Blueprint
 
 API 端点统计: ~35 个
 """
-import os, sys, json, logging
+import os, sys, json, base64, logging
 
 from i18n import _
 from flask import Blueprint, request, jsonify, send_from_directory
@@ -21,7 +21,9 @@ sys.path.insert(0, os.path.join(BASE_DIR, '..'))
 from services.jwt_service import validate_token
 from models import get_db
 
-agent_matrix_bp = Blueprint('agent_matrix', __name__, url_prefix='/admin/agent-matrix')
+agent_matrix_bp = Blueprint('agent_matrix', __name__,
+                            url_prefix='/admin/agent-matrix',
+                            template_folder='templates')
 
 # 延迟加载 models（循环依赖处理）
 _models = None
@@ -179,6 +181,28 @@ def _check_ai_access():
 # 1. Agent 管理
 # ============================================================
 
+def _localize_roles(rows):
+    """角色展示名/描述按**请求语言**本地化（i18n 原文→译文；角色 YAML 以英文为原文）。
+
+    为什么必须在内核侧做（壳层红线，见 src/i18n/agentNames.ts）：
+      角色名一律取内核返回的 `name`，壳层**不得**自建 slug→中文/英文名 字典 ——
+      历史上那样做导致与内核角色表口径不一致。故多语言在这里完成，壳层零改动。
+
+    请求语言由 admin/app.py 的 before_request 解析（?lang → Cookie → Accept-Language →
+    部署默认），桌面端 http.ts 已自动带 `Accept-Language`，因此中英自动切换。
+    仅翻译 name/description；其余字段（provider/model/managed_modules 等）原样返回。
+    """
+    out = []
+    for row in rows or []:
+        item = dict(row)
+        if item.get('name'):
+            item['name'] = _(item['name'])
+        if item.get('description'):
+            item['description'] = _(item['description'])
+        out.append(item)
+    return out
+
+
 @agent_matrix_bp.route('/agents', methods=['GET'])
 def list_agents():
     admin, err = _require_admin()
@@ -189,7 +213,7 @@ def list_agents():
     active_only = request.args.get('active_only', '').lower() == 'true'
 
     agents = _m().list_agents(role_type=role_type, domain=domain, active_only=active_only)
-    return _success(agents)
+    return _success(_localize_roles(agents))
 
 
 @agent_matrix_bp.route('/agents', methods=['POST'])
@@ -241,7 +265,7 @@ def get_agent(aid):
     agent = _m().get_agent(aid)
     if not agent:
         return _error(_('Agent does not exist'), 404)
-    return _success(agent)
+    return _success(_localize_roles([agent])[0])
 
 
 @agent_matrix_bp.route('/agents/<int:aid>', methods=['PUT'])
@@ -552,8 +576,8 @@ def chat_tool():
 - cms: 写文章。args: {title, category(可选), content_prompt}
 - supply_chain: 供应链与商城操作。args: {action:"search"|"collect"|"optimize"|"publish",keywords(可选),item_id(可选)}
 - clean: 数据清洗。用户提供了需要清洗的原始内容（文章、白皮书、行业背景等）。args: {content: 原始内容全文}
-- site_build: 用户想创建一个全新的网站（不是广告/文章/PPT等具体内容）。关键词包括_("Build a website")_("Create Website")_("Build Website")_("Help me build a website")_("Generate Website")。注意：创建广告/创建文章/生成PPT等具体内容操作不属于site_build。args: {prompt_identifier: 行业标识(如law_firm/restaurant等，从用户描述推断), action:"preview"|"execute"|"modify"}
-- ads: 广告管理操作（优先级高于site_build）。用户提到了广告相关内容：_("Advertisement")_("Ad Position")"AD""banner"_("Campaign")_("Analyze Ad")_("Add Advertisement")"创建广告""新增广告""广告管理""查看广告""广告列表""帮我创建广告""生成广告""广告代码""ad_code"。注意：如果用户说"创建""新增""帮我创建""生成"广告，action必须设为create；如果说"查看""列出""查询"广告，action设为list。args: {action:"list"|"create"|"update"|"delete"|"stats"|"analyze"|"snippet", name, position, ad_type, image_url, link_url, ad_code, site_key(默认default), page(默认*), ad_id, days(默认7)}
+- site_build: 用户想创建一个全新的网站（不是广告/文章/PPT等具体内容）。关键词包括"建网站""创建网站""做网站""搭建网站""生成网站""Build a website""Create Website"。注意：创建广告/创建文章/生成PPT等具体内容操作不属于site_build。args: {prompt_identifier: 行业标识(如law_firm/restaurant等，从用户描述推断), action:"preview"|"execute"|"modify"}
+- ads: 广告管理操作（优先级高于site_build）。用户提到了广告相关内容："广告""广告位""AD""banner""投放""活动""分析广告""新增广告""创建广告""广告管理""查看广告""广告列表""帮我创建广告""生成广告""广告代码""ad_code"。注意：如果用户说"创建""新增""帮我创建""生成"广告，action必须设为create；如果说"查看""列出""查询"广告，action设为list。args: {action:"list"|"create"|"update"|"delete"|"stats"|"analyze"|"snippet", name, position, ad_type, image_url, link_url, ad_code, site_key(默认default), page(默认*), ad_id, days(默认7)}
 - chat: 普通对话，不是工具调用。"""
 
     # 用轻量模型快速识别意图
@@ -881,7 +905,7 @@ def _generate_ppt_file(topic, pages=10, style=_('Dark Tech Style, 16:9')):
         # AI 生成大纲
         outline_prompt = f"""你是一个PPT大纲生成器。主题：{topic}，需要{pages}页，风格：{style}。
 返回JSON格式：
-{{"title":"...","subtitle":"...","slides":[{{"title":"...","content":[_("Key Point 1"),_("Key Point 2"),...],"layout":"bullet"}}]}}
+{{"title":"...","subtitle":"...","slides":[{{"title":"...","content":["要点1","要点2",...],"layout":"bullet"}}]}}
 每页3-5个要点，第1页是封面，最后1页是总结。只返回JSON。"""
         raw = engine.chat([{"role": "user", "content": outline_prompt}], temperature=0.7, max_tokens=4000)
         import re
@@ -957,13 +981,20 @@ def agent_md_preview(filename):
     admin, err = _require_admin()
     if err: return err
 
-    import markdown as _md
-    import bleach as _bleach
     media_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'media', 'temp')
     filename = os.path.basename(filename)
     fp = os.path.join(media_dir, filename)
     if not os.path.exists(fp):
         return jsonify({'success': False, 'error': _('File does not exist')}), 404
+    try:
+        import markdown as _md
+        import bleach as _bleach
+    except ImportError as e:
+        logging.getLogger(__name__).error(f"md-preview unavailable, missing dependency: {e}")
+        return jsonify({
+            'success': False,
+            'error': _('Markdown preview module is not ready (markdown/bleach is not available)'),
+        }), 503
     try:
         with open(fp, 'r', encoding='utf-8') as f:
             md_content = f.read()
@@ -1176,6 +1207,144 @@ def list_providers():
             "WHERE is_active=1 ORDER BY id"
         ).fetchall()
         return _success([dict(r) for r in rows])
+
+
+# ============================================================
+# LLM 供应商配置管理（桌面版接线：provider_api_keys 加密 CRUD + 连接测试）
+# 前端入口：Electron 桌面版设置页 LlmProviderPanel —— 由壳层 secure-store 直写
+# 收敛为内核 API，密钥统一加密落 provider_api_keys，与 UnifiedLLM 读取链对齐。
+# ============================================================
+
+def _get_provider_key(slug):
+    """解密读取某供应商的 API Key（provider_api_keys 表，按 provider slug 取最新一条）。"""
+    from services.crypto import decrypt as _decrypt
+    try:
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT key_value_enc FROM provider_api_keys "
+                "WHERE provider=%s AND is_active=1 ORDER BY id DESC LIMIT 1",
+                (slug,)
+            ).fetchone()
+        if not row or not row['key_value_enc']:
+            return ''
+        return _decrypt(row['key_value_enc']) or ''
+    except Exception:
+        return ''
+
+
+@agent_matrix_bp.route('/providers/keys', methods=['GET'])
+def list_provider_keys():
+    """返回各供应商 API Key 配置状态（脱敏，仅 has_key/name/description，不返回真实 key）。"""
+    admin, err = _require_admin()
+    if err:
+        return err
+    try:
+        with get_db() as conn:
+            rows = conn.execute(
+                "SELECT provider, name, description FROM provider_api_keys "
+                "WHERE is_active=1 AND key_value_enc<>'' ORDER BY provider"
+            ).fetchall()
+        out = {}
+        for r in rows:
+            out[r['provider']] = {
+                'has_key': True,
+                'name': r['name'],
+                'description': r['description'] or '',
+            }
+        return _success(out)
+    except Exception as e:
+        return _error(f'List provider keys failed: {e}', 500)
+
+
+@agent_matrix_bp.route('/providers/<slug>/key', methods=['POST'])
+def save_provider_key(slug):
+    """保存（或清空）某供应商 API Key：加密写入 provider_api_keys。
+    传 api_key='' 表示删除该供应商的全部 key。"""
+    admin, err = _require_admin()
+    if err:
+        return err
+    data = request.get_json(force=True) or {}
+    api_key = str(data.get('api_key') or '').strip()
+    from services.crypto import encrypt as _encrypt
+    try:
+        with get_db() as conn:
+            existing = conn.execute(
+                "SELECT id FROM provider_api_keys WHERE provider=%s ORDER BY id DESC LIMIT 1",
+                (slug,)
+            ).fetchone()
+            if not api_key:
+                # 置空而非删除：provider_models.api_key_id 外键可能引用该行（DELETE 会违反约束）
+                conn.execute(
+                    "UPDATE provider_api_keys SET key_value_enc='' WHERE provider=%s",
+                    (slug,)
+                )
+                conn.commit()
+                return _success({'slug': slug, 'has_key': False, 'message': 'removed'})
+            enc = _encrypt(api_key)
+            if existing:
+                conn.execute(
+                    "UPDATE provider_api_keys SET key_value_enc=%s, is_active=1 WHERE id=%s",
+                    (enc, existing['id'])
+                )
+            else:
+                conn.execute(
+                    "INSERT INTO provider_api_keys (name, key_value_enc, provider, description) "
+                    "VALUES (%s,%s,%s,%s)",
+                    (slug, enc, slug, f'{slug} API key')
+                )
+            conn.commit()
+        return _success({'slug': slug, 'has_key': True})
+    except Exception as e:
+        return _error(f'Save provider key failed: {e}', 500)
+
+
+@agent_matrix_bp.route('/providers/<slug>/test', methods=['POST'])
+def test_provider_connection(slug):
+    """测试某供应商连接：解密 key，向 base_url 发一个最小 chat/completions 请求。
+    优先用请求体 base_url/model；未传时尝试从 provider_models 取该 provider 默认模型。
+    返回值固定 {ok, status, error}，前端据此渲染成功/失败。"""
+    admin, err = _require_admin()
+    if err:
+        return err
+    data = request.get_json(force=True) or {}
+    key = _get_provider_key(slug)
+    if not key:
+        return _error(f'{slug}: 未配置 API Key，请先保存', 400)
+
+    base_url = str(data.get('base_url') or '').strip().rstrip('/')
+    model = str(data.get('model') or '').strip()
+    if not base_url or not model:
+        try:
+            with get_db() as conn:
+                row = conn.execute(
+                    "SELECT pm.model_name, pm.endpoint_url FROM provider_models pm "
+                    "JOIN providers p ON p.id=pm.provider_id "
+                    "WHERE p.slug=%s AND COALESCE(pm.endpoint_url,'')<>'' "
+                    "ORDER BY pm.sort_order LIMIT 1", (slug,)
+                ).fetchone()
+            if row:
+                base_url = base_url or (row['endpoint_url'] or '').rstrip('/')
+                model = model or row['model_name'] or ''
+        except Exception:
+            pass
+    if not base_url:
+        return _error(f'{slug}: 缺少 API 地址', 400)
+
+    import requests
+    url = base_url + ('/chat/completions' if not base_url.endswith('/chat/completions') else '')
+    payload = {'model': model or 'gpt-4o-mini',
+               'messages': [{'role': 'user', 'content': 'Hi'}],
+               'max_tokens': 5}
+    try:
+        resp = requests.post(url, json=payload,
+                             headers={'Content-Type': 'application/json',
+                                      'Authorization': f'Bearer {key}'},
+                             timeout=15)
+        ok = resp.status_code == 200
+        return _success({'ok': ok, 'status': resp.status_code,
+                         'error': '' if ok else resp.text[:200]})
+    except Exception as e:
+        return _success({'ok': False, 'status': 0, 'error': str(e)})
 
 
 @agent_matrix_bp.route('/prompts', methods=['GET'])
@@ -1675,7 +1844,7 @@ def update_knowledge_base():
     with _m().get_db() as conn:
         conn.execute("""
             INSERT INTO system_config (key, value, description, updated_at)
-            VALUES ('chatbot_knowledge_base', %s, _('Chatbot Knowledge Base'), NOW())
+            VALUES ('chatbot_knowledge_base', %s, 'Chatbot Knowledge Base', NOW())
             ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=NOW()
         """, (content,))
         conn.commit()
@@ -1741,6 +1910,38 @@ def health_check():
         'total': len(results),
         'ready': sum(1 for r in results if r['ready']),
         'agents': results
+    })
+
+
+# ============================================================
+# 7b. 元数据下发（只读）
+# ============================================================
+# 把内核已有的枚举/语义下发给客户端，消除壳层硬编镜像。
+# 事实来源（唯一事实源，不在此处重复定义新枚举）：
+#   role_types   → agent_matrix/models.py:387  CHECK(role_type IN ('master','sub'))
+#   prompt_types → agent_matrix/models.py:600  CHECK(prompt_type IN ('system','scene','tool','rule','composite'))
+#   call_types   → agent_matrix/engine.py 是 agent_token_logs.call_type 的唯一写入方
+#                  （UnifiedLLM._log_usage）：'chat'（默认，:1270/:286）、
+#                  'chat_stream'（:922）、'embedding'（:1225/:1257）。
+#                  注：该列为自由文本（models.py:507 无 CHECK），此处仅登记内核自身会写入的值。
+# 省略 domains：agent_matrix.domain 为自由文本（models.py:389 无 CHECK），
+#   内核无权威域清单（域值仅散落在 role YAML / seed_prompts 等数据文件，非受约束枚举），
+#   故不臆造，本端点不返回该字段。
+_ROLE_TYPES = ['master', 'sub']
+_PROMPT_TYPES = ['system', 'scene', 'tool', 'rule', 'composite']
+_CALL_TYPES = ['chat', 'chat_stream', 'embedding']
+
+
+@agent_matrix_bp.route('/meta', methods=['GET'])
+def matrix_meta():
+    """只读元数据：角色类型 / 提示词类型 / 调用类型。"""
+    admin, err = _require_admin()
+    if err: return err
+
+    return _success({
+        'role_types': _ROLE_TYPES,
+        'prompt_types': _PROMPT_TYPES,
+        'call_types': _CALL_TYPES,
     })
 
 
@@ -2243,6 +2444,47 @@ def tts_generate_edge():
 
 
 # ============================================================
+# 5d. ASR (Speech-to-Text) — 语音转写
+#   POST /admin/agent-matrix/asr/transcribe  入参 {audio_base64: string}
+#   出参 {success, data:{text, confidence}}；未配置 ASR provider 时 text 为空且 HTTP 200
+# 路径归在 agent_matrix_bp 下，与 tts/* 同级；禁止再拆独立 Blueprint。
+# ============================================================
+
+
+@agent_matrix_bp.route('/asr/transcribe', methods=['POST'])
+def asr_transcribe():
+    """base64 音频 → 文本。
+
+    未配置 ASR provider（或识别失败）时返回空文案 + HTTP 200，不报错
+    （前端 useSpeech.ts:83-87 已按空值容错，Web Speech 为首选通道）。
+    """
+    admin, err = _require_admin()
+    if err:
+        return err
+
+    data = request.get_json(force=True) or {}
+    audio_base64 = data.get('audio_base64') or ''
+    if not isinstance(audio_base64, str) or not audio_base64.strip():
+        return _error(_('audio_base64 is required'))
+
+    try:
+        audio_bytes = base64.b64decode(audio_base64)
+    except Exception:
+        return _error(_('Invalid audio_base64'))
+
+    try:
+        from agent_matrix.audio import get_default_asr
+        text = (get_default_asr().transcribe(audio_bytes) or '').strip()
+    except Exception as e:
+        # ASR 不可用不得打断语音输入（前端有 Web Speech 降级）
+        logging.getLogger(__name__).warning('[ASR] 转写失败: %s', e)
+        text = ''
+
+    # confidence 仅作"是否有结果"指示（Vosk 不提供整段置信度），前端未消费该值
+    return _success({'text': text, 'confidence': 1.0 if text else 0.0})
+
+
+# ============================================================
 # 5.5 Discussion Mode — Multi-Agent Collaborative Chat
 # ============================================================
 
@@ -2361,6 +2603,280 @@ def discuss_approve():
 # 6. 初始化
 # ============================================================
 
+# ── 7. 审批管理（系统级内核定域 v1.1）─
+
+import logging as _approval_logging
+_approval_logger = _approval_logging.getLogger('agent_matrix.approvals')
+
+# 与 agent_matrix/approval_migrations/0001_init.sql 的 status 取值保持一致
+_AT_VALID_STATUS = ('pending', 'approved', 'rejected')
+_AT_DEFAULT_LIST_STATUS = 'pending'
+_AT_LIST_LIMIT_DEFAULT = 200
+_AT_LIST_LIMIT_MAX = 500
+_AT_APPROVAL_TTL_FALLBACK = 30
+_AT_APPROVAL_TTL_MIN = 1
+_AT_APPROVAL_TTL_MAX = 1440
+
+
+def _at_require_admin():
+    """返回 (payload, error)。payload=None→未登录，error非空→非管理员。"""
+    from services.jwt_service import validate_token
+    raw = request.headers.get('Authorization', '')
+    token = raw[7:] if raw.startswith('Bearer ') else raw
+    if not token:
+        token = (request.cookies.get('sso_token')
+                 or request.cookies.get('tm_token')
+                 or request.headers.get('X-Token'))
+    try:
+        payload = validate_token(token) if token else None
+    except Exception:
+        payload = None
+    if payload is None:
+        return None, 'Unauthorized'
+    if not payload.get('is_admin'):
+        return payload, 'Forbidden'
+    return payload, None
+
+
+def _at_deny(error):
+    return jsonify({'ok': False, 'error': error}), (401 if error == 'Unauthorized' else 403)
+
+
+def _at_identity(payload):
+    for key in ('username', 'user_id', 'phone', 'user', 'name', 'sub', 'email'):
+        value = (payload or {}).get(key)
+        if value:
+            return str(value)[:64]
+    return ''
+
+
+def _at_ttl_minutes():
+    """批准生效时长（分钟）：优先内核 ApprovalService → system_config → 硬编码默认。"""
+    # 1. 内核 ApprovalService 单例
+    try:
+        from agent_matrix.approval import get_approval
+        svc = get_approval()
+        if svc is not None:
+            return svc._ttl_minutes()
+    except Exception:
+        pass
+    # 2. system_config（管理员可通过 AI Hub 配置）
+    try:
+        from models import get_db
+        with get_db() as _conn:
+            row = _conn.execute(
+                "SELECT value FROM system_config"
+                " WHERE key = 'agent_tools_approval_ttl_minutes'").fetchone()
+        if row:
+            raw = row['value']
+            return max(_AT_APPROVAL_TTL_MIN, min(
+                _AT_APPROVAL_TTL_MAX, int(str(raw or _AT_APPROVAL_TTL_FALLBACK))))
+    except Exception:
+        pass
+    # 3. 兜底
+    return _AT_APPROVAL_TTL_FALLBACK
+
+
+def _approval_mcp_env():
+    """从 system_config 读 MCP server 运行时配置，组装 env dict。
+
+    管理员可通过 system_config 表设置以下 key：
+      agent_tools_workspace_roots  → JSON array 字符串（如 '["/home/app/workspace"]'）
+      agent_tools_ssrf_allowlist   → JSON array 字符串
+      agent_tools_exec_enabled     → "true"/"false"
+    缺失时返回 fail-closed 默认值（空 roots 拒绝 file 工具，exec 拒绝 code_exec）。
+    """
+    defaults = {
+        'AGENT_TOOLS_WORKSPACE_ROOTS': '[]',
+        'AGENT_TOOLS_SSRF_ALLOWLIST': '[]',
+        'AGENT_TOOLS_EXEC_ENABLED': 'false',
+    }
+    try:
+        from models import get_db
+        with get_db() as _conn:
+            rows = _conn.execute(
+                "SELECT key, value FROM system_config"
+                " WHERE key IN ('agent_tools_workspace_roots',"
+                "               'agent_tools_ssrf_allowlist',"
+                "               'agent_tools_exec_enabled')").fetchall()
+        key_map = {
+            'agent_tools_workspace_roots': 'AGENT_TOOLS_WORKSPACE_ROOTS',
+            'agent_tools_ssrf_allowlist': 'AGENT_TOOLS_SSRF_ALLOWLIST',
+            'agent_tools_exec_enabled': 'AGENT_TOOLS_EXEC_ENABLED',
+        }
+        for row in rows:
+            env_key = key_map.get(row['key'])
+            val = str(row['value'] or '').strip()
+            if env_key and val:
+                defaults[env_key] = val
+    except Exception:
+        pass  # system_config 不可用时静默，用 fail-closed 默认
+    return defaults
+
+
+def _at_int_arg(name, default, low, high):
+    try:
+        value = int(request.args.get(name, default))
+    except (TypeError, ValueError):
+        return default
+    return max(low, min(high, value))
+
+
+def _at_serialize(row):
+    out = {}
+    for key, value in dict(row).items():
+        out[key] = value.isoformat() if hasattr(value, 'isoformat') else value
+    return out
+
+
+def _at_json_note():
+    try:
+        body = request.get_json(silent=True) or {}
+        return str(body.get('note') or '')[:500]
+    except Exception:
+        return ''
+
+
+# ── 审批管理路由组（归 agent_matrix_bp）──────────────────
+
+@agent_matrix_bp.route('/approvals', methods=['GET'])
+def _at_page():
+    """审批管理页（iframe 形态）。"""
+    from flask import render_template
+    return render_template('approvals.html')
+
+
+@agent_matrix_bp.route('/approvals/list', methods=['GET'])
+def _at_list():
+    """审批单列表 + 各状态计数（?status=pending|approved|rejected）。"""
+    _payload, error = _at_require_admin()
+    if error:
+        return _at_deny(error)
+
+    status = (request.args.get('status') or _AT_DEFAULT_LIST_STATUS).strip().lower()
+    if status not in _AT_VALID_STATUS:
+        return jsonify({'ok': False, 'error': 'Invalid status'}), 400
+    limit = _at_int_arg('limit', _AT_LIST_LIMIT_DEFAULT, 1, _AT_LIST_LIMIT_MAX)
+
+    from agent_matrix.approval_db import get_approval_db
+    conn = get_approval_db()
+    try:
+        rows = conn.execute(
+            "SELECT id, task_id, agent_id, tool_name, args_digest, status, reason,"
+            "       requested_at, decided_at, decided_by, expires_at,"
+            "       (status = 'pending' AND expires_at IS NOT NULL"
+            "        AND expires_at <= now()) AS is_expired"
+            "  FROM agent_tools_approvals"
+            " WHERE status = ?"
+            " ORDER BY requested_at DESC"
+            " LIMIT ?",
+            (status, limit)).fetchall()
+        count_rows = conn.execute(
+            "SELECT status, COUNT(*) AS n FROM agent_tools_approvals"
+            " GROUP BY status").fetchall()
+    except Exception as exc:
+        _approval_logger.error('approvals list failed: %s', exc)
+        return jsonify({'ok': False, 'error': 'Database unavailable'}), 503
+    finally:
+        conn.close()
+
+    counts = {name: 0 for name in _AT_VALID_STATUS}
+    for row in count_rows:
+        if row['status'] in counts:
+            counts[row['status']] = int(row['n'])
+    return jsonify({
+        'ok': True,
+        'status': status,
+        'rows': [_at_serialize(r) for r in rows],
+        'counts': counts,
+        'ttl_minutes': _at_ttl_minutes(),
+    })
+
+
+@agent_matrix_bp.route('/approvals/<int:approval_id>/approve', methods=['POST'])
+def _at_approve(approval_id):
+    """批准一条 pending 审批单（续期 expires_at = now + ttl）。"""
+    payload, error = _at_require_admin()
+    if error:
+        return _at_deny(error)
+
+    who = _at_identity(payload)
+    ttl = _at_ttl_minutes()
+    from agent_matrix.approval_db import get_approval_db
+    conn = get_approval_db()
+    try:
+        cur = conn.execute(
+            "UPDATE agent_tools_approvals"
+            "   SET status = 'approved',"
+            "       decided_at = now(),"
+            "       decided_by = ?,"
+            "       reason = ?,"
+            "       expires_at = now() + make_interval(mins => ?)"
+            " WHERE id = ? AND status = 'pending'",
+            (who, 'approved by ' + (who or 'admin'), ttl, approval_id))
+        changed = cur.rowcount
+        conn.commit()
+    except Exception as exc:
+        _approval_logger.error('approve #%s failed: %s', approval_id, exc)
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return jsonify({'ok': False, 'error': 'Database unavailable'}), 503
+    finally:
+        conn.close()
+
+    if not changed:
+        return jsonify({'ok': False,
+                        'error': 'Approval not found or already decided'}), 409
+    return jsonify({'ok': True, 'id': approval_id, 'status': 'approved',
+                    'decided_by': who, 'ttl_minutes': ttl})
+
+
+@agent_matrix_bp.route('/approvals/<int:approval_id>/reject', methods=['POST'])
+def _at_reject(approval_id):
+    """拒绝一条 pending 审批单（JSON body 可带 note 作为拒绝理由）。"""
+    payload, error = _at_require_admin()
+    if error:
+        return _at_deny(error)
+
+    who = _at_identity(payload)
+    note = _at_json_note()
+    reason = 'rejected by ' + (who or 'admin')
+    if note:
+        reason = reason + ': ' + note
+
+    from agent_matrix.approval_db import get_approval_db
+    conn = get_approval_db()
+    try:
+        cur = conn.execute(
+            "UPDATE agent_tools_approvals"
+            "   SET status = 'rejected',"
+            "       decided_at = now(),"
+            "       decided_by = ?,"
+            "       reason = ?,"
+            "       expires_at = NULL"
+            " WHERE id = ? AND status = 'pending'",
+            (who, reason, approval_id))
+        changed = cur.rowcount
+        conn.commit()
+    except Exception as exc:
+        _approval_logger.error('reject #%s failed: %s', approval_id, exc)
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return jsonify({'ok': False, 'error': 'Database unavailable'}), 503
+    finally:
+        conn.close()
+
+    if not changed:
+        return jsonify({'ok': False,
+                        'error': 'Approval not found or already decided'}), 409
+    return jsonify({'ok': True, 'id': approval_id, 'status': 'rejected',
+                    'decided_by': who})
+
+
 def init_agent_matrix(app):
     """初始化 Agent 矩阵系统（由 admin/app.py 调用）"""
     _m().init_agent_matrix_tables()
@@ -2370,6 +2886,51 @@ def init_agent_matrix(app):
         seed_prompts()
     except Exception as e:
         print(f'[Agent Matrix] ⚠️ seed_prompts failed: {e}')
+    # ── 审批系统内核化（Phase A） ────────────────────────
+    try:
+        from agent_matrix.approval import (
+            init_approval, approval_pre_execute, FILTER_PRE_EXECUTE,
+        )
+        init_approval()
+        from plugin_manager.hooks import get_hook_registry
+        get_hook_registry().add_filter(
+            FILTER_PRE_EXECUTE, approval_pre_execute, priority=5,
+            identifier='agent_matrix.approval')
+        print('[Agent Matrix] ✅ Approval gate registered (kernel)')
+    except Exception as e:
+        print(f'[Agent Matrix] ⚠️ Approval gate init failed: {e}')
+    # ── 系统内置 MCP：Agent Tools（系统级 v1.1，env 配置） ──────
+    try:
+        from plugin_manager.mcp import register_system_mcp_server
+        import os as _approval_os
+        _mcp_script = _approval_os.path.join(
+            _approval_os.path.dirname(_approval_os.path.abspath(__file__)),
+            'approval_mcp_server.py')
+        register_system_mcp_server(
+            plugin_id='agent_tools',
+            server_name='agent_tools',
+            config={
+                'command': 'python',
+                'args': [_mcp_script],
+                'transport': 'stdio',
+                # 运行时配置从 system_config 读（管理员可动态调整），
+                # 缺失时 fail-closed 默认：空 roots 拒绝 file 工具，exec=false 拒绝 code_exec
+                'env': _approval_mcp_env(),
+            },
+        )
+        # 清理 pre-内核化时代 sync_plugin_mcp() 留在 DB 的残留记录
+        # （防双份注册；_enabled_records() 运行时也做了去重，此处 DB 层也清干净）
+        try:
+            from plugin_manager.models_store import get_registry_db
+            with get_registry_db() as _conn:
+                _conn.execute(
+                    "DELETE FROM plugin_mcp_servers WHERE plugin_id='agent_tools'")
+                _conn.commit()
+        except Exception:
+            pass  # registry DB 不可用时静默
+        print('[Agent Matrix] ✅ System MCP agent_tools registered')
+    except Exception as e:
+        print(f'[Agent Matrix] ⚠️ System MCP agent_tools init failed: {e}')
     app.register_blueprint(agent_matrix_bp)
     print(_('[Agent Matrix] ✅ Database + seed data has been initialized'))
     print(f'[Agent Matrix] 📋 API: /admin/agent-matrix/*')

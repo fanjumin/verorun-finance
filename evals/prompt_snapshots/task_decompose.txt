@@ -1,0 +1,32 @@
+{*}
+
+现在，用户下达了以下指令：
+
+<instruction>
+{*}
+</instruction>
+
+当前可用的 Sub Agent 团队：
+{*}
+
+请按以下 JSON 格式输出任务分解方案（不要加 markdown 代码块标记，只输出纯 JSON）：
+
+{
+  "tasks": [
+    {
+      "title": "子任务简要标题",
+      "description": "子任务详细描述，包含执行要求",
+      "target_agent_name": "目标Agent名称（必须是上面列表中的）",
+      "task_type": "execute",
+      "priority": 5,
+      "input_data": {"action": "具体操作", "params": {...}},
+      "expected_output": {"fields": ["期望输出字段名"]}
+    }
+  ]
+}
+
+注意：
+- 如果没有合适的 Sub Agent，设 target_agent_name 为 "none" 说明原因
+- 如果指令可以直接回复（无需子任务），输出一个空 tasks 数组并设置 direct_reply
+- 任务之间如果有依赖关系，在 description 中注明
+- 每个任务必须能独立执行

@@ -22,6 +22,11 @@ edge-tts>=6.0
 croniter>=2.0
 paramiko>=3.0
 
+# ── agent_matrix md-preview 依赖（markdown 渲染 + bleach 白名单清洗）──
+# 缺失时 /admin/agent-matrix/md-preview/<file> 降级为 503（不再 500），但预览功能不可用
+markdown>=3.5
+bleach>=6.1
+
 # ── Two-Factor Authentication 插件依赖 ──
 pyotp>=2.9
 qrcode>=7.4
@@ -48,3 +53,9 @@ httpx>=0.27.0,<1.0
 # ── Optional: analytics GeoIP（plugins/analytics/geoip.py 内懒导入，缺装仅降级告警不影响主链路）──
 # 需要离线 IP 归属地时取消注释，并放置 MaxMind .mmdb 到插件约定目录：
 # geoip2>=4.8.0
+
+# ── Optional: Agent 上下文 token 精确计数（agent_matrix/context_manager.py 懒导入）──
+# 该模块对 tiktoken 为**可选导入**：未安装、或运行时取不到 cl100k_base 词表时，
+# 自动回退 CJK 感知的启发式估算，功能与门禁均不受影响。
+# 内网/离线部署默认不装（避免 pip 取包失败中断部署）；需要精确计数时取消注释：
+# tiktoken>=0.7

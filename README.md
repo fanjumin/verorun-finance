@@ -1,6 +1,6 @@
 # VeroRun — Enterprise Multi-Core AI Operating System
 
-[![Version](https://img.shields.io/badge/version-0.61.1-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.62.0-blue.svg)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-EULA%20v1.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)]()
 [![Plugins](https://img.shields.io/badge/plugins-36-orange.svg)]()
@@ -266,7 +266,10 @@ Unifies health monitoring, code-integrity verification, and encrypted heartbeat 
 | Heartbeat report | 300s | AES-256-GCM + HMAC-SHA256 signing + TLS 1.3, 5-minute anti-replay window |
 
 - **Self-protection**: dual-process (`guardian` monitors business services, `self_protect` monitors the guardian) with pipe / pidfile heartbeat and automatic restart on parent death.
+- **Tiered recovery**: restart → GitHub rollback (`guardian.py --rollback-now` for manual trigger), with a cooldown window to prevent rollback loops.
+- **Daily snapshot**: `verorun-guardian-snapshot.timer` (systemd, daily) snapshots state ahead of rollback.
 - **Signed release chain**: Ed25519-signed release manifests + integrity manifests + official token verification; version-scope downgrade protection (`min/max_version`); build-time `build_id` source watermarks.
+- **CI freshness gate**: `tests.yml` verifies `veroguard/data/manifest.json` matches `VERSION` on every run; a stale manifest fails CI (fix via the "Refresh VeroGuard Manifest" GitHub Actions workflow).
 - **Remote commands** (6): `warn`, `lock_ai`, `lock_full`, `shutdown`, `self_destruct`, `update_config`; destructive commands (`shutdown` / `self_destruct`) additionally require a local ops-token confirmation.
 
 ---
@@ -337,6 +340,31 @@ Content generation and the knowledge retrieval, process orchestration, model acc
 | `@verorun/sdk-telegram` | Telegram | Bot API + WebApp |
 | `@verorun/sdk-line` | LINE | LIFF + Messaging API |
 | `verorun` CLI | Python / Cross-platform | Thin REST client: chat, agents, tasks, automation, plugins; JWT auth + SSE streaming (`sdks/cli/`) |
+
+### `verorun` CLI Command Tree
+
+Full command surface of the `sdks/cli/` thin REST client (see `sdks/cli/README.md` for details):
+
+```
+verorun login | logout | whoami                       # login supports --password-stdin to avoid
+                                                        # exposing the password in the process list / shell history
+verorun chat <message> [--session] [--agent <int>] [--stream/--no-stream] [--input <json>]
+verorun dispatch <description> --agent <int> [--title] [--input <json>]
+verorun agents list | get | toggle | test | capabilities <id>
+verorun sessions
+verorun session <sid> [--clear | --rm]
+verorun search <keyword>
+verorun tasks [--recent] [--limit N] | task <id> [--cancel|--retry|--logs]
+verorun automation jobs [--page] [--limit] | job-run | job-toggle
+verorun automation workflows [--page] [--limit] | workflow-run
+verorun automation instances [--page] [--limit] | instance <id> [--pause|--resume|--cancel]
+verorun plugins list [--status] | install | enable | disable | config <id> [--set <json>]
+verorun status
+verorun config get|set|list <key> [<value>]
+verorun version
+```
+
+All commands accept a global `--json` flag for script-friendly output.
 
 ---
 
@@ -444,7 +472,7 @@ Kernel proper (`agent_matrix` + `orchestrator` + `plugin_manager` + `veroguard` 
 
 ## Known Production Constraints
 
-- The Admin service limits Gunicorn workers to 2 to avoid OOM on low-spec servers.
+- Gunicorn worker count auto-tiers by physical memory (`<2GB→2`, `2–4GB→4`, `4–8GB→6`, `≥8GB→8`), then takes `min(tier, nproc, 8)`; override with `VR_WORKERS` in `.env` (restart only, no reinstall), thread count with `VR_THREADS` (default 4); malformed values fall back to 2.
 - SQLite mode disables `--preload` to avoid cross-process connection conflicts.
 - systemd `TimeoutStartSec` must exceed `health_check.sh`'s `MAX_WAIT=180`.
 - Plugin connection wrapper classes must implement commit / rollback / close to avoid idle-in-transaction pool poisoning.

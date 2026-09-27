@@ -197,7 +197,7 @@ def _verify_official_token() -> bool:
     判定条件缺一不可：
       1. 凭证文件存在（随 verorun-code 私有仓库分发，客户无法获取）
       2. Ed25519 验签通过（内置公钥；客户无私钥无法伪造）
-      3. edition == 'official'、version == 1 且未过期
+      3. edition ∈ {'official', 'enterprise'}（历史别名 + 现行 canonical ID）、version == 1 且未过期
     任一失败 → 不承认官方版（fail-closed，不静默放行）。
     """
     if not _CRYPTO_OK:
@@ -214,7 +214,7 @@ def _verify_official_token() -> bool:
         pub.verify(sig, canonical.encode('utf-8'))
     except (ValueError, InvalidSignature, json.JSONDecodeError, OSError):
         return False
-    if token.get('version') != 1 or token.get('edition') != 'official':
+    if token.get('version') != 1 or token.get('edition') not in ('official', 'enterprise'):
         return False
     expires_at = token.get('expires_at', '')
     if not expires_at:
@@ -230,17 +230,36 @@ def _verify_official_token() -> bool:
     return True
 
 
-def _is_official_edition() -> bool:
-    """官方版判定：VR_EDITION=official（本地标志）∧ 官方签名凭证有效（强校验）。
+def is_enterprise_edition() -> bool:
+    """企业版判定：VR_EDITION（归一化后）== 'enterprise' ∧ 官方签名凭证有效（强校验）。
 
-    官方版拥有全部插件权限，无需单独激活 License。
-    客户版（customer）走正常付费校验。即使客户在 .env 写入
-    VR_EDITION=official，缺少 verorun-code 私有仓库中的签名凭证
-    仍会被判定为非官方版（fail-closed）。
+    企业版仅 VeroRun 官方自用，拥有全部插件权限，无需单独激活 License。
+    客户版（standard/pro/finance/research/minipro/edge）走正常付费校验。
+    即使客户在 .env 写入 VR_EDITION=official（历史别名，归一化后同为
+    enterprise），缺少 verorun-code 私有仓库中的签名凭证仍会被判定为
+    非企业版（fail-closed）。
+
+    判定用 canonical ID 而非字面值：normalize_edition() 已把历史别名
+    official / enterprise-web 归一为 enterprise，避免出现"字面名比较
+    永不成立"的死分支（2026-09-18 商店管理入口消失事故的根因类别）。
     """
-    if os.environ.get('VR_EDITION', '').strip().lower() != 'official':
+    try:
+        from shared.edition import normalize_edition
+        if normalize_edition(os.environ.get('VR_EDITION', '')) != 'enterprise':
+            return False
+    except Exception as e:
+        # fail-closed：发行版无法判定时不予企业版权限（同 _verify_official_token 口径）
+        print(f'[license] edition check failed: {e}')
         return False
     return _verify_official_token()
+
+
+def _is_official_edition() -> bool:
+    """[历史别名] 等价于 is_enterprise_edition()，保留以兼容既有调用点。
+
+    L3 身份层改名完成后由 is_enterprise_edition() 取代。
+    """
+    return is_enterprise_edition()
 
 
 def _parse_semver(v: str) -> tuple:

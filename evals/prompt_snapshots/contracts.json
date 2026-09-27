@@ -1,0 +1,121 @@
+{
+  "version": 1,
+  "_note": [
+    "提示词给 LLM 的「输出契约」快照（WP-B6.2）。本文件由人工维护（key / file / anchor / 契约子串），",
+    "机器指纹在 index.json（由 `python evals/run_evals.py --update-snapshots` 生成），",
+    "规范化后的全文在 <key>.txt（供人工 diff 复核）。",
+    "",
+    "为什么需要它（i18n 门禁覆盖不到的部分）：scripts/i18n_check.py 的检查 6 只能拦字面量里出现 `_(`，",
+    "拦不住「键名被改名」这类不带 `_(` 的漂移——而那正是本仓 A1 事故的真实根因：",
+    "自评提示词被写成 confidence_ 而读取端取 confidence，导致自评置信度恒为 0.85、<0.7 的重试闭环静默失效。",
+    "",
+    "匹配口径：脚本用 ast 提取「最外层字符串表达式」的字面量骨架——相邻字符串隐式拼接会合并，",
+    "f-string 的插值段统一记为 `{*}`（因此插值位置/数量变化也可检出），转义花括号按运行时语义展开。",
+    "故 anchor 与契约子串都按【运行时语义】书写，不按源码转义写法书写。",
+    "",
+    "变更流程：提示词确实需要修改时，先人工评审改动，再跑 --update-snapshots 并提交 index.json 与 *.txt。",
+    "任何未经刷新的改动都会让门禁判红——这是有意的摩擦力，防止再次静默改写发给 LLM 的契约。"
+  ],
+  "entries": [
+    {
+      "key": "critique_self_eval",
+      "file": "agent_matrix/agent_runner.py",
+      "anchor": "你是严格的质量审查员",
+      "must_contain": [
+        "\"confidence\": 0.0-1.0",
+        "\"issues\": [\"问题1\"",
+        "\"suggestion\": \"改进建议\"",
+        "【任务】",
+        "【输出】"
+      ],
+      "must_not_contain": ["confidence_", "_("],
+      "note": "自评契约：键名必须 confidence（A1 事故根因）；插值段 {*} 表示任务标题/描述/输出正文，不在此快照内固化"
+    },
+    {
+      "key": "intent_classify",
+      "file": "agent_matrix/intent.py",
+      "anchor": "分析以下用户消息，输出 JSON",
+      "must_contain": [
+        "\"intent\": \"意图类别（purchase=购买意向",
+        "\"sentiment\": \"情绪（positive=正面",
+        "purchase=购买意向",
+        "aftersale=售后",
+        "complaint=投诉",
+        "consult=咨询",
+        "technical=技术支持",
+        "other=其他"
+      ],
+      "must_not_contain": ["_("],
+      "note": "意图/情绪分类契约：7 个枚举值必须齐备，否则路由与统计口径会静默漂移"
+    },
+    {
+      "key": "task_decompose",
+      "file": "agent_matrix/orchestrator.py",
+      "anchor": "请按以下 JSON 格式输出任务分解方案",
+      "must_contain": [
+        "\"tasks\": [",
+        "\"title\": \"子任务简要标题\"",
+        "\"description\": \"子任务详细描述，包含执行要求\"",
+        "\"target_agent_name\": \"目标Agent名称（必须是上面列表中的）\"",
+        "\"task_type\": \"execute\"",
+        "\"priority\": 5",
+        "\"fields\": [\"期望输出字段名\"]"
+      ],
+      "must_not_contain": ["_("],
+      "note": "任务分解契约（字面量开头是 {*} 即 master_prompt 注入位）。注意：master_prompt 的真实内容属 agent_matrix/prompts/，由 WP-B6.3 的签名清单纳管，不在本快照范围内"
+    },
+    {
+      "key": "tool_router",
+      "file": "agent_matrix/routes.py",
+      "anchor": "你是一个意图分析器",
+      "must_contain": [
+        "\"intent\":\"ppt|image|voice|video|cms|supply_chain|clean|site_build|ads|chat\"",
+        "- site_build: 用户想创建一个全新的网站",
+        "关键词包括\"建网站\"",
+        "- ads: 广告管理操作（优先级高于site_build）",
+        "- chat: 普通对话，不是工具调用。"
+      ],
+      "must_not_contain": ["_("],
+      "note": "工具路由规则：site_build 与 ads 的优先级关系是易错点（A1 曾在此处产生 6 处污染，其中 4 处含英文关键词）"
+    },
+    {
+      "key": "ppt_outline",
+      "file": "agent_matrix/routes.py",
+      "anchor": "你是一个PPT大纲生成器",
+      "must_contain": [
+        "\"subtitle\":\"...\"",
+        "\"slides\":[",
+        "\"content\":[\"要点1\",\"要点2\",...]",
+        "\"layout\":\"bullet\"",
+        "每页3-5个要点"
+      ],
+      "must_not_contain": ["_("],
+      "note": "PPT 大纲契约；{*} 为 topic/pages/style 注入位"
+    },
+    {
+      "key": "shop_title",
+      "file": "plugins/shop/routes/admin.py",
+      "anchor": "3 个标题风格不同",
+      "must_contain": [
+        "\"title\":\"标题1\"",
+        "\"style\":\"professional\"",
+        "\"style\":\"appealing\"",
+        "\"style\":\"concise\"",
+        "\"reason\":\"选择理由\""
+      ],
+      "must_not_contain": ["_("],
+      "note": "商品标题 3 选项契约；styles 三种取值被下游按名使用，改名即断链"
+    },
+    {
+      "key": "shop_tags",
+      "file": "plugins/shop/routes/admin.py",
+      "anchor": "请为以下商品生成 5-8 个相关标签",
+      "must_contain": [
+        "标签需覆盖商品核心属性、功能、使用场景",
+        "[\"标签1\",\"标签2\",\"标签3\"]"
+      ],
+      "must_not_contain": ["_("],
+      "note": "商品标签契约 —— 第三方方案的 A1 清单漏掉了这一处（只列了商品标题），由本次审计补出"
+    }
+  ]
+}

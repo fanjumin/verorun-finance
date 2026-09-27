@@ -21,7 +21,7 @@ from datetime import datetime
 import pandas as pd
 
 from .gateway import DataCategory, gateway
-from .indicators import INDICATOR_VERSION, _round, compute_indicators
+from .indicators import INDICATOR_VERSION, _round, build_matrix, compute_indicators
 
 _log = logging.getLogger("stock_analysis.kline_service")
 
@@ -62,13 +62,30 @@ def _int_or_none(v) -> int | None:
     return int(round(f))
 
 
+def _declared_basis(frame: pd.DataFrame) -> str:
+    """读取数据源自报的复权口径（帧列 price_basis），无则返回空串。"""
+    if "price_basis" not in frame.columns or frame.empty:
+        return ""
+    return str(frame["price_basis"].iloc[0] or "").lower()
+
+
 def _resolve_basis(frame: pd.DataFrame, adjust: str) -> str:
-    """校准后的展示基准。raw 请求遇到 hfq-only 降级帧（_raw_unavailable）时如实回退 hfq。"""
-    if adjust == "hfq" and "close_hfq" in frame.columns:
-        return "hfq"
-    if adjust == "raw" and "_raw_unavailable" not in frame.columns:
-        return "raw"
-    return "hfq" if "close_hfq" in frame.columns else "raw"
+    """按数据源**自报口径**校准展示基准。
+
+    #SA-20260920-01 修复：旧实现只要帧里存在 close_hfq 列就返回 "hfq"。
+    但新浪源是把 close 原样拷贝成 close_hfq（未复权）后再自报 price_basis="raw"，
+    于是 API 对外声称"后复权价（hfq）"而实际是不复权价 —— 溯源失真。
+    新规则：以帧自报口径为准，声明 raw 就绝不假称 hfq。
+    """
+    declared = _declared_basis(frame)
+    has_hfq_col = "close_hfq" in frame.columns
+    raw_unavailable = "_raw_unavailable" in frame.columns
+
+    if adjust == "raw":
+        # 请求不复权价：只有确实拿到不复权价（或帧本身不是 hfq-only 降级帧）才给 raw
+        return "raw" if (declared == "raw" or not raw_unavailable) else "hfq"
+    # 请求 hfq：仅在数据源自报 hfq 时才声称 hfq（缺列同样视为不可用）
+    return "hfq" if (declared == "hfq" and has_hfq_col) else "raw"
 
 
 def _base_columns(frame: pd.DataFrame, basis: str) -> tuple[str, str, str, str]:
@@ -137,11 +154,15 @@ def kline_payload(symbol: str, period: str = "daily", adjust: str = "hfq",
             "amount": None,          # 数据源无成交额列，契约 §3 校准为 null
         })
 
+    sliced_indicators = _slice_ind(indicators, start, end)
     return {
         "ok": True,
         "data": {
             "bars": bars,
-            "indicators": _slice_ind(indicators, start, end),
+            "indicators": sliced_indicators,
+            # 指标矩阵 8 行（MA/MACD/KDJ/RSI/BOLL/量比 的判定结论）：判定口径归插件，
+            # 壳层只渲染 —— 此前由桌面端 buildMatrix() 自算（2026-09-21 整改）。
+            "matrix": build_matrix(bars, sliced_indicators),
             "basis": basis,
             "basis_note": _BASIS_NOTES.get(basis, basis),
         },
@@ -150,6 +171,8 @@ def kline_payload(symbol: str, period: str = "daily", adjust: str = "hfq",
             "data_date": bars[-1]["date"] if bars else None,
             "source": _kline_source(),
             "price_basis": basis,
+            "price_basis_declared": _declared_basis(frame) or None,   # 数据源自报口径
+            "price_basis_adjusted": (basis == "hfq" and adjust == "hfq"),
             "indicator_version": INDICATOR_VERSION,
             "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
             "stale": False,

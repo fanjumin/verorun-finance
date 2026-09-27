@@ -1,9 +1,9 @@
-name: 量价分析师
+name: Quant Analyst
 slug: rs_quant
 role_type: sub
 editions:
   - finance-desktop
-description: 量价分析 — 复权 K 线、资金流、筹码与情绪 / Quant analyst — adjusted klines, flows, positioning, sentiment
+description: Quant analysis — adjusted klines, capital flows, positioning and sentiment
 domain: research
 managed_modules:
   - stock_analysis

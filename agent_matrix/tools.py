@@ -8,11 +8,13 @@ Agent Matrix — 工具注册中心 (Tool Registry)
   - 首批仅内置「只读、安全」工具，不给写库/删除类能力。
   - 工具执行统一带 try/except 兜底，失败返回字符串错误信息而非抛异常，
     保证 ReAct 循环不会因单个工具出错而崩溃。
-  - 按 Agent 的 allowed_tools 白名单过滤，未授权工具不下发给模型。
+  - 按 Agent 的 allowed_tools 白名单过滤，未授权工具不下发给模型；
+    execute_tool 传入 allowed_tools 时同一白名单在执行层再强制一次
+    （A4：此前白名单只过滤 schema，不过滤实际执行，存在提示注入绕过风险）。
 
 对外接口：
   - get_tools_for_agent(allowed_tools) -> list[schema]
-  - execute_tool(name, args) -> str
+  - execute_tool(name, args, allowed_tools=None) -> str
 """
 from i18n import _
 import json, os, sys, logging
@@ -957,13 +959,34 @@ def get_tools_for_agent(allowed_tools):
     if not isinstance(allowed_tools, list):
         return []
     result = [TOOL_SCHEMAS[name] for name in allowed_tools if name in TOOL_SCHEMAS]
-    # P2-5: 合并已启用插件的 MCP 工具（名称带 mcp__ 前缀，失败静默降级）
-    try:
-        from plugin_manager.mcp import get_enabled_mcp_tool_schemas
-        result += get_enabled_mcp_tool_schemas()
-    except Exception:
-        pass
+    # A4：MCP 工具合并改为受白名单约束（原实现无条件合并全部已启用插件的 MCP 工具，
+    # 使 allowed_tools 语义失效）。仅当白名单显式含 mcp__ 条目或 'mcp__*' 时合并。
+    if any(str(n).startswith('mcp__') for n in allowed_tools):
+        try:
+            from plugin_manager.mcp import get_enabled_mcp_tool_schemas
+            schemas = get_enabled_mcp_tool_schemas()
+            if 'mcp__*' not in allowed_tools:
+                want = {n for n in allowed_tools if str(n).startswith('mcp__')}
+                schemas = [s for s in schemas
+                           if s['function']['name'] in want
+                           or any(s['function']['name'].startswith(w + '__') for w in want)]
+            result += schemas
+        except Exception:
+            pass
     return result
+
+
+def _mcp_authorized(name, permitted):
+    """MCP 工具按前缀授权：白名单中出现精确名、'mcp__<plugin_id>' 前缀、或 'mcp__*' 通配即放行。"""
+    if 'mcp__*' in permitted or name in permitted:
+        return True
+    parts = name.split('__')
+    # name 形如 mcp__<plugin_id>__<server>__<tool>，取 'mcp__<plugin_id>' 作为前缀比对
+    if len(parts) >= 2:
+        prefix = '__'.join(parts[:2])
+        if prefix in permitted:
+            return True
+    return False
 
 
 def _execute_mcp_tool(name, args):
@@ -976,8 +999,51 @@ def _execute_mcp_tool(name, args):
         return f'Tool {name} execution error: {e}'
 
 
-def execute_tool(name, args):
-    """执行指定工具，返回字符串结果。未知工具或异常均返回错误字符串。"""
+def execute_tool(name, args, allowed_tools=None, context=None):
+    """执行指定工具，返回字符串结果。
+
+    A4：allowed_tools 非 None 时做执行层白名单强制（此前白名单只作用于 schema，
+    模型被提示注入诱导即可调用未授权工具并真实执行）。
+
+    WP-B（6.5）：在 A4 白名单之上叠加「执行前确认」门。过滤器
+    `agent_tool.pre_execute` 可读取、改写本次调用信息或直接拒绝；无订阅者时
+    apply_filters 原样返回初值，与引入本门之前逐字节一致。
+
+    约束：审批门必须位于白名单分支**之外** —— agent_matrix/routes.py 调用本函数时
+    不传 allowed_tools（即跳过白名单），若门写在分支内该路径将完全绕过审批。
+    """
+    # ── WP-B：执行前审批门（位置见 docstring 末段，勿移入白名单分支内）──
+    gate = {
+        'tool': name,
+        'args': args if isinstance(args, dict) else {},
+        'allowed': True,
+        'agent_id': context.get('agent_id') if isinstance(context, dict) else None,
+        'task_id': context.get('task_id') if isinstance(context, dict) else None,
+        'agent_name': context.get('name') if isinstance(context, dict) else None,
+    }
+    try:
+        from plugin_manager.hooks import get_hook_registry
+        gate = get_hook_registry().apply_filters('agent_tool.pre_execute', gate)
+    except Exception as e:
+        logger.warning(f'[tool:{name}] approval gate failed, fail-open: {e}')
+        gate = None
+    # 类型兜底：回调返回 None / 字符串 / 其它非 dict 一律视为放行。
+    # fail-open 铁律：回调写错不得导致全站工具不可用。
+    if not isinstance(gate, dict):
+        gate = {'allowed': True}
+    if not gate.get('allowed', True):
+        reason = gate.get('deny_reason') or 'Permission denied by approval gate'
+        logger.warning(f'[tool:{name}] 被审批门拦截: {reason}')
+        return reason
+
+    if allowed_tools is not None:
+        permitted = set(allowed_tools)
+        if name.startswith('mcp__') and not _mcp_authorized(name, permitted):
+            logger.warning(f'[tool:{name}] 拒绝执行：不在 allowed_tools 白名单内')
+            return f"Permission denied: tool {name} is not in allowed_tools"
+        if not name.startswith('mcp__') and name not in permitted:
+            logger.warning(f'[tool:{name}] 拒绝执行：不在 allowed_tools 白名单内')
+            return f"Permission denied: tool {name} is not in allowed_tools"
     if name.startswith('mcp__'):
         return _execute_mcp_tool(name, args)
     executor = TOOL_EXECUTORS.get(name)

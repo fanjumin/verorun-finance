@@ -15,9 +15,16 @@ def get_version() -> str:
 
 
 def get_edition() -> str:
-    """返回发行版标识（统一走 agent_matrix.current_edition() 归一化：
-    edu/research→research-desktop、pro/finance→finance-desktop，未设置视为 standard；
-    agent_matrix 不可用时兜底 VR_EDITION）。"""
+    """返回发行版标识。
+
+    实现委托 agent_matrix.current_edition()，返回的是 **canonical ID**
+    （enterprise / standard / pro / finance / research / minipro / edge），
+    **不是**磁盘产物名；两者对应关系见 agent_matrix.models._EDITION_ARTIFACT_STEMS。
+
+    （原文注释写"edu/research→research-desktop、pro/finance→finance-desktop"，
+    那是 Python 侧收敛前的旧口径，与实现相反 —— 第五轮 N5-4 已更正。）
+    agent_matrix 不可用时兜底环境变量 VR_EDITION（该兜底路径不做归一化）。
+    """
     try:
         from agent_matrix.models import current_edition
         return current_edition()

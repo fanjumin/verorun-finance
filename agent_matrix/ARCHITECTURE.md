@@ -305,6 +305,12 @@ CREATE INDEX IF NOT EXISTS idx_apb_type ON agent_prompt_bindings(binding_type);
 
 > 说明：当前系统为**非多租户架构**（由系统管理员统一管控，权限通过管理后台 `_require_admin()` 隔离），`agent_prompts` 表不包含 scope/owner 扩展字段。
 
+> **术语约定**（2026-09-22 补充，见《VeroRun-AI系统核心升级方案.md》§6）：
+> - **租户（tenant）**：组织级隔离主体（独立数据边界/独立计费/独立管理员）。**本系统不存在**该维度，全仓无 tenant/org/department 表，与系统定位（私有环境部署、单实体运营，可按公网生产站/企业内网/Electron 桌面独立版等多种形态交付）一致。
+> - **站点（site）**：`site_key` / `site_domains` 维度的建站与广告投放/OAuth 凭据配置单位，**本系统支持**该维度（同一部署实例下可挂多个域名/站点）。
+> - **终端用户登录（user_login / user_console）**：面向该部署实例的最终访客/客户开放的登录与自助控制台功能开关，属产品功能范畴，**不构成**组织级多租户或平台级多用户运营架构。
+> 三者不得混用；仓库历史文本中出现的"多租户"字样，除本条权威声明外，其余绝大多数实际指"多站点"，已在相关文件勘误。
+
 降级策略（保证不破坏现有行为）：
 - `system_config.prompt_resolver_enabled = false` → 回退读取 `agent_matrix.system_prompt` 原逻辑
 - 开关检查异常 → 默认禁用（安全降级回 legacy，R2-A6）

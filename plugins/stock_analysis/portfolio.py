@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass, field
 from typing import Optional, Sequence
 
@@ -149,51 +150,107 @@ def portfolio_beta(returns: pd.DataFrame, weights: np.ndarray,
     }
 
 
+# ── 正态分布分位/密度：手写实现，去掉 scipy 硬依赖 ─────────────────────
+# 设计理由：scipy 在本项目中始终是"可选加速件"（对照 factor_lab._spearman 的
+# try/except 降级）。而 parametric / cornish_fisher VaR 此前硬 import scipy，
+# 使随包 venv（未装 scipy）的 /api/portfolio/analyze 整体 500 —— 功能全废。
+
+def _norm_pdf(x: float) -> float:
+    """标准正态概率密度 φ(x)。"""
+    return math.exp(-0.5 * x * x) / math.sqrt(2.0 * math.pi)
+
+
+def _norm_ppf(p: float) -> float:
+    """标准正态分位函数 Φ⁻¹(p)。Acklam 有理逼近，绝对误差 < 1.15e-9。
+
+    覆盖 p ∈ (0,1)，采用 p_low/p_high 三段式（尾部用有理式避免溢出）。
+    """
+    if not 0.0 < p < 1.0:
+        raise ValueError("p must be in (0, 1)")
+    a = (-3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02,
+          1.383577518672690e+02, -3.066479806614716e+01, 2.506628277459239e+00)
+    b = (-5.447609879822406e+01, 1.615858368580409e+02, -1.556989798598866e+02,
+          6.680131188771972e+01, -1.328068155288572e+01)
+    c = (-7.784894002430293e-03, -3.223964580411365e-01, -2.400758277161838e+00,
+         -2.549732539343734e+00, 4.374664141464968e+00, 2.938163982698783e+00)
+    d = (7.784695709041462e-03, 3.224671290700398e-01, 2.445134137142996e+00,
+         3.754408661907416e+00)
+    p_low, p_high = 0.02425, 1.0 - 0.02425
+    if p < p_low:
+        q = math.sqrt(-2.0 * math.log(p))
+        return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / \
+               ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1.0)
+    if p > p_high:
+        q = math.sqrt(-2.0 * math.log(1.0 - p))
+        return -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / \
+                ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1.0)
+    q = p - 0.5
+    r = q * q
+    return (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q / \
+           (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1.0)
+
+
 def portfolio_var(returns: pd.DataFrame, weights: np.ndarray,
                   confidence: float = 0.95,
                   method: str = "historical") -> dict:
-    """VaR 计算。method: historical / parametric / cornish_fisher。"""
+    """组合 VaR / CVaR(ES)。method: historical / parametric / cornish_fisher。
+
+    口径（写进 docstring 以便审计）：
+    - ``var``  : 左尾分位数（负值 = 损失）
+    - ``cvar`` : 左尾条件均值（Expected Shortfall），**不再等于 var**
+    - ``degenerate``: 样本 < 30 或 σ ≤ 0 时为 True，此时 var=cvar=μ（如实降级，
+      不返回 NaN，也不伪造尾部估计）
+    """
     w = np.array(weights, dtype=float)
     aligned = returns.dropna(axis=1, how="all")
     w_aligned = np.array([w[i] for i, sym in enumerate(returns.columns)
                           if sym in aligned.columns])
     clean = aligned[[s for s in aligned.columns if s in returns.columns]]
+    alpha = 1.0 - confidence
     if clean.empty or len(w_aligned) == 0:
-        return {"var": np.nan, "cvar": np.nan, "method": method}
+        return {"var": np.nan, "cvar": np.nan, "method": method,
+                "confidence": confidence, "n_obs": 0, "degenerate": True}
 
     port_ret = (clean.values * w_aligned[:len(clean.columns)]).sum(axis=1)
-    alpha = 1 - confidence
+    port_ret = port_ret[np.isfinite(port_ret)]
+    mu = float(port_ret.mean()) if port_ret.size else 0.0
+    sigma = float(port_ret.std(ddof=1)) if port_ret.size > 1 else 0.0
+    degenerate = (port_ret.size < 30) or (not np.isfinite(sigma)) or sigma <= 0.0
 
     if method == "historical":
-        var = float(np.percentile(port_ret, alpha * 100))
-        cvar = float(port_ret[port_ret <= var].mean()) if (port_ret <= var).any() else var
-    elif method == "parametric":
-        mu = port_ret.mean()
-        sigma = port_ret.std()
-        from scipy.stats import norm
-        z = norm.ppf(alpha)
-        var = float(mu + z * sigma)
-        cvar = float(mu - sigma * norm.pdf(z) / alpha)
-    elif method == "cornish_fisher":
-        from scipy.stats import norm
-        mu = port_ret.mean()
-        sigma = port_ret.std()
-        skew = float(((port_ret - mu) / sigma) ** 3).mean()
-        kurt = float(((port_ret - mu) / sigma) ** 4).mean() - 3
-        z = norm.ppf(alpha)
-        z_cf = z + (z**2 - 1) * skew / 6 + (z**3 - 3*z) * kurt / 24 - (2*z**3 - 5*z) * skew**2 / 36
-        var = float(mu + z_cf * sigma)
-        cvar = var
+        var = float(np.percentile(port_ret, alpha * 100)) if port_ret.size else mu
+        tail = port_ret[port_ret <= var]
+        cvar = float(tail.mean()) if tail.size else var
+    elif method in ("parametric", "cornish_fisher"):
+        if degenerate:
+            var = cvar = mu
+        else:
+            z = _norm_ppf(alpha)
+            if method == "cornish_fisher":
+                zs = (port_ret - mu) / sigma
+                s = float((zs ** 3).mean())          # 偏度
+                k = float((zs ** 4).mean()) - 3.0    # 超额峰度
+
+                # Cornish-Fisher 展开：把正态分位修正到偏度/峰度后的真实分位
+                def _cf(v):
+                    return (v + (v ** 2 - 1) * s / 6 + (v ** 3 - 3 * v) * k / 24
+                            - (2 * v ** 3 - 5 * v) * s ** 2 / 36)
+
+                z_cf = float(_cf(z))
+                # CVaR 用同一 CF 变换后的经验分位尾部均值，保证与 VaR 自洽
+                z_cf_all = np.sort(_cf(zs))
+                tail = z_cf_all[z_cf_all <= z_cf]
+                cvar = float(mu + sigma * (tail.mean() if tail.size else z_cf))
+                z = z_cf
+            else:
+                cvar = float(mu - sigma * _norm_pdf(z) / alpha)
+            var = float(mu + z * sigma)
     else:
         raise ValueError(f"unknown VaR method: {method}")
 
-    return {
-        "var": round(var, 6),
-        "cvar": round(cvar, 6),
-        "method": method,
-        "confidence": confidence,
-        "n_obs": len(port_ret),
-    }
+    return {"var": round(var, 6), "cvar": round(cvar, 6), "method": method,
+            "confidence": confidence, "n_obs": int(port_ret.size),
+            "degenerate": degenerate}
 
 
 def brinson_attribution(port_returns: pd.Series, port_industries: pd.Series,
@@ -291,7 +348,7 @@ def full_report(portfolio: Portfolio, gateway, datalen: int = 250) -> dict:
     1. 持仓概览 + 集中度
     2. 行业暴露
     3. Beta / 跟踪误差
-    4. VaR (historical + parametric)
+    4. VaR / CVaR (historical + parametric + cornish_fisher)
     5. Brinson 归因（vs benchmark）
     """
     from .gateway import DataGateway
@@ -344,6 +401,7 @@ def full_report(portfolio: Portfolio, gateway, datalen: int = 250) -> dict:
     beta_info = portfolio_beta(returns[valid_syms], weights, bench_ret)
     var_hist = portfolio_var(returns[valid_syms], weights, method="historical")
     var_param = portfolio_var(returns[valid_syms], weights, method="parametric")
+    var_cf = portfolio_var(returns[valid_syms], weights, method="cornish_fisher")
 
     bench_ind_map = {}
     try:
@@ -380,6 +438,7 @@ def full_report(portfolio: Portfolio, gateway, datalen: int = 250) -> dict:
             "beta": beta_info,
             "var_historical": var_hist,
             "var_parametric": var_param,
+            "var_cornish_fisher": var_cf,
         },
         "brinson": brinson,
         "nav": {

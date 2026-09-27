@@ -25,13 +25,15 @@ window.l_provider_keys=function(targetId){
       h+='<div class="em">{{ _('No provider API keys configured. Click "Add" to create one.') }}</div>';
     }else{
       h+='<table class="dt"><thead><tr>';
-      h+='<th>{{ _('Name') }}</th><th>{{ _('Provider') }}</th><th>{{ _('Status') }}</th><th>{{ _('Has Key') }}</th><th>{{ _('Description') }}</th><th>{{ _('Actions') }}</th>';
+      h+='<th>{{ _('Name') }}</th><th>{{ _('Provider') }}</th><th>{{ _('Status') }}</th><th>{{ _('Pool Role') }}</th><th>{{ _('Has Key') }}</th><th>{{ _('Description') }}</th><th>{{ _('Actions') }}</th>';
       h+='</tr></thead><tbody>';
       keys.forEach(function(k){
+        var roleLabels={primary:'{{ _('Primary') }}',backup:'{{ _('Backup') }}',dedicated:'{{ _('Dedicated') }}'};
         h+='<tr>';
         h+='<td style="font-weight:600">'+esc(k.name)+'</td>';
         h+='<td><span class="tag" style="background:rgba(0,245,255,0.1);color:var(--accent)">'+esc(k.provider)+'</span></td>';
         h+='<td>'+(k.is_active?'<span style="color:var(--accent3)">{{ _('Active') }}</span>':'<span style="color:var(--dim)">{{ _('Inactive') }}</span>')+'</td>';
+        h+='<td><span style="color:var(--dim)">'+esc(roleLabels[k.pool_role]||roleLabels.primary)+'</span></td>';
         h+='<td>'+(k.has_value?'<span style="color:var(--accent3)">'+esc(k.key_preview||'{{ _('Configured') }}')+'</span>':'<span style="color:var(--rose)">{{ _('Not Set') }}</span>')+'</td>';
         h+='<td style="color:var(--dim)">'+esc(k.description||'')+'</td>';
         h+='<td><button class="bo" style="padding:2px 10px;font-size:11px;cursor:pointer" onclick="showForm('+k.id+')">{{ _('Edit') }}</button> ';
@@ -73,6 +75,12 @@ window.l_provider_keys=function(targetId){
     h+='</label><input id="pk-value" class="in" type="password" style="width:100%" placeholder="'+pkPlaceholder+'" autocomplete="off"></div>';
     h+='<div style="margin-bottom:12px"><label style="display:block;font-size:12px;color:var(--dim);margin-bottom:4px">{{ _('Description') }}</label>';
     h+='<input id="pk-desc" class="in" style="width:100%" value="'+escAttr(isEdit?(key.description||''):'')+'" placeholder="{{ _('Optional note') }}"></div>';
+    h+='<div style="margin-bottom:12px"><label style="display:block;font-size:12px;color:var(--dim);margin-bottom:4px">{{ _('Pool Role') }}</label>';
+    h+='<select id="pk-role" class="in" style="width:100%">';
+    h+='<option value="primary"'+(isEdit?(key.pool_role==='primary'?' selected':''):' selected')+'>{{ _('Primary') }} — {{ _('Rotates to absorb rate limits') }}</option>';
+    h+='<option value="backup"'+(isEdit&&key.pool_role==='backup'?' selected':'')+'>{{ _('Backup') }} — {{ _('Activates when all Primary keys are cooling down') }}</option>';
+    h+='<option value="dedicated"'+(isEdit&&key.pool_role==='dedicated'?' selected':'')+'>{{ _('Dedicated') }} — {{ _('Only used when explicitly bound to a model/agent') }}</option>';
+    h+='</select></div>';
     h+='<div style="margin-bottom:16px"><label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">';
     h+='<input type="checkbox" id="pk-active"'+(isEdit&&key.is_active?' checked':'')+(isEdit?'':' checked')+'> {{ _('Active') }}</label></div>';
     h+='<div style="display:flex;gap:8px;justify-content:flex-end">';
@@ -113,6 +121,7 @@ h+='</div>';
       name:document.getElementById('pk-name').value.trim(),
       provider:document.getElementById('pk-provider').value,
       description:document.getElementById('pk-desc').value.trim(),
+      pool_role:document.getElementById('pk-role').value,
       is_active:document.getElementById('pk-active').checked?1:0
     };
     var keyVal=document.getElementById('pk-value').value.trim();

@@ -1111,6 +1111,8 @@ def init_db():
             ('grok',       'xAI Grok', 'Grok-3 Beta'),
             ('kimi',       'KIMI / 月之暗面', 'Moonshot AI large language models'),
             ('zhipu',      'Zhipu / 智谱 AI', 'ChatGLM large language models'),
+            ('anthropic',  'Anthropic',   'Claude series models (OpenAI-compatible endpoint)'),
+            ('hunyuan',    'Tencent Hunyuan', 'Tencent Hunyuan large language models'),
             ('edge_tts',   'Microsoft Edge TTS', 'Free Edge browser TTS — no key required, same neural voices'),
         ]
         for slug, name, desc in provider_seeds:
@@ -1181,6 +1183,14 @@ def init_db():
             (pids['zhipu'],      'GLM-4 Plus',          'glm-4-plus',             'https://open.bigmodel.cn/api/paas/v4',                        'zhipu_api_key',         'text',     79),
             (pids['zhipu'],      'GLM-4V Plus',          'glm-4v-plus',            'https://open.bigmodel.cn/api/paas/v4',                        'zhipu_api_key',         'vision',   80),
             (pids['zhipu'],      'CogView-4',            'cogview-4',              'https://open.bigmodel.cn/api/paas/v4',                        'zhipu_api_key',         'image',    81),
+            # Anthropic (official OpenAI-compatible endpoint)
+            (pids['anthropic'],  'Claude Sonnet 4.5',   'claude-sonnet-4-5',      'https://api.anthropic.com/v1/',                              'anthropic_api_key',     'text',     82),
+            (pids['anthropic'],  'Claude Opus 4.1',     'claude-opus-4-1',        'https://api.anthropic.com/v1/',                              'anthropic_api_key',     'text',     83),
+            # Tencent Hunyuan (OpenAI-compatible)
+            (pids['hunyuan'],    'Hunyuan TurboS',      'hunyuan-turbos',         'https://api.hunyuan.cloud.tencent.com/v1',                   'hunyuan_api_key',       'text',     84),
+            (pids['hunyuan'],    'Hunyuan Large',       'hunyuan-large',          'https://api.hunyuan.cloud.tencent.com/v1',                   'hunyuan_api_key',       'text',     85),
+            (pids['hunyuan'],    'Hunyuan T1',          'hunyuan-t1',             'https://api.hunyuan.cloud.tencent.com/v1',                   'hunyuan_api_key',       'text',     86),
+            (pids['hunyuan'],    'Hunyuan Standard',    'hunyuan-standard',       'https://api.hunyuan.cloud.tencent.com/v1',                   'hunyuan_api_key',       'text',     87),
             # Edge-TTS (free, no key needed)
             (pids['edge_tts'],   'Edge TTS Neural',      'edge-tts-neural',        '',                                                              '',                     'tts',      100),
         ]
@@ -2577,6 +2587,8 @@ with _safe_get_db_for_migration() as m:
         ('xAI Grok',                 '', 'grok',      'xAI Grok API Key'),
         ('KIMI',                     '', 'kimi',      'Moonshot AI / 月之暗面 API Key'),
         ('Zhipu',                    '', 'zhipu',     '智谱 AI / ChatGLM API Key'),
+        ('Anthropic',                '', 'anthropic', 'Claude series models API Key'),
+        ('Tencent Hunyuan',          '', 'hunyuan',   'Tencent Hunyuan API Key'),
     ]
     for name, key_val, provider, desc in seed_keys:
         m.execute(
@@ -2586,6 +2598,21 @@ with _safe_get_db_for_migration() as m:
         )
     m.commit()
     print('[Migration] provider_api_keys table + seed data created')
+
+# ── Migration: provider_api_keys.pool_role（Key 连接池角色：primary/backup/dedicated）
+#             + cooldown_until（429 冷却落库，gunicorn 多 worker 共享冷却状态）──
+with _safe_get_db_for_migration() as m:
+    try:
+        pak_cols = get_table_columns(m, 'provider_api_keys')
+        if 'pool_role' not in pak_cols:
+            m.execute("ALTER TABLE provider_api_keys ADD COLUMN pool_role TEXT NOT NULL DEFAULT 'primary'")
+            print('[Migration] provider_api_keys.pool_role added')
+        if 'cooldown_until' not in pak_cols:
+            m.execute('ALTER TABLE provider_api_keys ADD COLUMN cooldown_until TIMESTAMP DEFAULT NULL')
+            print('[Migration] provider_api_keys.cooldown_until added')
+        m.commit()
+    except Exception:
+        m.rollback()
 
 with _safe_get_db_for_migration() as m:
     try:

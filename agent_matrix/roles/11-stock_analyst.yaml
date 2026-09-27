@@ -1,0 +1,25 @@
+name: Stock Analyst
+slug: stock_analyst
+role_type: sub
+# 归属：官方版（official）—— stock_analysis 插件的**加载归属角色**：
+# 插件在官方系统里按 plugin.json 的 agent_role 把能力聚合到本角色。
+#
+# 编号 11 = 角色台账的登记槽位（槽位号≠归属，归属看下面的 editions）。
+# 本文件原名 roles/11-stock_analyst.yaml（与 10-veroscholar.yaml 同批加入，
+# 见 2026-08-28 adc83d30）。2026-09-10 b8c5161e 拆分按版目录时被错搬进
+# roles/finance/ 并把 editions 由 official 改成 finance-desktop ——
+# 后果：金融桌面版凭空多出一个"标的+analyst"式非投研角色，
+# 官方角色集反而缺失该角色（stock_analysis 在 official 下被判非法 agent_role）。
+# 2026-09-21 按原始槽位与原始归属搬回官方角色集；金融桌面版不用它
+# （桌面版把该插件的功能区各自配给 rs_* 流水线角色，见 roles/finance-desktop/）。
+editions:
+  - official
+description: Financial analysis specialist — market data, indicators, strategy research
+domain: finance
+managed_modules:
+  - stock_analysis
+provider: deepseek
+model_name: deepseek-v4-flash
+system_prompt: prompts/sub_stock_analyst_prompt.md
+is_system: true
+is_active: 1

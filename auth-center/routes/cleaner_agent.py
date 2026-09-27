@@ -371,7 +371,7 @@ Clean and output JSON per rules above."""
                 'category': new_category, 'message': 'LLM detected duplicate, skipped'}
 
     # === New entry: write with scope + owner_id ===
-    kb_id = 'kb_cleaner_' + str(qid) + '_(' + ')'.join(re.findall(r'\w', new_title)[:10])
+    kb_id = 'kb_cleaner_' + str(qid) + '_' + ''.join(re.findall(r'\w', new_title)[:10])
     with get_db() as conn:
         conn.execute(
             '''INSERT INTO knowledge_blocks

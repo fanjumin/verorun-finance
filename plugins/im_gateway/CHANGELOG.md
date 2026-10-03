@@ -1,5 +1,86 @@
 # Changelog
 
+## v3.1.0 — 2026-10-02
+
+IM 底座增强（minor）：8 通道真实出站 + 入站验签闭环。
+
+### Added
+
+- 新增统一出站 HTTP 客户端 `http_client.py`：连接 5s / 读取 15s 超时、禁自动重定向（逐跳复检）、
+  `safe_fetch()` SSRF 内网 / 云元数据拦截 + 10MB 限长流式下载、TTL token 缓存。
+- 新增 `webhook_signing.py`：入站平台原生验签（telegram secret_token 常量比较 / line HMAC-SHA256 /
+  slack v0 HMAC-SHA256 / discord 与 qq Ed25519），统一 **fail-closed**。
+- 新增适配器 `slack.py`（`chat.postMessage` + `auth.test`）、`discord.py`
+  （`POST /channels/{id}/messages` + `GET /users/@me`），并在 `adapters/__init__.py` 注册。
+- `events.normalize_event` 新增 slack / discord / qq 入站事件归一化。
+- 恢复 capability `im.message.receive`；`plugin.json` 3.0.0 → **3.1.0**。
+
+### Changed
+
+- 钉钉补齐真实 `send()`：OAPI 工作通知 `topapi/message/corpconversation/asyncsend_v2`
+  （`agent_id` + `userid_list`），新增可选 `default_userid` 配置字段。
+- QQ 重写为**官方机器人 API**（`api.sgroup.qq.com`）：`app_id` + `client_secret` 换取 access_token 的
+  真实连接测试与真实 `send()`；删除「凭据非空即通过」占位测试；\(\*\) 主动消息需平台授权，错误原样透出。
+- 企业微信修复**假媒体**：图片写入真实 `md5` 并限 2MB；video/audio/file 不再伪造 `media_id`，
+  如实降级为 markdown 下载链接；出站改走 http_client。
+- 飞书 `tenant_access_token`、企业微信 / 钉钉 `access_token` 改为进程内 TTL 缓存，避免每次发送重复换取。
+- 入站 `/webhook/<channel>` 渠道扩至 telegram / line / slack / discord / qq；**先验签后握手**
+  （Discord `PING→PONG`、QQ `op=13` 返回 Ed25519 签名应答、Telegram 返回 200 空响应）；
+  移除原有「未配置即放行」，密钥缺失或签名不符一律 401。
+- i18n 134 → **159**：补齐 25 个适配器消息键（en / zh-CN 键集保持一致）。
+- README 中文 / 英文更新为 8 通道出站 + 入站验签 fail-closed + `http_client` / SSRF 章节。
+- telegram 新增 `secret_token`、qq 新增 `bot_secret` 配置字段，验签密钥现可直接在管理界面填写。
+
+### Removed
+
+- 删除 `crypto.py`（Fernet 工具）：社媒职责迁出后，全仓（含跨插件）已无任何引用，随本批清理。
+
+### Known limitations
+
+- **真机连通未验证**：本批仅完成静态与离线向量自测（验签 16/16），实际发送与 webhook 注册需配置真实凭据后自测。
+- QQ Ed25519 派生机理按官方约定（`私钥 = sha256(bot_secret)`）实现，上线前建议以真实回调复验。
+- 凭据仍为明文存储；`events.subscribe` 暂无内置业务消费者。
+
+## v3.0.0 — 2026-10-02
+
+职责收敛主版本：IM Gateway 此后只负责 **IM 出站通道** 与 **Web 第三方登录**。
+
+### Breaking（职责迁出）
+
+- 社媒内容发布 / 社媒 OAuth 账号 / 凭据账号 / token 定时刷新全部迁回 `social_push`：
+  移除 `gateway.publish()` / `connect()`、`/admin/channels/oauth/*`、`channels/social/`、
+  `oauth/`、`scheduler.py`、`models_accounts.py`、`routes_oauth.py` 等（批次 B）。
+- 小程序开发账户 CRUD / 连接测试、开发者 API Key 管理迁回 `mini_app_builder`：
+  移除 `routes_developer.py` 及小程序账户接口（批次 A）。
+- `plugin.json` 升至 3.0.0；删除名不副实的 capability `im.message.receive`（入站验签闭环在途）；
+  删除失真的 optional 依赖 `tweepy` / `praw`（引用的 `_ensure_deps` 已随社媒迁出）。
+
+### Changed
+
+- 管理 UI 由多 Tab 收敛为 **2 Tab**（即时通讯 / 第三方登录）；社媒 OAuth 控制台整体迁入
+  `social_push` 页面（新增独立「账号」「OAuth 连接」Tab），端点 `/admin/channels/oauth/*` 不变。
+- `on_uninstall` 不再 `DROP SCHEMA ... CASCADE`，改为仅删除 `channel_configs` /
+  `rate_limit_events` 两张 IM 运行表，**显式保留** `login_providers` /
+  `login_user_bindings` / `oauth_login_states` 三张登录表。
+- `gateway.py` 收敛为纯 IM 门面：`list_channels()` / `test()` / `send_message()` + 跨 worker
+  PG 频控；`register_jobs()` 不再含 token 刷新任务。
+- i18n 词条 233 → 134：移除随功能迁出的社媒 / developer / 小程序词条，并补齐 14 个此前缺失的
+  IM 适配器消息键；en 与 zh-CN 键集保持一致。
+- README 中文 / 英文重写为纯 IM + Web 第三方登录，能力口径如实区分
+  「完整支持（飞书 / 企业微信 / Telegram / LINE）」与「适配中（钉钉 / QQ）」。
+
+### Retained（保持不变）
+
+- IM 出站：飞书 / 企业微信 / Telegram / LINE 真实发送与连接测试。
+- Web 第三方登录：方案 A（提供方凭据管理）+ 方案 B（`/api/v1/oauth/<provider>/login|callback`
+  完整闭环），提供方 wechat / qq / weibo / github / google；联邦绑定三表结构不变。
+
+### Known limitations（后续 IM 底座批次处理）
+
+- 钉钉尚无真实 `send`；QQ 连接测试为占位、未接官方机器人 API 与 Ed25519 验签。
+- 入站 Webhook 未全面强验签（fail-open），`events.subscribe` 暂无业务消费者。
+- `channel_configs` / `login_providers.client_secret` 仍为明文存储；出站 HTTP 待统一超时 / SSRF 拦截。
+
 ## v2.1.0 — 2026-08-30
 
 ### Changes

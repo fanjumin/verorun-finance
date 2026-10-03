@@ -13,8 +13,14 @@
 #
 # LLM 装配复刻 deep_research.py 已验证范式：resolve_model_args(standard tier) +
 # H-1 model→model_name 映射 + UnifiedLLM.chat(messages, temperature=0.3,
-# max_tokens=2048, module="stock_analysis")；保留 LLM_FACTORY 测试注入缝（生产 None）。
+# max_tokens=_LLM_MAX_TOKENS, module="stock_analysis")；保留 LLM_FACTORY 测试注入缝（生产 None）。
 from __future__ import annotations
+
+import os
+
+# SAU-1：对辩终稿较长，2048 易被 max_tokens 截断成空/半截响应。提到 8192 并支持
+# SA_LLM_MAX_TOKENS 覆盖（上限而非目标，未截断时不会增加生成量）。
+_LLM_MAX_TOKENS = int(os.environ.get("SA_LLM_MAX_TOKENS") or 8192)
 
 # 四阶段提示词（英文；{} 占位符在调用处 format）
 PROMPTS = {
@@ -67,7 +73,7 @@ def _chat(prompt: str) -> str:
     if not cfg.get("model_name") and cfg.get("model"):     # H-1 同款映射
         cfg["model_name"] = cfg["model"]
     return UnifiedLLM(cfg).chat([{"role": "user", "content": prompt}],
-                                temperature=0.3, max_tokens=2048,
+                                temperature=0.3, max_tokens=_LLM_MAX_TOKENS,
                                 module="stock_analysis")
 
 

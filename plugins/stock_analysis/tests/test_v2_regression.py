@@ -338,5 +338,72 @@ class TestGatewayRoute(unittest.TestCase):
         self.assertIn(PolygonProvider, kline_chain)
 
 
+class TestKlineFreqCapability(unittest.TestCase):
+    """K 线周期能力声明与网关过滤（防「日线数据冒充周/月线」）。"""
+
+    def test_default_kline_freqs_is_daily_only(self):
+        """BaseProviderV2 默认只声明 daily（未声明即默认拒绝）。"""
+        from plugins.stock_analysis.providers.base_v2 import BaseProviderV2
+        self.assertEqual(set(BaseProviderV2.kline_freqs), {"daily"})
+
+    def test_major_providers_declare_freqs(self):
+        """sina 仅日线；akshare / tushare 声明日/周/月。"""
+        from plugins.stock_analysis.providers.sina import SinaProvider
+        from plugins.stock_analysis.providers.akshare_provider import AkshareProvider
+        from plugins.stock_analysis.providers.tushare_provider import TushareProvider
+        self.assertEqual(set(SinaProvider.kline_freqs), {"daily"})
+        for cls in (AkshareProvider, TushareProvider):
+            self.assertIn("weekly", cls.kline_freqs)
+            self.assertIn("monthly", cls.kline_freqs)
+        # P1：分钟线目前只有 akshare 声明能力（唯一数据源）
+        for p in ("5m", "15m", "30m", "60m"):
+            self.assertIn(p, AkshareProvider.kline_freqs)
+            self.assertNotIn(p, TushareProvider.kline_freqs)
+
+    def test_sina_rejects_non_daily_freq_without_network(self):
+        """sina 遇非日线周期应快速失败（retryable=False），且不发起请求。"""
+        from plugins.stock_analysis.providers.base import ProviderError
+        from plugins.stock_analysis.providers.sina import SinaProvider
+        with self.assertRaises(ProviderError) as ctx:
+            SinaProvider()._fetch_kline("sh600519", 5, freq="weekly")
+        self.assertFalse(ctx.exception.retryable)
+        self.assertIn("不支持周期", str(ctx.exception))
+
+    def test_gateway_skips_undeclared_freq_provider(self):
+        """整链都未声明该周期时：明确报错，不落到「稍后重试」提示，也不调用 provider。"""
+        from plugins.stock_analysis.gateway import gateway
+        from plugins.stock_analysis.providers.base import DataCategory, ProviderError
+        from plugins.stock_analysis.providers.base_v2 import BaseProviderV2
+
+        class _DailyOnlyFake(BaseProviderV2):
+            name = "fake_v2_daily_only"
+            market = "CN"
+            categories = frozenset({DataCategory.KLINE})
+
+            def _do_fetch(self, cat, *, symbol=None, **kw):
+                raise AssertionError("weekly 请求不得调用未声明该能力的 provider")
+
+        prev = gateway._available_chain
+        gateway._available_chain = lambda cat: [_DailyOnlyFake]
+        try:
+            with self.assertRaises(ProviderError) as ctx:
+                gateway._dispatch(DataCategory.KLINE, "TESTFREQONLY",
+                                  datalen=5, freq="weekly")
+        finally:
+            gateway._available_chain = prev
+        self.assertFalse(ctx.exception.retryable)
+        self.assertIn("暂无可用数据源", str(ctx.exception))
+        self.assertNotIn("稍后重试", str(ctx.exception))
+
+    def test_kline_service_period_sets(self):
+        """kline_service 白名单含日/周/月与 5m/15m/30m/60m；1m 仍属未支持。"""
+        from plugins.stock_analysis import kline_service as ks
+        self.assertEqual(ks._SUPPORTED_PERIODS,
+                         {"daily", "weekly", "monthly", "5m", "15m", "30m", "60m"})
+        for p in ks._SUPPORTED_PERIODS:
+            self.assertNotIn(p, ks._UNSUPPORTED_PERIODS)
+        self.assertEqual(set(ks._UNSUPPORTED_PERIODS), {"1m"})
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

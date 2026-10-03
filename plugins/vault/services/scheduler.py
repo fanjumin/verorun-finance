@@ -7,11 +7,41 @@ Manages backup schedules, computes next run times, and triggers backup jobs.
 
 import subprocess
 import os
+import json
 import shlex
-import glob as _glob
 from datetime import datetime, time, timedelta
 from croniter import croniter
-from .utils import get_vault_conn
+from .utils import get_vault_conn, load_plugin_config, list_backup_files
+
+
+# ── Retry policy (SD-6 / F-C) ──────────────────────────────────────────────
+# 重试不允许在单次 cron 调用内阻塞 sleep（执行器每分钟启动一个独立进程，
+# 阻塞 60s 会与下一分钟的进程叠加，并发处理同一到期计划）。改为跨 tick 重试：
+# 失败后把 next_run_at 推进一个 tick，由后续分钟的进程接手。
+SCHEDULE_RETRY_DELAY_SECONDS = 60
+SCHEDULE_MAX_RETRIES = 3
+# 错过某个 cron 槽位后的重试总窗口。配合 60s 的 tick，等价于最多 3 次跨 tick
+# 重试；超出窗口直接跳到下一个正常 cron 时刻。无需持久化重试计数（不加列）。
+SCHEDULE_RETRY_WINDOW_SECONDS = SCHEDULE_RETRY_DELAY_SECONDS * SCHEDULE_MAX_RETRIES
+
+
+def _compute_retry_time(now: datetime, cron_expr: str, next_cron_run):
+    """失败后的下次执行时间（纯函数，便于测试）。
+
+    - 仍在重试窗口内：now + 一个 tick（下一分钟的调度进程会重新拾取）；
+    - 已超出窗口：跳到下一个正常 cron 时刻，避免无限重试与告警刷屏；
+    - cron 表达式缺失或非法：保守地按一个 tick 后重试。
+    """
+    retry_at = now + timedelta(seconds=SCHEDULE_RETRY_DELAY_SECONDS)
+    if not cron_expr:
+        return retry_at
+    try:
+        missed_slot = croniter(cron_expr, now).get_prev(datetime)
+    except Exception:
+        return retry_at
+    if (now - missed_slot).total_seconds() >= SCHEDULE_RETRY_WINDOW_SECONDS:
+        return next_cron_run
+    return retry_at
 
 
 # 命令白名单 — 仅允许在 hook 中执行的可执行文件（绝对路径）。
@@ -147,6 +177,10 @@ class VaultScheduler:
         backup_result = engine.create_backup(backup_type=schedule['backup_type'])
         result['backup'] = backup_result
 
+        # 2b. 后置管线（轨 A）：压缩/加密 → 上传 → 通知 → 落库 → 审计，
+        #     与手动备份 _handle_backup_create 同口径；成败都留痕。
+        self._post_backup_pipeline(backup_result)
+
         # 3. Post-hook
         if schedule.get('post_hook') and backup_result['success']:
             self._run_hook(schedule['post_hook'])
@@ -158,57 +192,177 @@ class VaultScheduler:
                 schedule['retention_count'],
             )
 
-        # 5. Update schedule status
-        self._update_schedule_status(schedule['id'])
+        # 5. 成功才推进到下一个正常 cron 时刻；失败由 run_all_due 统一退避，
+        #    避免成功路径与重试路径互相覆盖 next_run_at。
+        if backup_result['success']:
+            self._update_schedule_status(schedule['id'])
 
         result['success'] = backup_result['success']
         return result
 
+    def _post_backup_pipeline(self, backup_result: dict) -> dict:
+        """定时备份后置管线（与手动备份 _handle_backup_create 同口径，轨 A）。
+
+        压缩/加密 finalize → 上传最终产物(best-effort) → 通知 → 落库
+        vault_backups → 审计。finalize 失败会把备份置为失败（半成品绝不
+        当作成功推进 cron）；上传/通知/落库/审计各自吞异常，不改变备份本身
+        成败。create_backup 本身失败时跳过 finalize/上传，但仍通知、落失败行、
+        审计，保证定时任务成败在列表/健康分中可见。
+        """
+        if backup_result.get('archive') and backup_result.get('success'):
+            try:
+                cfg = load_plugin_config()
+            except Exception:
+                cfg = {}
+
+            # 1. Finalize: compression -> encryption，回写最终产物与真实元数据
+            try:
+                from .backup_engine import finalize_artifact
+                finalized = finalize_artifact(backup_result['archive'], cfg)
+                backup_result['archive'] = finalized['archive']
+                backup_result['size_mb'] = finalized['size_mb']
+                backup_result['checksum_sha256'] = finalized['checksum_sha256']
+                backup_result['encrypted'] = finalized['encrypted']
+                backup_result['encryption'] = finalized['encryption']
+                backup_result['compressed'] = finalized['compressed']
+                backup_result['compressed_size_mb'] = finalized.get('compressed_size_mb')
+            except Exception as e:
+                backup_result['success'] = False
+                backup_result['error'] = 'Artifact finalize failed: %s' % e
+                print('[Vault] Scheduled artifact finalize failed: %s' % e)
+
+            # 2. 上传最终产物（best-effort：远端失败不改变本地备份成败）
+            if backup_result.get('success'):
+                archive_path = backup_result['archive']
+                try:
+                    from .uploader import upload_backup
+                    backup_result['remote'] = upload_backup(
+                        archive_path, os.path.basename(archive_path))
+                except Exception as e:
+                    backup_result['remote'] = {'uploaded': False, 'error': str(e)}
+
+        # 3. 通知（成败都发）
+        try:
+            from .notifier import VaultNotifier
+            notifier = VaultNotifier()
+            event = 'backup.success' if backup_result.get('success') else 'backup.failed'
+            notifier.send(
+                event=event,
+                message='Scheduled backup %s (%s MB)' % (
+                    backup_result.get('label', ''), backup_result.get('size_mb', 0)),
+                level='info' if backup_result.get('success') else 'error',
+                details=backup_result,
+            )
+        except Exception as e:
+            print('[Vault] Scheduled notify failed: %s' % e)
+
+        # 4. 落库 vault_backups（成败都落，字段针对最终产物）
+        self._record_backup(backup_result)
+
+        # 5. 审计（定时任务身份固定为 system）
+        try:
+            from .audit import log_audit
+            log_audit(
+                action='backup.scheduled.run',
+                resource_type='backup',
+                resource_id=backup_result.get('label', ''),
+                details={
+                    'type': backup_result.get('backup_type', 'full'),
+                    'size_mb': backup_result.get('size_mb'),
+                    'checksum': backup_result.get('checksum_sha256'),
+                    'trigger': 'schedule',
+                },
+                operator='system',
+            )
+        except Exception:
+            pass
+        return backup_result
+
+    def _record_backup(self, backup_result: dict):
+        """Insert a vault_backups row reflecting the real final artifact (best-effort)."""
+        try:
+            conn = get_vault_conn()
+            cur = conn.cursor()
+            compressed_mb = backup_result.get('compressed_size_mb')
+            cur.execute("""
+                INSERT INTO vault_backups
+                    (label, backup_type, status, size_bytes, compressed_size,
+                     encryption, checksum_sha256,
+                     content_summary, started_at, completed_at, created_by)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            """, (
+                backup_result.get('label'),
+                backup_result.get('backup_type', 'full'),
+                'success' if backup_result.get('success') else 'failed',
+                int(backup_result.get('size_mb', 0) * 1024 * 1024),
+                int(compressed_mb * 1024 * 1024) if compressed_mb else None,
+                backup_result.get('encryption', 'none'),
+                backup_result.get('checksum_sha256'),
+                json.dumps({'files': len(backup_result.get('files', [])),
+                            'trigger': 'schedule'}),
+                datetime.utcnow(),
+                datetime.utcnow(),
+                'system',
+            ))
+            conn.commit()
+            cur.close()
+            conn.close()
+        except Exception as e:
+            print('[Vault] Failed to write scheduled backup record: %s' % e)
+
     def run_all_due(self) -> list:
-        """Execute all due schedules, return result list. Failed schedules get backoff."""
+        """每个 tick 对每张到期计划只执行一次（不阻塞 sleep、不在同 tick 重试）。
+
+        失败的计划由 _update_schedule_status_with_backoff 把 next_run_at
+        推进到下一个 tick（60s 后），重试在后续分钟的独立进程中发生，
+        最多跨 tick 重试 SCHEDULE_MAX_RETRIES 次后回到正常 cron 节奏。
+        """
         due = self.get_due_schedules()
         results = []
         for sched in due:
-            max_retries = sched.get('max_retries', 3)
-            retry_delay = sched.get('retry_delay', 60)
-            result = None
-            for attempt in range(max_retries):
+            try:
+                result = self.execute_schedule(sched)
+            except Exception as e:
+                result = {
+                    'schedule_id': sched['id'],
+                    'success': False,
+                    'error': str(e),
+                }
+            results.append(result)
+            if not result.get('success'):
+                print(
+                    f'[Vault] Schedule {sched["id"]} failed; retry scheduled in '
+                    f'{SCHEDULE_RETRY_DELAY_SECONDS}s (max {SCHEDULE_MAX_RETRIES} '
+                    f'cross-tick retries): {result.get("error", "unknown error")}'
+                )
                 try:
-                    result = self.execute_schedule(sched)
-                    results.append(result)
-                    if result['success']:
-                        break
+                    self._update_schedule_status_with_backoff(
+                        sched['id'], sched.get('cron_expression', ''))
                 except Exception as e:
-                    result = {
-                        'schedule_id': sched['id'],
-                        'success': False,
-                        'error': str(e),
-                    }
-                    if attempt < max_retries - 1:
-                        print(f'[Vault] Schedule {sched["id"]} attempt {attempt+1} failed, retrying in {retry_delay}s...')
-                        __import__('time').sleep(retry_delay)
-                if not result['success'] and attempt == max_retries - 1:
-                    results.append(result)
-                elif not result['success']:
-                    continue
-            # If all retries failed, apply backoff
-            if result and not result['success']:
-                try:
-                    self._update_schedule_status_with_backoff(sched['id'], minutes=5)
-                except Exception:
-                    pass
+                    print(f'[Vault] Failed to apply backoff for schedule '
+                          f'{sched["id"]}: {e}')
         return results
 
-    def _update_schedule_status_with_backoff(self, schedule_id: int, minutes: int = 5):
-        """Update next_run_at with backoff delay after failure."""
+    def _update_schedule_status_with_backoff(self, schedule_id: int,
+                                             cron_expr: str = ''):
+        """失败退避：窗口内下一 tick 重试，超出窗口跳到下一正常 cron 时刻。"""
+        now = datetime.utcnow()
+        next_cron_run = None
+        if cron_expr:
+            try:
+                next_cron_run = self.compute_next_run(cron_expr)
+            except Exception as e:
+                print(f'[Vault] Backoff next-cron compute failed for schedule '
+                      f'{schedule_id}: {e}')
+        next_run = _compute_retry_time(now, cron_expr, next_cron_run)
+
         conn = get_vault_conn()
         cur = conn.cursor()
-        next_run = datetime.utcnow() + timedelta(minutes=minutes)
         cur.execute("""
             UPDATE vault_schedules
             SET last_run_at = %s, next_run_at = %s
             WHERE id = %s
-        """, (datetime.utcnow(), next_run, schedule_id))
+        """, (now, next_run, schedule_id))
         conn.commit()
         cur.close()
         conn.close()
@@ -237,35 +391,53 @@ class VaultScheduler:
             return {'success': False, 'error': str(e)}
 
     def _cleanup_old_backups(self, retention_days: int, retention_count: int):
-        """Remove old backups based on retention policy (by count and/or age)."""
+        """Remove old backups based on retention policy (by count and/or age).
+
+        SD-1 收口：枚举全部最终产物形态（.tar.gz 及其压缩/加密变体），
+        而不是只 glob 裸 .tar.gz；删除文件后同步删除 vault_backups 表行，
+        避免批次 7 修复的孤儿行问题经定时路径复现。
+        """
         if not retention_days and not retention_count:
             return
-        backup_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                  '..', '..', '..', 'data', 'vault')
-        if not os.path.isdir(backup_dir):
+        try:
+            items = list_backup_files()  # 已按 mtime 倒序，每 label 取最终形态
+        except Exception as e:
+            print(f'[Vault] Cleanup listing failed: {e}')
             return
-        archives = sorted(
-            _glob.glob(os.path.join(backup_dir, 'vault_*.tar.gz')),
-            key=os.path.getmtime, reverse=True,
-        )
 
-        keep_count = retention_count or len(archives)
+        keep_count = retention_count or len(items)
         cutoff_time = (datetime.utcnow().timestamp() - retention_days * 86400
                        if retention_days else 0)
 
-        for i, archive in enumerate(archives):
+        removed_labels = []
+        for i, item in enumerate(items):
             # Keep newest N
             if i < keep_count:
                 continue
             # Keep within retention days
-            if retention_days and os.path.getmtime(archive) >= cutoff_time:
+            if retention_days and item['mtime'] >= cutoff_time:
                 continue
-            # Delete
+            # Delete the final artifact
             try:
-                os.remove(archive)
-                print(f'[Vault] Cleaned up: {os.path.basename(archive)}')
+                os.remove(item['path'])
+                removed_labels.append(item['label'])
+                print(f"[Vault] Cleaned up: {item['filename']}")
             except OSError as e:
-                print(f'[Vault] Cleanup failed for {archive}: {e}')
+                print(f"[Vault] Cleanup failed for {item['path']}: {e}")
+
+        if removed_labels:
+            try:
+                conn = get_vault_conn()
+                cur = conn.cursor()
+                cur.execute(
+                    "DELETE FROM vault_backups WHERE label = ANY(%s)",
+                    (removed_labels,),
+                )
+                conn.commit()
+                cur.close()
+                conn.close()
+            except Exception as e:
+                print(f'[Vault] Cleanup failed to remove DB rows: {e}')
 
     def _update_schedule_status(self, schedule_id: int):
         conn = get_vault_conn()
@@ -317,19 +489,20 @@ class VaultScheduler:
         conn = get_vault_conn()
         cur = conn.cursor()
         next_run = self.compute_next_run(cron_expr, backup_window)
+        created_at = datetime.utcnow()
         cur.execute("""
             INSERT INTO vault_schedules
                 (name, cron_expression, backup_type, retention_days, retention_count,
                  storage_targets, backup_window, pre_hook, post_hook, enabled,
                  next_run_at, created_at)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,TRUE,%s,NOW())
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,TRUE,%s,%s)
             RETURNING id
         """, (
             name, cron_expr, backup_type,
             retention_days, retention_count,
             _json.dumps(storage_targets or []),
             _json.dumps(backup_window) if backup_window else None,
-            pre_hook, post_hook, next_run,
+            pre_hook, post_hook, next_run, created_at,
         ))
         row_id = cur.fetchone()[0]
         # 修复 BK-D1: 回读放在 conn.close() 之前（原实现 close 后复用连接 -> psycopg2.InterfaceError -> 500 但已入库）

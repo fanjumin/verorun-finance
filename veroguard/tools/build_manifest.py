@@ -58,7 +58,7 @@ PROTECTED_FILES = [
     "plugins/health_check/checkers.py",
     "plugins/health_check/ai_fixer.py",
     "plugins/health_check/models.py",
-    "plugins/vault/dumper.py",
+    "plugins/vault/services/backup_engine.py",
     # chatbot 客户端交付资产：widget 直接下发访客浏览器并执行，
     # 属安全关键路径（P1-7 修复所在），故显式加入保护——不落入 templates 排除区。
     "plugins/chatbot/templates/widget/chatbot-widget.js",

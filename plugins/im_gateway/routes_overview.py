@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
-"""统一网关 — 聚合概览端点（卡片式管理 UI 数据源，Phase 1）。
+"""统一网关 — 聚合概览端点（卡片式管理 UI 数据源）。
 
-GET /admin/channels/overview → 五类结构化数据：
+GET /admin/channels/overview → 两类结构化数据：
     im        即时通讯（adapters 注册表 + channel_configs）
-    social    社媒（统一渠道注册表 + channel_accounts，telegram 标记共享来源）
-    publish   发布（已连接社媒目标渠道）
-    login     第三方登录（login_providers 表，Phase 5 建表；表未建时优雅返回空列表）
-    developer 开发者登录（复用 unified_auth_service.list_keys，只读）
+    login     第三方登录（login_providers 表；表未建时优雅返回空列表）
 
+社媒(social) / 发布(publish) 两段已随职责收敛迁至 social_push 插件；
+开发者 API Key / 小程序开发者账户迁至 mini_app_builder 自有端点。
 纯读聚合：不新建表、不改既有路由、不写任何凭据。
 """
 import json
@@ -28,7 +27,7 @@ overview_bp = Blueprint('im_gateway_overview', __name__,
 
 
 def _require_admin():
-    """复用主系统管理员鉴权（与 routes.py / routes_oauth.py 一致）"""
+    """复用主系统管理员鉴权（与 routes.py / routes_login.py 一致）"""
     from routes.admin import _require_admin as _ra
     return _ra()
 
@@ -65,55 +64,6 @@ def _im_section() -> list:
             'config_fields': adapter.get_config_fields() if adapter else [],
         })
     return result
-
-
-def _social_section() -> list:
-    """社媒：统一渠道注册表 + channel_accounts；telegram_channel 标记 shared_from='im'"""
-    from .channels import list_channels
-    from .models_accounts import list_accounts
-    from .models import get_im_db
-
-    # Telegram 共享判定：channel_configs 中 telegram 已配置 bot_token → 共享可用
-    shared = False
-    with get_im_db() as conn:
-        row = conn.execute(
-            "SELECT config_json FROM channel_configs WHERE channel='telegram'"
-        ).fetchone()
-    if row and json.loads(row['config_json'] or '{}').get('bot_token'):
-        shared = True
-
-    result = []
-    for meta in list_channels():
-        ch = meta['channel']
-        accts = list_accounts(ch)
-        result.append({
-            'channel': ch,
-            'channel_type': meta['channel_type'],
-            'auth_mode': meta['auth_mode'],
-            'connected': any(a.get('is_enabled') for a in accts),
-            'shared_from': 'im' if (ch == 'telegram_channel' and shared) else None,
-            'accounts': [
-                {
-                    'id': a['id'],
-                    'handle': a.get('handle') or a.get('account_key') or '',
-                    'token_expires_at': a.get('token_expires_at') or '',
-                    'is_enabled': int(a.get('is_enabled') or 0),
-                }
-                for a in accts
-            ],
-        })
-    return result
-
-
-def _publish_section() -> dict:
-    """发布：已连接社媒目标渠道列表"""
-    from .channels import list_channels
-    from .models_accounts import list_accounts
-    targets = [
-        meta['channel'] for meta in list_channels()
-        if any(a.get('is_enabled') for a in list_accounts(meta['channel']))
-    ]
-    return {'targets': targets, 'connected_count': len(targets)}
 
 
 def _mask_secret(secret: str) -> str:
@@ -160,66 +110,18 @@ def _login_section() -> list:
         return []
 
 
-def _developer_section(user_id: int) -> list:
-    """开发者登录：复用 unified_auth_service.list_keys（只读，不暴露 key_hash）"""
-    try:
-        from services.unified_auth_service import UnifiedAuthService
-        keys = UnifiedAuthService().list_keys(user_id)
-        return [
-            {
-                'id': k['id'],
-                'name': k.get('name') or '',
-                'key_prefix': k.get('key_prefix') or '',
-                'key_type': k.get('key_type') or '',
-                'expire_at': k.get('expire_at') or '',
-                'status': k.get('status') or '',
-            }
-            for k in keys
-        ]
-    except Exception:
-        logger.debug('[Overview] developer keys read failed; return empty')
-        return []
-
-
-def _miniapp_section() -> list:
-    """小程序开发者账户：复用 mini_app_builder dev_accounts 数据层（Phase 7）。
-
-    mini_app_builder 未启用时优雅返回空列表；不重复建表、不改其代码。
-    """
-    try:
-        from plugins.mini_app_builder.submodules.accounts import models as _acc
-        rows = _acc.get_all()
-    except Exception:
-        logger.debug('[Overview] mini_app_builder accounts not ready; return empty')
-        return []
-    from .routes_miniapp import LOGIN_METHODS
-    out = []
-    for a in rows:
-        meta = LOGIN_METHODS.get(a.get('platform', ''), {})
-        out.append({
-            'id': a.get('id'),
-            'platform': a.get('platform', ''),
-            'account_name': a.get('account_name', ''),
-            'app_id': a.get('app_id', '') or '',
-            'is_active': int(a.get('is_active') or 0),
-            'method_type': meta.get('method_type', ''),
-            'updated_at': a.get('updated_at', '') or '',
-        })
-    return out
-
-
 @overview_bp.route('/overview', methods=['GET'])
 def overview():
-    """聚合概览：六类结构化数据，供卡片式管理 UI 渲染"""
+    """聚合概览：im / login 两类结构化数据，供卡片式管理 UI 渲染。
+
+    注：social / publish 两段已随职责收敛迁至 social_push；
+    developer（API Key）与 miniapp（开发者账户）迁至 mini_app_builder。
+    """
     admin, err = _require_admin()
     if err:
         return err
     data = {
         'im': _im_section(),
-        'social': _social_section(),
-        'publish': _publish_section(),
         'login': _login_section(),
-        'developer': _developer_section(admin['user_id']),
-        'miniapp': _miniapp_section(),
     }
     return jsonify({'success': True, 'data': data})

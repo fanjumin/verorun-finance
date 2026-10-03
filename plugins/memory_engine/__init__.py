@@ -130,12 +130,13 @@ class MemoryEnginePlugin(BasePlugin):
         try:
             conn.execute("DROP SCHEMA IF EXISTS %s CASCADE" % SCHEMA)
             conn.commit()
+            return True
         except Exception as e:
             logger.error('schema drop failed: %s', e)
             conn.rollback()
+            return False
         finally:
             conn.close()
-        return True
 
     # ── registration hooks (standard) ─────────────────────────
 

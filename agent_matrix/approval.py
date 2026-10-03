@@ -28,6 +28,9 @@ TOOL_RISK = {
     'file_edit': 'approve_session',
     'http_request': 'approve_session',
     'code_exec': 'always',
+    # EM-3：Agent 对外发信属外发副作用，首次落单并软阻塞（同任务内批准后放行）
+    'email_send': 'approve_session',
+    'email_send_contact': 'approve_session',
 }
 
 # ── 钩子点 & 审批模式 ──────────────────────────────────

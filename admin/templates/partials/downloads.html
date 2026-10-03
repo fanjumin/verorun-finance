@@ -1,4 +1,4 @@
-﻿window.l_downloads=function(){
+window.l_downloads=function(){
   document.getElementById("pt").textContent="{{ _('Download Management') }}";
   fetch("/admin/downloads",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
     if(!d.success||!d.data)return;
@@ -87,6 +87,31 @@ function showToast(msg,type){
   t.className="toast show "+(type||"");
   setTimeout(function(){t.classList.remove("show")},3000);
 }
+// 邮件正文消毒（EM-5）：邮件内容来自外部邮件服务器，属不可信输入。
+// 本文件在 admin.html 中无条件加载，而邮件插件模板为 `ignore missing`，
+// 因此此处自带实现，不依赖插件模板里的 emSafe()。
+function emSafeModal(html){
+  var raw=String(html==null?'':html);
+  try{
+    var doc=new DOMParser().parseFromString(raw,'text/html');
+    if(!doc||!doc.body)return raw;
+    var junk=doc.querySelectorAll('script,style,iframe,object,embed,link,meta,form,base');
+    for(var i=junk.length-1;i>=0;i--){junk[i].parentNode.removeChild(junk[i])}
+    var nodes=doc.body.querySelectorAll('*');
+    for(var j=0;j<nodes.length;j++){
+      var attrs=nodes[j].attributes;
+      for(var k=attrs.length-1;k>=0;k--){
+        var an=attrs[k].name.toLowerCase();
+        var av=String(attrs[k].value==null?'':attrs[k].value);
+        if(an.indexOf('on')===0||an==='srcdoc'){nodes[j].removeAttribute(attrs[k].name);continue}
+        if((an==='href'||an==='src'||an==='xlink:href')&&/^\s*(javascript|data|vbscript)\s*:/i.test(av)){
+          nodes[j].removeAttribute(attrs[k].name);
+        }
+      }
+    }
+    return doc.body.innerHTML;
+  }catch(e){return raw}
+}
 function viewEmail(uid){
   fetch("/admin/email/read/"+uid,{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
     if(!d.success){showToast("{{ _('Load failed') }}: "+(d.error||""),"error");return}
@@ -96,14 +121,14 @@ function viewEmail(uid){
     var h='<div class="modal-overlay" onclick="closeEmailModal(event)">';
     h+='<div class="modal-box" onclick="event.stopPropagation()">';
     h+='<button onclick="closeEmailModal()" style="float:right;background:none;border:none;color:var(--dim);font-size:20px;cursor:pointer;line-height:1">✕</button>';
-    h+='<h3>'+(m.subject||"({{ _('No Subject') }})")+'</h3>';
+    h+='<h3>'+esc(m.subject||"({{ _('No Subject') }})")+'</h3>';
     h+='<div class="modal-meta">';
-    h+='<div><span>{{ _('Sender') }}</span> '+(m.from||"-")+'</div>';
-    h+='<div><span>{{ _('Recipient') }}</span> '+(m.to||"-")+'</div>';
-    h+='<div><span>{{ _('Time') }}</span> '+(m.date||"-")+'</div>';
+    h+='<div><span>{{ _('Sender') }}</span> '+esc(m.from||"-")+'</div>';
+    h+='<div><span>{{ _('Recipient') }}</span> '+esc(m.to||"-")+'</div>';
+    h+='<div><span>{{ _('Time') }}</span> '+esc(m.date||"-")+'</div>';
     h+='</div>';
     h+='<div class="modal-body">';
-    if(bodyHtml){h+=bodyHtml}
+    if(bodyHtml){h+=emSafeModal(bodyHtml)}
     else{h+=bodyText}
     h+='</div>';
     // Attachments
@@ -111,17 +136,24 @@ function viewEmail(uid){
       h+='<div class="modal-attach"><span style="font-size:12px;color:var(--dim)">📎 {{ _('Attachment') }}</span>';
       m.attachments.forEach(function(a){
         var fn=a.filename||a.name||"file";
-        h+=' <a href="/admin/email/attachment/'+uid+'/'+encodeURIComponent(fn)+'" target="_blank">📎 '+fn+'</a>';
+        h+=' <a href="/admin/email/attachment/'+uid+'/'+encodeURIComponent(fn)+'" target="_blank">📎 '+esc(fn)+'</a>';
       });
       h+='</div>';
     }
     h+='<div style="margin-top:16px;display:flex;gap:8px">';
-    h+='<button class="btn bp" onclick="re('+uid+',\''+(m.from||"").replace(/'/g,"")+'\',\''+(m.subject||"").replace(/'/g,"")+'\');closeEmailModal()">↩ {{ _('Reply') }}</button>';
+    h+='<button class="btn bp" id="emailModalReplyBtn">↩ {{ _('Reply') }}</button>';
     h+='<button class="btn bo" onclick="closeEmailModal()">{{ _('Close') }}</button></div></div></div>';
     // Remove any existing modal
     var old=document.querySelector(".modal-overlay");
     if(old)old.remove();
     document.body.insertAdjacentHTML("beforeend",h);
+    // 回复按钮改用事件绑定：原先把发件人/主题（外部不可信）拼进 onclick 属性，
+    // 仅去掉单引号无法阻止双引号逃逸出 HTML 属性 → 存在属性注入（EM-5 同族）
+    var _replyBtn=document.getElementById("emailModalReplyBtn");
+    if(_replyBtn)_replyBtn.addEventListener("click",function(){
+      re(uid,m.from||"",m.subject||"");
+      closeEmailModal();
+    });
   }).catch(function(){showToast("{{ _('Load failed') }}","error")});
 }
 function closeEmailModal(e){

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """auth-center: Unified Database Manager - PostgreSQL edition."""
-import os, logging
+import os, logging, re
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from datetime import datetime
@@ -61,6 +61,21 @@ def _connect():
     return psycopg2.connect(**PG_CONFIG)
 
 
+# PF-04：与 plugins/_base/db.py 的 PgConnection 统一占位符契约。
+# 匹配单引号字符串字面量（含 '' 转义）或单个 ? 占位符，
+# 仅替换字面量之外的 ?（避免 SQL 字符串内的 ? 被误替换）。
+# 否则插件混用 get_db() 时 `?` 原样进 psycopg2 → SyntaxError，
+# 且常被调用方 except 静默吞成"默认值恒生效"类故障。
+_PLACEHOLDER_RE = re.compile(r"'(''|[^'])*'|\?")
+
+
+def _replace_placeholders(sql: str) -> str:
+    """将 SQL 中的 ? 占位符替换为 %s，跳过单引号字符串字面量内的 ?。"""
+    def _repl(m):
+        return '%s' if m.group(0) == '?' else m.group(0)
+    return _PLACEHOLDER_RE.sub(_repl, sql)
+
+
 class _DbWrapper:
     """psycopg2 connection wrapper that exposes sqlite3-style execute/commit."""
     def __init__(self, conn):
@@ -69,6 +84,8 @@ class _DbWrapper:
         self._from_pool = _pool_available
 
     def execute(self, sql, params=None):
+        # PF-04：与 plugins/_base/db.py 对齐，? 占位符统一翻译为 %s（字面量感知）
+        sql = _replace_placeholders(sql)
         if params is not None:
             self._cur.execute(sql, params)
         else:
@@ -231,7 +248,7 @@ def init_db():
     """Initialize all core tables using a fresh direct connection (not pool) to avoid aborted transactions."""
     global _INIT_DB_RUNNING
     if _INIT_DB_RUNNING:
-        print('[init_db] skipped (already ran in this process)')
+        logger.info('[init_db] skipped (already ran in this process)')
         return
     import psycopg2
     from psycopg2.extras import RealDictCursor
@@ -242,7 +259,7 @@ def init_db():
         cur = fresh_conn.cursor()
         cur.execute('SELECT pg_try_advisory_lock(%s)', (_INIT_DB_LOCK_KEY,))
         if not cur.fetchone()[0]:
-            print('[init_db] skipped (another process holds migration lock)')
+            logger.info('[init_db] skipped (another process holds migration lock)')
             cur.close()
             fresh_conn.close()
             return
@@ -855,7 +872,7 @@ def init_db():
             )
         """)
         fresh_conn.commit()
-        print('[Migration] admin_profiles table created', flush=True)
+        logger.info('[Migration] admin_profiles table created')
         # ── 主题管理 (2026-05-16) ──
         with get_db() as c_th:
             c_th.execute("""
@@ -905,7 +922,7 @@ def init_db():
         # payment_events / subscription_audit_log 已随订阅解耦下线（插件 subscription schema 接管）
         fresh_conn.commit()
     except Exception as e:
-        print(f'[init_db] ⚠️ Mega DDL block failed (non-critical): {e}')
+        logger.warning(f'[init_db] ⚠️ Mega DDL block failed (non-critical): {e}')
     finally:
         fresh_conn.close()
     # ── 品牌设置字段迁移：logo_url → logo_full_url + 新增 logo_icon_url ──
@@ -923,7 +940,7 @@ def init_db():
             bm.commit()
         except Exception as e:
             bm.rollback()
-            print(f'[Migration] brand_settings logo migration skipped: {e}')
+            logger.warning(f'[Migration] brand_settings logo migration skipped: {e}')
     # ── 品牌设置字段迁移：新增 company_name / tagline / icp / security / contact_email ──
     with get_db() as bm:
         for col, default_val in [
@@ -944,7 +961,7 @@ def init_db():
         if 'site_domain' not in cols:
             m.execute("ALTER TABLE brand_settings ADD COLUMN site_domain TEXT NOT NULL DEFAULT ''")
             m.commit()
-            print('[Migration] brand_settings.site_domain added')
+            logger.info('[Migration] brand_settings.site_domain added')
     # ── Migration: migrate users.agent_id → user_agents (2026-05-10) ──
     with get_db() as m:
         # Check if legacy agent_id column exists in users table
@@ -970,11 +987,11 @@ def init_db():
                     migrated += 1
                 if migrated:
                     m.commit()
-                    print(f'[Migration] {migrated} user agents created from legacy agent_id')
+                    logger.info(f'[Migration] {migrated} user agents created from legacy agent_id')
                 else:
-                    print('[Migration] No legacy user agent data to migrate')
+                    logger.info('[Migration] No legacy user agent data to migrate')
         else:
-            print('[Migration] No legacy agent_id column — skipping migration')
+            logger.info('[Migration] No legacy agent_id column — skipping migration')
         
         # Add agent_id FK column to api_keys if not present
         cols = get_table_columns(m, 'api_keys')
@@ -982,7 +999,7 @@ def init_db():
             try:
                 m.execute('ALTER TABLE api_keys ADD COLUMN associated_agent_id BIGINT DEFAULT 0')
                 m.commit()
-                print('[Migration] api_keys.associated_agent_id added')
+                logger.info('[Migration] api_keys.associated_agent_id added')
             except Exception:
                 pass
     
@@ -1003,7 +1020,7 @@ def init_db():
         if 'agent_avatar_url' not in cols:
             m.execute('ALTER TABLE users ADD COLUMN agent_avatar_url TEXT DEFAULT \'\'')
             m.commit()
-            print('[Migration] agents.agent_avatar_url added')
+            logger.info('[Migration] agents.agent_avatar_url added')
 
     # ── IAM v2 migration: add new columns (2026-05-11) ──
     with get_db() as m:
@@ -1022,13 +1039,13 @@ def init_db():
                 except Exception:
                     pass
             m.commit()
-            print('[Migration] IAM v2 columns added to users table')
+            logger.info('[Migration] IAM v2 columns added to users table')
         # Backfill existing users
         try:
             m.execute("UPDATE users SET username = phone WHERE username IS NULL AND phone IS NOT NULL")
             m.execute("UPDATE users SET display_name = COALESCE(display_name, phone, 'User') WHERE display_name = '' OR display_name IS NULL")
             m.commit()
-            print('[Migration] IAM v2 backfill complete')
+            logger.info('[Migration] IAM v2 backfill complete')
         except Exception:
             m.rollback()
     # ── Real-name verification migration v2 (2026-05-19) ──
@@ -1051,7 +1068,7 @@ def init_db():
         # 清空历史遗留的加密身份证号（合规要求：不存储）
         m.execute("UPDATE users SET id_number_encrypted = '' WHERE id_number_encrypted != ''")
         m.commit()
-        print('[Migration] Real-name verification v2: is_real_name_verified + real_name_verified_at added, id_number_encrypted cleared')
+        logger.info('[Migration] Real-name verification v2: is_real_name_verified + real_name_verified_at added, id_number_encrypted cleared')
 
     # ── Verification provider config seeds (admin fills in credentials later) ──
     with get_db() as m:
@@ -1074,7 +1091,7 @@ def init_db():
                 (key, value, desc)
             )
         m.commit()
-        print('[Migration] Verification provider config seeds added')
+        logger.info('[Migration] Verification provider config seeds added')
 
     # ── Verification requests log table ──
     with get_db() as m:
@@ -1214,14 +1231,14 @@ def init_db():
               AND pm.api_key_id IS NULL
         """)
         m.commit()
-        print('[Migration] Providers + provider_models seed data added')
+        logger.info('[Migration] Providers + provider_models seed data added')
 
     # ── Migration: add provider_model_id to agents table ──
     with get_db() as m:
         cols = get_table_columns(m, 'agents')
         if 'provider_model_id' not in cols:
             m.execute('ALTER TABLE agents ADD COLUMN provider_model_id BIGINT DEFAULT NULL')
-            print('[Migration] Added agents.provider_model_id')
+            logger.info('[Migration] Added agents.provider_model_id')
         # Migrate OLD model_provider_id → provider_model_id
         rows = m.execute(
             "SELECT id, model_provider_id FROM agents WHERE provider_model_id IS NULL AND model_provider_id IS NOT NULL"
@@ -1231,9 +1248,9 @@ def init_db():
                       (a['model_provider_id'], a['id']))
         if rows:
             m.commit()
-            print(f'[Migration] Migrated {len(rows)} agents from model_provider_id → provider_model_id')
+            logger.info(f'[Migration] Migrated {len(rows)} agents from model_provider_id → provider_model_id')
 
-        print('[Migration] verification_requests table created')
+        logger.info('[Migration] verification_requests table created')
 
     # ── Migration: seed OpenRouter free models ──
     with get_db() as m:
@@ -1272,7 +1289,7 @@ def init_db():
                     (pid_val, name, model, url, key_ref, caps, sort)
                 )
             m.commit()
-            print('[Migration] OpenRouter free models seeded')
+            logger.info('[Migration] OpenRouter free models seeded')
 
     # Check and add username_changed_at
     with get_db() as m:
@@ -1281,7 +1298,7 @@ def init_db():
             if col_name not in cols:
                 m.execute(f'ALTER TABLE users ADD COLUMN {col_name} TEXT')
                 m.commit()
-                print(f'[Migration] users.{col_name} added')
+                logger.info(f'[Migration] users.{col_name} added')
 
     # Migration: add social_links.platform column (2026-05-14)
     with get_db() as m:
@@ -1289,7 +1306,7 @@ def init_db():
         if 'platform' not in cols:
             m.execute("ALTER TABLE social_links ADD COLUMN platform TEXT NOT NULL DEFAULT ''")
             m.commit()
-            print('[Migration] social_links.platform added')
+            logger.info('[Migration] social_links.platform added')
 
     # ── channel_configs: 频道管理（飞书/微信/QQ/钉钉）──
     with get_db() as m:
@@ -1312,7 +1329,7 @@ def init_db():
                 ('{}',)
             )
             m.commit()
-            print('[Migration] channel_configs table + feishu seed created')
+            logger.info('[Migration] channel_configs table + feishu seed created')
 
         # seed wecom record if not exists
         existing_wecom = m.execute("SELECT id FROM channel_configs WHERE channel='wecom'").fetchone()
@@ -1321,7 +1338,7 @@ def init_db():
                 "INSERT INTO channel_configs (channel, config_json, is_enabled) VALUES ('wecom', '{}', 1) ON CONFLICT (channel) DO NOTHING"
             )
             m.commit()
-            print('[Migration] channel_configs wecom seed created')
+            logger.info('[Migration] channel_configs wecom seed created')
 
         # seed qq record if not exists
         existing_qq = m.execute("SELECT id FROM channel_configs WHERE channel='qq'").fetchone()
@@ -1330,7 +1347,7 @@ def init_db():
                 "INSERT INTO channel_configs (channel, config_json, is_enabled) VALUES ('qq', '{}', 0) ON CONFLICT (channel) DO NOTHING"
             )
             m.commit()
-            print('[Migration] channel_configs qq seed created')
+            logger.info('[Migration] channel_configs qq seed created')
 
         # seed dingtalk record if not exists
         existing_dingtalk = m.execute("SELECT id FROM channel_configs WHERE channel='dingtalk'").fetchone()
@@ -1339,7 +1356,7 @@ def init_db():
                 "INSERT INTO channel_configs (channel, config_json, is_enabled) VALUES ('dingtalk', '{}', 0) ON CONFLICT (channel) DO NOTHING"
             )
             m.commit()
-            print('[Migration] channel_configs dingtalk seed created')
+            logger.info('[Migration] channel_configs dingtalk seed created')
 
     # ── Payment / Third-party config seeds (admin fills in credentials later) ──
     with get_db() as m:
@@ -1366,7 +1383,7 @@ def init_db():
                 (key, value, desc)
             )
         m.commit()
-        print('[Migration] Payment/third-party config seeds added')
+        logger.info('[Migration] Payment/third-party config seeds added')
 
     # ── Shop AI 商城商品优化配置 ──
     with get_db() as m:
@@ -1380,7 +1397,7 @@ def init_db():
                 (key, value, desc)
             )
         m.commit()
-        print('[Migration] Shop AI config seeds added')
+        logger.info('[Migration] Shop AI config seeds added')
 
     # ── cluster_services: 站群服务管理 ──
     with get_db() as m2:
@@ -1442,7 +1459,7 @@ def init_db():
         if 'extra_data' not in cols:
             m.execute("ALTER TABLE user_notifications ADD COLUMN extra_data TEXT DEFAULT '{}'")
         m.commit()
-        print('[Migration] user_notifications: read_at + extra_data added')
+        logger.info('[Migration] user_notifications: read_at + extra_data added')
 
     # ── Migration: completion_percentage on users ──
     with get_db() as m:
@@ -1452,7 +1469,7 @@ def init_db():
         if 'completion_last_updated' not in cols:
             m.execute("ALTER TABLE users ADD COLUMN completion_last_updated TEXT")
         m.commit()
-        print('[Migration] users: completion_percentage + completion_last_updated added')
+        logger.info('[Migration] users: completion_percentage + completion_last_updated added')
 
     # ── Reward rules + claims tables ──
     with get_db() as m:
@@ -1483,7 +1500,7 @@ def init_db():
         m.execute("CREATE INDEX IF NOT EXISTS idx_reward_claims_user ON reward_claims(user_id)")
         m.execute("CREATE INDEX IF NOT EXISTS idx_reward_claims_rule ON reward_claims(rule_id)")
         m.commit()
-        print('[Migration] reward_rules + reward_claims tables created')
+        logger.info('[Migration] reward_rules + reward_claims tables created')
 
     # ── article_comments table (for comments.py) ──
     with get_db() as m:
@@ -1507,7 +1524,7 @@ def init_db():
         m.execute("CREATE INDEX IF NOT EXISTS idx_article_comments_post ON article_comments(post_id)")
         m.execute("CREATE INDEX IF NOT EXISTS idx_article_comments_status ON article_comments(status)")
         m.commit()
-        print('[Migration] article_comments table created')
+        logger.info('[Migration] article_comments table created')
 
     # ── Interests + user_interests tables ──
     with get_db() as m:
@@ -1533,7 +1550,7 @@ def init_db():
         m.execute("CREATE INDEX IF NOT EXISTS idx_user_interests_user ON user_interests(user_id)")
         m.execute("CREATE INDEX IF NOT EXISTS idx_interests_category ON interests(category, sort_order)")
         m.commit()
-        print('[Migration] interests + user_interests tables created')
+        logger.info('[Migration] interests + user_interests tables created')
 
     # ── social_media_links + header_nav + footer_* + partner_links ──
     with get_db() as m:
@@ -1610,7 +1627,7 @@ def init_db():
             )
         """)
         m.commit()
-        print('[Migration] social_media_links + header_nav + footer_* + partner_links tables created')
+        logger.info('[Migration] social_media_links + header_nav + footer_* + partner_links tables created')
 
     # ── regions: 行政区划表（中国省市三级联动）──
     with get_db() as m:
@@ -1669,9 +1686,9 @@ def init_db():
             for b in base_regions:
                 m.execute("INSERT INTO regions (code, name, level, parent_code, full_name) VALUES (%s,%s,%s,%s,%s) ON CONFLICT (code) DO NOTHING", b)
             m.commit()
-            print(f'[Migration] regions: {len(base_regions)} level-1 regions seeded')
+            logger.info(f'[Migration] regions: {len(base_regions)} level-1 regions seeded')
         else:
-            print(f'[Migration] regions: {empty} rows already exist, skipping seed')
+            logger.info(f'[Migration] regions: {empty} rows already exist, skipping seed')
 
     # ── Seed default interest tags ──
     with get_db() as m:
@@ -1683,7 +1700,7 @@ def init_db():
                 tags
             )
             m.commit()
-            print(f'[Migration] {len(tags)} interest tags seeded')
+            logger.info(f'[Migration] {len(tags)} interest tags seeded')
 
     # ── Seed notification templates ──
     with get_db() as m:
@@ -1704,7 +1721,7 @@ def init_db():
                     t
                 )
         m.commit()
-        print('[Migration] notification templates seeded')
+        logger.info('[Migration] notification templates seeded')
 
         
 
@@ -1713,14 +1730,14 @@ def init_db():
         m.execute('DROP TABLE IF EXISTS voice_templates CASCADE')
         m.execute('DROP TABLE IF EXISTS video_tasks CASCADE')
         m.commit()
-        print('[Migration] voice_templates + video_tasks tables dropped (volcengine removed)')
+        logger.info('[Migration] voice_templates + video_tasks tables dropped (volcengine removed)')
 
     # ── Migration: remove volcengine provider & its models (2026-07-21) ──
     with get_db() as m:
         m.execute("DELETE FROM provider_models WHERE provider_id = (SELECT id FROM providers WHERE slug = 'volcengine')")
         m.execute("DELETE FROM providers WHERE slug = 'volcengine'")
         m.commit()
-        print('[Migration] volcengine provider + provider_models removed')
+        logger.info('[Migration] volcengine provider + provider_models removed')
 
     # ── Migration: media_files table（本地媒体库 — 2026-05-24）──
     with get_db() as m:
@@ -1741,7 +1758,7 @@ def init_db():
         m.execute('CREATE INDEX IF NOT EXISTS idx_mf_push_status ON media_files(push_status)')
         m.execute('CREATE INDEX IF NOT EXISTS idx_mf_created ON media_files(created_at)')
         m.commit()
-        print('[Migration] media_files table created')
+        logger.info('[Migration] media_files table created')
     # ── Migration: knowledge_blocks table（RAG知识库 — 2026-06-10）──
     with get_db() as m:
         m.execute("""CREATE TABLE IF NOT EXISTS knowledge_blocks (
@@ -1758,10 +1775,10 @@ def init_db():
         kb_cols = get_table_columns(m, 'knowledge_blocks')
         if 'scope' not in kb_cols:
             m.execute("ALTER TABLE knowledge_blocks ADD COLUMN scope VARCHAR(20) DEFAULT 'system'")
-            print('[Migration] knowledge_blocks.scope added')
+            logger.info('[Migration] knowledge_blocks.scope added')
         if 'owner_id' not in kb_cols:
             m.execute("ALTER TABLE knowledge_blocks ADD COLUMN owner_id BIGINT DEFAULT NULL")
-            print('[Migration] knowledge_blocks.owner_id added')
+            logger.info('[Migration] knowledge_blocks.owner_id added')
         m.execute('CREATE INDEX IF NOT EXISTS idx_kb_scope ON knowledge_blocks(scope)')
         m.execute('CREATE INDEX IF NOT EXISTS idx_kb_owner ON knowledge_blocks(owner_id)')
         # Backfill existing data: distinguish system KB from user KB by id prefix
@@ -1772,7 +1789,7 @@ def init_db():
         if 'source' in kb_cols_after:
             m.execute("UPDATE knowledge_blocks SET scope='user', owner_id=NULL WHERE scope IS NULL AND source='manual'")
             m.execute("UPDATE knowledge_blocks SET scope='user', owner_id=NULL WHERE scope IS NULL AND source IN ('auto','matrix')")
-        print('[Migration] knowledge_blocks scope/owner_id migration completed')
+        logger.info('[Migration] knowledge_blocks scope/owner_id migration completed')
         # Seed knowledge blocks from mini-program
         row = m.execute("SELECT COUNT(*) as c FROM knowledge_blocks").fetchone()
         if row['c'] == 0:
@@ -1802,7 +1819,7 @@ def init_db():
             for s in kb_seeds:
                 m.execute("INSERT INTO knowledge_blocks (id,title,content,keywords,category,priority,scope,owner_id) VALUES (%s,%s,%s,%s,%s,%s,'user',NULL) ON CONFLICT (id) DO NOTHING", s)
             m.commit()
-            print(f'[Migration] knowledge_blocks seeded: {len(kb_seeds)} blocks')
+            logger.info(f'[Migration] knowledge_blocks seeded: {len(kb_seeds)} blocks')
 
     # ── Migration: seed FAQ and white paper from community/ (2026-06-11) ──
     with get_db() as ms:
@@ -1826,7 +1843,7 @@ def init_db():
             for s in faq_seeds_data:
                 ms.execute("INSERT INTO knowledge_blocks (id,title,content,keywords,category,priority,scope,owner_id) VALUES (%s,%s,%s,%s,%s,%s,'user',NULL) ON CONFLICT (id) DO NOTHING", s)
             ms.commit()
-            print(f'[Migration] FAQ & whitepaper seeded: {len(faq_seeds_data)} blocks')
+            logger.info(f'[Migration] FAQ & whitepaper seeded: {len(faq_seeds_data)} blocks')
 
     # ── Migration: knowledge_queue（数据清洗 — 2026-06-10）──
     with get_db() as m:
@@ -1842,7 +1859,7 @@ def init_db():
         )''')
         m.execute('CREATE INDEX IF NOT EXISTS idx_kq_status ON knowledge_queue(status)')
         m.commit()
-        print('[Migration] knowledge_queue table created')
+        logger.info('[Migration] knowledge_queue table created')
 
     # ── shop tables 已迁移至独立 shop.db（init_shop_db）──
 
@@ -1886,7 +1903,7 @@ def init_db():
                  '{"name":"' + name + '","slug":"' + slug + '","version":"' + ver + '","builtin":false}', slug)
             )
         m.commit()
-        print(f'[Migration] seed themes: {len(theme_seeds)} themes added')
+        logger.info(f'[Migration] seed themes: {len(theme_seeds)} themes added')
 
     # ── Migration: brand_settings software_name + software_slogan ──
     with get_db() as m:
@@ -1894,11 +1911,11 @@ def init_db():
         if 'software_name' not in cols:
             m.execute("ALTER TABLE brand_settings ADD COLUMN software_name TEXT NOT NULL DEFAULT 'VeroRun 维洛智能'")
             m.commit()
-            print('[Migration] brand_settings.software_name added')
+            logger.info('[Migration] brand_settings.software_name added')
         if 'software_slogan' not in cols:
             m.execute("ALTER TABLE brand_settings ADD COLUMN software_slogan TEXT NOT NULL DEFAULT 'Multi-Agent AI Operating System / 多智能体驱动的AI内容与商业枢纽'")
             m.commit()
-            print('[Migration] brand_settings.software_slogan added')
+            logger.info('[Migration] brand_settings.software_slogan added')
 
     # ── Migration: tm_brand_settings site_name_cn → VeroRun ──
     with get_db() as m:
@@ -1907,7 +1924,7 @@ def init_db():
             if row and row["site_name_cn"] == 'TradeMind':
                 m.execute("UPDATE tm_brand_settings SET site_name_cn='VeroRun' WHERE id=1")
                 m.commit()
-                print("[Migration] tm_brand_settings.site_name_cn updated to VeroRun")
+                logger.info("[Migration] tm_brand_settings.site_name_cn updated to VeroRun")
         except Exception:
             m.rollback()  # tm_brand_settings table no longer exists
 
@@ -1917,7 +1934,7 @@ def init_db():
     with get_db() as m:
         m.execute("DROP TABLE IF EXISTS cluster_services")
         m.commit()
-        print('[Migration] ✅ cluster_services table dropped (merged into site_domains)')
+        logger.info('[Migration] ✅ cluster_services table dropped (merged into site_domains)')
 
     # ── Migration: 合并 service_plans → subscription_plans（订阅SaaS归类）已随订阅解耦移除（P3）──
     # subscription_plans / subscription_orders 表已下线，订阅数据由插件 subscription schema 接管。
@@ -1943,7 +1960,7 @@ def init_db():
             )
         """)
         m.commit()
-        print('[Migration] chat_messages + mp_profiles tables created')
+        logger.info('[Migration] chat_messages + mp_profiles tables created')
 
     # 迁移：为 mp_profiles 表添加 visit_count 字段
     try:
@@ -2002,7 +2019,7 @@ def init_db():
         m.execute('CREATE INDEX IF NOT EXISTS idx_cs_created ON chatbot_sessions(created_at)')
         m.execute('CREATE INDEX IF NOT EXISTS idx_cs_session ON chatbot_sessions(session_id)')
         m.commit()
-        print('[Migration] chatbot_sessions table created')
+        logger.info('[Migration] chatbot_sessions table created')
 
     # ── Migration: chatbot_sessions intent/sentiment 字段 (2026-07-12) ──
     with get_db() as m:
@@ -2012,9 +2029,9 @@ def init_db():
             if col not in existing:
                 try:
                     m.execute(f"ALTER TABLE chatbot_sessions ADD COLUMN {col_def}")
-                    print(f'[Migration] chatbot_sessions.{col} added')
+                    logger.info(f'[Migration] chatbot_sessions.{col} added')
                 except Exception as e:
-                    print(f'[Migration] chatbot_sessions.{col} skipped: {e}')
+                    logger.warning(f'[Migration] chatbot_sessions.{col} skipped: {e}')
         m.commit()
 
 
@@ -2026,9 +2043,9 @@ def init_db():
                 # DEFAULT 0 + FK→users(id) 是天生违约（0 非合法用户 id），
                 # 任何不显式传该列的 INSERT 必 500。用 NULL（列可空，FK 放行）。
                 m.execute("ALTER TABLE user_tickets ADD COLUMN assigned_to BIGINT DEFAULT NULL REFERENCES users(id)")
-                print('[Migration] user_tickets.assigned_to added')
+                logger.info('[Migration] user_tickets.assigned_to added')
             except Exception as e:
-                print(f'[Migration] user_tickets.assigned_to skipped: {e}')
+                logger.warning(f'[Migration] user_tickets.assigned_to skipped: {e}')
         else:
             try:
                 # 幂等纠正存量错误默认值（历史版本 DEFAULT 0 与 FK 冲突）
@@ -2041,15 +2058,15 @@ def init_db():
                     "AND pg_get_expr(d.adbin, d.adrelid)='0'").fetchone()
                 if bad:
                     m.execute('ALTER TABLE user_tickets ALTER COLUMN assigned_to SET DEFAULT NULL')
-                    print('[Migration] user_tickets.assigned_to default fixed 0->NULL')
+                    logger.info('[Migration] user_tickets.assigned_to default fixed 0->NULL')
             except Exception as e:
-                print(f'[Migration] assigned_to default fix skipped: {e}')
+                logger.warning(f'[Migration] assigned_to default fix skipped: {e}')
         if 'assigned_name' not in cols_t:
             try:
                 m.execute("ALTER TABLE user_tickets ADD COLUMN assigned_name TEXT DEFAULT ''")
-                print('[Migration] user_tickets.assigned_name added')
+                logger.info('[Migration] user_tickets.assigned_name added')
             except Exception as e:
-                print(f'[Migration] user_tickets.assigned_name skipped: {e}')
+                logger.warning(f'[Migration] user_tickets.assigned_name skipped: {e}')
         m.commit()
 
     # ── Migration: knowledge_blocks 智能记忆字段 + knowledge_history 表 (2026-07-18) ──
@@ -2065,10 +2082,10 @@ def init_db():
             if col_name not in kb_cols:
                 try:
                     m.execute(f"ALTER TABLE knowledge_blocks ADD COLUMN {col_name} {col_def}")
-                    print(f'[Migration] knowledge_blocks.{col_name} added')
+                    logger.info(f'[Migration] knowledge_blocks.{col_name} added')
                 except Exception as e:
                     m.rollback()  # clear aborted transaction
-                    print(f'[Migration] knowledge_blocks.{col_name} skipped: {e}')
+                    logger.warning(f'[Migration] knowledge_blocks.{col_name} skipped: {e}')
         m.commit()
 
         # 索引
@@ -2081,7 +2098,7 @@ def init_db():
             try:
                 m.execute(f"CREATE INDEX IF NOT EXISTS {idx_name} ON knowledge_blocks({idx_col})")
             except Exception as e:
-                print(f'[Migration] {idx_name} skipped: {e}')
+                logger.warning(f'[Migration] {idx_name} skipped: {e}')
         m.commit()
 
         # knowledge_history 版本历史表
@@ -2096,7 +2113,7 @@ def init_db():
         """)
         m.execute('CREATE INDEX IF NOT EXISTS idx_kh_kb_id ON knowledge_history(kb_id)')
         m.commit()
-        print('[Migration] knowledge_history table created')
+        logger.info('[Migration] knowledge_history table created')
 
     # ── Migration: knowledge_blocks 向量化（RAG 混合检索 — 2026-08-12）──
     # 向量路：pgvector 余弦检索。列不固定维度（生产 embedding 模型维度可能不同，
@@ -2109,15 +2126,15 @@ def init_db():
             kb_cols = get_table_columns(m, 'knowledge_blocks')
             if 'embedding' not in kb_cols:
                 m.execute('ALTER TABLE knowledge_blocks ADD COLUMN embedding vector')
-                print('[Migration] knowledge_blocks.embedding added')
+                logger.info('[Migration] knowledge_blocks.embedding added')
             # 升级到固定维度 + HNSW 索引（数据量大后执行，维度须与 embedding 模型一致）：
             # ALTER TABLE knowledge_blocks ALTER COLUMN embedding TYPE vector(768);
             # CREATE INDEX idx_kb_embedding ON knowledge_blocks USING hnsw (embedding vector_cosine_ops);
             m.commit()
-            print('[Migration] knowledge_blocks pgvector column ready')
+            logger.info('[Migration] knowledge_blocks pgvector column ready')
         except Exception as e:
             m.rollback()
-            print(f'[Migration] knowledge_blocks embedding skipped (pgvector unavailable): {e}')
+            logger.warning(f'[Migration] knowledge_blocks embedding skipped (pgvector unavailable): {e}')
 
         # 关键词路：trigram 全文索引（PG16 内置 pg_trgm，中文 3-gram 可用）。
         try:
@@ -2125,10 +2142,10 @@ def init_db():
             m.execute("CREATE INDEX IF NOT EXISTS idx_kb_content_trgm "
                       "ON knowledge_blocks USING gin (content gin_trgm_ops)")
             m.commit()
-            print('[Migration] knowledge_blocks pg_trgm index created')
+            logger.info('[Migration] knowledge_blocks pg_trgm index created')
         except Exception as e:
             m.rollback()
-            print(f'[Migration] knowledge_blocks pg_trgm index skipped: {e}')
+            logger.warning(f'[Migration] knowledge_blocks pg_trgm index skipped: {e}')
 
     # ── Migration: knowledge_blocks 科研增强字段（科研版 — 2026-08-20）──
     # 学科/子学科分类、项目绑定、密级、元数据。project_id 为 UUID，
@@ -2145,10 +2162,10 @@ def init_db():
             if col_name not in kb_cols:
                 try:
                     m.execute(f"ALTER TABLE knowledge_blocks ADD COLUMN {col_name} {col_def}")
-                    print(f'[Migration] knowledge_blocks.{col_name} added')
+                    logger.info(f'[Migration] knowledge_blocks.{col_name} added')
                 except Exception as e:
                     m.rollback()
-                    print(f'[Migration] knowledge_blocks.{col_name} skipped: {e}')
+                    logger.warning(f'[Migration] knowledge_blocks.{col_name} skipped: {e}')
         m.commit()
 
         for idx_name, idx_col in [
@@ -2160,11 +2177,11 @@ def init_db():
             try:
                 m.execute(f"CREATE INDEX IF NOT EXISTS {idx_name} ON knowledge_blocks({idx_col})")
             except Exception as e:
-                print(f'[Migration] {idx_name} skipped: {e}')
+                logger.warning(f'[Migration] {idx_name} skipped: {e}')
         try:
             m.execute('CREATE INDEX IF NOT EXISTS idx_kb_meta ON knowledge_blocks USING gin(metadata)')
         except Exception as e:
-            print(f'[Migration] idx_kb_meta skipped: {e}')
+            logger.warning(f'[Migration] idx_kb_meta skipped: {e}')
         m.commit()
 
     # ── Migration: system_kb_version 系统知识库版本追踪 (2026-07-24) ──
@@ -2183,7 +2200,7 @@ def init_db():
         )''')
         m.execute('CREATE INDEX IF NOT EXISTS idx_skv_version ON system_kb_version(version)')
         m.commit()
-        print('[Migration] system_kb_version table created')
+        logger.info('[Migration] system_kb_version table created')
 
     # ── Migration: knowledge_queue 幂等 hash (2026-07-18) ──
     with get_db() as m:
@@ -2192,9 +2209,9 @@ def init_db():
             try:
                 m.execute("ALTER TABLE knowledge_queue ADD COLUMN processed_hash VARCHAR(64) DEFAULT NULL")
                 m.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_queue_hash ON knowledge_queue(processed_hash)")
-                print('[Migration] knowledge_queue.processed_hash added')
+                logger.info('[Migration] knowledge_queue.processed_hash added')
             except Exception as e:
-                print(f'[Migration] knowledge_queue.processed_hash skipped: {e}')
+                logger.warning(f'[Migration] knowledge_queue.processed_hash skipped: {e}')
         m.commit()
 
     # ── Migration: ai_model_health + ai_model_failover_events（兜底引擎模型健康状态 2026-08-27）──
@@ -2233,7 +2250,7 @@ def init_db():
         )''')
         m.execute('CREATE INDEX IF NOT EXISTS idx_amfe_created ON ai_model_failover_events(created_at)')
         m.commit()
-        print('[Migration] ai_model_health + ai_model_failover_events created')
+        logger.info('[Migration] ai_model_health + ai_model_failover_events created')
 
 
 def _get_default_interests():
@@ -2283,7 +2300,7 @@ with _safe_get_db_for_migration() as m:
     m.execute('CREATE INDEX IF NOT EXISTS idx_mf_push_status ON media_files(push_status)')
     m.execute('CREATE INDEX IF NOT EXISTS idx_mf_created ON media_files(created_at)')
     m.commit()
-    print('[Migration] media_files table created (module-level)')
+    logger.info('[Migration] media_files table created (module-level)')
 
 # ── Module-level: article_comments table（防 init_db() 中途失败跳过）──
 with _safe_get_db_for_migration() as m:
@@ -2307,7 +2324,7 @@ with _safe_get_db_for_migration() as m:
     m.execute("CREATE INDEX IF NOT EXISTS idx_article_comments_post ON article_comments(post_id)")
     m.execute("CREATE INDEX IF NOT EXISTS idx_article_comments_status ON article_comments(status)")
     m.commit()
-    print('[Migration] article_comments table created (module-level)')
+    logger.info('[Migration] article_comments table created (module-level)')
 
 
 def get_active_model(provider_slug='deepseek'):
@@ -2344,9 +2361,9 @@ if MARKET == 'intl':
             if col_name not in intl_cols:
                 try:
                     m.execute(f"ALTER TABLE users ADD COLUMN {col_def}")
-                    print(f'[i18n] users.{col_name} added')
+                    logger.info(f'[i18n] users.{col_name} added')
                 except Exception as e:
-                    print(f'[i18n] users.{col_name} skipped: {e}')
+                    logger.warning(f'[i18n] users.{col_name} skipped: {e}')
 
         # INTL 地址表（自由文本）
         m.execute('''CREATE TABLE IF NOT EXISTS user_addresses_intl (
@@ -2368,11 +2385,11 @@ if MARKET == 'intl':
         )''')
         m.execute('CREATE INDEX IF NOT EXISTS idx_addr_intl_user ON user_addresses_intl(user_id)')
 
-        print('[i18n] ✅ INTL-specific tables and data initialized')
+        logger.info('[i18n] ✅ INTL-specific tables and data initialized')
 # ── 客户管理: 企业认证字段 + 审核表 (CN/INTL通用) ──
 with _safe_get_db_for_migration() as m:
     if not _table_exists(m, 'users'):
-        print('[Migration] users table not created yet, skip enterprise/oauth fields')
+        logger.info('[Migration] users table not created yet, skip enterprise/oauth fields')
     else:
         user_cols = get_table_columns(m, 'users')
         enterprise_fields = {
@@ -2390,7 +2407,7 @@ with _safe_get_db_for_migration() as m:
                 try:
                     m.execute(f"ALTER TABLE users ADD COLUMN {col_def}")
                 except Exception as e:
-                    print(f'[migration] users.{col_name} skipped: {e}')
+                    logger.warning(f'[migration] users.{col_name} skipped: {e}')
 
         # ── Migration: alipay_user_id + telegram_open_id (2026-07-11) ──
         oauth_user_fields = {
@@ -2402,7 +2419,7 @@ with _safe_get_db_for_migration() as m:
                 try:
                     m.execute(f"ALTER TABLE users ADD COLUMN {col_def}")
                 except Exception as e:
-                    print(f'[migration] users.{col_name} skipped: {e}')
+                    logger.warning(f'[migration] users.{col_name} skipped: {e}')
 
 
 # ── i18n 翻译表 (2026-06-30) ──
@@ -2419,7 +2436,7 @@ with _safe_get_db_for_migration() as m:
         UNIQUE(locale, source_hash)
     )''')
     m.execute('CREATE INDEX IF NOT EXISTS idx_i18n_locale ON i18n_strings(locale)')
-    print('[i18n] ✅ i18n_strings table created')
+    logger.info('[i18n] ✅ i18n_strings table created')
 
 # ── Migration: site_domains 子域名管理表 (2026-07-06) ──
 # Note: 移除了 FOREIGN KEY 引用 site_configs，因为 site_configs 在 init_db() 中创建
@@ -2442,14 +2459,14 @@ with _safe_get_db_for_migration() as m:
     m.execute('CREATE INDEX IF NOT EXISTS idx_sd_config ON site_domains(site_config_id)')
     m.execute('CREATE INDEX IF NOT EXISTS idx_sd_domain ON site_domains(full_domain)')
     m.commit()
-    print('[Migration] site_domains (subdomain management) table created')
+    logger.info('[Migration] site_domains (subdomain management) table created')
 
 # ── Migration: site_domains 新增 service_port 列 (2026-07-06) ──
 try:
     with _safe_get_db_for_migration() as m:
         m.execute("ALTER TABLE site_domains ADD COLUMN service_port BIGINT DEFAULT NULL")
         m.commit()
-        print('[Migration] site_domains.service_port column added')
+        logger.info('[Migration] site_domains.service_port column added')
 except Exception:
     pass  # 列已存在
 
@@ -2480,7 +2497,7 @@ try:
                 (sub, full, name, template, pub, so)
             )
         m.commit()
-    print('[Migration] site_domains default seeds (www/agent/platform)')
+    logger.info('[Migration] site_domains default seeds (www/agent/platform)')
 except Exception:
     pass  # site_domains 表可能尚未创建
 
@@ -2526,7 +2543,7 @@ with _safe_get_db_for_migration() as m:
     m.execute('CREATE INDEX IF NOT EXISTS idx_sbt_user ON site_builder_tasks(user_id)')
     m.execute('CREATE INDEX IF NOT EXISTS idx_sbt_status ON site_builder_tasks(status)')
     m.commit()
-    print('[Migration] site_builder table created')
+    logger.info('[Migration] site_builder table created')
 
     # ── site_settings: 统一设计令牌表（替代 brand_settings + header_nav + footer_* + themes）──
     try:
@@ -2545,9 +2562,9 @@ with _safe_get_db_for_migration() as m:
         """)
         m.execute("CREATE INDEX IF NOT EXISTS idx_dt_site_key ON design_tokens(site_key)")
         m.commit()
-        print('[Migration] design_tokens table created')
+        logger.info('[Migration] design_tokens table created')
     except Exception as e_th:
-        print(f'[Migration] design_tokens table creation failed (may already exist): {e_th}')
+        logger.warning(f'[Migration] design_tokens table creation failed (may already exist): {e_th}')
 
 
 def now_iso():
@@ -2597,7 +2614,7 @@ with _safe_get_db_for_migration() as m:
             (name, key_val, provider, desc)
         )
     m.commit()
-    print('[Migration] provider_api_keys table + seed data created')
+    logger.info('[Migration] provider_api_keys table + seed data created')
 
 # ── Migration: provider_api_keys.pool_role（Key 连接池角色：primary/backup/dedicated）
 #             + cooldown_until（429 冷却落库，gunicorn 多 worker 共享冷却状态）──
@@ -2606,10 +2623,10 @@ with _safe_get_db_for_migration() as m:
         pak_cols = get_table_columns(m, 'provider_api_keys')
         if 'pool_role' not in pak_cols:
             m.execute("ALTER TABLE provider_api_keys ADD COLUMN pool_role TEXT NOT NULL DEFAULT 'primary'")
-            print('[Migration] provider_api_keys.pool_role added')
+            logger.info('[Migration] provider_api_keys.pool_role added')
         if 'cooldown_until' not in pak_cols:
             m.execute('ALTER TABLE provider_api_keys ADD COLUMN cooldown_until TIMESTAMP DEFAULT NULL')
-            print('[Migration] provider_api_keys.cooldown_until added')
+            logger.info('[Migration] provider_api_keys.cooldown_until added')
         m.commit()
     except Exception:
         m.rollback()
@@ -2619,7 +2636,7 @@ with _safe_get_db_for_migration() as m:
         pm_cols = get_table_columns(m, 'provider_models')
         if 'api_key_id' not in pm_cols:
             m.execute('ALTER TABLE provider_models ADD COLUMN api_key_id BIGINT DEFAULT NULL REFERENCES provider_api_keys(id)')
-            print('[Migration] provider_models.api_key_id added')
+            logger.info('[Migration] provider_models.api_key_id added')
         m.commit()
     except Exception:
         m.rollback()
@@ -2630,7 +2647,7 @@ with _safe_get_db_for_migration() as m:
         pm_cols = get_table_columns(m, 'provider_models')
         if 'embedding_dim' not in pm_cols:
             m.execute('ALTER TABLE provider_models ADD COLUMN embedding_dim INTEGER NOT NULL DEFAULT 1536')
-            print('[Migration] provider_models.embedding_dim added')
+            logger.info('[Migration] provider_models.embedding_dim added')
         # Google text-embedding-004 实际输出 768 维，更新种子数据
         m.execute(
             "UPDATE provider_models SET embedding_dim = 768"
@@ -2683,7 +2700,7 @@ with _safe_get_db_for_migration() as m:
         "ON CONFLICT (target_type, COALESCE(target_id, -1)) DO NOTHING"
     )
     m.commit()
-    print('[Migration] llm_quotas table + default seed created')
+    logger.info('[Migration] llm_quotas table + default seed created')
 
 
 # ── Migration: unified_api_keys — Phase 3 unified API key management ──
@@ -2748,7 +2765,7 @@ with _safe_get_db_for_migration() as m:
         "ON CONFLICT DO NOTHING"
     )
     m.commit()
-    print('[Migration] unified_api_keys + api_key_audit + usage_quotas tables created')
+    logger.info('[Migration] unified_api_keys + api_key_audit + usage_quotas tables created')
 
 # ── Migration: unified subscription — Phase 4 base plan + plugin addons ──
 with _safe_get_db_for_migration() as m:
@@ -2829,7 +2846,7 @@ with _safe_get_db_for_migration() as m:
         "ON CONFLICT (plan_key) DO NOTHING"
     )
     m.commit()
-    print('[Migration] base_plans + plugin_products + user_subscriptions + subscription_addons created')
+    logger.info('[Migration] base_plans + plugin_products + user_subscriptions + subscription_addons created')
 
 if __name__ == "__main__":
     init_db()

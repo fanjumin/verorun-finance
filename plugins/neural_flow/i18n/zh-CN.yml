@@ -1,0 +1,4 @@
+# neural_flow 插件词条（i18n 标准 §1.2：每个插件必须提供独立翻译目录）
+# key 一律使用英文（默认语言），右值为中文译文。
+plugin.name: 神经中枢
+plugin.tagline: 神经中枢数据流基座

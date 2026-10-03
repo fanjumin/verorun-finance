@@ -83,6 +83,11 @@ TTL = {DataCategory.KLINE: 300, DataCategory.QUOTE: 60, DataCategory.INDEX: 60,
        DataCategory.SHAREFLOAT: 86400, DataCategory.HOLDERNUMBER: 86400,
        DataCategory.MACRO: 86400,
        DataCategory.DEPTH: 10, DataCategory.TICKS: 30}
+# P1 分钟线：日内 bar 会变，故不落盘（_disk_get 默认「当日有效」会让盘中整天命中
+# 早间旧数据，属 #SA-20260831-14 同类问题的更细粒度版本），只用进程内存短缓存。
+# 1m 仍未接入（见 kline_service._UNSUPPORTED_PERIODS）。
+_MINUTE_FREQS = frozenset({"5m", "15m", "30m", "60m"})
+MINUTE_CACHE_TTL = 60                            # 分钟线内存缓存有效期（秒）
 COOLDOWN = 300                                   # 连续失败摘除时长（秒）
 # 连续失败触发冷却的次数阈值（原为 _dispatch 内字面量 3；2026-09-20 提为命名常量，
 # 供 /api/constants 下发给壳层，避免前端镜像漂移）
@@ -293,10 +298,11 @@ class DataGateway:
         self._cache[key] = entry
 
     # ── 对外入口（阶段2 增 get_fundamental/get_moneyflow）──
-    def get_kline(self, symbol: str, datalen: int = 120) -> pd.DataFrame:
-        """K 线取数；自报 raw 的帧按 sa_corp_action 事件补齐真 hfq（见 §5.3）。"""
+    def get_kline(self, symbol: str, datalen: int = 120, freq: str = "daily") -> pd.DataFrame:
+        """K 线取数；freq ∈ {daily,weekly,monthly}（分钟线未接入）。
+        自报 raw 的帧按 sa_corp_action 事件补齐真 hfq（见 §5.3）。"""
         return _ensure_adjusted(symbol, self._dispatch(DataCategory.KLINE, symbol,
-                                                       datalen=datalen))
+                                                       datalen=datalen, freq=freq))
 
     def get_quote(self, symbol: str, category: DataCategory = DataCategory.QUOTE) -> dict:
         return self._dispatch(category, symbol)
@@ -402,16 +408,19 @@ class DataGateway:
             self._record_usage(category, hit[2])      # 缓存命中仍记合规来源
             return hit[1]
         if category is DataCategory.KLINE:
-            disk_key = f"kline:{symbol}:{kwargs.get('datalen', '120')}"
-            disk = _disk_get(disk_key)
+            freq_now = kwargs.get("freq", "daily")
+            disk_key = f"kline:{symbol}:{freq_now}:{kwargs.get('datalen', '120')}"
+            disk = None if freq_now in _MINUTE_FREQS else _disk_get(disk_key)
             if disk is not None:
                 value, source_name, disk_provenance = disk
                 try:
-                    # #SA-20260830-02：陈旧当日缓存不返回，落回网络链重取
-                    self._check_freshness(symbol, value, source_name)
+                    # 仅日线走严格新鲜度：周/月线末根天然「陈旧」（月线末根可 >10 天）
+                    if freq_now == "daily":
+                        # #SA-20260830-02：陈旧当日缓存不返回，落回网络链重取
+                        self._check_freshness(symbol, value, source_name)
                     # #SA-20260831-14：交易日已收盘后，K 线末行必须已更新到最近交易日，
                     # 否则视为缓存过期（当日早间缓存整天命中旧数据的问题）
-                    if self._kline_cache_stale(value):
+                    if freq_now == "daily" and self._kline_cache_stale(value):
                         raise ProviderError("gateway", "kline",
                                             "disk cache data_date stale, refetching",
                                             retryable=False)
@@ -452,8 +461,15 @@ class DataGateway:
                 return value
         # 积分探针驱动裁剪：provider.supports() 不含本类别（如 tushare 无权限）则跳过；
         # supports() 内部有进程级缓存，仅 token 解析/首次探针会产生一次开销。
+        freq = kwargs.get("freq", "daily") if category is DataCategory.KLINE else None
         available = [cls for cls in self._available_chain(category)
-                     if category in cls.supports()]
+                     if category in cls.supports()
+                     and (freq is None or freq in getattr(cls, "kline_freqs", {"daily"}))]
+        if not available and freq and freq != "daily":
+            # 整条链都未声明该周期能力（未改造的源默认只认 daily）：明确不可用，
+            # 不套用「暂时不可用，请稍后重试」——那会暗示重试有意义。
+            raise ProviderError("gateway", category.value,
+                                f"周期 {freq} 暂无可用数据源", retryable=False)
         if not available:
             # #SA-20260830-01：全链耗尽给出可理解降级提示（而非 "no provider supports kline"）
             cooled = [c.name for c in ROUTE[category]
@@ -474,15 +490,18 @@ class DataGateway:
                     continue                            # 限流：换下一源，不计失败
                 value = self._fetch(provider, category, symbol, **kwargs)
                 value, prov_meta = _unwrap_result(value)
-                if category is DataCategory.KLINE:
+                freq_now = kwargs.get("freq", "daily")
+                if category is DataCategory.KLINE and freq_now == "daily":
                     # #SA-20260830-02：陈旧数据视为本源不可用（不计成功、不冷却），触发 failover
                     self._check_freshness(symbol, value, provider_cls.name)
                 self._fail_streak[provider_cls] = 0
-                if category is DataCategory.KLINE:
+                if category is DataCategory.KLINE and freq_now == "daily":
+                    # _crosscheck 是「末行 vs quote」口径，对周/月线不成立
                     self._crosscheck(symbol, value)
                 self._record_usage(category, provider_cls, provenance=prov_meta)
-                if category is DataCategory.KLINE:
-                    _disk_put(f"kline:{symbol}:{kwargs.get('datalen', '120')}",
+                if category is DataCategory.KLINE and freq_now not in _MINUTE_FREQS:
+                    # 分钟线不落盘（见 _MINUTE_FREQS 注释），只写内存短缓存
+                    _disk_put(f"kline:{symbol}:{freq_now}:{kwargs.get('datalen', '120')}",
                               value, provider_cls.name, provenance=prov_meta)
                 elif category is DataCategory.FUNDAMENTAL:
                     _disk_put(f"fundamental:{symbol}:{kwargs.get('periods', 8)}",
@@ -491,7 +510,8 @@ class DataGateway:
                     _disk_put(f"consensus:{symbol}", value, provider_cls.name,
                               provenance=prov_meta)
                 self._cache_put(cache_key,
-                                (time.time() + TTL[category], value, provider_cls))
+                                (time.time() + (MINUTE_CACHE_TTL if freq_now in _MINUTE_FREQS
+                                                else TTL[category]), value, provider_cls))
                 return value
             except (ProviderError, ProviderUnavailable, NotImplementedError) as err:
                 # #SA-20260830-01：仅真实源故障（retryable=True）计入冷却，

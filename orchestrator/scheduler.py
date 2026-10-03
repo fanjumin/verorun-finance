@@ -151,6 +151,10 @@ class SchedulerEngine:
         self._callback_map: dict = {}  # target_type -> handler function
         self._is_leader = True             # 首次定主前按旧行为运行；start() 会立即定主
         self._leadership_checked = False   # 是否已定过主（避免重复挂起/恢复）
+        # 插件定时作业归属表：插件 job_id -> plugin identifier。
+        # 卸载插件时据此刻度摘除其全部 cron，避免存活作业占用插件 schema
+        # 导致 DROP SCHEMA CASCADE 失败（memory_engine 卸载残留 9 表的诱因之一）。
+        self._plugin_jobs: dict = {}
 
         if not HAS_APSCHEDULER:
             raise ImportError(
@@ -196,12 +200,14 @@ class SchedulerEngine:
         """设置工作流执行器"""
         self._workflow_runner = runner
 
-    def add_plugin_job(self, job: dict) -> bool:
+    def add_plugin_job(self, job: dict, plugin_id: str = None) -> bool:
         """注册一个插件定时任务（消费插件 register_jobs() 的 APScheduler job dict）。
 
         兼容 dict 格式: {id, func, trigger: 'cron'|'interval'|'date', hour, minute, ...}。
         进程内注册到 APScheduler，不写入 cron_jobs 表；服务重启后由
         init_automation() 重新扫描注册，天然幂等。
+
+        plugin_id 非空时登记作业归属，供卸载时 remove_plugin_jobs 整插件摘除。
         """
         job_id = job.get('id')
         func = job.get('func')
@@ -222,6 +228,8 @@ class SchedulerEngine:
             )
             m.add_log('system', 0, 'info',
                        f'📅 Plugin job scheduled: [{job_id}]')
+            if plugin_id:
+                self._plugin_jobs[job_id] = plugin_id
             # A6：非 leader 副本注册的插件作业同样立即挂起
             if self._leadership_checked and not self._is_leader:
                 try:
@@ -231,8 +239,32 @@ class SchedulerEngine:
             return True
         except Exception as e:
             m.add_log('system', 0, 'error',
-                       f'Plugin job [{job_id}] schedule failed: {e}')
+                      f'Plugin job [{job_id}] schedule failed: {e}')
             return False
+
+    def remove_plugin_jobs(self, plugin_id: str) -> int:
+        """卸载插件前摘除其登记的全部 APScheduler 作业。
+
+        存活的 cron（及其持有连接/线程）会占用插件 schema，是 on_uninstall 中
+        DROP SCHEMA CASCADE 失败、数据表残留的直接诱因之一。作业为进程内注册、
+        重启后按 ACTIVE 插件重建，故此处只做内存摘除，不动任何持久状态。
+        返回实际摘除（含本就不存在）的作业数。
+        """
+        removed = 0
+        for job_id, owner in list(self._plugin_jobs.items()):
+            if owner != plugin_id:
+                continue
+            ap_id = f'plugin_{job_id}'
+            try:
+                self._apscheduler.remove_job(ap_id)
+            except Exception as e:
+                # JobLookupError（作业本就不存在/已摘）属预期；其余仅告警，
+                # 不阻断卸载主流程（DROP 仍会尝试，失败由 on_uninstall 结果上抛）。
+                logger.warning(f'[Scheduler] remove plugin job {ap_id} warning: {e}')
+            finally:
+                self._plugin_jobs.pop(job_id, None)
+                removed += 1
+        return removed
 
     # ---- 生命周期 ----
 

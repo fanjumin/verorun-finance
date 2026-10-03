@@ -51,6 +51,33 @@ def _ensure_schema(conn) -> None:
             cur.close()
 
 
+# SAU-3：删除按 key 收窄后，不再活跃的键的行不会被回收 —— 低频全局兜底清理
+_LAST_GC = 0.0
+_GC_INTERVAL = 300  # 秒
+
+
+def _maybe_gc(conn, window: int) -> None:
+    """全局回收过期行（低频；失败不影响主流程）。"""
+    global _LAST_GC
+    now = time.time()
+    if now - _LAST_GC < _GC_INTERVAL:
+        return
+    _LAST_GC = now
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "DELETE FROM rate_limit_events WHERE ts < NOW() - INTERVAL '1 second' * %s",
+            (max(int(window), 3600),))
+        conn.commit()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+    finally:
+        cur.close()
+
+
 def check_rate_limit(key: str, limit: int, window: int = 60) -> bool:
     """返回 True 表示允许放行；False 表示超限。"""
     from plugins._base.db import get_pooled_connection
@@ -59,8 +86,10 @@ def check_rate_limit(key: str, limit: int, window: int = 60) -> bool:
         _ensure_schema(conn)
         cur = conn.cursor()
         cur.execute(
-            "DELETE FROM rate_limit_events WHERE ts < NOW() - INTERVAL '1 second' * %s",
-            (int(window),))
+            "DELETE FROM rate_limit_events"
+            " WHERE rate_key = %s AND ts < NOW() - INTERVAL '1 second' * %s",
+            (key, int(window)))
+        _maybe_gc(conn, window)
         cur.execute("SELECT COUNT(*) FROM rate_limit_events WHERE rate_key=%s", (key,))
         if cur.fetchone()[0] >= limit:
             conn.commit()

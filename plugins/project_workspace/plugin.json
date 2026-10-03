@@ -1,0 +1,161 @@
+{
+  "name": "Project Workspace",
+  "name_i18n_key": "plugin.name",
+  "identifier": "project_workspace",
+  "python_dependencies": {
+    "required": [
+      "python-docx",
+      "PyMuPDF",
+      "python-pptx"
+    ],
+    "optional": {}
+  },
+  "version": "1.6.5",
+  "description": "AI-powered project workspace with project isolation, document RAG, intelligent search, and research assistant for organizations of all sizes",
+  "tagline": "AI 项目工作空间",
+  "tagline_subtitle": "项目隔离 · 文档 RAG · 智能搜索 · 研究助手",
+  "author": "VeroRun",
+  "min_app_version": "0.10.0",
+  "compatible_editions": ["enterprise", "standard", "pro", "finance", "minipro"],
+  "category": "ai_agent",
+  "icon": "briefcase",
+  "tags": [
+    "workspace",
+    "project",
+    "document",
+    "RAG",
+    "collaboration",
+    "search"
+  ],
+  "dependencies": {},
+  "recommends": {
+    "memory_engine": ">=1.0.0",
+    "chatbot": ">=1.0.0",
+    "analytics": ">=1.0.0"
+  },
+  "config": {
+    "max_file_size_mb": 50,
+    "allowed_extensions": [
+      "pdf",
+      "docx",
+      "txt",
+      "md",
+      "pptx",
+      "xlsx",
+      "csv"
+    ],
+    "chunk_size": 1000,
+    "chunk_overlap": 200,
+    "semantic_search_top_k": 10,
+    "embedding_model": "text-embedding-3-small",
+    "storage_dir": "data/project_workspace/",
+    "rerank_model": "",
+    "retention_days": 730,
+    "max_projects_per_user": 50,
+    "max_documents_per_project": 5000,
+    "enable_cross_project_search": false
+  },
+  "permissions": [
+    "api:read",
+    "api:write",
+    "user:profile",
+    "network:request"
+  ],
+  "hooks": {
+    "provides": [
+      "project_workspace/search"
+    ],
+    "listens": []
+  },
+  "agent_role": "content",
+  "capabilities": [
+    "document.summarize",
+    "document.compare",
+    "qa.with_sources",
+    "content.analyze"
+  ],
+  "dashboard": {
+    "stats": [
+      {
+        "key": "total_projects",
+        "title": "Total Projects",
+        "type": "counter"
+      },
+      {
+        "key": "total_documents",
+        "title": "Total Documents",
+        "type": "counter"
+      },
+      {
+        "key": "queries_24h",
+        "title": "24h Queries",
+        "type": "counter"
+      },
+      {
+        "key": "avg_response_time",
+        "title": "Avg Response",
+        "type": "gauge"
+      }
+    ]
+  },
+  "menu": {
+    "group": "System",
+    "items": [
+      {
+        "key": "project_workspace",
+        "icon": "briefcase",
+        "label": "Project Workspace",
+        "label_i18n_key": "menu.project_workspace"
+      }
+    ]
+  },
+  "admin_url": "",
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "max_file_size_mb": {
+        "title": "Max File Size (MB)",
+        "type": "integer",
+        "default": 50,
+        "minimum": 1,
+        "maximum": 200
+      },
+      "chunk_size": {
+        "title": "Document Chunk Size",
+        "type": "integer",
+        "default": 1000,
+        "minimum": 200,
+        "maximum": 5000
+      },
+      "semantic_search_top_k": {
+        "title": "Semantic Search Top K",
+        "type": "integer",
+        "default": 10,
+        "minimum": 1,
+        "maximum": 50
+      },
+      "storage_dir": {
+        "title": "Storage Directory",
+        "type": "string",
+        "default": "data/project_workspace/"
+      },
+      "rerank_model": {
+        "title": "Rerank Model (optional)",
+        "type": "string",
+        "default": ""
+      },
+      "retention_days": {
+        "title": "Retention Days",
+        "type": "integer",
+        "default": 730,
+        "minimum": 30,
+        "maximum": 3650
+      },
+      "enable_cross_project_search": {
+        "title": "Enable Cross-Project Search",
+        "type": "boolean",
+        "default": false
+      }
+    }
+  }
+}

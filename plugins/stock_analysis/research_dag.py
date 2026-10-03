@@ -77,7 +77,12 @@ def flow_span(node_slug: str):
 
 # ================================================================ LLM 工具
 
-def _chat(prompt: str, *, temperature: float = 0.3, max_tokens: int = 2048) -> str:
+# SAU-1：DAG 节点输出较长，默认 2048 易被 max_tokens 截断成空/半截响应。
+# 提到 8192 并支持 SA_LLM_MAX_TOKENS 覆盖（上限而非目标，未截断时不会增加生成量）。
+_LLM_MAX_TOKENS = int(os.environ.get("SA_LLM_MAX_TOKENS") or 8192)
+
+
+def _chat(prompt: str, *, temperature: float = 0.3, max_tokens: int = _LLM_MAX_TOKENS) -> str:
     if LLM_FACTORY is not None:
         return LLM_FACTORY([{"role": "user", "content": prompt}])
     from agent_matrix.engine import UnifiedLLM

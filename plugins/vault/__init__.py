@@ -163,6 +163,14 @@ class VaultPlugin(BasePlugin):
             finally:
                 raw.close()
             print('[Vault] vault schema dropped (backup files preserved)')
+            # Invalidate this process's ensure_schema cache so a reinstall in
+            # the same process re-applies migrations; other workers verify the
+            # schema against the catalog on their next request.
+            try:
+                from .services.utils import reset_schema_cache
+                reset_schema_cache()
+            except Exception as reset_err:
+                print('[Vault] schema cache reset skipped: %s' % reset_err)
         except Exception as e:
             print('[Vault] on_uninstall cleanup failed: %s' % e)
         return True

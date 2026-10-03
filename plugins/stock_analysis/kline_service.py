@@ -1,13 +1,15 @@
 """kline_service.py — 桌面端行情端点数据组装层（契约 §3：/api/kline 与 /api/quotes）。
 
 服务端权威口径：
-- K 线经 gateway.get_kline 获取（当前仅日线；weekly/monthly/分钟线未接入 → UnsupportedPeriodError）；
+- K 线经 gateway.get_kline 获取（period ∈ daily/weekly/monthly/5m/15m/30m/60m；
+  1m 未接入 → UnsupportedPeriodError）；
+- 复权口径 adjust ∈ hfq/qfq/raw，按数据源自报口径校准（见 _resolve_basis）；
 - 指标经 indicators.compute_indicators 计算（iv-3），与 bars 等长对齐；
 - 返回契约 envelope {ok, data, error, meta}。
 
 已知边界（契约 §3 校准）：
-- amount：现有数据源无成交额列，bars.amount 一律置 null；
-- period：gateway 当前仅支持 daily，其余周期返回 501（不造假数据）；
+- amount：akshare 提供成交额（整数元），sina 等无此列 → null；
+- period：1m 返回 501（不造假数据）；分钟线目前仅 akshare 单一数据源，且只有不复权口径；
 - offset/until：gateway 仅支持尾部取数，仅能覆盖近期历史翻页；
   深度历史游标（until 早于已取窗口）返回尽可能多的 bars，由桌面端数据层按需扩展。
 """
@@ -30,15 +32,17 @@ MAX_OFFSET = 5000      # 服务端保护：防无界取数
 MAX_QUOTES = 50        # 契约 §3：symbols ≤ 50
 WARMUP = 60            # 指标暖机前置条数（MA60 需要 60 根历史，切片后首个 bar 已收敛）
 
-_SUPPORTED_PERIODS = {"daily"}
+_SUPPORTED_PERIODS = {"daily", "weekly", "monthly", "5m", "15m", "30m", "60m"}
+# 分钟线：bar 的 date 需带 HH:MM（否则一天内所有 bar 日期相同）
+_MINUTE_PERIODS = {"5m", "15m", "30m", "60m"}
 # 契约列出但网关尚未接入的周期：诚实校准，501 而非假数据
-_UNSUPPORTED_PERIODS = {"weekly", "monthly", "60m", "30m", "15m", "5m"}
+_UNSUPPORTED_PERIODS = {"1m"}
 
-_BASIS_NOTES = {"hfq": "后复权价（hfq）", "raw": "不复权价（raw）"}
+_BASIS_NOTES = {"hfq": "后复权价（hfq）", "raw": "不复权价（raw）", "qfq": "前复权价（qfq）"}
 
 
 class UnsupportedPeriodError(ValueError):
-    """请求了网关未接入的周期（weekly/monthly/分钟线）。"""
+    """请求了网关尚未接入的周期（分钟线）。"""
 
 
 class KlineUnavailableError(RuntimeError):
@@ -84,12 +88,20 @@ def _resolve_basis(frame: pd.DataFrame, adjust: str) -> str:
     if adjust == "raw":
         # 请求不复权价：只有确实拿到不复权价（或帧本身不是 hfq-only 降级帧）才给 raw
         return "raw" if (declared == "raw" or not raw_unavailable) else "hfq"
+    if adjust == "qfq":
+        # 请求前复权：仅当帧确实带 *_qfq（由 raw+hfq 换算而来）才声称 qfq；
+        # 否则按实际拿到的口径如实降级（hfq 优先，其次 raw），绝不假称 qfq
+        if "close_qfq" in frame.columns:
+            return "qfq"
+        return "hfq" if (declared == "hfq" and has_hfq_col) else "raw"
     # 请求 hfq：仅在数据源自报 hfq 时才声称 hfq（缺列同样视为不可用）
     return "hfq" if (declared == "hfq" and has_hfq_col) else "raw"
 
 
 def _base_columns(frame: pd.DataFrame, basis: str) -> tuple[str, str, str, str]:
     """按展示基准选择 K 线 OHLC 列名。"""
+    if basis == "qfq" and "close_qfq" in frame.columns:
+        return "open_qfq", "high_qfq", "low_qfq", "close_qfq"
     if basis == "hfq" and "close_hfq" in frame.columns:
         return "open_hfq", "high_hfq", "low_hfq", "close_hfq"
     return "open", "high", "low", "close"
@@ -116,17 +128,16 @@ def kline_payload(symbol: str, period: str = "daily", adjust: str = "hfq",
     """组装 /api/kline 的契约 envelope。异常：UnsupportedPeriodError / ValueError / KlineUnavailableError。"""
     period = (period or "daily").lower()
     if period not in _SUPPORTED_PERIODS:
-        raise UnsupportedPeriodError(
-            f"period '{period}' not supported yet (gateway currently daily only)")
+        raise UnsupportedPeriodError(f"period '{period}' not supported yet")
     adjust = (adjust or "hfq").lower()
-    if adjust not in ("hfq", "raw"):
-        raise ValueError("adjust must be 'hfq' or 'raw'")
+    if adjust not in ("hfq", "raw", "qfq"):
+        raise ValueError("adjust must be one of 'hfq', 'qfq', 'raw'")
     limit = max(1, min(int(limit), MAX_LIMIT))
     offset = max(0, min(int(offset), MAX_OFFSET))
 
     # 取数含 WARMUP 前置：指标在完整窗口上计算，切片后的首个 bar 已过暖机
     try:
-        frame = gateway.get_kline(symbol, datalen=offset + limit + WARMUP)
+        frame = gateway.get_kline(symbol, datalen=offset + limit + WARMUP, freq=period)
     except Exception as err:
         raise KlineUnavailableError(f"kline unavailable: {err}") from err
     if frame is None or frame.empty:
@@ -144,14 +155,16 @@ def kline_payload(symbol: str, period: str = "daily", adjust: str = "hfq",
     window = frame.iloc[start:end]
 
     o, h, l, c = _base_columns(window, basis)
+    # 分钟线的 date 必须带 HH:MM，否则一天内所有 bar 的日期完全相同
+    _fmt = "%Y-%m-%d %H:%M" if period in _MINUTE_PERIODS else "%Y-%m-%d"
     bars = []
     for idx, row in window.iterrows():
         bars.append({
-            "date": str(pd.Timestamp(idx).date()),
+            "date": pd.Timestamp(idx).strftime(_fmt),
             "o": _round(row[o]), "h": _round(row[h]),
             "l": _round(row[l]), "c": _round(row[c]),
             "vol": _int_or_none(row.get("volume")),
-            "amount": None,          # 数据源无成交额列，契约 §3 校准为 null
+            "amount": _int_or_none(row.get("amount")),   # 帧有 amount 列则透传，缺失为 null
         })
 
     sliced_indicators = _slice_ind(indicators, start, end)
@@ -169,10 +182,15 @@ def kline_payload(symbol: str, period: str = "daily", adjust: str = "hfq",
         "error": None,
         "meta": {
             "data_date": bars[-1]["date"] if bars else None,
+            "period": period,
             "source": _kline_source(),
             "price_basis": basis,
             "price_basis_declared": _declared_basis(frame) or None,   # 数据源自报口径
-            "price_basis_adjusted": (basis == "hfq" and adjust == "hfq"),
+            "price_basis_adjusted": (basis == adjust and adjust in ("hfq", "qfq")),
+            # qfq 换算基准日（帧末根）：基准非最新交易日时如实暴露，避免口径误读
+            "price_basis_anchor": (str(frame["qfq_anchor"].iloc[0])
+                                   if (basis == "qfq" and "qfq_anchor" in frame.columns
+                                       and not frame.empty) else None),
             "indicator_version": INDICATOR_VERSION,
             "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
             "stale": False,

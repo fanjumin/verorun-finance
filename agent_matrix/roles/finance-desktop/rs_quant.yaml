@@ -7,6 +7,7 @@ description: Quant analysis — adjusted klines, capital flows, positioning and 
 domain: research
 managed_modules:
   - stock_analysis
+  - multi_asset
 provider: deepseek
 model_name: deepseek-v4-flash
 system_prompt: prompts/rs_quant.md

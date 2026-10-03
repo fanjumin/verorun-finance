@@ -288,8 +288,12 @@ class AgentOrchestrator:
         # 敏感信息过滤
         import re
         sensitive_patterns = [
-            r'\b1[3-9]\d{9}\b',           # 手机号
-            r'\b\d{6}(19|20)\d{8}[\dXx]\b',  # 身份证
+            # 边界用数字负向断言（非 \b）：\b 是 Unicode 词边界，CJK 同属 \w，
+            # 中文紧邻号码时无边界 → 漏检（同 memory_engine F-DEP 复测遗留项）。
+            r'(?<!\d)1[3-9]\d{9}(?!\d)',          # 手机号
+            # 身份证 18 位：原 \d{6}(19|20)\d{8}[\dXx] 仅 17 字符，恒不匹配真实
+            # 身份证（尤其数字校验位），现补足为 6+2(世纪)+2(年)+2(月)+2(日)+3(序)+1(校验)。
+            r'(?<!\d)\d{6}(19|20)\d{2}\d{2}\d{2}\d{3}[\dXx](?!\d)',  # 身份证(18位)
             r'(password|密码|secret|密钥|AKSK|access_key)',  # 密钥类
         ]
         for pat in sensitive_patterns:

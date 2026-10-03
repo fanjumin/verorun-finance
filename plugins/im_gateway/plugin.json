@@ -4,12 +4,9 @@
   "identifier": "im_gateway",
   "python_dependencies": {
     "required": [],
-    "optional": {
-      "tweepy": "X 渠道弱依赖，缺失时自动降级（见 _ensure_deps）",
-      "praw": "Reddit 渠道弱依赖，缺失时自动降级（见 _ensure_deps）"
-    }
+    "optional": {}
   },
-  "version": "2.1.1",
+  "version": "3.1.0",
   "category": "system",
   "tags": [
     "im",
@@ -20,9 +17,9 @@
     "channel"
   ],
   "icon": "channels",
-  "description": "IM Gateway — Unified instant-messaging channel gateway (Feishu / WeCom / QQ / DingTalk), extensible to Telegram / LINE",
+  "description": "IM Gateway — Unified instant-messaging channel gateway: outbound messaging for Feishu / WeCom / Telegram / LINE / Slack / Discord / DingTalk / QQ, signed inbound webhooks (fail-closed), plus web third-party login",
   "tagline": "统一即时消息通道网关",
-  "tagline_subtitle": "飞书 · 企业微信 · QQ · 钉钉，可扩展 Telegram/LINE",
+  "tagline_subtitle": "飞书 · 企业微信 · Telegram · LINE · Slack · Discord · 钉钉 · QQ 消息通道（入站验签 fail-closed），含 Web 第三方登录",
   "author": "VeroRun",
   "min_app_version": "0.10.0",
   "compatible_editions": ["enterprise", "standard", "pro", "finance", "minipro"],

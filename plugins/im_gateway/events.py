@@ -39,6 +39,47 @@ def normalize_event(channel: str, raw_body: str) -> dict:
             'text': (msg.get('text') or '').strip(),
             'raw': data,
         }
+    if channel == 'slack':
+        ev = data.get('event') or {}
+        sender = ev.get('user') or (data.get('authorizations') or [{}])[0].get('user_id', '')
+        return {
+            'channel': 'slack',
+            'event_type': ev.get('type', 'unknown'),
+            'sender_id': str(sender or ''),
+            'text': (ev.get('text') or '').strip(),
+            'raw': data,
+        }
+    if channel == 'discord':
+        # 网关消息事件（t=MESSAGE_CREATE）优先；交互（type=2）次之
+        d = data.get('d') or {}
+        if data.get('t'):
+            author = d.get('author') or {}
+            return {
+                'channel': 'discord',
+                'event_type': str(data.get('t', 'unknown')).lower(),
+                'sender_id': str(author.get('id', '')),
+                'text': (d.get('content') or '').strip(),
+                'raw': data,
+            }
+        member = (data.get('member') or {}).get('user') or data.get('user') or {}
+        cmd = data.get('data') or {}
+        return {
+            'channel': 'discord',
+            'event_type': 'interaction',
+            'sender_id': str(member.get('id', '')),
+            'text': (cmd.get('name') or '').strip(),
+            'raw': data,
+        }
+    if channel == 'qq':
+        d = data.get('d') or {}
+        author = d.get('author') or {}
+        return {
+            'channel': 'qq',
+            'event_type': str(data.get('t', 'unknown')).lower(),
+            'sender_id': str(author.get('id', d.get('group_openid', ''))),
+            'text': (d.get('content') or '').strip(),
+            'raw': data,
+        }
     # 其他平台按需扩展
     return {'channel': channel, 'event_type': 'unknown',
             'sender_id': '', 'text': '', 'raw': data}

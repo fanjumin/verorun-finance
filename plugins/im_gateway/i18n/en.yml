@@ -5,26 +5,20 @@ IM Gateway: IM Gateway
 Feishu: Feishu
 WeCom: WeCom
 DingTalk: DingTalk
-Coming Soon: Coming Soon
 Loading...: Loading...
-Config Loading: Config Loading
 WeCom Config Loading: WeCom Config Loading
 Load failed: Load failed
 Unknown Error: Unknown Error
 Request Failed: Request Failed
 Network error: Network error
-Highlight: Highlight
-Integration: Integration
 Enabled: Enabled
 Enable WeCom Integration: Enable WeCom Integration
 Currently Read from Env Vars: Currently Read from Env Vars
 Not Saved to Database: Not Saved to Database
 Saved to Database: Saved to Database
-Config Reads DB First: Config Reads DB First
 Priority Read from DB Settings: Priority Read from DB Settings
 Official Field Set per Channel: Official Field Set per Channel
 Extensible: Extensible
-Admin: Admin
 Admin Open ID: Admin Open ID
 Admin UIN: Admin UIN
 AgentId: AgentId
@@ -37,13 +31,11 @@ AppSecret: AppSecret
 CorpId: CorpId
 EncodingAESKey: EncodingAESKey
 Encrypt Key: Encrypt Key
-Enterprise: Enterprise
 Enterprise ID: Enterprise ID
 Enterprise ID and Secret Required: Enterprise ID and Secret Required
 Secret: Secret
 Verification Token: Verification Token
 Default Recipient: Default Recipient
-Callback: Callback
 Callback Token: Callback Token
 Not Set: Not Set
 Show: Show
@@ -69,65 +61,12 @@ Connection Successful: Connection Successful
 Connection Failed: Connection Failed
 Please Enter First: Please Enter First
 Save Then Test: Save Then Test
-Required: Required
 Helper Function: Helper Function
-# Unified social gateway (Phase 6)
-Social Channels: Social Channels
-Connect: Connect
-No connected accounts yet: No connected accounts yet
-Channel: Channel
-Account: Account
-Token Expires: Token Expires
-Revoke: Revoke
-Publish Test: Publish Test
-Text: Text
-Image URL: Image URL
-Publish: Publish
 Connect failed: Connect failed
-Revoke this connected account?: Revoke this connected account?
-Sending: Sending
-Published: Published
-Connect a social account to publish through the unified gateway: Connect a social account to publish through the unified gateway
-Unsupported platform: Unsupported platform
-ENCRYPTION_KEY not configured; OAuth connect disabled: ENCRYPTION_KEY not configured; OAuth connect disabled
-App credentials not configured for this platform: App credentials not configured for this platform
-Missing code or state: Missing code or state
-Invalid state: Invalid state
-No refresh token for this account: No refresh token for this account
-This platform has no token refresh: This platform has no token refresh
-Account not found: Account not found
-channel and config are required: channel and config are required
-Manual credential save not supported for this channel: Manual credential save not supported for this channel
-This channel has no configurable fields: This channel has no configurable fields
-Unsupported config fields: Unsupported config fields
-Token refresh failed, please try again later: Token refresh failed, please try again later
-OAuth initialization failed: OAuth initialization failed
-Save Account: Save Account
-Account Key: Account Key
-Configure WeChat OA AppID/AppSecret in system settings: Configure WeChat OA AppID/AppSecret in system settings
 # UI redesign & i18n coverage (2026-08-25)
-Credential Channels: Credential Channels
-Detail: Detail
-Days Left: Days Left
-Expired: Expired
-OAuth: OAuth
-Refresh: Refresh
-Refreshed: Refreshed
-Refreshing: Refreshing
-Set webhook callback to: Set webhook callback to
-Webhook callback URL: Webhook callback URL
 'Enable {channel} Integration': 'Enable {channel} Integration'
 '{channel} Config Reads DB First': '{channel} Config Reads DB First'
 '{channel} Config Loading': '{channel} Config Loading'
-X (Twitter): X (Twitter)
-LinkedIn: LinkedIn
-Reddit: Reddit
-Weibo: Weibo
-Toutiao: Toutiao
-Facebook: Facebook
-Instagram: Instagram
-WeChat OA: WeChat OA
-Telegram Channel: Telegram Channel
 # IM Gateway adapter layer messages (2026-08-25)
 App ID and App Key cannot be empty: App ID and App Key cannot be empty
 App ID and App Secret cannot be empty: App ID and App Secret cannot be empty
@@ -166,42 +105,13 @@ WeCom webhook_url is empty: WeCom webhook_url is empty
 'Channel {channel} does not support media push': 'Channel {channel} does not support media push'
 # Card-based multi-level management UI (Phase 2)
 Instant Messaging: Instant Messaging
-Publishing: Publishing
 Third-party Login: Third-party Login
-Developer Login: Developer Login
 Configured: Configured
 Not Configured: Not Configured
 Configure: Configure
 Back: Back
-Connected: Connected
-Not Connected: Not Connected
-Shared: Shared
-Manage: Manage
 Disabled: Disabled
-account(s): account(s)
-Connected Targets: Connected Targets
-No connected targets yet: No connected targets yet
-Connect a social account first: Connect a social account first
 No login providers configured yet: No login providers configured yet
-No developer API keys yet: No developer API keys yet
-Provider: Provider
-Status: Status
-Key Prefix: Key Prefix
-Expires: Expires
-Name: Name
-Select at least one channel: Select at least one channel
-Text or image is required: Text or image is required
-Publish failed: Publish failed
-Set up the bot in Instant Messaging first, then only enter the target channel here: Set up the bot in Instant Messaging first, then only enter the target channel here
-New API Key: New API Key
-Key Type: Key Type
-Expires (optional): Expires (optional)
-Generate: Generate
-Generating: Generating
-Name is required: Name is required
-API key generated - copy it now: API key generated - copy it now
-Manage API keys for programmatic access: Manage API keys for programmatic access
-Revoke this API key?: Revoke this API key?
 # Phase 5 — Third-party login provider management
 Configure OAuth providers for third-party login: Configure OAuth providers for third-party login
 Client ID: Client ID
@@ -213,28 +123,45 @@ Default: Default
 Enable: Enable
 Disable: Disable
 Test: Test
-# Phase 7 — Mini-Program developer accounts (centralized from mini_app_builder)
-Access Token: Access Token
-Account Name: Account Name
-Account name cannot be empty: Account name cannot be empty
-Active: Active
-Add Account: Add Account
-Cancel: Cancel
-Channel ID: Channel ID
-Create: Create
-Delete: Delete
-Delete Failed: Delete Failed
-Edit: Edit
-Editing: Editing
-LIFF accessToken: LIFF accessToken
-Login Method: Login Method
-Mini-Program Developer Accounts: Mini-Program Developer Accounts
-Mini-program platform developer credentials: Mini-program platform developer credentials
-No mini-program accounts yet: No mini-program accounts yet
-Platform: Platform
-Save: Save
-Test Failed: Test Failed
-Testing...: Testing...
-This action cannot be undone: This action cannot be undone
-tt.login()/wx.login() code: tt.login()/wx.login() code
-WebApp.initData: WebApp.initData
+
+# IM adapter / gateway message strings (C4)
+Channel {channel} does not support send: Channel {channel} does not support send
+Feishu receive_id is not configured: Feishu receive_id is not configured
+IM Gateway is not enabled: IM Gateway is not enabled
+LINE Channel Access Token is empty: LINE Channel Access Token is empty
+LINE channel is not configured: LINE channel is not configured
+LINE recipient (userId) is required: LINE recipient (userId) is required
+Message content is empty: Message content is empty
+Telegram Bot Token is empty: Telegram Bot Token is empty
+Telegram channel is not configured: Telegram channel is not configured
+Telegram recipient (chat_id) is required: Telegram recipient (chat_id) is required
+Telegram send failed: Telegram send failed
+WeCom send failed: WeCom send failed
+'WeCom token acquisition failed: {}': 'WeCom token acquisition failed: {}'
+WeCom webhook_url or corp credentials are required: WeCom webhook_url or corp credentials are required
+# Batch D adapter strings (D2-c)
+'WeCom image exceeds the 2MB limit': 'WeCom image exceeds the 2MB limit'
+'DingTalk channel is not configured': 'DingTalk channel is not configured'
+'DingTalk token acquisition failed: {}': 'DingTalk token acquisition failed: {}'
+'DingTalk AgentId is required': 'DingTalk AgentId is required'
+'DingTalk recipient (userid) is required': 'DingTalk recipient (userid) is required'
+'DingTalk send failed': 'DingTalk send failed'
+'QQ app_id and client_secret cannot be empty': 'QQ app_id and client_secret cannot be empty'
+'QQ connection successful!': 'QQ connection successful!'
+'QQ token acquisition failed: {}': 'QQ token acquisition failed: {}'
+'QQ returned: {} (code={})': 'QQ returned: {} (code={})'
+'QQ channel is not configured': 'QQ channel is not configured'
+'QQ target_type must be user or group': 'QQ target_type must be user or group'
+'QQ recipient (openid or group_openid) is not configured': 'QQ recipient (openid or group_openid) is not configured'
+'Slack channel is not configured': 'Slack channel is not configured'
+'Slack bot token is required': 'Slack bot token is required'
+'Slack connection successful!': 'Slack connection successful!'
+'Slack returned: {}': 'Slack returned: {}'
+'Slack channel (or default_channel) is not configured': 'Slack channel (or default_channel) is not configured'
+'Slack send failed': 'Slack send failed'
+'Discord channel is not configured': 'Discord channel is not configured'
+'Discord bot token is required': 'Discord bot token is required'
+'Discord connection successful!': 'Discord connection successful!'
+'Discord returned HTTP {}': 'Discord returned HTTP {}'
+'Discord channel_id is not configured': 'Discord channel_id is not configured'
+'Discord send failed': 'Discord send failed'

@@ -293,10 +293,12 @@ v2 另外补齐一整套研究栈（源自专项实施方案）：`secmaster` �
 |---|---|
 | 知识管理 | `chatbot`、`memory_engine`、`cogevolution_substrate`、`project_workspace`、`veroscholar`（含假设发现引擎） |
 | 内容传播 | `content_factory`、`site_builder`、`mini_app_builder`、`ads`、`social_push` 等 |
-| 商业经营 | `shop`、`payment`、`logistics`、`subscription`、`coupons` 等 |
+| 商业经营 | `shop`、`payment`、`logistics`、`subscription`、`coupons`、`ai_relay` 等 |
 | 通信协作 | `im_gateway`、`email`、`sms`、`oauth_config` |
 | 运维安全 | `health_check`、`vault`、`captcha_embedded`、`enterprise_verify` 等 |
 | 数据工具 | `visitor_profile`、`analytics`、`currency_converter`、`site_domains` 等 |
+
+**通信协作（`email`，v1.7.0）**：完整的 SMTP/IMAP 邮件客户端 —— 收件箱搜索（优先服务端 IMAP SEARCH，自动降级客户端过滤）、撰写支持抄送/密送与附件、草稿箱、转发、信箱批量操作（标记已读/未读、移动、多选删除二次确认），以及联系人管理与 22 家预置邮件服务商域名自动推导。同时以 stdio MCP 暴露 `email_send`、`email_send_contact`、`email_get_config` 三个工具，供 Agent 矩阵直接调用。
 
 **插件管理器**：自动扫描 `plugins/` 解析 `plugin.json`；依赖解析用 Kahn 拓扑排序 + 环检测；事件总线 31 个系统事件（线程池异步分发）；WordPress 风格 Action / Filter 钩子（带优先级）；配置 JSON Schema Draft-07 校验；每插件独立日志（轮转 5MB×3）。
 
@@ -325,6 +327,20 @@ v2 另外补齐一整套研究栈（源自专项实施方案）：`secmaster` �
 **三阶段漏斗**：标准企业包与教育版免费分发获客（公开仓库 `verorun-pro` 与 `verorun-edu`）→ 插件购买、订阅与商业授权持续变现 → VeroGuard 在客户侧保护代码资产与许可权益。**数据飞轮愿景**：以领域知识资产为核心，知识库经业务使用持续自进化，支撑领域模型微调与智能设备训练。
 
 **区域路由**：`VERORUN_REGION=cn` → `api.verorun.cn`；`=global` → `api.verorun.com`。所有远程服务（许可 / 心跳 / 守护）按区域动态解析，支持单 URL 环境变量覆盖。
+
+### 境内 / 境外能力差异（CN vs. OS）
+
+同一套代码同时服务两个区域，区域只做能力收敛，绝不分叉产品。部署级天花板由 `VR_PROFILE` 判定（回落 `APP_REGION`），令牌级 `region_policy` 只能在天花板**以下**收紧 —— 任何令牌都无法把境内部署提升为全功能。
+
+| 维度 | 境内（合规收敛） | 境外（全功能） |
+|---|---|---|
+| 中转站能力 | 仅 `chat`、`embedding` | `chat`、`embedding`、`rerank`、`image`、`audio` |
+| 上游渠道 | 境内 / 不限（`any`）渠道 | 境内 / 境外 / 不限 |
+| 入站内容安全 | 开启（fail-closed） | 不启用 |
+| 调用日志保留 | 180 天 | 30 天 |
+| 配额口径 | 滚动窗口，与保留期对齐 | 滚动窗口，与保留期对齐 |
+
+由 `ai_relay`（多供应商 LLM 中转站）按区域执行上述收敛，不改动 API 形态、计费引擎与数据库结构。合规拦截发生在额度冻结**之前**，被拦截的请求不冻结余额、不产生调用日志。管理后台可导出合规材料包（策略快照、令牌、调用日志、模型与渠道、能力对照矩阵、内容安全类别、接口清单、备案信息），用于登记与审计，不含任何密钥与词库原文。
 
 ---
 

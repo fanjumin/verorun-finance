@@ -15,6 +15,20 @@ _PLUGIN_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _CURATOR_PROMPT_FILE = os.path.join(_PLUGIN_DIR, 'agents', 'memory_curator_prompt.md')
 
 # PII guard delegates to shared _base module (S11b).
+# F-DEP 自包含兜底：旧内核（如服务器 1.2.x）尚无 plugins._base.pii 时，
+# 使用与共享模块逐字一致的内置正则，避免自动提取链因 ImportError 整体宕掉。
+# 边界用数字负向断言 (非 \b)：\b 对 CJK 与数字之间不成立，中文紧邻手机/身份证
+# 会漏检；与 plugins/_base/pii.py 保持逐字一致，调整覆盖范围时两处必须同步。
+_PII_FALLBACK_PATTERNS = (
+    re.compile(r'(?i)(password|api[_-]?key|secret|token)\s*[:=]\s*\S+'),
+    re.compile(r'(?<!\d)1[3-9]\d{9}(?!\d)'),          # CN mobile
+    re.compile(r'(?<!\d)\d{17}[\dXx](?!\d)'),         # CN ID card
+)
+
+
+def _contains_pii_fallback(text: str) -> bool:
+    return any(p.search(text or '') for p in _PII_FALLBACK_PATTERNS)
+
 
 _SKIP_MARKERS = ('hello', 'hi', 'thanks', 'thank you')
 
@@ -92,6 +106,11 @@ class MemoryExtractor:
     def submit(self, task: dict, result: dict, agent_id: str):
         """Fire-and-forget extraction; never blocks the request thread."""
         if not self._config.get('enable_auto_extract', True):
+            return
+        # F-02：写管线隐私门。opt-out / 无主任务在进入线程池前直接丢弃，
+        # 与注入读路径（prompt_injector）、沉淀路径（sedimentation）同一同意口径。
+        from ..prompt_injector import user_opted_in
+        if not user_opted_in(_task_owner(task), self._config):
             return
         if not self._within_daily_budget():
             return
@@ -191,7 +210,11 @@ class MemoryExtractor:
 
     @staticmethod
     def _contains_pii(text: str) -> bool:
-        from plugins._base.pii import contains_pii
+        try:
+            from plugins._base.pii import contains_pii
+        except ImportError:
+            # F-DEP：旧内核缺共享 PII 模块时走自包含回退，提取链不中断。
+            return _contains_pii_fallback(text)
         return contains_pii(text)
 
     def _load_curator_config(self) -> dict:
@@ -200,7 +223,14 @@ class MemoryExtractor:
         模型配置取自核心角色行（provider_model_id → provider/model/base_url/api_key），
         system_prompt 覆盖为 curator 提示词；解析不到归属角色时返回 {}。
         """
-        from agent_matrix.models import get_db, resolve_agent_roles
+        from agent_matrix.models import get_db
+        try:
+            from agent_matrix.models import resolve_agent_roles
+        except ImportError:
+            # F-DEP：旧内核无 resolve_agent_roles，回退归属核心角色 athena，
+            # 与下方 `or ['athena']` 运行时兜底同口径，自动提取不恒 0。
+            def resolve_agent_roles(_plugin_id, _metadata):
+                return ["athena"]
         try:
             with open(_CURATOR_PROMPT_FILE, 'r', encoding='utf-8') as f:
                 curator_prompt = f.read().strip()

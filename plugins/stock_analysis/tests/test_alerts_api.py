@@ -121,7 +121,7 @@ class AlertsApiTestCase(unittest.TestCase):
             resp = self.client.get("/admin/stock-analysis/api/alerts")
         self.assertEqual(resp.status_code, 401)
         body = resp.get_json()
-        self.assertFalse(body["success"])
+        self.assertFalse(body["ok"])
         self.assertEqual(body["error"], "Unauthorized")
 
     def test_forbidden_403(self):

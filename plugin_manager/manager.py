@@ -32,7 +32,8 @@ from .exceptions import (
     PluginNotFoundError, PluginNotInstalledError,
     PluginNotEnabledError, PluginDependencyError,
     PluginCircularDependencyError, PluginStateError,
-    PluginVersionError, PluginBusyError,
+    PluginVersionError, PluginBusyError, PluginInstallError,
+    PluginUninstallError,
 )
 from .hooks import HookRegistry, get_hook_registry
 from .event_bus import EventBus, get_event_bus, EventName
@@ -171,6 +172,9 @@ class PluginManager:
         # 钩子系统 & 事件总线
         self._hook_registry = hook_registry or get_hook_registry()
         self._event_bus = event_bus or get_event_bus()
+        # PF-07：插件 EventBus 订阅追踪 {identifier: {event: handler}}，
+        # 供 disable/uninstall/熔断时按 identifier 精确 bus.off。
+        self._bus_subs: Dict[str, Dict[str, Any]] = {}
 
         # License & 商店
         self._license_mgr: Optional[LicenseManager] = None
@@ -250,6 +254,13 @@ class PluginManager:
 
         # 初始化数据库表
         init_plugin_registry_table()
+
+        # 初始化事件落盘待发层（FIN-SYS-3；失败不阻断启动，事件降级 fire-and-forget）
+        try:
+            from .event_bus import init_event_outbox_table
+            init_event_outbox_table()
+        except Exception as e:
+            print(f'[PluginManager] ⚠️ event_outbox 表初始化失败: {e}')
 
         # 初始化日志系统
         init_plugin_logging()
@@ -635,6 +646,99 @@ class PluginManager:
             print(f'[PluginManager] ⚠️ {info.identifier}: persist degradation notice failed: {e}')
         return False
 
+    # ── PF-07：声明式事件订阅统一注册（HookRegistry + EventBus 双通道）──
+
+    def _register_plugin_handlers(self, info: PluginInfo, instance: Any) -> None:
+        """注册 get_event_handlers() 声明的事件处理器（按 (pid, event) 幂等）。
+
+        双通道（插件标准 §10.1）：
+        - HookRegistry.add_action：保留历史通道，供 do_action(event, *args)
+          位置参数派发（如 stock.alert.triggered）；
+        - EventBus.on：修复死链——bus.emit(event, **kwargs) 的点号键事件
+          （hr.application.stage_changed / wishlist.updated 等）此前无接收方。
+        两通道键空间经审计互不相交，同一事件不会被双触发；preload/enable/
+        activate 等重复挂载路径按 (identifier, event) 去重，避免重复回调。
+        """
+        if not self._capability_allowed(info, 'get_event_handlers'):
+            return
+        getter = getattr(instance, 'get_event_handlers', None)
+        if not callable(getter):
+            return
+        try:
+            handlers = getter() or {}
+        except Exception as e:
+            print(f'[PluginManager] ⚠️ {info.identifier}: get_event_handlers() failed: {e}')
+            return
+        pid = info.identifier
+        subs = self._bus_subs.setdefault(pid, {})
+        for event, handler in handlers.items():
+            if event in subs:
+                continue  # 本进程已注册（preload/enable/activate 多路径幂等）
+            if self._hook_registry:
+                self._hook_registry.add_action(event, handler, identifier=pid)
+            if self._event_bus is not None:
+                self._event_bus.on(event, handler)
+            subs[event] = handler
+
+    def _unregister_plugin_handlers(self, identifier: str) -> None:
+        """摘除插件在两条通道上的全部订阅（disable/uninstall/熔断统一调用，幂等）。"""
+        if self._hook_registry:
+            try:
+                self._hook_registry.remove_all(identifier)
+            except Exception:
+                pass
+        subs = self._bus_subs.pop(identifier, {})
+        if self._event_bus is not None:
+            for event, handler in subs.items():
+                try:
+                    self._event_bus.off(event, handler)
+                except Exception:
+                    pass
+
+    @staticmethod
+    def _missing_python_deps(metadata: dict) -> list:
+        """PF-08：返回 python_dependencies.required 中当前解释器不可导入的模块名。
+
+        声明项按 **import 模块名** 填写（如 redis、yaml），不是 pip 分发包名
+        （PyYAML 的 import 名是 yaml）。仅做 find_spec 探测，绝不自动 pip。
+        """
+        import importlib.util
+        decl = (metadata or {}).get('python_dependencies') or {}
+        required = decl.get('required') or []
+        missing = []
+        for item in required:
+            if not isinstance(item, str):
+                continue
+            mod = item.strip()
+            if mod and importlib.util.find_spec(mod) is None:
+                missing.append(mod)
+        return missing
+
+    def _undeclared_capabilities(self, info: PluginInfo, instance: Any) -> list:
+        """PF-06（路线 B）：插件实际覆写了能力方法、却未在 permissions 声明
+        所需权限的 [(capability, permission)] 列表（第三方插件 enable 门禁用）。
+
+        以「子类方法是否不同于 BasePlugin 默认空实现」判定，避免默认实现误伤
+        未真正提供该能力的插件。
+        """
+        from .base import BasePlugin
+        declared = set(getattr(info, 'permissions', None) or [])
+        missing = []
+        cls = type(instance)
+        for cap, method in (
+            ('register_routes', 'register_routes'),
+            ('register_jobs', 'register_jobs'),
+            ('register_dag_nodes', 'register_dag_nodes'),
+            ('register_health_checks', 'register_health_checks'),
+            ('get_event_handlers', 'get_event_handlers'),
+        ):
+            required_perm = CAPABILITY_PERMISSIONS.get(cap)
+            if not required_perm or required_perm in declared:
+                continue
+            if getattr(cls, method, None) is not getattr(BasePlugin, method, None):
+                missing.append((cap, required_perm))
+        return missing
+
     # ── P0-4 运行时故障隔离 ─────────────────────────────────────────
 
     def _guard_failure(self, info: PluginInfo, context: str):
@@ -659,11 +763,8 @@ class PluginManager:
         try:
             self._save_to_db(info)
             self._instances.pop(info.identifier, None)
-            if self._hook_registry:
-                try:
-                    self._hook_registry.remove_all(info.identifier)
-                except Exception:
-                    pass
+            # PF-07：熔断摘除钩子与 EventBus 双通道订阅（原仅清 HookRegistry）
+            self._unregister_plugin_handlers(info.identifier)
         finally:
             print(f'[PluginManager] 🧯 {info.identifier} 熔断自动禁用: {reason}')
 
@@ -854,10 +955,8 @@ class PluginManager:
                             continue
                         self.app.register_blueprint(bp, url_prefix=prefix)
                         print(f'[PluginManager] {pid}: preloaded {prefix}')
-                # 注册钩子（P0-1 权限门控）
-                if self._hook_registry and self._capability_allowed(info, 'get_event_handlers') and hasattr(instance, 'get_event_handlers'):
-                    for event, handler in instance.get_event_handlers().items():
-                        self._hook_registry.add_action(event, handler, identifier=pid)
+                # 注册事件订阅（P0-1 权限门控；PF-07 HookRegistry+EventBus 双通道）
+                self._register_plugin_handlers(info, instance)
                 # ENABLED 状态下预注册成功 → 提升为 ACTIVE
                 if info.status == PluginStatus.ENABLED:
                     info.status = PluginStatus.ACTIVE
@@ -921,6 +1020,13 @@ class PluginManager:
 
             # 宿主共享模块静态校验（D-INSTALL-01）
             self._validate_shared_imports(info.path, identifier)
+
+            # PF-08：python_dependencies.required 安装期校验。
+            # 只做可导入性探测（import 模块名），缺失即拒绝安装——绝不自动 pip，
+            # 避免"安装成功、运行期 ModuleNotFoundError"的半成品。
+            missing_deps = self._missing_python_deps(info.metadata)
+            if missing_deps:
+                raise PluginDependencyError(identifier, missing_deps)
 
             info.status = PluginStatus.INSTALLED
             info.installed_at = datetime.now().isoformat()
@@ -1079,20 +1185,52 @@ class PluginManager:
             try:
                 instance = self._load_instance(info)
                 if hasattr(instance, 'setup') and callable(instance.setup):
-                    setup_result = instance.setup()
-                    if setup_result is False:
-                        raise RuntimeError('setup() returned False')
+                    # PF-02：on_install/on_enable 显式 False 或异常统一由
+                    # BasePlugin.setup() 包成 PluginInstallError，落入下方硬失败
+                    # 分支（置 ERROR、中止启用）。不再把 False 转 RuntimeError——
+                    # 那会被通用 except 降级为 ENABLED，形成半成品 ACTIVE。
+                    instance.setup()
 
                 self._instances[identifier] = instance
                 info.last_error = None
+            except PluginInstallError as e:
+                # on_install 明确失败（建表/迁移失败等）：不得降级为 ENABLED 半成品，
+                # 置 ERROR + last_error 落库并中止启用（否则会出现"状态 ACTIVE、
+                # 所有触库端点 500"的插件，如 max(uuid) 迁移失败的 cogevolution）。
+                self._guard_failure(info, 'on_install')
+                info.last_error = f'on_install failed: {e}'
+                info.status = PluginStatus.ERROR
+                self._save_to_db(info)
+                raise PluginStateError(
+                    identifier, info.status.value,
+                    f'enable failed: on_install reported failure: {e}'
+                )
             except SystemExit as e:
                 self._guard_failure(info, 'setup')
-                print(f'[PluginManager] ⚠️ {identifier} setup SystemExit: {e}')
+                print(f'[PluginManager] {identifier} setup SystemExit: {e}')
             except Exception as e:
                 self._guard_failure(info, 'setup')
                 info.last_error = f'setup error: {e}'
                 self._save_to_db(info)
                 print(f'[PluginManager] ⚠️ {identifier} setup degraded (ENABLED, restart to load routes): {e}')
+
+            # PF-06（路线 B）：第三方插件实际提供的能力必须在 permissions 显式
+            # 声明，缺声明在 enable 处硬失败（不再静默降级为"状态 ACTIVE 但能力
+            # 被门卫丢弃"）。官方插件由 OFFICIAL_PLUGIN_IDS 豁免；待官方 29 个
+            # 插件 plugin.json 声明回填批次完成后移除豁免。
+            _instance = self._instances.get(identifier)
+            if _instance is not None and info.identifier not in OFFICIAL_PLUGIN_IDS:
+                _undeclared = self._undeclared_capabilities(info, _instance)
+                if _undeclared:
+                    detail = '; '.join(
+                        f'{cap} -> "{perm}"' for cap, perm in _undeclared)
+                    info.last_error = (
+                        f'enable blocked: capability permissions undeclared: {detail}')
+                    info.status = PluginStatus.ERROR
+                    info.updated_at = datetime.now().isoformat()
+                    self._save_to_db(info)
+                    print(f'[PluginManager] ❌ {identifier} enable blocked: {detail}')
+                    raise PluginStateError(identifier, info.status.value, 'enabled')
 
             info.status = PluginStatus.ENABLED
             info.updated_at = datetime.now().isoformat()
@@ -1134,11 +1272,8 @@ class PluginManager:
                     if hasattr(instance, 'activate') and callable(instance.activate):
                         instance.activate()
 
-                    # 注册钩子（如果启用了钩子系统；P0-1 权限门控）
-                    if self._hook_registry and self._capability_allowed(info, 'get_event_handlers') and hasattr(instance, 'get_event_handlers'):
-                        handlers = instance.get_event_handlers()
-                        for event, handler in handlers.items():
-                            self._hook_registry.add_action(event, handler, identifier=identifier)
+                    # 注册事件订阅（P0-1 权限门控；PF-07 双通道，幂等）
+                    self._register_plugin_handlers(info, instance)
 
                     info.status = PluginStatus.ACTIVE
                     info.updated_at = datetime.now().isoformat()
@@ -1197,13 +1332,10 @@ class PluginManager:
                 if hasattr(instance, 'activate') and callable(instance.activate):
                     instance.activate()
 
-                # 注册钩子（如果启用了钩子系统；P0-1 权限门控）
+                # 注册事件订阅（P0-1 权限门控；PF-07 双通道，按 (pid,event) 幂等）
                 # 注意: Flask 不允许 app 处理首个请求后动态注册蓝图，
                 # 插件路由统一由启动时 _preload_routes() 预注册。
-                if self._hook_registry and self._capability_allowed(info, 'get_event_handlers') and hasattr(instance, 'get_event_handlers'):
-                    handlers = instance.get_event_handlers()
-                    for event, handler in handlers.items():
-                        self._hook_registry.add_action(event, handler, identifier=identifier)
+                self._register_plugin_handlers(info, instance)
 
             except SystemExit as e:
                 self._guard_failure(info, 'activate')
@@ -1259,6 +1391,10 @@ class PluginManager:
                 except Exception as e:
                     print(f'[PluginManager] {identifier} deactivate warning: {e}')
 
+            # PF-07：摘除 HookRegistry + EventBus 双通道事件订阅，
+            # 防止 DISABLED 插件继续收到/处理事件（原仅摘除蓝图，钩子残留）。
+            self._unregister_plugin_handlers(identifier)
+
             # P2-5: 关闭插件 MCP server 连接并置 enabled=0
             try:
                 from .mcp import stop_plugin_mcp
@@ -1293,24 +1429,74 @@ class PluginManager:
             orig_last_error = info.last_error
 
             try:
+                # PF-13（on_uninstall 复测遗留）：disable() 会把实例从
+                # _instances 摘走（见 disable() 内的 pop），若在 disable 之后
+                # 才取实例，此处恒为 None → on_uninstall（DROP SCHEMA 所在）
+                # 整段被跳过、插件表静默残留（memory_engine 残留 9 表铁证）。
+                # 故必须在 disable() 之前先持有实例引用。
+                instance = self._instances.get(identifier)
+
                 # 如果处于 ACTIVE 或 ENABLED，先禁用
                 if info.status in (PluginStatus.ACTIVE, PluginStatus.ENABLED):
                     self.disable(identifier)
 
+                # DROP 前先摘除该插件的 APScheduler 定时作业：存活 cron 及其
+                # 持有的池化连接会占用插件 schema，是 DROP SCHEMA CASCADE 失败、
+                # 卸载后数据表残留的直接诱因（memory_engine 残留 9 表）。
+                self._remove_plugin_jobs(identifier)
+
+                # PF-07：兜底摘除事件订阅（覆盖未经 disable 的非 ACTIVE 卸载路径）
+                self._unregister_plugin_handlers(identifier)
+
+                cleanup_ok = True
+                cleanup_err = ''
+
+                # DISABLED/ERROR/熔断/跨进程/重试卸载时实例已不在内存（disable
+                # 与熔断都会 pop），从磁盘重建实例以执行清理钩子。_load_instance
+                # 只构造+注入 config/logger，不重跑 setup()，无启用副作用。
+                # 重建失败不得假装零残留：按清理失败标准中止，保留 registry 行。
+                if instance is None:
+                    try:
+                        instance = self._load_instance(info)
+                        print(f'[PluginManager] {identifier}: reloaded instance for on_uninstall cleanup')
+                    except Exception as e:
+                        instance = None
+                        cleanup_ok = False
+                        cleanup_err = f'reload instance for cleanup failed: {e}'
+                        print(f'[PluginManager] {identifier} on_uninstall reload failed: {e}')
+
                 # 执行 on_uninstall（如果插件有 cleanup）
-                instance = self._instances.pop(identifier, None)
-                if instance and hasattr(instance, 'on_uninstall'):
+                if cleanup_ok and instance is not None and hasattr(instance, 'on_uninstall'):
                     try:
                         # 兼容两种签名：on_uninstall(registry) 与 on_uninstall()。
                         # 历史版本 manager 曾无参调用，导致含 registry 参数的插件
                         # 抛 TypeError 被吞，DROP SCHEMA 从未执行（数据残留）。
                         _sig = inspect.signature(instance.on_uninstall)
                         if 'registry' in _sig.parameters:
-                            instance.on_uninstall(info)
+                            _r = instance.on_uninstall(info)
                         else:
-                            instance.on_uninstall()
+                            _r = instance.on_uninstall()
+                        # 显式 False（隐式 None 不算）= 清理失败：不得假装零残留。
+                        if _r is False:
+                            cleanup_ok = False
+                            cleanup_err = 'on_uninstall returned False'
                     except Exception as e:
-                        print(f'[PluginManager] {identifier} uninstall warning: {e}')
+                        cleanup_ok = False
+                        cleanup_err = str(e)
+                        print(f'[PluginManager] {identifier} on_uninstall failed: {e}')
+
+                # 清理走完后确保实例不残留在运行态映射（disable 已摘时为空操作）
+                self._instances.pop(identifier, None)
+
+                if not cleanup_ok:
+                    # 清理失败：保留 registry 记录供排障/重试，状态留 DISABLED
+                    # （上方 disable 已生效），落 last_error 并中止卸载。
+                    info.status = PluginStatus.DISABLED
+                    info.last_error = f'卸载清理失败，插件数据可能残留: {cleanup_err}'
+                    info.updated_at = datetime.now().isoformat()
+                    self._save_to_db(info)
+                    self._cache[identifier] = info
+                    raise PluginUninstallError(identifier, cleanup_err)
 
                 # 兜底：注销插件声明的 Agent（即使插件从未 enable 过）
                 _meta = info.metadata or {}
@@ -1325,6 +1511,10 @@ class PluginManager:
 
                 # 从缓存中移除
                 self._cache.pop(identifier, None)
+            except PluginUninstallError:
+                # 清理失败已在上面持久化为 DISABLED + last_error；此处不得
+                # 再把状态恢复成原 ACTIVE/ENABLED，直接上抛给调用方。
+                raise
             except Exception:
                 # ── 失败回滚：恢复 DB 状态与缓存（D-UNINSTALL-01）──
                 try:
@@ -1342,6 +1532,20 @@ class PluginManager:
 
             self._emit('plugin.uninstalled', plugin_id=identifier)
             print(f'[PluginManager] ✅ {identifier} uninstalled')
+
+    def _remove_plugin_jobs(self, identifier: str):
+        """卸载前经 SchedulerEngine 摘除插件 cron（生产实例注入在
+        app.config['AUTOMATION_SCHEDULER']，见 admin/app.py）。调度器不可用
+        （CLI/测试/未初始化）时静默跳过，不阻断卸载。"""
+        try:
+            scheduler = None
+            if self.app is not None:
+                scheduler = self.app.config.get('AUTOMATION_SCHEDULER')
+            if scheduler is not None and hasattr(scheduler, 'remove_plugin_jobs'):
+                n = scheduler.remove_plugin_jobs(identifier)
+                print(f'[PluginManager] {identifier}: removed {n} plugin job(s) before uninstall')
+        except Exception as e:
+            print(f'[PluginManager] {identifier}: remove plugin jobs warning: {e}')
 
     def _validate_shared_imports(self, plugin_dir: str, identifier: str):
         """静态校验插件对宿主共享模块的依赖（D-INSTALL-01）。
@@ -1663,7 +1867,7 @@ class PluginManager:
                 if not isinstance(job, dict) or not callable(job.get('func')):
                     print(f'[PluginManager] ⚠️ {pid}: job {job} 无 func 或不可调用，跳过')
                     continue
-                if scheduler.add_plugin_job(job):
+                if scheduler.add_plugin_job(job, plugin_id=pid):
                     count += 1
                     print(f'[PluginManager] ✅ {pid}: job {job.get("id")} 已注册')
         return count
@@ -1835,6 +2039,47 @@ class PluginManager:
                 print(f'[PluginManager] ⚠️ mount-all {identifier} failed: {e}')
         if mounted:
             print(f'[PluginManager] ✅ 启动挂载全部插件路由: {mounted}')
+        # PF-05：标记启动挂载已完成。此后 enable 的插件若蓝图不在
+        # app.blueprints 中，即运行时新安装插件，路由需重启生效。
+        self._routes_mounted = True
+
+    def route_mount_status(self, identifier: str) -> dict:
+        """PF-05：返回插件声明蓝图在本进程的实际挂载状态。
+
+        mount_all_routes() 在启动时一次性挂载磁盘全部插件蓝图，运行时
+        （首请求后）Flask 拒绝 register_blueprint：运行时新安装的插件即使
+        enable 成功，其 HTTP 路由也要等下次重启才生效。enable API 据此告知
+        调用方 ``restart_required``，不再让前端误以为路由已即时可用。
+
+        Returns:
+            {'restart_required': bool, 'missing': [bp_name, ...]}
+        """
+        result = {'restart_required': False, 'missing': []}
+        if not self.app or not getattr(self, '_routes_mounted', False):
+            # 启动挂载尚未发生：随后的 mount_all_routes() 会统一挂上，无需重启
+            return result
+        info = self._cache.get(identifier)
+        instance = self._instances.get(identifier) if info else None
+        if info is None or instance is None:
+            return result
+        # 只读权限判定（不走 _capability_allowed，避免 enable 成功路径平白
+        # 追加 capability blocked 降级落库）
+        if identifier not in OFFICIAL_PLUGIN_IDS and \
+                'routes' not in set(getattr(info, 'permissions', None) or []):
+            return result
+        getter = getattr(instance, 'register_routes', None)
+        if not callable(getter):
+            return result
+        try:
+            bps = getter() or []
+        except Exception:
+            return result
+        missing = [bp.name for bp in bps
+                   if getattr(bp, 'name', None)
+                   and bp.name not in self.app.blueprints]
+        result['missing'] = missing
+        result['restart_required'] = bool(missing)
+        return result
 
     def is_path_allowed(self, path: str) -> bool:
         """门卫：判断请求路径对应的插件是否处于启用状态。

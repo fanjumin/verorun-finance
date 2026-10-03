@@ -1,0 +1,24 @@
+plugin.name: Multi-Asset Data
+plugin.tagline: Futures/Options/Funds/Bonds One data surface
+menu.multi_asset: Multi-Asset
+Multi-Asset Workbench: Multi-Asset Workbench
+Symbol: Symbol
+Asset Type: Asset Type
+Frequency: Frequency
+Load Bars: Load Bars
+Quote: Quote
+Profile: Profile
+Instrument Search: Instrument Search
+Search: Search
+Storage: Storage
+Source: Source
+Rows: Rows
+Trade Date: Trade Date
+No data.: No data.
+Derivative risk notice: Leveraged derivative product. Trading involves substantial risk of loss and is suitable for professional investors only.
+Chain sources: Chain sources
+Equity: Equity
+Futures: Futures
+Options: Options
+Funds: Funds
+Bonds: Bonds

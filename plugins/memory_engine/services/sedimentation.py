@@ -151,8 +151,9 @@ class SedimentationService:
     def _enqueue(self, conn, source_schema, memory_id, owner_id,
                  memory_type, content, keywords, confidence, quality_score) -> bool:
         content = str(content or '').strip()
-        from plugins._base.pii import contains_pii
-        if not content or contains_pii(content):
+        # 复用 extractor 的 PII 守卫（含旧内核缺 plugins._base.pii 时的自包含回退，F-DEP）。
+        from .extractor import MemoryExtractor
+        if not content or MemoryExtractor._contains_pii(content):
             if content:
                 logger.info('sedimentation skipped (PII): %s/%s', source_schema, memory_id)
             return False

@@ -6,7 +6,7 @@
     "required": [],
     "optional": {}
   },
-  "version": "1.6.0",
+  "version": "1.8.0",
   "description": "Hierarchical agent memory with vector retrieval, Reflexion-based self-evolution and prompt metrics.",
   "author": "VeroRun",
   "min_app_version": "0.10.0",

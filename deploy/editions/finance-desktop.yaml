@@ -16,10 +16,16 @@ plugins:
   # ── 设计定稿（2026-09-21）：include 只做「发包裁剪」，运行时可见性走动态分流规则 ──
   #
   #  ① 发包：include 决定哪些插件目录进安装包（stage-verorun-core.mjs / sync-to-pro.yml
-  #      按它物理拷贝），故金融桌面版**包里只有这 6 项**（含 _base），不适用插件根本进不来。
-  #      实测：staging 产物 8 个目录 = _base + 5 个业务插件 + data/_templates（非插件）。
+  #      按它物理拷贝），故金融桌面版**包里只有这 10 项**（含 _base），不适用插件根本进不来。
+  #      实测（2026-09-21）：staging 产物 8 个目录 = _base + 5 个业务插件 + data/_templates
+  #      （非插件）；2026-10-01：加入 multi_asset 后为 _base + 7 个业务插件；同日再加入
+  #      project_workspace、neural_flow 后，include 定稿为 _base + 9 个业务插件
+  #      （ai_relay 属官方服务端能力，不进金融版发布包）。
   #      2026-09-21：currency_converter（多币种）整插件移出 —— 本版无结算/换算场景，
   #      留着只是"设置页一张卡 + 一个无归属插件"。
+  #      2026-10-01：multi_asset（多资产：期货/期权/基金/债券）移入 —— 其
+  #      plugin.json 已声明 compatible_editions 含 finance，且其余 6 项均不提供
+  #      多资产行情，缺它则本版"能力声明与发行载荷"自相矛盾。
   #   ② 运行时：声明 runtime_whitelist: false，让 include 退出运行时门控，可见性回到
   #      「默认放行 + 显式隐藏」。这一条是必须的 —— 商店上架的适用插件不在 include 里，
   #      若 include 兼任运行时白名单，装完会被门控跳过（_edition_hidden_map 的隐藏集
@@ -35,17 +41,19 @@ plugins:
   include:
     - _base
     - stock_analysis
+    - multi_asset
     - im_gateway
     - email
     - memory_engine
     - vault
     - net_proxy
+    - project_workspace
+    - neural_flow
   # ⚠️ 运行时无效（勿依赖）：agent_matrix.models.edition_plugin_excludes() 已废弃、恒返回
   #   空列表 —— 插件可见性现由各插件 plugin.json 的 compatible_editions 决定。
   #   本段保留仅作"本版明确不提供"的登记与发包侧参考；**实际运行时闸门是上面的 include**。
   #   若将来要恢复黑名单语义，须先改 edition_plugin_excludes()，否则这里写了也不会生效。
   exclude:
-    - project_workspace
     - veroscholar
     # hr_recruit：其 agent_role=office 在 agent_matrix/roles/09-office.yaml 声明 editions:[official]，
     # 金融版按 edition 过滤角色集后，discovery 的「agent_role 须为核心角色」校验必然失败

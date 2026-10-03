@@ -33,7 +33,9 @@ TABLES = ("sa_watchlist", "sa_analysis_run", "sa_analysis_result",
           # 方案 §4.7 仿真账户（默认通道，不涉真实资金）
           "sa_paper_order", "sa_paper_position", "sa_paper_account",
           # 证券主数据（全市场代码+名称），供 /api/search 检索
-          "sa_symbol_master")
+          "sa_symbol_master",
+          # LLM 响应缓存（跨用户复用 + 交易时段 TTL），见 llm_cache.py
+          "sa_llm_cache")
 
 DDL = [
     # 标的池
@@ -348,6 +350,28 @@ DDL = [
     )""",
     """CREATE INDEX IF NOT EXISTS ix_symbol_master_name
        ON sa_symbol_master (name_norm)""",
+    # LLM 响应缓存：跨用户复用 + 交易时段 TTL（方案见 llm_cache.py）
+    # 键 = sha256(scope|model|scene|symbol|fingerprint)，fingerprint 为量化后的
+    # 行情档位 + 证据去数字指纹 —— 不含精确数值，否则盘中价格一跳就永不命中。
+    """
+    CREATE TABLE IF NOT EXISTS sa_llm_cache (
+        id           SERIAL PRIMARY KEY,
+        cache_key    VARCHAR(64) NOT NULL UNIQUE,
+        scope        VARCHAR(16) NOT NULL,
+        symbol       VARCHAR(12) NOT NULL,
+        model_name   VARCHAR(64) NOT NULL DEFAULT '',
+        scene        VARCHAR(24) NOT NULL DEFAULT '',
+        fingerprint  VARCHAR(64) NOT NULL DEFAULT '',
+        prompt_chars INT         NOT NULL DEFAULT 0,
+        payload      JSONB       NOT NULL,
+        hit_count    INT         NOT NULL DEFAULT 0,
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+        expires_at   TIMESTAMPTZ NOT NULL
+    )""",
+    """CREATE INDEX IF NOT EXISTS ix_sa_llm_cache_exp
+       ON sa_llm_cache (expires_at)""",
+    """CREATE INDEX IF NOT EXISTS ix_sa_llm_cache_sym
+       ON sa_llm_cache (symbol, scope)""",
 ]
 
 
@@ -599,7 +623,12 @@ def delete_job(job_id: str) -> bool:
 
 
 def find_today_done_job(symbol: str, scope: str):
-    """同日同标的同 scope 的成功任务（幂等复用锚点，契约 §3 force=false 语义）。"""
+    """同日同标的同 scope 的成功任务（幂等复用锚点，契约 §3 force=false 语义）。
+
+    ⚠️ 复用判定已改走 find_reusable_job（交易时段 TTL，支持盘后跨天、盘中收紧），
+    本函数自 2026-09-28 起在插件内无调用方；仅保留供外部脚本/回溯使用，
+    新代码请勿再调用 —— 否则盘中会复用整天的陈旧报告。
+    """
     with get_db() as conn:
         row = conn.execute(
             "SELECT job_id, status, result FROM sa_jobs "
@@ -607,6 +636,35 @@ def find_today_done_job(symbol: str, scope: str):
             "AND created_at::date = current_date "
             "ORDER BY id DESC LIMIT 1", (symbol, scope)).fetchone()
     return dict(row) if row else None
+
+
+def find_reusable_job(symbol: str, scope: str, ttl_seconds: int):
+    """TTL 版复用锚点：有效期内已 done 的任务直接复用（不发起 LLM）。
+
+    与 find_today_done_job 的差别：不按自然日切分 —— 支持盘后跨天复用
+    （收盘后行情不再变化），同时盘中按 TTL 收紧（避免整天复用陈旧报告）。
+    force=true 仍由调用方绕过本函数。
+
+    ⚠️ INTERVAL 必须用 '1 second' * ? 形式：psycopg2 会把 '%s seconds'
+       转义成 ''60'' 报语法错（项目已踩过，见 plugins/_base/ratelimit.py）。
+    """
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT job_id, status, result FROM sa_jobs "
+            "WHERE symbol = ? AND scope = ? AND status = 'done' "
+            "AND COALESCE(finished_at, created_at) > now() - INTERVAL '1 second' * ? "
+            "ORDER BY id DESC LIMIT 1",
+            (symbol, scope, int(ttl_seconds))).fetchone()
+    return dict(row) if row else None
+
+
+def purge_llm_cache(retain_days: int = 7) -> int:
+    """清理过期 LLM 缓存行，返回删除行数（供定时任务留痕）。"""
+    with get_db() as conn:
+        cur = conn.execute(
+            "DELETE FROM sa_llm_cache "
+            "WHERE expires_at < now() - INTERVAL '1 day' * ?", (int(retain_days),))
+        return int(getattr(cur, "rowcount", 0) or 0)
 
 
 def list_queued_jobs(limit: int = 5) -> list:

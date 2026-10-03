@@ -47,6 +47,19 @@ def init_email_db():
         )''')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_email_sent_from ON email_sent(from_addr)')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_email_sent_sent_at ON email_sent(sent_at)')
+        conn.execute('''CREATE TABLE IF NOT EXISTS email_drafts (
+            id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            to_addr         TEXT NOT NULL DEFAULT '',
+            cc_addr         TEXT NOT NULL DEFAULT '',
+            bcc_addr        TEXT NOT NULL DEFAULT '',
+            subject         TEXT NOT NULL DEFAULT '',
+            body_text       TEXT NOT NULL DEFAULT '',
+            body_html       TEXT NOT NULL DEFAULT '',
+            attachments     TEXT NOT NULL DEFAULT '[]',
+            created_at      TIMESTAMPTZ DEFAULT NOW(),
+            updated_at      TIMESTAMPTZ DEFAULT NOW()
+        )''')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_email_drafts_updated_at ON email_drafts(updated_at DESC)')
         conn.commit()
         print(_('[EmailPlugin] PG schema email initialized'))
 

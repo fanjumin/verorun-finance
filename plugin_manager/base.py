@@ -10,6 +10,7 @@ i18n: plugins use their own i18n/{locale}.yml files,
 """
 
 import os
+import re
 import sys
 import yaml
 from typing import List, Dict, Any, Optional, Callable
@@ -174,17 +175,50 @@ class BasePlugin(ABC):
 
         调用时机: enable() 时调用，在依赖检查通过之后。
         职责: 创建数据库表、注册钩子、初始化配置。
-        返回 False 会导致 enable 失败。
+        on_install 明确失败（返回 False 或抛异常）会抛 PluginInstallError，
+        由 PluginManager.enable() 捕获后置 ERROR 并中止启用。
 
         默认桥接到旧系统钩子 on_install() + on_enable()，
         使仅实现旧钩子的插件（如 analytics/health_check）在新系统下也能正确初始化。
         """
+        from .exceptions import PluginInstallError
+
         reg = getattr(self, 'manager', None)
+        identifier = (getattr(getattr(self, 'plugin_info', None), 'identifier', None)
+                      or getattr(self, 'name', '?'))
         try:
-            self.on_install(reg)
+            install_result = self.on_install(reg)
+        except PluginInstallError:
+            raise
         except Exception as e:
-            print(f'[Plugin] {getattr(self, "name", "?")} on_install warning: {e}')
-        return self.on_enable(reg)
+            raise PluginInstallError(
+                identifier, f'on_install raised: {e}'
+            ) from e
+        # 仅显式 False 视为失败：部分历史插件成功路径隐式返回 None
+        # （chatbot / hr_recruit），不能用 `if not install_result` 误判。
+        if install_result is False:
+            raise PluginInstallError(
+                identifier,
+                'on_install returned False (schema/table initialization failed)'
+            )
+
+        # PF-02：on_enable 与 on_install 同一把关标准——显式 False 或抛异常
+        # 都必须中止启用。此前 on_enable 的 False 经 manager 通用 except 降级为
+        # ENABLED，形成"半成品 ACTIVE"（资源未就绪、触库端点 500）。
+        try:
+            enable_result = self.on_enable(reg)
+        except PluginInstallError:
+            raise
+        except Exception as e:
+            raise PluginInstallError(
+                identifier, f'on_enable raised: {e}'
+            ) from e
+        if enable_result is False:
+            raise PluginInstallError(
+                identifier,
+                'on_enable returned False (resource initialization failed)'
+            )
+        return enable_result
 
     def activate(self):
         """[ACTIVE 阶段] 插件激活。
@@ -244,6 +278,135 @@ class BasePlugin(ABC):
     def get_event_handlers(self) -> Dict[str, Callable]:
         """Return {event_name: handler_function} to subscribe to system events."""
         return {}
+
+    # ── 标准 SQL 迁移器（PF-10，v1.8 §10.6 强制契约） ────────────────
+
+    @staticmethod
+    def _migration_version_tuple(value: Optional[str]):
+        """从文件名/版本串提取数字版本元组（'v1.2.0__x' -> (1,2,0)）；无数字返回 None。"""
+        nums = re.findall(r'\d+', str(value or ''))
+        return tuple(int(x) for x in nums) if nums else None
+
+    def apply_sql_migrations(self, *, get_conn, schema: str,
+                             migrations_dir: str,
+                             from_version: Optional[str] = None,
+                             to_version: Optional[str] = None,
+                             lock_key: Optional[int] = None) -> List[str]:
+        """执行插件 SQL 迁移目录（标准 §10.6；幂等台账 + 版本边界 + 锁串行化）。
+
+        典型用法（on_install / on_enable 中调用）::
+
+            from .models import get_<id>_db
+            self.apply_sql_migrations(
+                get_conn=get_<id>_db,
+                schema='<id>',
+                migrations_dir=os.path.join(os.path.dirname(__file__), 'migrations'))
+
+        文件命名：``v<semver>__<description>.sql``
+        （如 ``v1.2.0__add_jobs_index.sql``），同版本多文件按文件名字典序顺序
+        执行；兼容 ``v<x>_to_v<y>__*.sql``（取文件名首个版本号）。
+
+        语义：
+        - 台账：``schema_version(version TEXT PK, applied_at)`` 记录**已应用
+          文件名**；重复执行自动跳过，已应用文件永不重跑（修正 memory_engine
+          旧实现"忽略 from/to 全量套用"的问题）。
+        - 版本边界：仅应用 (from_version, to_version] 区间内的文件；边界为
+          None 表示不限制（新装全量 / 升级窗口两种模式同源）。
+        - 并发（PG）：``pg_advisory_lock`` 串行化；锁号缺省由 schema 名稳定
+          派生 int31，显式传入时**禁止**与内核锁号（如 event_outbox 775221、
+          plugin_registry 锁号）撞用。
+        - 事务：每个文件"执行 SQL + 登记版本"在同一事务，成功即 commit；
+          失败即抛且不登记，修正后重跑安全。调用方负责把异常转成
+          on_install/on_enable 的 False 或抛出（PF-02：失败即中止启用）。
+        - 开发回退（sqlite3）：无 schema/无 advisory lock，台账为插件库内
+          裸表 schema_version，其余语义相同。
+
+        Returns:
+            本次新应用的文件名列表（按执行顺序）。
+        """
+        import zlib
+
+        if not re.fullmatch(r'[a-z_][a-z0-9_]*', schema or ''):
+            raise ValueError(f'illegal schema name: {schema!r}')
+        if not callable(get_conn):
+            raise ValueError('get_conn must be a callable returning a context manager')
+        if lock_key is None:
+            lock_key = zlib.crc32(schema.encode('utf-8')) & 0x7FFFFFFF
+
+        lo = self._migration_version_tuple(from_version)
+        hi = self._migration_version_tuple(to_version)
+        applied: List[str] = []
+
+        with get_conn() as conn:
+            is_sqlite = 'sqlite3' in type(conn).__module__
+            qual = '' if is_sqlite else f'{schema}.'
+            ph = '?' if is_sqlite else '%s'
+
+            def _first_col(row):
+                """兼容 dict/RealDictRow/sqlite3.Row/元组游标取首列。"""
+                if isinstance(row, dict):
+                    return next(iter(row.values()))
+                if hasattr(row, 'keys'):
+                    return row[list(row.keys())[0]]
+                return row[0]
+
+            if not is_sqlite:
+                conn.execute('SELECT pg_advisory_lock(%s)', (lock_key,))
+            try:
+                if is_sqlite:
+                    conn.execute(
+                        'CREATE TABLE IF NOT EXISTS schema_version ('
+                        ' version TEXT PRIMARY KEY,'
+                        " applied_at TEXT NOT NULL DEFAULT (datetime('now')))")
+                else:
+                    conn.execute(f'CREATE SCHEMA IF NOT EXISTS {schema}')
+                    conn.execute(
+                        f'CREATE TABLE IF NOT EXISTS {schema}.schema_version ('
+                        ' version TEXT PRIMARY KEY,'
+                        ' applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW())')
+                rows = conn.execute(
+                    f'SELECT version FROM {qual}schema_version').fetchall()
+                done = {_first_col(r) for r in rows} if rows else set()
+
+                if not os.path.isdir(migrations_dir):
+                    return applied
+                for fname in sorted(os.listdir(migrations_dir)):
+                    if not fname.endswith('.sql') or fname in done:
+                        continue
+                    ver = self._migration_version_tuple(fname)
+                    if ver is not None:
+                        if lo is not None and ver <= lo:
+                            continue
+                        if hi is not None and ver > hi:
+                            continue
+                    with open(os.path.join(migrations_dir, fname),
+                              'r', encoding='utf-8') as fh:
+                        sql = fh.read()
+                    if not sql.strip():
+                        continue
+                    if is_sqlite:
+                        # sqlite3 单 execute 不允许多语句；executescript 会隐式
+                        # 提交，故版本登记紧随其后单独执行（仅开发回退路径）。
+                        conn.executescript(sql)
+                    else:
+                        conn.execute(sql)
+                    conn.execute(
+                        f'INSERT INTO {qual}schema_version (version) VALUES ({ph})',
+                        (fname,))
+                    conn.commit()
+                    applied.append(fname)
+            finally:
+                # 池化连接归还后会话级 advisory lock 仍持有，必须显式释放；
+                # 先 rollback 丢弃失败文件的中止事务，再解锁。search_path 由
+                # 池包装器归还时统一重置（§11.2）。
+                if not is_sqlite:
+                    try:
+                        conn.rollback()
+                        conn.execute('SELECT pg_advisory_unlock(%s)', (lock_key,))
+                        conn.commit()
+                    except Exception:
+                        pass
+        return applied
 
     # ── 工具方法 ──
 

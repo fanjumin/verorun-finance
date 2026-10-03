@@ -1,0 +1,24 @@
+plugin.name: 多资产数据
+plugin.tagline: 期货/期权/基金/债券 统一数据面
+menu.multi_asset: 多资产
+Multi-Asset Workbench: 多资产工作台
+Symbol: 代码
+Asset Type: 资产类型
+Frequency: 周期
+Load Bars: 加载行情
+Quote: 报价
+Profile: 标的概况
+Instrument Search: 标的检索
+Search: 搜索
+Storage: 数据存储
+Source: 数据源
+Rows: 记录数
+Trade Date: 交易日
+No data.: 暂无数据。
+Derivative risk notice: 杠杆衍生品，交易存在重大亏损风险，仅适合专业投资者。
+Chain sources: 数据源链
+Equity: 股票
+Futures: 期货
+Options: 期权
+Funds: 基金
+Bonds: 债券

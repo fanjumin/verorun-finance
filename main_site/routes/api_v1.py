@@ -676,7 +676,13 @@ def chat_stream():
             temperature = float(cfg.get('temperature', '0.7'))
             max_tokens = int(cfg.get('max_tokens', '2048'))
 
-            for token in engine.chat_stream(chat_messages, temperature=temperature, max_tokens=max_tokens):
+            # DEF-008：chat_stream 产出 ChatCompletionChunk 对象。旧代码按字符串
+            # 协议消费，于是把对象 repr 当 token 下发（实测单次 170KB 调试垃圾）。
+            # 统一走内核归一化：对象解包 delta.content，字符串与 Error: 帧原样透传。
+            from agent_matrix.llm_text import iter_stream_text
+            for token in iter_stream_text(
+                    engine.chat_stream(chat_messages, temperature=temperature,
+                                       max_tokens=max_tokens)):
                 if token.startswith("Error:"):
                     yield _sse_event('error', content=token)
                     return

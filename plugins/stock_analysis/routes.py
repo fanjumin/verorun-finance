@@ -104,12 +104,12 @@ def _perm_required(perm: str, endpoint: str, limit: int = 60, window: float = 60
         def wrapper(*args, **kwargs):
             payload, auth_err = _require_perm(perm)
             if payload is None:
-                return jsonify({"success": False, "error": auth_err}), 401
+                return _contract_error(auth_err or "Unauthorized", 401)
             if auth_err:
-                return jsonify({"success": False, "error": auth_err}), 403
+                return _contract_error(auth_err, 403)
             key = "stock_analysis:" + str(payload.get("sub") or "unknown") + ":" + endpoint
             if not _rate_limit(key, limit, window):
-                return jsonify({"success": False, "error": "Too Many Requests"}), 429
+                return _contract_error("Too Many Requests", 429)
             return fn(*args, **kwargs)
         return wrapper
     return decorator
@@ -133,12 +133,12 @@ def _admin_required(endpoint: str, limit: int = 60, window: float = 60.0):
         def wrapper(*args, **kwargs):
             payload, auth_err = _require_admin()
             if payload is None:
-                return jsonify({"success": False, "error": auth_err}), 401
+                return _contract_error(auth_err or "Unauthorized", 401)
             if auth_err:
-                return jsonify({"success": False, "error": auth_err}), 403
+                return _contract_error(auth_err, 403)
             key = "stock_analysis:" + str(payload.get("sub") or "unknown") + ":" + endpoint
             if not _rate_limit(key, limit, window):
-                return jsonify({"success": False, "error": "Too Many Requests"}), 429
+                return _contract_error("Too Many Requests", 429)
             return fn(*args, **kwargs)
         return wrapper
     return decorator
@@ -172,17 +172,17 @@ def stock_analysis_page():
 def analyze():
     symbol, sym_err = _symbol()
     if symbol is None:
-        return jsonify({"success": False, "error": sym_err}), 400
+        return _contract_error(sym_err, 400)
     analysis_type = request.args.get("type", "llm").lower()
     if analysis_type not in _ANALYSIS_KINDS:
-        return jsonify({"success": False, "error": "unsupported analysis type"}), 400
+        return _contract_error("unsupported analysis type", 400)
     months = request.args.get("months", 6, type=int)
     months = max(1, min(months, 36))
     try:
         result = _skill().analyze(symbol, analysis_type=analysis_type, months=months)
     except Exception as error:
         _LOGGER.error("股票分析失败 symbol=%s type=%s: %s", symbol, analysis_type, error)
-        return jsonify({"success": False, "error": "analysis failed, please retry later"}), 500
+        return _contract_error("analysis failed, please retry later", 500)
     if not result.error:
         try:
             _sa().record_signal(symbol, analysis_type, result.to_json())
@@ -194,7 +194,7 @@ def analyze():
             publish_analysis_kb(symbol, analysis_type, result.to_json())
         except Exception as err:
             _LOGGER.warning("kb publish failed %s: %s", symbol, err)
-    return jsonify({"success": not bool(result.error), "result": result.to_json()})
+    return _contract_result(result.to_json())
 
 
 @stock_analysis_bp.get("/api/signal")
@@ -202,23 +202,23 @@ def analyze():
 def signal():
     symbol, sym_err = _symbol()
     if symbol is None:
-        return jsonify({"success": False, "error": sym_err}), 400
+        return _contract_error(sym_err, 400)
     try:
         signal_value = _skill().get_signal(symbol)
     except Exception as error:
         _LOGGER.error("获取技术信号失败 symbol=%s: %s", symbol, error)
-        return jsonify({"success": False, "error": "signal fetch failed"}), 500
-    return jsonify({"success": True, "symbol": symbol, "signal": signal_value})
+        return _contract_error("signal fetch failed", 500)
+    return _contract_result({"symbol": symbol, "signal": signal_value})
 
 
 @stock_analysis_bp.get("/api/market")
 @_perm_required("stock.read", "market")
 def market():
     try:
-        return jsonify({"success": True, "data": _skill().market_overview()})
+        return _contract_result(_skill().market_overview())
     except Exception as error:
         _LOGGER.error("获取市场概况失败: %s", error)
-        return jsonify({"success": False, "error": "market data unavailable"}), 500
+        return _contract_error("market data unavailable", 500)
 
 
 @stock_analysis_bp.get("/api/search")
@@ -294,10 +294,10 @@ def watchlist_list():
                 "to_char(created_at, 'YYYY-MM-DD HH24:MI:SS') AS created_at "
                 "FROM sa_watchlist ORDER BY id DESC").fetchall()
         # data 保持原列表结构不变；groups 为插件声明的分组标签（桌面端 UI 消费）
-        return jsonify({"success": True, "data": rows, "groups": WATCHLIST_GROUPS})
+        return _contract_result({"rows": rows, "groups": WATCHLIST_GROUPS})
     except Exception as error:
         _LOGGER.error("watchlist list failed: %s", error)
-        return jsonify({"success": False, "error": "watchlist unavailable"}), 500
+        return _contract_error("watchlist unavailable", 500)
 
 
 @stock_analysis_bp.post("/api/watchlist")
@@ -306,7 +306,7 @@ def watchlist_add():
     sa = _sa()
     symbol, sym_err = _body_symbol()
     if symbol is None:
-        return jsonify({"success": False, "error": sym_err}), 400
+        return _contract_error(sym_err, 400)
     body = request.get_json(silent=True) or {}
     alias = (body.get("alias") or "")[:64]
     kind = (body.get("kind") or "technical").lower()
@@ -320,11 +320,11 @@ def watchlist_add():
                 "VALUES (?, ?, ?, ?) ON CONFLICT (symbol) DO NOTHING RETURNING symbol",
                 (symbol, alias, kind, note)).fetchone()
         if not row:
-            return jsonify({"success": False, "error": "symbol already exists"}), 409
-        return jsonify({"success": True, "symbol": symbol})
+            return _contract_error("symbol already exists", 409)
+        return _contract_result({"symbol": symbol})
     except Exception as error:
         _LOGGER.error("watchlist add failed symbol=%s: %s", symbol, error)
-        return jsonify({"success": False, "error": "watchlist add failed"}), 500
+        return _contract_error("watchlist add failed", 500)
 
 
 @stock_analysis_bp.delete("/api/watchlist")
@@ -333,14 +333,14 @@ def watchlist_delete():
     sa = _sa()
     symbol = request.args.get("symbol", "").strip()
     if not symbol:
-        return jsonify({"success": False, "error": "symbol is required"}), 400
+        return _contract_error("symbol is required", 400)
     try:
         with sa.get_db() as conn:
             conn.execute("DELETE FROM sa_watchlist WHERE symbol = ?", (symbol,))
-        return jsonify({"success": True})
+        return _contract_result({"symbol": symbol, "deleted": True})
     except Exception as error:
         _LOGGER.error("watchlist delete failed symbol=%s: %s", symbol, error)
-        return jsonify({"success": False, "error": "watchlist delete failed"}), 500
+        return _contract_error("watchlist delete failed", 500)
 
 
 @stock_analysis_bp.post("/api/batch/run")
@@ -352,22 +352,22 @@ def batch_run():
     # P2-4 修复：批量强制 kind∈{technical,fundamental,sentiment}，禁止 llm 批量
     # （无白名单标的池 + 无 LLM 并发信号量时，一次批量会并发放大 LLM 账单）
     if kind not in {"technical", "fundamental", "sentiment"}:
-        return jsonify({"success": False, "error": "unsupported analysis type"}), 400
+        return _contract_error("unsupported analysis type", 400)
     # #SA-20260831-10：显式传 symbols=[] 不得被 or None 短路成「未传」，
     # 否则空列表绕过非空校验并静默退化为 watchlist 驱动
     symbols = body.get("symbols")
     if symbols is not None:
         if not isinstance(symbols, list) or not symbols:
-            return jsonify({"success": False, "error": "symbols must be a non-empty list"}), 400
+            return _contract_error("symbols must be a non-empty list", 400)
         symbols = [str(s).strip() for s in symbols if str(s).strip()]
         if not symbols:
-            return jsonify({"success": False, "error": "symbols is empty"}), 400
+            return _contract_error("symbols is empty", 400)
     try:
         result = batch.run_batch(kind=kind, symbols=symbols)
-        return jsonify({"success": True, "data": result})
+        return _contract_result(result)
     except Exception as error:
         _LOGGER.error("batch run failed: %s", error)
-        return jsonify({"success": False, "error": "batch run failed"}), 500
+        return _contract_error("batch run failed", 500)
 
 
 @stock_analysis_bp.get("/api/batch/results")
@@ -400,11 +400,11 @@ def batch_results():
                 "FROM sa_analysis_result" + where +
                 " ORDER BY id DESC LIMIT ? OFFSET ?",
                 params + [per_page, (page - 1) * per_page]).fetchall()
-        return jsonify({"success": True, "total": total, "page": page,
-                        "per_page": per_page, "data": rows})
+        return _contract_result({"total": total, "page": page,
+                                 "per_page": per_page, "rows": rows})
     except Exception as error:
         _LOGGER.error("batch results query failed: %s", error)
-        return jsonify({"success": False, "error": "results unavailable"}), 500
+        return _contract_error("results unavailable", 500)
 
 
 @stock_analysis_bp.get("/api/signals/today")
@@ -589,7 +589,7 @@ def batch_export():
         return resp
     except Exception as error:
         _LOGGER.error("batch export failed: %s", error)
-        return jsonify({"success": False, "error": "export unavailable"}), 500
+        return _contract_error("export unavailable", 500)
 
 
 # ── 阶段 2：Tushare 深度估值分位 / 个股资金流 ──
@@ -634,7 +634,7 @@ def moneyflow():
     """个股资金流（Tushare moneyflow，最近 N 日）。tushare 未配置/无权限时返回 404 优雅降级。"""
     symbol, sym_err = _symbol()
     if symbol is None:
-        return jsonify({"success": False, "error": sym_err}), 400
+        return _contract_error(sym_err, 400)
     days = max(1, min(request.args.get("days", 5, type=int), 30))
     try:
         from .gateway import gateway
@@ -643,9 +643,9 @@ def moneyflow():
             frame.reset_index().to_json(orient="records", date_format="iso"))
     except Exception as error:
         _LOGGER.warning("moneyflow unavailable symbol=%s: %s", symbol, error)
-        return jsonify({"success": False,
-                        "error": "moneyflow unavailable (tushare not configured or no permission)"}), 404
-    return jsonify({"success": True, "symbol": symbol, "days": days, "data": records})
+        return _contract_error(
+            "moneyflow unavailable (tushare not configured or no permission)", 404)
+    return _contract_result({"symbol": symbol, "days": days, "records": records})
 
 
 # ── P0-2 信号兑现回算闭环（只读）──
@@ -658,10 +658,10 @@ def signal_quality():
     _sa()                            # 建表兜底：冷启动首调不再 500（#SA-20260901-01）
     try:
         from . import signal_quality as sq
-        return jsonify({"success": True, "days": days, "data": sq.quality_summary(days)})
+        return _contract_result({"days": days, "rows": sq.quality_summary(days)})
     except Exception as error:
         _LOGGER.error("signal quality failed: %s", error)
-        return jsonify({"success": False, "error": "signal quality unavailable"}), 500
+        return _contract_error("signal quality unavailable", 500)
 
 
 @stock_analysis_bp.post("/api/signal-realize")
@@ -670,10 +670,10 @@ def signal_realize():
     """手动触发增量回算（限流，防重复刷）。"""
     try:
         from . import signal_quality as sq
-        return jsonify({"success": True, "data": sq.realize_signals(days_back=90)})
+        return _contract_result(sq.realize_signals(days_back=90))
     except Exception as error:
         _LOGGER.error("signal realize failed: %s", error)
-        return jsonify({"success": False, "error": "realize failed"}), 500
+        return _contract_error("realize failed", 500)
 
 
 # ── 方案B：数据源环境自检 + 一键安装可选依赖（akshare）──
@@ -692,7 +692,7 @@ def _probe_optional_dep(name: str) -> dict:
 @_perm_required("stock.read", "deps_status")
 def deps_status():
     """数据源环境自检：探测可选 Python 依赖（akshare）是否已安装。"""
-    return jsonify({"success": True, "data": {"akshare": _probe_optional_dep("akshare")}})
+    return _contract_result({"akshare": _probe_optional_dep("akshare")})
 
 
 # 允许一键安装的可选依赖白名单（防止任意包安装/命令注入）
@@ -707,9 +707,9 @@ def deps_install():
     dep = (body.get("dep") or "").strip()
     pkg = _INSTALLABLE.get(dep)
     if pkg is None:
-        return jsonify({"success": False, "error": f"unsupported dependency: {dep}"}), 400
+        return _contract_error(f"unsupported dependency: {dep}", 400)
     if _probe_optional_dep(dep)["installed"]:
-        return jsonify({"success": True, "data": {"dep": dep, "already": True}})
+        return _contract_result({"dep": dep, "already": True})
     try:
         # 固定命令、无 shell 拼接，超时 300s（akshare 依赖较多，首次安装较慢）
         proc = subprocess.run(
@@ -717,21 +717,22 @@ def deps_install():
             capture_output=True, text=True, timeout=300)
     except subprocess.TimeoutExpired:
         _LOGGER.error("install %s timed out after 300s", dep)
-        return jsonify({"success": False, "error": "install timed out"}), 500
+        return _contract_error("install timed out", 500)
     except Exception as error:
         _LOGGER.error("install %s failed: %s", dep, error)
-        return jsonify({"success": False, "error": "install failed"}), 500
+        return _contract_error("install failed", 500)
     if proc.returncode != 0:
         _LOGGER.error("install %s pip error: %s", dep, (proc.stderr or "").strip()[-500:])
-        return jsonify({"success": False, "error": "install failed"}), 500
+        return _contract_error("install failed", 500)
     installed = _probe_optional_dep(dep)
-    return jsonify({"success": installed["installed"],
-                    "data": {"dep": dep, "installed": installed["installed"]}})
+    if not installed["installed"]:
+        return _contract_error(f"install failed: {dep} not importable", 500)
+    return _contract_result({"dep": dep, "installed": True})
 
 
 # ── D1-a：桌面端行情端点（契约 §3）──
-# 注意：桌面端专用端点返回契约 envelope {ok, data, error, meta}，
-# 与旧端点 {success, ...} 风格并存；401/403/429 仍由 _admin_required 统一处理。
+# 全插件统一契约 envelope {ok, data, error, meta}：含 401/403/429 鉴权错误
+# （_perm_required/_admin_required 已统一收口，前端只需单一 unwrap）。
 
 def _contract_error(message: str, status: int):
     return jsonify({"ok": False, "data": None, "error": message, "meta": None}), status
@@ -1828,9 +1829,9 @@ def events_stream():
         token = request.cookies.get("sso_token") or request.headers.get("X-Token")
     payload, auth_err = _require_perm("stock.read")
     if payload is None:
-        return jsonify({"success": False, "error": auth_err}), 401
+        return _contract_error(auth_err or "Unauthorized", 401)
     if auth_err:
-        return jsonify({"success": False, "error": auth_err}), 403
+        return _contract_error(auth_err, 403)
 
     topics, t_err = parse_topics(request.args.get("topics"))
     if topics is None:

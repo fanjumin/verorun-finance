@@ -4278,3 +4278,15 @@ Please enter a GitHub repo URL: Please enter a GitHub repo URL
 'Notification template does not exist': 'Notification template does not exist'
 'Plan/Subscriptions/Orders/Revenue': 'Plan/Subscriptions/Orders/Revenue'
 'Plugin menu load failed': 'Plugin menu load failed'
+
+# ── AI Relay user center (en source keys, identity) ──
+'AI Relay': 'AI Relay'
+'Balance, Recharge & API Tokens': 'Balance, Recharge & API Tokens'
+'Balance': 'Balance'
+'Recharge': 'Recharge'
+'Create Token': 'Create Token'
+'Credits': 'Credits'
+'Used': 'Used'
+'Quota': 'Quota'
+'Copy it now — it will not be shown again.': 'Copy it now — it will not be shown again.'
+'Amount must be greater than 0': 'Amount must be greater than 0'

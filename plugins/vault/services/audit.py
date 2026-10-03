@@ -6,8 +6,46 @@ All operations are automatically recorded and tamper-evident.
 """
 
 from datetime import datetime
-from flask import request
+from flask import request, session, has_request_context
 from .utils import get_vault_conn
+
+
+# JWT payload 中可作为操作者名的 claim，按平台既有口径依次尝试
+# （与 plugin_manager/routes.py 的用户名解析保持一致；vault 自己的
+#  access token 通常只带 user_id/phone，username 不一定存在）。
+_OPERATOR_CLAIMS = ('username', 'display_name', 'phone', 'user_id')
+
+
+def _name_from_vault_user(payload) -> str:
+    """从鉴权装饰器注入的 request.vault_user 解析操作者名；取不到返回 ''。"""
+    if not isinstance(payload, dict):
+        return ''
+    for claim in _OPERATOR_CLAIMS:
+        val = payload.get(claim)
+        if val not in (None, ''):
+            return str(val)
+    return ''
+
+
+def current_operator() -> str:
+    """Resolve the acting operator within a request (SD-10).
+
+    Order: JWT identity injected as request.vault_user -> Flask session
+    user -> 'system'. Safe outside a request context (service-layer calls
+    and the scheduled job) where it always returns 'system'.
+    """
+    if not has_request_context():
+        return 'system'
+    try:
+        name = _name_from_vault_user(getattr(request, 'vault_user', None))
+        if name:
+            return name
+    except Exception:
+        pass
+    try:
+        return session.get('user', {}).get('username') or 'system'
+    except Exception:
+        return 'system'
 
 
 def log_audit(action: str, resource_type: str, resource_id: str,
@@ -28,11 +66,7 @@ def log_audit(action: str, resource_type: str, resource_id: str,
     import json as _json
 
     if operator is None:
-        try:
-            from flask import session
-            operator = session.get('user', {}).get('username', 'system')
-        except Exception:
-            operator = 'system'
+        operator = current_operator()
 
     ip_address = None
     try:

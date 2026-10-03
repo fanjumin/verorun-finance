@@ -10,6 +10,8 @@ from .qq import QQAdapter
 from .dingtalk import DingTalkAdapter
 from .telegram import TelegramAdapter
 from .line import LINEAdapter
+from .slack import SlackAdapter
+from .discord import DiscordAdapter
 
 _ADAPTERS = {
     'feishu': FeishuAdapter,
@@ -18,6 +20,8 @@ _ADAPTERS = {
     'dingtalk': DingTalkAdapter,
     'telegram': TelegramAdapter,
     'line': LINEAdapter,
+    'slack': SlackAdapter,
+    'discord': DiscordAdapter,
 }
 
 

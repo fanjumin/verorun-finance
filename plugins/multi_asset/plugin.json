@@ -1,0 +1,97 @@
+{
+  "name": "Multi-Asset Data",
+  "name_i18n_key": "plugin.name",
+  "identifier": "multi_asset",
+  "version": "0.1.0",
+  "description": "Multi-asset (futures, options, funds, bonds) market data with CFI-aligned instrument typing (ISO 10962:2021), exchange double-field modelling, and a governance-ready storage layer that tags every bar with license, security level, origin and dataset lineage. Reuses the stock_analysis provider contract and data gateway instead of duplicating them.",
+  "author": "VeroRun",
+  "min_app_version": "0.10.0",
+
+  "category": "ai_agent",
+  "icon": "layers",
+  "icon_url": "",
+  "tags": ["finance", "multi-asset", "futures", "options", "funds", "bonds"],
+  "screenshots": [],
+  "readme_url": "",
+  "tagline": "Futures/Options/Funds/Bonds\nOne data surface",
+  "tagline_subtitle": "Multi-Asset Data Workbench",
+  "tagline_font_size": "16px",
+  "tagline_subtitle_font_size": "14px",
+  "tagline_color": "#ffffff",
+  "tagline_i18n_key": "plugin.tagline",
+
+  "price_type": "free",
+  "price_amount": 0,
+  "price_interval": "onetime",
+  "price_quarter_fen": 0,
+  "price_year_fen": 0,
+  "trial_days": 0,
+  "compatible_editions": ["finance"],
+
+  "dependencies": {
+    "stock_analysis": ">=2.0.1"
+  },
+  "conflicts": [],
+
+  "python_dependencies": {
+    "required": ["pyyaml", "pandas", "akshare>=1.14.0"],
+    "optional": {}
+  },
+
+  "config": {
+    "data_provider": ""
+  },
+
+  "permissions": [
+    "network:request",
+    "routes",
+    "scheduler",
+    "health",
+    "events"
+  ],
+
+  "hooks": {
+    "provides": ["asset.data.ready"],
+    "listens": []
+  },
+
+  "capabilities": [
+    "asset.futures",
+    "asset.options",
+    "asset.funds",
+    "asset.bonds",
+    "asset.data_fetch",
+    "asset.storage",
+    "asset.provenance"
+  ],
+
+  "agent_role": "stock_analyst",
+
+  "menu": {
+    "group": "Analysis",
+    "items": [
+      {
+        "key": "multi_asset",
+        "icon": "layers",
+        "label": "Multi-Asset",
+        "label_i18n_key": "menu.multi_asset",
+        "embed_url": "/admin/multi-asset/"
+      }
+    ]
+  },
+
+  "settings_schema": {
+    "type": "object",
+    "title": "Multi-Asset Data Settings",
+    "description": "Configure the preferred market data source for futures, options, funds and bonds.",
+    "properties": {
+      "data_provider": {
+        "type": "string",
+        "title": "Preferred Data Source",
+        "description": "Preferred source for this plugin's asset classes (empty = follow the per-asset default chain order). Only sources that actually serve futures/options/funds/bonds are listed.",
+        "enum": ["", "akshare", "sina", "sa_gateway"],
+        "default": ""
+      }
+    }
+  }
+}

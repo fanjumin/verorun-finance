@@ -33,13 +33,15 @@ def classify_intent(user_query):
 
         config = get_master_agent_config()
         engine = UnifiedLLM(config)
-        reply = ''
-        for token in engine.chat_stream([
-            {'role': 'system', 'content': '你是一个精准的分类器。只输出 JSON。'},
-            {'role': 'user', 'content': prompt}
-        ], temperature=0.1, max_tokens=128):
-            if not token.startswith('Error:'):
-                reply += token
+        # DEF-008：chat_stream 产出 ChatCompletionChunk 对象，直接拼接会得到
+        # 对象 repr，导致下面的 json.loads 必然失败、意图恒为 other。
+        from .llm_text import iter_stream_text
+        reply = ''.join(
+            t for t in iter_stream_text(engine.chat_stream([
+                {'role': 'system', 'content': '你是一个精准的分类器。只输出 JSON。'},
+                {'role': 'user', 'content': prompt}
+            ], temperature=0.1, max_tokens=128))
+            if not t.startswith('Error:'))
 
         data = json.loads(reply.strip())
         intent = data.get('intent', 'other')

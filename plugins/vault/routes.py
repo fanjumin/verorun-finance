@@ -52,7 +52,8 @@ from datetime import datetime, timedelta
 from functools import wraps
 from flask import Blueprint, jsonify, render_template, send_file, request, session, redirect
 
-from .services.utils import safe_backup_path, safe_join
+from .services.utils import (safe_backup_path, safe_join,
+                             resolve_backup_path, list_backup_files)
 
 vault_bp = Blueprint('vault', __name__, url_prefix='/admin/vault',
                      template_folder='templates')
@@ -277,23 +278,113 @@ def _get_backup_dir():
     return BACKUP_DIR
 
 
-def _list_backup_archives():
-    """List all backup archives sorted by time (newest first)."""
-    backup_dir = _get_backup_dir()
-    archives = []
-    for f in sorted(glob.glob(os.path.join(backup_dir, 'vault_*.tar.gz')), reverse=True):
-        fname = os.path.basename(f)
-        label = fname.replace('.tar.gz', '')
-        stat = os.stat(f)
-        archives.append({
-            'label': label,
-            'filename': fname,
-            'size_mb': round(stat.st_size / (1024 * 1024), 1),
+def _load_backup_rows():
+    """Load backup records keyed by label from vault_backups.
+
+    Provides the authoritative status/backup_type/encryption that disk
+    enumeration cannot (SD-3). Raises on DB errors so callers can fall
+    back to disk-only listing.
+    """
+    from .services.utils import get_vault_conn
+    conn = get_vault_conn()
+    try:
+        cur = conn.cursor()
+        try:
+            cur.execute("""
+                SELECT label, backup_type, status, encryption,
+                       COALESCE(compressed_size, size_bytes),
+                       COALESCE(completed_at, created_at)
+                FROM vault_backups
+            """)
+            raw_rows = cur.fetchall()
+        finally:
+            cur.close()
+    finally:
+        conn.close()
+    rows = {}
+    for r in raw_rows:
+        rows[r[0]] = {
+            'backup_type': r[1] or 'full',
+            'status': r[2] or 'success',
+            'encryption': r[3] or 'none',
+            'size_bytes': r[4],
+            'created_dt': r[5],
+        }
+    return rows
+
+
+def _merge_archives(files, rows):
+    """Merge on-disk artifacts with vault_backups rows (pure, testable).
+
+    - disk + row: row's status/type/encryption/time win, final artifact
+      size preferred from the row;
+    - row without a file (failed backups, or files pruned externally):
+      still listed with filename=None so health failed-counts are real;
+    - file without a row (legacy orphan): shown as success/full.
+    Newest first; records without any timestamp sort last.
+    """
+    by_label = {}
+    for f in files:
+        dt = datetime.utcfromtimestamp(f['mtime'])
+        by_label[f['label']] = {
+            'label': f['label'],
+            'filename': f['filename'],
+            'size_mb': round(f['size_bytes'] / (1024 * 1024), 1),
             'backup_type': 'full',
             'status': 'success',
-            'created_at': datetime.utcfromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S'),
-        })
-    return archives
+            'encrypted': f['encrypted'],
+            'compression': f['compression'],
+            'created_at': dt.strftime('%Y-%m-%d %H:%M:%S'),
+            '_dt': dt,
+        }
+    for label, row in rows.items():
+        entry = by_label.get(label)
+        if entry is None:
+            entry = {
+                'label': label,
+                'filename': None,
+                'size_mb': round((row.get('size_bytes') or 0) / (1024 * 1024), 1),
+                'backup_type': 'full',
+                'status': 'success',
+                'encrypted': False,
+                'compression': None,
+                'created_at': '',
+                '_dt': None,
+            }
+            by_label[label] = entry
+        entry['backup_type'] = row.get('backup_type') or 'full'
+        entry['status'] = row.get('status') or 'success'
+        if row.get('encryption'):
+            entry['encrypted'] = row['encryption'] != 'none'
+        if row.get('size_bytes'):
+            entry['size_mb'] = round(row['size_bytes'] / (1024 * 1024), 1)
+        if row.get('created_dt'):
+            entry['_dt'] = row['created_dt']
+        entry['created_at'] = (
+            entry['_dt'].strftime('%Y-%m-%d %H:%M:%S') if entry['_dt'] else '')
+
+    items = sorted(
+        by_label.values(),
+        key=lambda x: (x['_dt'] is not None, x['_dt']),
+        reverse=True)
+    for it in items:
+        it.pop('_dt', None)
+    return items
+
+
+def _list_backup_archives():
+    """List all backups newest first (SD-3: table-authoritative merge).
+
+    Real status/backup_type come from vault_backups; disk enumeration
+    supplies filename/artifact form and legacy files with no row. If the
+    table is unavailable we degrade to the previous disk-only behaviour.
+    """
+    try:
+        rows = _load_backup_rows()
+    except Exception as e:
+        print('[Vault] backup rows unavailable, falling back to disk listing: %s' % e)
+        rows = {}
+    return _merge_archives(list_backup_files(), rows)
 
 
 # ══════════════════════════════════════════════════════════════
@@ -342,17 +433,9 @@ def settings_page():
 # ══════════════════════════════════════════════════════════════
 
 def _load_plugin_config() -> dict:
-    """从 plugin_registry 读取 vault 插件配置。"""
-    from plugins._base.db import get_pooled_connection
-    conn = get_pooled_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT config FROM plugin_registry WHERE identifier = 'vault'")
-    row = cur.fetchone()
-    cur.close()
-    conn.close()
-    if row and row[0]:
-        return json.loads(row[0]) if isinstance(row[0], str) else row[0]
-    return {}
+    """从 plugin_registry 读取 vault 插件配置（委托 utils，恢复/路由同一口径）。"""
+    from .services.utils import load_plugin_config
+    return load_plugin_config()
 
 
 def _save_plugin_config(cfg: dict) -> bool:
@@ -511,14 +594,30 @@ def api_cleanup_backups():
         except Exception:
             pass
 
-        cutoff = datetime.utcnow() - timedelta(days=keep_days)
-        backup_dir = _get_backup_dir()
+        cutoff_ts = (datetime.utcnow() - timedelta(days=keep_days)).timestamp()
         deleted = 0
-        for f in glob.glob(os.path.join(backup_dir, 'vault_*.tar.gz')):
-            mtime = datetime.utcfromtimestamp(os.stat(f).st_mtime)
-            if mtime < cutoff:
-                os.remove(f)
+        removed_labels = []
+        for f in list_backup_files():
+            if f['mtime'] < cutoff_ts:
+                os.remove(f['path'])
                 deleted += 1
+                removed_labels.append(f['label'])
+
+        # SD-3: remove the matching rows so cleaned backups do not linger
+        # in the table-driven list/health stats.
+        if removed_labels:
+            try:
+                from .services.utils import get_vault_conn
+                conn = get_vault_conn()
+                cur = conn.cursor()
+                cur.execute(
+                    'DELETE FROM vault_backups WHERE label = ANY(%s)',
+                    (removed_labels,))
+                conn.commit()
+                cur.close()
+                conn.close()
+            except Exception as row_err:
+                print('[Vault] cleanup row deletion failed: %s' % row_err)
 
         return jsonify({'success': True, 'deleted': deleted, 'keep_days': keep_days})
     except Exception as e:
@@ -583,30 +682,37 @@ def api_list_backups():
 def api_backup_detail(label):
     """Get backup detail with content preview."""
     try:
-        archive_path = safe_backup_path(label)
+        archive_path = resolve_backup_path(label)
     except ValueError:
         return jsonify({'success': False, 'error': 'Invalid backup label'}), 400
-    if not os.path.isfile(archive_path):
+    if not archive_path:
         return jsonify({'success': False, 'error': 'Backup not found'}), 404
 
     import tarfile
+    fname = os.path.basename(archive_path)
+    encrypted = fname.endswith('.enc')
+    is_plain_archive = (fname == label + '.tar.gz')
     stat = os.stat(archive_path)
     content_preview = []
-    try:
-        with tarfile.open(archive_path, 'r:gz') as tar:
-            for member in tar.getmembers()[:50]:
-                content_preview.append({
-                    'name': member.name,
-                    'size': member.size,
-                    'type': 'dir' if member.isdir() else 'file',
-                })
-    except Exception:
-        pass
+    # 加密/二次压缩产物无法直接按 tar.gz 读取，仅明文基础归档提供内容预览
+    if is_plain_archive:
+        try:
+            with tarfile.open(archive_path, 'r:gz') as tar:
+                for member in tar.getmembers()[:50]:
+                    content_preview.append({
+                        'name': member.name,
+                        'size': member.size,
+                        'type': 'dir' if member.isdir() else 'file',
+                    })
+        except Exception:
+            pass
 
     return jsonify({
         'success': True,
         'backup': {
             'label': label,
+            'filename': fname,
+            'encrypted': encrypted,
             'size_mb': round(stat.st_size / (1024 * 1024), 1),
             'created_at': datetime.utcfromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S'),
             'content_preview': content_preview,
@@ -668,11 +774,14 @@ def api_health_check():
             from .services.utils import get_vault_conn
             conn = get_vault_conn()
             cur = conn.cursor()
+            # 与 Python 侧统一 naive UTC 口径（ENV-3）：显式绑定 UTC 时间，
+            # 不吃 PG 会话 TimeZone 影响下的 NOW()。
+            now_utc = datetime.utcnow()
             # Check vault_schedules table
             cur.execute("""
                 SELECT MIN(next_run_at) FROM vault_schedules
-                WHERE enabled = TRUE AND next_run_at > NOW()
-            """)
+                WHERE enabled = TRUE AND next_run_at > %s
+            """, (now_utc,))
             row = cur.fetchone()
             if row and row[0]:
                 next_schedule = row[0].strftime('%Y-%m-%d %H:%M:%S')
@@ -975,19 +1084,14 @@ def api_compliance_report():
 def api_rotate_upload():
     """Trigger 3-2-1 rotation upload for latest backup."""
     try:
-        import os as _os, glob as _glob
-        base_dir = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), '..', '..')
-        backup_dir = _os.path.join(base_dir, 'data', 'vault')
-        archives = sorted(_glob.glob(_os.path.join(backup_dir, 'vault_*.tar.gz')),
-                          key=_os.path.getmtime, reverse=True)
+        archives = list_backup_files()
         if not archives:
             return jsonify({'success': False, 'error': 'No backups to rotate'}), 400
 
         from .services.storage.base import StorageRouter
         router = StorageRouter()
         latest = archives[0]
-        obj_name = _os.path.basename(latest)
-        result = router.rotate_upload(latest, obj_name)
+        result = router.rotate_upload(latest['path'], latest['filename'])
         return jsonify({'success': True, 'rotation': result})
     except Exception as e:
         return jsonify({'success': False, 'error': _err(e)}), 500
@@ -1022,10 +1126,10 @@ def api_sign_backup(label):
             return jsonify({'success': False, 'error': 'VAULT_SIGNING_KEY not set'}), 400
 
         try:
-            filepath = safe_backup_path(label)
+            filepath = resolve_backup_path(label)
         except ValueError:
             return jsonify({'success': False, 'error': 'Invalid backup label'}), 400
-        if not os.path.isfile(filepath):
+        if not filepath:
             return jsonify({'success': False, 'error': 'Backup not found'}), 404
 
         from .services.validator import VaultValidator
@@ -1046,10 +1150,10 @@ def api_verify_backup(label):
             return jsonify({'success': False, 'error': 'VAULT_SIGNING_KEY not set'}), 400
 
         try:
-            filepath = safe_backup_path(label)
+            filepath = resolve_backup_path(label)
         except ValueError:
             return jsonify({'success': False, 'error': 'Invalid backup label'}), 400
-        if not os.path.isfile(filepath):
+        if not filepath:
             return jsonify({'success': False, 'error': 'Backup not found'}), 404
 
         from .services.validator import VaultValidator
@@ -1153,12 +1257,16 @@ def api_restore_pitr():
                 action='restore.pitr',
                 resource_type='database',
                 resource_id=target_time,
-                details={'success': result.get('success')},
+                details={'success': result.get('success'),
+                         'supported': result.get('supported', True)},
             )
         except Exception:
             pass
 
-        return jsonify(result)
+        # SD-5: PITR 不被逻辑 dump 架构支持时，明确返回 501 Not Implemented，
+        # 而不是 200 包裹一个 success=false。
+        status = 501 if result.get('supported') is False else 200
+        return jsonify(result), status
     except Exception as e:
         return jsonify({'success': False, 'error': _err(e)}), 500
 
@@ -1261,71 +1369,82 @@ def _handle_backup_create():
         result = create_full_backup()
 
         if result.get('archive') and result.get('success'):
-            archive_path = result['archive']
-
-            # 1. Compress
+            # SD-1 修复：压缩/加密产物必须回写 result['archive']，
+            # 上传/落库/列表/恢复才能指向同一个最终文件（此前上传与落库的
+            # 一直是未加密未压缩原件，.gz/.enc 产物游离于链路之外）。
             try:
-                from .services.compressor import VaultCompressor
-                compressor = VaultCompressor(algorithm='gzip', level=6)
-                archive_path = compressor.compress(archive_path)
-                result['compressed_size_mb'] = round(os.path.getsize(archive_path) / (1024**2), 1)
-            except Exception as e:
-                print(f'[Vault] Compression skipped: {e}')
-
-            # 2. Encrypt (if configured)
-            try:
-                from .services.encryptor import VaultEncryptor
-                encryptor = VaultEncryptor()
-                archive_path = encryptor.encrypt_stream(archive_path)
-                result['encrypted'] = True
-            except ValueError:
-                pass  # encryption not configured
-            except Exception as e:
-                print(f'[Vault] Encryption skipped: {e}')
-
-            # 3. Upload to remote storage
-            try:
-                from .services.uploader import upload_backup
-                upload_result = upload_backup(result['archive'],
-                                              os.path.basename(result['archive']))
-                result['remote'] = upload_result
-            except Exception as e:
-                result['remote'] = {'uploaded': False, 'error': _err(e)}
-
-            # 4. Notify
-            try:
-                from .services.notifier import VaultNotifier
-                notifier = VaultNotifier()
-                event = 'backup.success' if result.get('success') else 'backup.failed'
-                notifier.send(
-                    event=event,
-                    message='Backup %s (%s MB)' % (result['label'], result.get('size_mb', 0)),
-                    level='info' if result.get('success') else 'error',
-                    details=result,
-                )
+                cfg = _load_plugin_config()
             except Exception:
-                pass
+                cfg = {}
+
+            finalized_ok = True
+            try:
+                from .services.backup_engine import finalize_artifact
+                finalized = finalize_artifact(result['archive'], cfg)
+                result['archive'] = finalized['archive']
+                result['size_mb'] = finalized['size_mb']
+                result['checksum_sha256'] = finalized['checksum_sha256']
+                result['encrypted'] = finalized['encrypted']
+                result['encryption'] = finalized['encryption']
+                result['compressed'] = finalized['compressed']
+                result['compressed_size_mb'] = finalized.get('compressed_size_mb')
+            except Exception as e:
+                finalized_ok = False
+                result['success'] = False
+                result['error'] = 'Artifact finalize failed: %s' % e
+                print('[Vault] Artifact finalize failed: %s' % e)
+
+            if finalized_ok:
+                archive_path = result['archive']
+
+                # 1. Upload the FINAL artifact to remote storage
+                try:
+                    from .services.uploader import upload_backup
+                    upload_result = upload_backup(archive_path,
+                                                  os.path.basename(archive_path))
+                    result['remote'] = upload_result
+                except Exception as e:
+                    result['remote'] = {'uploaded': False, 'error': _err(e)}
+
+                # 2. Notify
+                try:
+                    from .services.notifier import VaultNotifier
+                    notifier = VaultNotifier()
+                    event = 'backup.success' if result.get('success') else 'backup.failed'
+                    notifier.send(
+                        event=event,
+                        message='Backup %s (%s MB)' % (result['label'], result.get('size_mb', 0)),
+                        level='info' if result.get('success') else 'error',
+                        details=result,
+                    )
+                except Exception:
+                    pass
 
         # Write to vault_backups table
         try:
             from .services.utils import get_vault_conn
+            from .services.audit import current_operator
             conn = get_vault_conn()
             cur = conn.cursor()
+            compressed_mb = result.get('compressed_size_mb')
             cur.execute("""
                 INSERT INTO vault_backups
-                    (label, backup_type, status, size_bytes, checksum_sha256,
+                    (label, backup_type, status, size_bytes, compressed_size,
+                     encryption, checksum_sha256,
                      content_summary, started_at, completed_at, created_by)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             """, (
                 result['label'],
                 result.get('backup_type', 'full'),
                 'success' if result.get('success') else 'failed',
                 int(result.get('size_mb', 0) * 1024 * 1024),
+                int(compressed_mb * 1024 * 1024) if compressed_mb else None,
+                result.get('encryption', 'none'),
                 result.get('checksum_sha256'),
                 json.dumps({'files': len(result.get('files', []))}),
                 datetime.utcnow(),
                 datetime.utcnow(),
-                session.get('user', {}).get('username', 'system'),
+                current_operator(),
             ))
             conn.commit()
             cur.close()
@@ -1355,14 +1474,18 @@ def _handle_backup_create():
 
 
 def _handle_backup_download(label):
-    """Internal handler for backup download."""
+    """Internal handler for backup download.
+
+    下载磁盘上的真实最终产物（加密备份即下载 .enc 文件，由持有密钥方解密）。
+    """
     try:
-        filepath = safe_backup_path(label)
+        filepath = resolve_backup_path(label)
     except ValueError:
         return jsonify({'success': False, 'error': 'Invalid backup label'}), 400
-    if not os.path.isfile(filepath):
+    if not filepath:
         return jsonify({'success': False, 'error': 'Backup not found'}), 404
-    return send_file(filepath, as_attachment=True, download_name=f'{label}.tar.gz')
+    return send_file(filepath, as_attachment=True,
+                     download_name=os.path.basename(filepath))
 
 
 def _handle_backup_delete(label):
@@ -1377,20 +1500,42 @@ def _handle_backup_delete(label):
         }), 400
 
     try:
-        filepath = safe_backup_path(label)
+        filepath = resolve_backup_path(label)
     except ValueError:
         return jsonify({'success': False, 'error': 'Invalid backup label'}), 400
-    if not os.path.isfile(filepath):
+
+    removed_file = False
+    if filepath:
+        os.remove(filepath)
+        removed_file = True
+
+    # SD-3: the list is table-driven, so the vault_backups row must be
+    # deleted too. Failed backups have no artifact; deleting their row is
+    # then the only way to clear them (and the health failed-count).
+    deleted_rows = 0
+    db_error = None
+    try:
+        from .services.utils import get_vault_conn
+        conn = get_vault_conn()
+        cur = conn.cursor()
+        cur.execute('DELETE FROM vault_backups WHERE label = %s', (label,))
+        deleted_rows = cur.rowcount
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        db_error = e
+        print('[Vault] backup row deletion failed: %s' % e)
+
+    if not removed_file and deleted_rows == 0:
+        if db_error is not None:
+            return jsonify({'success': False, 'error': _err(db_error)}), 500
         return jsonify({'success': False, 'error': 'Backup not found'}), 404
 
+    # Audit log
     try:
-        os.remove(filepath)
-        # Audit log
-        try:
-            from .services.audit import log_audit
-            log_audit('backup.delete', 'backup', label)
-        except Exception:
-            pass
-        return jsonify({'success': True, 'message': f'Backup {label} deleted'})
-    except Exception as e:
-        return jsonify({'success': False, 'error': _err(e)}), 500
+        from .services.audit import log_audit
+        log_audit('backup.delete', 'backup', label)
+    except Exception:
+        pass
+    return jsonify({'success': True, 'message': f'Backup {label} deleted'})

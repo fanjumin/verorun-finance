@@ -295,10 +295,12 @@ Full lifecycle management (6 states: `UNKNOWN → INSTALLED → ENABLED → ACTI
 |---|---|
 | Knowledge management | `chatbot`, `memory_engine`, `cogevolution_substrate`, `project_workspace`, `veroscholar` (incl. Discovery Engine) |
 | Content publishing | `content_factory`, `site_builder`, `mini_app_builder`, `ads`, `social_push` |
-| Business operations | `shop`, `payment`, `logistics`, `subscription`, `coupons`, `order_notify`, `reviews`, `wishlist`, `stock_analysis`, `risk_control` |
+| Business operations | `shop`, `payment`, `logistics`, `subscription`, `coupons`, `order_notify`, `reviews`, `wishlist`, `stock_analysis`, `risk_control`, `ai_relay` |
 | Communications | `im_gateway`, `email`, `sms`, `oauth_config`, `verification` |
 | Ops & security | `health_check`, `vault`, `captcha_embedded`, `enterprise_verify`, `two_factor_auth`, `ali_api`, `iot_hub` |
 | Data & utilities | `visitor_profile`, `analytics`, `currency_converter`, `site_domains` |
+
+**Communications (`email`, v1.7.0)**: a full SMTP/IMAP email client — inbox search (server-side IMAP SEARCH with automatic client-side fallback), compose with CC/BCC and attachments, drafts, forward, and batch mailbox operations (mark read/unread, move, multi-select delete with confirmation), plus contact management and 22 preset mail providers with automatic domain inference. It exposes `email_send`, `email_send_contact`, and `email_get_config` as stdio MCP tools callable by the Agent Matrix.
 
 **Plugin Manager**: auto-scans `plugins/` and parses `plugin.json`; dependency resolution via Kahn topological sort with cycle detection; event bus with 31 system events (thread-pool async dispatch); WordPress-style Action / Filter hooks with priority; JSON Schema Draft-07 config validation; per-plugin isolated logs (rotating 5MB × 3).
 
@@ -327,6 +329,20 @@ Content generation and the knowledge retrieval, process orchestration, model acc
 **Three-stage funnel**: free distribution of the standard enterprise package and the education edition for lead generation (public `verorun-pro` and `verorun-edu` repositories) → plugin purchases, subscriptions, and commercial licenses for recurring revenue → VeroGuard protects code assets and licensing rights on the customer side. **Data-flywheel vision**: centered on domain knowledge assets, knowledge bases self-evolve through business usage, powering domain-model fine-tuning and intelligent-device training.
 
 **Regional routing**: `VERORUN_REGION=cn` → `api.verorun.cn`; `=global` → `api.verorun.com`. All remote services (licensing / heartbeat / daemon) resolve dynamically by region, with single-URL environment-variable override.
+
+### Regional Capability Differences (CN vs. OS)
+
+A single codebase serves both regions; the region only narrows capabilities, it never forks the product. The deployment ceiling is resolved from `VR_PROFILE` (falling back to `APP_REGION`), and a per-token `region_policy` can only tighten **below** that ceiling — a token can never elevate a CN deployment to full features.
+
+| Area | CN (compliance-converged) | OS (full features) |
+|---|---|---|
+| Relay capabilities | `chat`, `embedding` only | `chat`, `embedding`, `rerank`, `image`, `audio` |
+| Upstream channels | CN and region-agnostic (`any`) channels | CN / OS / any |
+| Inbound content safety | Enabled (fail-closed) | Not applied |
+| Usage-log retention | 180 days | 30 days |
+| Quota semantics | Rolling window, aligned with retention | Rolling window, aligned with retention |
+
+`ai_relay` (the multi-provider LLM relay) enforces this per region without changing the API surface, the billing engine, or the schema. Compliance rejections happen **before** quota freeze, so a blocked request never freezes balance and leaves no usage log. The admin console can export a compliance package (policy snapshot, tokens, usage logs, models/channels, capability matrix, content-safety categories, API list, filing info) for registration and audit — it contains no secrets and no wordlist.
 
 ---
 

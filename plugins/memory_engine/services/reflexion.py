@@ -43,6 +43,12 @@ class ReflexionService:
         agent_id = kwargs.get('agent_id') or ''
         if not agent_id or not task:
             return
+        # F-02：反思同样受隐私同意门约束。opt-out / 无主任务直接跳过——
+        # reflexion_logs 会留存 user_query，入口拦截既尊重同意又省 curator AI 预算。
+        from .extractor import _task_owner
+        from ..prompt_injector import user_opted_in
+        if not user_opted_in(_task_owner(task), self._config):
+            return
         failed = bool(result.get('failed'))
         retries = int(result.get('retries') or 0)
         confidence = float(result.get('confidence') or 0.0)
@@ -100,7 +106,7 @@ class ReflexionService:
                     "  issue, lesson, action, rating, tokens_used)"
                     " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (agent_id, task.get('task_id') or '', 'task_completed',
-                     not failed, str(task.get('user_query') or '')[:500],
+                     not failed, _task_query(task)[:500],
                      parsed['issue'], parsed['lesson'], parsed['action'],
                      parsed['rating'], 0),
                 )
@@ -135,7 +141,8 @@ class ReflexionService:
 
     def _store_lesson(self, conn, agent_id, task, lesson: str):
         """Persist the lesson as a durable memory for the owner."""
-        owner_id = str(task.get('user_id') or '')
+        from .extractor import _task_owner
+        owner_id = _task_owner(task)
         if not owner_id:
             return
         digest = hashlib.sha256(f"{owner_id}|{lesson}".encode('utf-8')).hexdigest()
@@ -150,7 +157,13 @@ class ReflexionService:
 
     def _load_curator_config(self) -> dict:
         """v1.6 统一网关注册：复用承载本插件能力的核心角色行（不再依赖独立 Agent 行）。"""
-        from agent_matrix.models import get_db, resolve_agent_roles
+        from agent_matrix.models import get_db
+        try:
+            from agent_matrix.models import resolve_agent_roles
+        except ImportError:
+            # F-DEP：旧内核无 resolve_agent_roles，回退 athena（同 extractor 口径）。
+            def resolve_agent_roles(_plugin_id, _metadata):
+                return ["athena"]
         try:
             with open(_CURATOR_PROMPT_FILE, 'r', encoding='utf-8') as f:
                 curator_prompt = f.read().strip()

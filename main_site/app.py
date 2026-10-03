@@ -294,6 +294,7 @@ def handle_platform_auth(domain_config):
     resp = make_response(render_template('index.html',
                                          site_domain=domain_config['site_domain'],
                                          server_token=token or '',
+                                         ai_relay_enabled=_ai_relay_enabled(),
                                          **_chatbot_context()))
     is_secure = request.scheme == 'https'
     resp.set_cookie('sso_token', token, domain=domain_config['cookie_domain'],
@@ -311,6 +312,22 @@ def _get_user_id_from_token():
         return None
     payload = validate_token(token)
     return payload.get('user_id') if payload else None
+
+
+def _ai_relay_enabled():
+    """ai_relay 插件是否启用 —— 用户中心据此动态显示「AI 中转站」入口。
+
+    与门卫同源：插件禁用时 /plugin/ai_relay/* 已被 _plugin_gatekeeper 拦成
+    404（等价于插件不存在），这里把同一状态透给模板，做到「未启用不显示
+    入口」，避免用户点进一个 404 空页。
+
+    插件管理器初始化失败或异常时一律按未启用处理（fail-hide）——
+    宁可少一个入口，不可给用户一个点不通的链接。
+    """
+    try:
+        return bool(pm.is_enabled('ai_relay'))
+    except Exception:
+        return False
 
 
 # ══════════════════════════════════════════════════════════════
@@ -337,7 +354,10 @@ def index():
             brand = get_brand_settings() or {}
             if brand:
                 brand['software_name'] = _('app_name')
-            resp = make_response(render_template('index.html', brand=brand, server_token=token, **_chatbot_context()))
+            resp = make_response(render_template(
+                'index.html', brand=brand, server_token=token,
+                ai_relay_enabled=_ai_relay_enabled(),
+                **_chatbot_context()))
             site_domain = brand.get('site_domain', '').strip()
             cd = ('.' + site_domain) if site_domain else ''
             _is_https = os.environ.get('DEPLOY_PROTOCOL', 'https') == 'https'

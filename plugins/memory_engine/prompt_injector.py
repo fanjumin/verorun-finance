@@ -8,6 +8,36 @@ logger = logging.getLogger('memory_engine.injector')
 FILTER_NAME = 'before_prompt_resolve'
 
 
+def user_opted_in(user_id, config: dict) -> bool:
+    """隐私同意门（模块级，注入读路径与 extractor/reflexion 写路径共用）。
+
+    - 空 owner 一律 fail-closed（False），杜绝匿名/无主数据落库；
+    - 默认值取 config.memory_opt_in_default，用户可在
+      public.user_profiles.meta.memory_opt_in 逐人覆盖；
+    - 只读主库；任何异常回退配置默认值（与既有注入容错口径一致）。
+    """
+    if not user_id:
+        return False
+    config = config or {}
+    default = config.get('memory_opt_in_default', True)
+    try:
+        from agent_matrix.models import get_db
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT meta FROM public.user_profiles WHERE user_id = %s",
+                (user_id,),
+            ).fetchone()
+        if not row:
+            return default
+        import json as _json
+        meta = row['meta'] or {}
+        if isinstance(meta, str):
+            meta = _json.loads(meta)
+        return bool(meta.get('memory_opt_in', default))
+    except Exception:
+        return default
+
+
 class PromptInjector:
     """Adds the curated memory block to the resolved system prompt."""
 
@@ -66,25 +96,5 @@ class PromptInjector:
             return prompt
 
     def _user_opted_in(self, user_id: str) -> bool:
-        """Privacy gate: default from config; per-user override stored in meta.
-
-        Reads the user's consent flag from public.user_profiles.meta (read-only);
-        missing value falls back to config default.
-        """
-        default = self._config.get('memory_opt_in_default', True)
-        try:
-            from agent_matrix.models import get_db
-            with get_db() as conn:
-                row = conn.execute(
-                    "SELECT meta FROM public.user_profiles WHERE user_id = ?",
-                    (user_id,),
-                ).fetchone()
-            if not row:
-                return default
-            import json as _json
-            meta = row['meta'] or {}
-            if isinstance(meta, str):
-                meta = _json.loads(meta)
-            return bool(meta.get('memory_opt_in', default))
-        except Exception:
-            return default
+        """Privacy gate: delegate to the shared module-level helper (F-02)."""
+        return user_opted_in(user_id, self._config)

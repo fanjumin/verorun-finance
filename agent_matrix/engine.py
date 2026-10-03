@@ -451,8 +451,11 @@ class UnifiedLLM:
         self._model = config.get('model_name', '')
         self._api_key_id = config.get('api_key_id')
         self._pm_id = config.get('provider_model_id')
-        import sys
-        print(f"[DIAG] _apply_config: provider={self._provider}, model={self._model}, api_key_id={self._api_key_id}, pm_id={config.get('provider_model_id')}", file=sys.stderr, flush=True)
+        # FIN-SYS-6：诊断输出改为按需开启，默认静默（避免 provider/model/api_key_id 常驻 stderr）
+        import os
+        if os.environ.get('VERORUN_DEBUG_CONFIG') == '1':
+            import sys
+            print(f"[DIAG] _apply_config: provider={self._provider}, model={self._model}, api_key_id={self._api_key_id}, pm_id={config.get('provider_model_id')}", file=sys.stderr, flush=True)
         self._base_url = config.get('base_url', '')
         self._system_prompt = config.get('system_prompt', '')
         self._agent_id = config.get('id') if config.get('id') is not None else config.get('agent_id')

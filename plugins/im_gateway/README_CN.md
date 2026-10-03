@@ -1,360 +1,219 @@
 # IM Gateway (im_gateway)
 
+> 版本：**v3.1.0**（职责收敛 + IM 底座增强版本：8 通道出站 · 入站验签 fail-closed · 统一 HTTP 客户端）
+
 ## 概述
 
-IM Gateway（即时通讯网关）是 VeroRun 平台的统一即时通讯频道管理插件，采用 Adapter 模式为飞书、企业微信、QQ、钉钉、Telegram、LINE 等主流 IM 平台提供统一的配置管理和消息推送接口。插件使用独立的 PostgreSQL schema `im_gateway`，存储频道配置数据。
+IM Gateway 是 VeroRun 平台的**即时通讯通道网关**插件，基于 Adapter 模式统一管理 IM 频道的凭据配置、连接测试与出站消息/媒体投递，并内置一套完整的 **Web 第三方登录**（OAuth 联邦登录）能力。插件使用独立的 PostgreSQL schema `im_gateway`。
 
-插件通过抽象基类 `BaseIMAdapter` 定义统一的频道适配器接口契约，每个频道实现独立的 Adapter 子类，支持连接测试、配置字段声明、消息/媒体推送。各频道配置可通过管理后台界面集中管理，secret 类字段自动掩码保护。
+v3.0.0 完成职责收敛：**社媒内容发布 / 社媒 OAuth 账号 / 定时刷新**已迁回 `social_push` 插件，**小程序登录 / 开发者 API Key / 小程序开发账户**已迁回 `mini_app_builder` 插件。本插件此后只负责「IM 出站通道」与「Web 第三方登录」两件事。
+
+v3.1.0 完成 IM 底座增强：新增统一 `http_client`（连接 5s / 读取 15s 超时、SSRF 内网拦截、限长下载、进程内 token 缓存）、新增 **Slack / Discord** 适配器、钉钉与 QQ 接入**官方真实 API**、入站 Webhook 改为**各平台原生验签且 fail-closed**。
+
+## 能力现状（如实标注）
+
+| 频道 | 标识 | 出站文本消息 | 连接测试 | 媒体推送 | 入站验签 | 说明 |
+|------|------|:---:|:---:|:---:|:---:|------|
+| 飞书 | `feishu` | ✅ | ✅ 真实调用 | ✅ | 共享密钥 | 默认启用 |
+| 企业微信 | `wecom` | ✅ | ✅ 真实调用 | ✅（群机器人 / 应用消息） | 共享密钥 | 默认启用 |
+| 钉钉 | `dingtalk` | ✅ | ✅ 真实调用 | — | 共享密钥 | 出站走 OAPI 工作通知 |
+| QQ | `qq` | ✅ | ✅ 真实调用 | — | ✅ Ed25519 | 官方机器人 API（`api.sgroup.qq.com`） |
+| Telegram | `telegram` | ✅ | ✅ 真实调用 | — | ✅ secret_token | 按需配置 |
+| LINE | `line` | ✅ | ✅ 真实调用 | — | ✅ HMAC-SHA256 | 按需配置 |
+| Slack | `slack` | ✅ | ✅ 真实调用 | — | ✅ v0 HMAC-SHA256 | v3.1.0 新增 |
+| Discord | `discord` | ✅ | ✅ 真实调用 | — | ✅ Ed25519 | v3.1.0 新增 |
+
+> Slack / Discord 通过 `adapters/__init__.py` 注册后**自动出现**在管理后台卡片（概览由适配器注册表驱动，字段由 `get_config_fields()` 动态渲染），无需改模板或建表。
+
+### HTTP 出站与 SSRF 防护
+
+所有出站请求统一走 `http_client.py`：
+
+- **统一超时**：连接 5s / 读取 15s，杜绝裸 `urlopen` 无超时阻塞。
+- **SSRF 拦截**：`safe_fetch()` 仅用于**外部输入 URL**（如媒体 `file_url`）——拒绝私网 / 回环 / 链路本地 / 云元数据（`169.254.169.254`）/ 保留段（含 IPv6 与 IPv4-mapped），仅允许 http/https 且端口限 80/443，禁带凭据，重定向逐跳复检，下载限长 10MB。
+- **Token 缓存**：飞书 `tenant_access_token`、企业微信 / 钉钉 access_token 按 app 维度进程内 TTL 缓存，避免每次发送重复换取。
+- 平台写死的 API 域名（`open.feishu.cn` 等）只做统一超时，不做私网拦截。
 
 ## 功能特性
 
-- **多平台统一管理**：飞书、企业微信、QQ、钉钉、Telegram、LINE 六大频道集中配置
-- **Adapter 模式**：基于 `BaseIMAdapter` 抽象基类的可扩展适配器架构
-- **连接测试**：支持各频道连接测试，验证配置有效性
-- **Secret 掩码**：敏感字段（token、secret、key）自动掩码显示，更新时智能合并
-- **消息推送**：提供 `send_message` Hook，支持文本消息推送
-- **媒体推送**：提供 `push_media` Hook，支持媒体文件推送（子类按需覆写）
-- **环境变量兜底**：适配器可声明环境变量兜底配置，供前端参考
-- **种子数据**：首次运行自动创建飞书、企业微信等默认频道配置行
-- **数据迁移**：支持从主库幂等迁移已有频道配置
-- **独立数据库**：使用 PostgreSQL schema `im_gateway`，包含 `channel_configs` 表
+- **多频道统一管理**：频道凭据集中配置，secret 类字段自动掩码，更新留空时保留旧值。
+- **Adapter 模式**：抽象基类 `BaseIMAdapter` 定义统一契约，新增频道只需实现子类并注册。
+- **统一出站门面**：`gateway.send_message()` / `gateway.test()` / `gateway.list_channels()`。
+- **跨 worker 频控**：基于 PG `rate_limit_events` 表计数，多 gunicorn worker 下仍按「60 秒 / 渠道 / 20 次」限流。
+- **媒体推送**：`push_media()` 供主系统媒体库调用（当前飞书 / 企业微信）。
+- **统一 HTTP 出站**：`http_client.py` 统一超时 / 禁自动重定向 / token 缓存，媒体下载走 `safe_fetch()`（SSRF 拦截 + 限长）。
+- **入站验签 fail-closed**：`/webhook/<channel>` 对 telegram / line / slack / discord / qq 做**平台原生验签**，密钥缺失或签名不符一律 401，绝不"未配置即放行"。
+- **内核事件联动**：订阅 `stock.alert.triggered` 事件，按告警自身勾选的 `im` 渠道推送。
+- **Web 第三方登录闭环**：授权 → 回调 → code 换 token → 联邦用户绑定 → JWT 签发，登录内核复用 auth-center。
+- **独立 schema**：`im_gateway`，共 5 张表（见下）；卸载时只清 IM 运行表、保留登录数据。
 
-## 架构设计
-
-```
-+--------------------------------------------------------------+
-|                     管理后台界面                               |
-+--------------------------------------------------------------+
-                              |
-                              v
-+--------------------------------------------------------------+
-|                      路由层 (routes.py)                        |
-|  /admin/channels/*                                            |
-|  +-- GET  /                   列出所有频道配置                 |
-|  +-- GET  /<channel>          获取单个频道详情                 |
-|  +-- PUT  /<channel>          保存/更新频道配置                 |
-|  +-- POST /<channel>/test     测试频道连接                    |
-+--------------------------------------------------------------+
-                              |
-                              v
-+--------------------------------------------------------------+
-|                   适配器层 (adapters/)                         |
-|  +-- base.py             BaseIMAdapter 抽象基类                |
-|  +-- feishu.py           飞书适配器                            |
-|  +-- wecom.py            企业微信适配器                         |
-|  +-- qq.py               QQ 适配器                             |
-|  +-- dingtalk.py         钉钉适配器                             |
-|  +-- telegram.py         Telegram 适配器                       |
-|  +-- line.py             LINE 适配器                           |
-+--------------------------------------------------------------+
-                              |
-                              v
-+--------------------------------------------------------------+
-|                      数据层 (models.py)                        |
-|  PG Schema: im_gateway                                        |
-|  +-- channel_configs    频道配置表                             |
-|      (channel PK, config_json JSON, is_enabled, timestamps)   |
-+--------------------------------------------------------------+
-```
-
-**Adapter 模式设计**：
+## 架构
 
 ```
-                    BaseIMAdapter (ABC)
-                    +-- channel: str
-                    +-- supports_test: bool
-                    +-- get_config_fields() -> list
-                    +-- test_connection(data) -> (ok, msg)
-                    +-- get_env_fallback() -> dict
-                    +-- push_media(url, name, mime)
-                          |
-          +-------+-------+-------+-------+-------+-------+
-          |       |       |       |       |       |       |
-       Feishu  WeCom    QQ   DingTalk Telegram  LINE
+管理后台 admin_imgateway.html（2 个 Tab：即时通讯 / 第三方登录）
+        │
+        ▼
+路由层（5 个蓝图）
+  routes.py            /admin/channels/*        IM 频道 CRUD + 连接测试
+  routes_overview.py   /admin/channels/overview  聚合概览（卡片 UI 数据源）
+  routes_login.py      /admin/channels/login/*   登录提供方凭据管理（方案 A）
+  routes_third_login.py /api/v1/oauth/*          Web OAuth 登录闭环（方案 B）
+  routes_webhook.py    /webhook/<channel>        入站 Webhook（原生验签 fail-closed → 归一化 → 分发）
+        │
+        ▼
+入站验签 webhook_signing.py
+  telegram(secret_token) / line(HMAC) / slack(v0 HMAC) / discord(Ed25519) / qq(Ed25519)
+        │
+        ▼
+适配器层 adapters/
+  base.py(BaseIMAdapter)
+  feishu / wecom / telegram / line / slack / discord / dingtalk / qq（均可真实出站）
+        │
+        ▼
+出站底座 http_client.py（统一超时 · SSRF 拦截 · TTL token 缓存）
+        │
+        ▼
+数据层 models.py —— PG Schema: im_gateway
+  channel_configs        IM 频道凭据（config_json）
+  rate_limit_events      跨 worker 频控计数
+  login_providers        第三方登录提供方配置
+  login_user_bindings    联邦身份 ↔ 主库用户绑定
+  oauth_login_states     OAuth state（CSRF，一次性 + 10 分钟过期）
 ```
 
 ## 目录结构
 
 ```
 im_gateway/
-+-- README.md                    # 插件文档
-+-- plugin.json                  # 插件元数据配置
-+-- __init__.py                  # 插件入口，注册蓝图和 Hook
-+-- models.py                    # 数据模型（独立库连接、表创建、种子数据、主库迁移）
-+-- routes.py                    # 管理端 API 路由（频道 CRUD、连接测试）
-+-- im_gateway.db                # 独立数据库文件（保留用于迁移）
-+-- adapters/
-|   +-- __init__.py              # 适配器注册与工厂函数
-|   +-- base.py                  # BaseIMAdapter 抽象基类
-|   +-- feishu.py                # 飞书适配器
-|   +-- wecom.py                 # 企业微信适配器
-|   +-- qq.py                    # QQ 适配器
-|   +-- dingtalk.py              # 钉钉适配器
-|   +-- telegram.py              # Telegram 适配器
-|   +-- line.py                  # LINE 适配器
-+-- i18n/
-|   +-- en.yml                   # 英文国际化
-|   +-- zh-CN.yml                # 中文国际化
-+-- templates/
-    +-- admin_imgateway.html     # 管理后台页面模板
+├── plugin.json                 插件元数据（v3.1.0，capabilities: im.channel.list / im.message.send / im.message.receive / im.account.bind）
+├── __init__.py                 插件入口：蓝图注册、事件订阅、dashboard、卸载清理
+├── models.py                   schema/5 张表、默认频道种子、主库频道配置幂等迁移
+├── gateway.py                  GatewayFacade：IM 出站门面 + PG 频控（社媒 publish 已移除）
+├── http_client.py              统一出站 HTTP（超时 5s/15s · SSRF 拦截 · 限长下载 · TTL token 缓存）
+├── webhook_signing.py          入站平台原生验签（telegram/line/slack/discord/qq，fail-closed）
+├── routes.py                   IM 频道 CRUD + 连接测试
+├── routes_overview.py          聚合概览端点
+├── routes_webhook.py           入站 Webhook 入口（验签 → 归一化 → 分发）
+├── routes_login.py             第三方登录提供方管理（方案 A）
+├── routes_third_login.py       Web OAuth 登录闭环（方案 B）
+├── events.py                   入站事件归一化 / 分发
+├── adapters/                   IM 适配器注册表与各频道实现
+│   ├── __init__.py / base.py
+│   ├── feishu.py / wecom.py / telegram.py / line.py
+│   └── slack.py / discord.py / dingtalk.py / qq.py
+├── login/                      Web 登录提供方注册表 + code→token 交换（纯标准库 urllib）
+│   ├── providers.py / exchange.py
+├── i18n/                       en.yml / zh-CN.yml
+└── templates/admin_imgateway.html
 ```
 
 ## 安装与启用
 
-### 前提条件
+1. 插件随 `plugins/im_gateway` 目录分发，置于 `plugins/` 下。
+2. 在管理后台「插件管理」启用；启用时幂等创建 schema 与 5 张表，并写入默认频道种子、尝试从主库迁移历史频道配置。
+3. 在「System → IM Gateway」中配置飞书 / 企业微信等频道凭据并做连接测试。
 
-- VeroRun 平台版本 >= 0.10.0
-- 需要接入的 IM 平台的有效凭证（如飞书 App ID/Secret、企业微信 Corp ID/Secret 等）
-- PostgreSQL 数据库
+默认频道种子：
 
-### 安装步骤
+| 频道 | 标识 | 默认启用 |
+|------|------|:---:|
+| 飞书 | `feishu` | 是 |
+| 企业微信 | `wecom` | 是 |
+| QQ | `qq` | 否 |
+| 钉钉 | `dingtalk` | 否 |
 
-1. 将 `im_gateway` 目录放置于 `plugins/` 下
-2. 确保 `plugin.json` 中 `enabled` 为 `true`
-3. 重启应用，插件将自动：
-   - 创建 PostgreSQL schema `im_gateway`
-   - 初始化 `channel_configs` 表
-   - 插入飞书、企业微信等默认频道种子数据
-   - 从主库幂等迁移已有频道配置
-4. 在管理后台 "System" > "IM Gateway" 中配置各频道参数
-
-## 配置说明
-
-IM Gateway 的配置通过频道级别管理，每个频道独立配置，存储在 `channel_configs` 表的 `config_json` JSON 字段中。各频道支持的配置字段由其对应的 Adapter 子类通过 `get_config_fields()` 方法声明。
-
-**默认频道种子**：
-
-| 频道 | 标识符 | 默认启用 |
-|------|--------|----------|
-| 飞书 | feishu | 是 |
-| 企业微信 | wecom | 是 |
-| QQ | qq | 否 |
-| 钉钉 | dingtalk | 否 |
-
-Telegram 和 LINE 频道按需创建配置。
+Telegram / LINE 按需创建配置。
 
 ## API 端点
 
-### 管理端 API（需要管理员权限）
+### IM 频道管理（需管理员）
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/admin/channels/` | 列出所有频道配置（secret 值掩码显示） |
-| GET | `/admin/channels/<channel>` | 获取单个频道配置详情（含环境变量兜底信息） |
-| PUT | `/admin/channels/<channel>` | 保存/更新频道配置（掩码值不覆盖旧值） |
-| POST | `/admin/channels/<channel>/test` | 测试频道连接 |
+| GET | `/admin/channels/` | 频道列表（secret 掩码） |
+| GET | `/admin/channels/<channel>` | 频道详情（含环境变量兜底信息） |
+| PUT | `/admin/channels/<channel>` | 保存 / 更新（掩码值不覆盖旧值） |
+| POST | `/admin/channels/<channel>/test` | 连接测试 |
+| GET | `/admin/channels/overview` | 聚合概览（`im` / `login` 两段） |
 
-### 频道配置更新示例
+### 第三方登录提供方管理（方案 A，需管理员）
 
-```json
-{
-  "config": {
-    "app_id": "cli_xxxxx",
-    "app_secret": "new_secret_value"
-  },
-  "is_enabled": true
-}
-```
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/admin/channels/login/providers` | 提供方目录 + 已存配置（secret 掩码） |
+| POST | `/admin/channels/login/providers/save` | 保存凭据（client_secret 留空保留原值） |
+| POST | `/admin/channels/login/providers/enable` | 启用 / 停用提供方 |
+| GET | `/admin/channels/login/authorize/<provider>` | 生成授权 URL（测试用） |
 
-掩码值（含 `●` 字符）不会被覆盖，保留旧值。
+内置提供方目录：`wechat`（开放平台扫码）/ `qq` / `weibo` / `github` / `google`，见 `login/providers.py`。
 
-## 依赖关系
+### Web 第三方登录闭环（方案 B，公开端点）
 
-### 内部依赖
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/v1/oauth/<provider>/login` | 发起授权（state 落库防 CSRF）→ 跳平台授权页 |
+| GET | `/api/v1/oauth/<provider>/callback` | 回调 → code 换 token → 用户绑定 → JWT → sso_token cookie → 跳主站 |
 
-| 依赖项 | 用途 |
-|--------|------|
-| `plugins._base.db` | 插件基础数据库连接模块 |
-| `auth-center.models` | 主库读取（channel_configs 迁移源） |
-| `auth-center.routes.admin` | 管理员鉴权（`_require_admin`）和操作日志（`_log`） |
+要点：
 
-### 外部依赖
+- 交换实现 `login/exchange.py` 为**纯标准库 urllib**，零新增 pip 依赖，返回 `{openid, nickname, avatar, email}`。
+- 联邦身份存 `login_user_bindings`，不扩展主库 `users` 结构；主库用户按唯一 `username`（`<provider>_<md5(openid)前12位>`）get-or-create。
+- state 存 `oauth_login_states`，一次性消费 + 10 分钟过期。
+- 登录内核复用 auth-center `session_service.issue_auth_session`（统一签发，含 2FA / 账号禁用检查）；2FA 时跳主站 `?needs_2fa=1&challenge_token=...`。
+- 回调地址为 `<请求根>/api/v1/oauth/<provider>/callback`，需在各平台应用后台登记。
 
-| 依赖项 | 用途 |
-|--------|------|
-| 飞书开放平台 API | 飞书消息推送 |
-| 企业微信 API | 企业微信消息推送 |
-| QQ 开放平台 API | QQ 消息推送 |
-| 钉钉开放平台 API | 钉钉消息推送 |
-| Telegram Bot API | Telegram 消息推送 |
-| LINE Messaging API | LINE 消息推送 |
+### 入站 Webhook（原生验签 · fail-closed）
 
-### 提供的 Hook
+`POST /webhook/<channel>`：先**验签**（`webhook_signing.verify`），再归一化（`events.normalize_event`）并按订阅分发（`events.dispatch_event`）。
 
-| Hook 标识符 | 说明 |
-|-------------|------|
-| `im_gateway/send_message` | 通过指定频道发送消息 |
-| `im_gateway/push_media` | 通过指定频道推送媒体文件 |
+支持渠道：`telegram` / `line` / `slack` / `discord` / `qq`（其他渠道 404）。各平台机制与密钥来源：
 
-## 菜单组
+| 渠道 | 请求头 | 密钥来源（`channel_configs`） |
+|------|--------|------|
+| telegram | `X-Telegram-Bot-Api-Secret-Token` 常量比较 | `secret_token`（缺失时回退 env `IM_GATEWAY_WEBHOOK_SECRET`） |
+| line | `X-Line-Signature` = base64(HMAC-SHA256(body)) | `channel_secret` |
+| slack | `X-Slack-Signature` = `v0=…`，时间戳 ±5 分钟 | `signing_secret` |
+| discord | `X-Signature-Ed25519` 对 (timestamp+body) 验签 | `application_public_key` |
+| qq | `X-Signature-Ed25519` 对 (timestamp+body) 验签 | `bot_secret`（回退 `client_secret`） |
 
-- **System** - IM Gateway
+**fail-closed**：密钥缺失或签名不匹配一律 **401**，绝不"未配置即放行"。协议握手在验签后进行：Discord `PING(type=1) → PONG`、QQ `op=13` 回调地址验证返回 Ed25519 签名应答、Telegram 返回 200 空响应。
 
-## 扩展指南
-
-### 添加新的 IM 频道适配器
-
-1. 在 `adapters/` 下创建新的适配器文件（如 `slack.py`）
-2. 继承 `adapters.base.BaseIMAdapter` 并实现所有抽象方法
-3. 在 `adapters/__init__.py` 的 `get_adapter()` 工厂函数中注册新频道
-4. 在 `models.py` 的 `_SEED_CHANNELS` 中添加种子数据
-
-```python
-# adapters/slack.py 示例
-from .base import BaseIMAdapter
-
-class SlackAdapter(BaseIMAdapter):
-    channel = 'slack'
-    supports_test = True
-
-    def get_config_fields(self):
-        return [
-            {'key': 'bot_token', 'label': 'Bot Token', 'type': 'password'},
-            {'key': 'channel_id', 'label': 'Channel ID', 'type': 'text'},
-        ]
-
-    def test_connection(self, data):
-        # 实现 Slack API 连接测试
-        ...
-```
-
-## 统一社媒网关（v2.0.0 起）
-
-IM Gateway 从 v2.0.0 起在原有 IM 频道网关基础上增量扩展为**统一社媒网关**：统一 IM 消息、社媒内容发布与第三方账号 OAuth 授权。全部新增代码位于插件内新目录，现有 IM 链路零改动。
-
-### 新增能力
-
-| 能力 | 说明 |
-|------|------|
-| 统一接入层 `gateway` | `gateway.publish(channels, payload)` 一发多平台；`send_message` / `connect` / `callback` / `test` / `get_status` |
-| OAuth 第三方登录 | Twitter（OAuth 1.0a）、LinkedIn / Reddit / Weibo / Toutiao / Facebook / Instagram（OAuth 2.0 授权码），`/admin/channels/oauth/connect` |
-| 社媒渠道适配器 | `channels/social/` 下 twitter / linkedin / reddit / weibo / toutiao / facebook / instagram / wechat_oa / telegram_channel |
-| 加密账号表 | `channel_accounts`（im_gateway schema）整体 Fernet 加密，与旧 `channel_configs` 明文表并存 |
-| token 自动刷新 | APScheduler 定时任务每日扫描剩余有效期 <7 天的 token 自动刷新 |
-| 统一入站 Webhook | `/webhook/<channel>` 归一化后按订阅者分发（`events.subscribe`） |
-| 发布测试入口 | 管理界面「社媒渠道」区块连接按钮 + 账号列表 + 发布测试 |
-
-### 目录结构（新增部分）
-
-```
-im_gateway/
-+-- gateway.py              # GatewayFacade 统一接入层（频控）
-+-- crypto.py               # 凭据 Fernet 加密（复用 ENCRYPTION_KEY）
-+-- models_accounts.py      # channel_accounts 加密账号表
-+-- events.py               # 入站事件归一化与订阅分发
-+-- routes_oauth.py         # OAuth 授权路由（connect/callback/accounts/revoke/refresh/publish-test）
-+-- routes_webhook.py       # 统一 Webhook 入口
-+-- scheduler.py            # GATEWAY_JOBS（token 自动刷新）
-+-- routes_overview.py      # 聚合概览端点（卡片式管理 UI 数据源）
-+-- routes_developer.py     # 开发者登录 API Key 管理（Phase 4）
-+-- routes_login.py         # 第三方登录提供方管理（Phase 5，方案 A）
-+-- routes_third_login.py   # 第三方登录 Web OAuth 闭环（Phase 5，方案 B：login/callback）
-+-- channels/
-|   +-- base.py             # BaseChannelAdapter 统一渠道抽象基类
-|   +-- social/             # 社媒渠道适配器集合（注册到统一注册表）
-+-- oauth/                  # OAuth Provider 注册表 + 各平台实现
-+-- login/                  # 登录 OAuth 提供方注册表 + code→token 交换实现（Phase 5）
-```
-
-### 认证模式
-
-| 模式 | 平台 |
-|------|------|
-| `oauth` | Twitter / LinkedIn / Reddit / Weibo / Toutiao / Facebook / Instagram |
-| `client_credential` | 微信公众号（AppID/AppSecret）/ Telegram bot |
-| `manual` | 兜底 |
-
-### 使用示例
+## 对外 Python 接口
 
 ```python
 from plugins.im_gateway.gateway import gateway
 
-# 一发多平台（payload 支持 title/body/summary/image_url/link_url）
-gateway.publish(['twitter', 'linkedin'], {
-    'title': 'Hello',
-    'body': 'Hello world',
-    'image_url': 'https://example.com/cover.jpg',
-})
-
-# IM 消息
-gateway.send_message(channel='telegram', to='@channel', content='Hello')
-
-# 第三方登录（返回授权 URL）
-gateway.connect(platform='twitter')
+gateway.send_message(channel='telegram', to='<chat_id>', content='Hello')  # IM 出站
+gateway.test(channel='feishu', data={...})                                 # 连接测试
+gateway.list_channels()                                                    # 渠道枚举
 ```
 
-### 平台 App 凭据配置
+> 社媒「一发多平台」的 `gateway.publish()` / OAuth `connect()` 已在 v3.0.0 移除，相关能力请使用 `social_push` 插件。
 
-OAuth 平台的应用凭据（client_id / client_secret / api_key 等）沿用现有频道配置接口写入 `channel_configs`（channel 即平台标识，如 `twitter` / `linkedin`），用户 token 经 OAuth 授权后加密存入 `channel_accounts`。
+## 内核事件集成
 
-## 卡片式管理 UI（Phase 1-7）
+插件通过 `get_event_handlers()` 订阅 `stock.alert.triggered`：仅当该条告警的 `channels` 含 `im` 时，才向所有「已启用」IM 频道投递格式化文本；频道未配置或发送失败只记日志，不中断事件链。
 
-管理界面 `admin_imgateway.html` 升级为 **5-Tab 卡片式框架**：即时通讯 / 社媒渠道 / 内容发布 / 第三方登录 / 开发者登录。各 tab 统一从聚合端点 `GET /admin/channels/overview` 读取结构化数据渲染（`im` / `social` / `publish` / `login` / `developer` / `miniapp` 六段）。
+## 扩展指南：新增 IM 适配器
 
-### 开发者登录（Phase 4）
+1. 在 `adapters/` 新建文件（如 `slack.py`），继承 `BaseIMAdapter`，实现 `get_config_fields()` / `test_connection()` / `send()`（媒体按需覆写 `push_media()`）。
+2. 在 `adapters/__init__.py` 的 `_ADAPTERS` 注册。
+3. 如需默认行，在 `models.py` 的 `_SEED_CHANNELS` 增加。
+4. 补齐 `i18n` 中适配器抛错词条（en / zh-CN 键集保持一致）。
 
-复用 auth-center `UnifiedAuthService` 统一 API Key 体系（**不建表、不直写库**），管理员可签发 / 吊销 `vr_user_` / `vr_agent_` / `vr_prov_` 三类 Key，前端「开发者登录」tab 提供新建表单（名称 / 类型 / 过期时间）与吊销操作。
+## 卸载行为
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/admin/channels/developer/keys/issue` | 签发新 API Key（raw_key 仅返回一次，调用方立即展示） |
-| POST | `/admin/channels/developer/keys/revoke/<id>` | 吊销本人 API Key（软删除） |
+`on_uninstall` 只 `DROP TABLE` 两张 IM 运行表（`rate_limit_events`、`channel_configs`），**显式保留**三张登录表（`login_providers` / `login_user_bindings` / `oauth_login_states`）——联邦登录绑定属于用户资产，卸载 IM 频道不应连带清除。
 
-### 第三方登录（Phase 5，方案 A：插件自包含）
+## 已知限制与在途项
 
-插件内置 WeChat / QQ / Weibo / GitHub / Google 提供方目录（`login/providers.py` 注册表），凭据存入 `im_gateway.login_providers` 表，`client_secret` 掩码显示；前端「第三方登录」tab 提供卡片列表（启用状态 / 是否配置）、凭据配置表单、启用 / 停用切换与授权 URL 测试。
-
-> 说明：方案 A 覆盖「提供方目录 + 凭据管理 + 授权 URL 生成（测试）」。完整登录闭环（回调 → 用户绑定 → JWT）见下方「方案 B」小节，已由 IM Gateway 实现。
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/admin/channels/login/providers` | 提供方目录 + 已保存配置（secret 掩码） |
-| POST | `/admin/channels/login/providers/save` | 保存提供方凭据（client_secret 留空时保留原值） |
-| POST | `/admin/channels/login/providers/enable` | 启用 / 停用提供方 |
-| GET | `/admin/channels/login/authorize/<provider>` | 生成授权 URL（测试用） |
-
-提供方注册表接口：`login/providers.py` 中 `list_login_providers()` 返回目录、`get_login_provider_class()` 按 id 查找提供方类。
-
-### 第三方登录闭环（Phase 5，方案 B：插件自包含）
-
-方案 B 在 IM Gateway 内实现 Web 第三方登录的**完整闭环**：授权 → 回调 → 用户绑定 → JWT。登录入口在插件（公开端点），登录内核仍为 auth-center（`session_service.issue_auth_session` 统一签发，含 2FA / 账号禁用检查），与小程序登录同架构；`oauth_config` 插件保留现状、不再扩展，二者提供方目录不同、互不影响。
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/v1/oauth/<provider>/login` | 发起授权（state 落库防 CSRF）→ 重定向平台授权页 |
-| GET | `/api/v1/oauth/<provider>/callback` | 平台回调 → code 换 token → 用户绑定 → JWT → sso_token cookie → 跳主站 |
-
-要点：
-- 平台：WeChat（开放平台扫码）/ QQ / Weibo / GitHub / Google，与方案 A 目录一致（`login/providers.py`）
-- 交换实现：`login/exchange.py`（纯标准库 urllib，零新增依赖），返回 `{openid, nickname, avatar, email}`
-- 用户绑定：统一走 `im_gateway.login_user_bindings` 表（联邦身份，同 mini_app_builder 的 platform_user_mappings 先例），不扩展主库 `users` 结构；主库用户按唯一 `username`（`<provider>_<md5(openid)前12位>`）get-or-create
-- CSRF：state 存 `im_gateway.oauth_login_states`，一次性消费 + 10 分钟过期
-- 2FA 拦截：`issue_auth_session` 抛 `TwoFactorRequired` 时跳主站 `?needs_2fa=1&challenge_token=...`
-- 回调地址：`<当前请求根>/api/v1/oauth/<provider>/callback`（login 与 callback 自动一致，需在各平台应用后台配置该地址）
-
-### 小程序开发账户（Phase 7，集中 mini_app_builder 登录）
-
-「开发者登录」tab 分上下两块（均采用**卡片网格**，与 im / social / login 各 tab 视觉对齐）：上块为 API Key 管理（Phase 4），下块为**小程序开发账户**（Phase 7）。小程序账户复用 mini_app_builder 的 `dev_accounts` 数据层（**不重复建表、不改其代码**），在 IM Gateway 内完成 5 平台（douyin / toutiao / wechat / telegram / line）凭据的完整 CRUD 与连接测试；mini_app_builder 未启用时接口优雅降级（返回明确错误，不影响其余功能）。
-
-各平台小程序登录方式（供前端展示）：
-
-| 平台 | 登录方式 |
-|------|---------|
-| douyin / toutiao | `tt.login()` code → code2session → openid → JWT（抖音与头条共用一套凭据） |
-| wechat | `wx.login()` code → get_openid_by_code → unionid → JWT |
-| telegram | WebApp `initData` → HMAC 验签（bot_token）→ JWT（全局通用） |
-| line | LIFF `accessToken` → LINE profile API 校验 → JWT |
-
-> 说明：whatsapp 生成器存在但 dev_accounts 暂无凭据条目，暂不纳入 CRUD；待 mini_app_builder 白名单扩展后再跟进。
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/admin/channels/miniapp-accounts` | 账户列表（可选 `?platform=` 过滤，敏感字段掩码） |
-| POST | `/admin/channels/miniapp-accounts` | 新增账户 |
-| PUT | `/admin/channels/miniapp-accounts/<id>` | 编辑账户（敏感字段留空 = 保持原值） |
-| DELETE | `/admin/channels/miniapp-accounts/<id>` | 删除账户 |
-| POST | `/admin/channels/miniapp-accounts/<id>/test` | 测试账户连接 |
+- **凭据仍为明文存储**：`channel_configs.config_json` 与 `login_providers.client_secret`（历史设计）明文落库，凭据加密改造仍在规划中。
+- **QQ Ed25519 派生机理**：按官方约定 `私钥 = sha256(bot_secret) → Ed25519` 实现（离线向量自测通过），上线前建议以真实回调复验。
+- **QQ 主动消息**（无 `msg_id`）需平台授权，未授权时平台报错原样透出，不做降级伪装。
+- **企业微信媒体**：群机器人本身不支持 file/video/audio 消息，`make_media` 不支持的类型如实降级为 markdown 下载链接，**不再伪造 media_id**。
+- **`events.subscribe` 目前无业务消费者**：入站事件已能验签、归一化并分发，但尚无内置订阅方（供 chatbot 等按需订阅）。
+- **真机连通未验证**：本批次仅完成静态与离线向量验证，实际发送 / webhook 注册需配置真实凭据后自测。
 
 ## 许可证
 
-本插件为 VeroRun 平台的一部分，遵循平台统一的许可证协议。
+本插件为 VeroRun 平台的一部分，遵循平台统一许可证协议。

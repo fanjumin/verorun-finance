@@ -1,0 +1,27 @@
+{
+  "_comment": "Vendor (akshare) Chinese column names and API argument values. Kept as a data asset so the Python sources stay CJK-free per docs/i18n-standard.md (scripts/i18n_check.py --check-cn).",
+  "col_map": {
+    "日期": "date",
+    "时间": "date",
+    "净值日期": "date",
+    "trade_date": "date",
+    "开盘": "open",
+    "今开": "open",
+    "开盘价": "open",
+    "最高": "high",
+    "最高价": "high",
+    "最低": "low",
+    "最低价": "low",
+    "收盘": "close",
+    "收盘价": "close",
+    "最新价": "close",
+    "单位净值": "close",
+    "成交量": "volume",
+    "成交额": "amount",
+    "持仓量": "open_interest"
+  },
+  "fund_name_cols": ["名称", "name", "基金名称", "简称"],
+  "fund_code_cols": ["代码", "code", "基金代码", "symbol", "symbols"],
+  "contract_code_cols": ["symbol", "symbols", "代码", "合约代码"],
+  "nav_indicator": "单位净值走势"
+}

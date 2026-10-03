@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ labels['Multi-Asset Workbench'] }}</title>
+  <link rel="stylesheet" href="/static/css/design-system.css">
+  <link rel="stylesheet" href="/static/css/themes.css">
+  <style>
+    body { margin: 0; padding: 20px; background: var(--bg, var(--bg-page)); color: var(--text, var(--text-primary)); font-size: 14px; }
+    main { max-width: 1080px; margin: 0 auto; }
+    h1 { font-size: 1.25rem; margin: 0 0 4px; }
+    .muted { opacity: .7; font-size: .82rem; }
+    form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 16px 0; }
+    input, select, button { min-height: 36px; padding: 0 10px; font-size: 14px; }
+    input { flex: 1 1 160px; }
+    button { cursor: pointer; }
+    .panel { margin-top: 22px; padding: 14px; border: 1px solid var(--border, #ddd); border-radius: 8px; }
+    .panel h2 { font-size: 1rem; margin: 0 0 10px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border-bottom: 1px solid var(--border, #eee); padding: 6px 8px; text-align: left; font-size: .86rem; }
+    th { font-weight: 600; }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; font-size: .82rem; }
+    .risk { margin-top: 14px; padding: 10px 12px; border-left: 3px solid #d9534f; background: rgba(217,83,79,.08); font-size: .84rem; display: none; }
+    .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+    .chip { padding: 2px 8px; border: 1px solid var(--border, #ddd); border-radius: 999px; font-size: .78rem; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .err { color: #d9534f; }
+    .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
+  </style>
+</head>
+<body>
+<main>
+  <h1>{{ labels['Multi-Asset Workbench'] }}</h1>
+  <div class="muted" id="chain-line">{{ labels['Chain sources'] }}: <span id="chain-sources">-</span></div>
+
+  <form id="query-form" autocomplete="off">
+    <label class="sr-only" for="symbol">{{ labels['Symbol'] }}</label>
+    <input id="symbol" name="symbol" placeholder="{{ labels['Symbol'] }}" maxlength="24" required>
+    <label class="sr-only" for="asset-type">{{ labels['Asset Type'] }}</label>
+    <select id="asset-type" name="asset_type"></select>
+    <label class="sr-only" for="freq">{{ labels['Frequency'] }}</label>
+    <select id="freq" name="freq"></select>
+    <button type="submit" id="btn-bars">{{ labels['Load Bars'] }}</button>
+    <button type="button" id="btn-quote">{{ labels['Quote'] }}</button>
+    <button type="button" id="btn-profile">{{ labels['Profile'] }}</button>
+  </form>
+
+  <div class="risk" id="risk-banner"></div>
+
+  <section class="panel">
+    <h2>{{ labels['Rows'] }}</h2>
+    <div id="bars-empty" class="muted">{{ labels['No data.'] }}</div>
+    <table id="bars-table" hidden>
+      <thead><tr>
+        <th>{{ labels['Trade Date'] }}</th><th>{{ labels['Source'] }}</th>
+        <th>Open</th><th>High</th><th>Low</th><th>Close</th><th>Volume</th>
+      </tr></thead>
+      <tbody id="bars-body"></tbody>
+    </table>
+  </section>
+
+  <section class="panel">
+    <h2>{{ labels['Quote'] }} / {{ labels['Profile'] }}</h2>
+    <pre id="detail-output">{{ labels['No data.'] }}</pre>
+  </section>
+
+  <section class="panel">
+    <h2>{{ labels['Instrument Search'] }}</h2>
+    <form id="search-form" autocomplete="off">
+      <label class="sr-only" for="q">{{ labels['Search'] }}</label>
+      <input id="q" placeholder="{{ labels['Search'] }}" maxlength="32">
+      <button type="submit">{{ labels['Search'] }}</button>
+    </form>
+    <div id="search-results" class="chips"></div>
+  </section>
+
+  <section class="panel">
+    <h2>{{ labels['Storage'] }}</h2>
+    <pre id="storage-output">-</pre>
+  </section>
+
+  <section class="panel">
+    <h2>{{ labels['Source'] }}</h2>
+    <pre id="health-output">-</pre>
+  </section>
+</main>
+
+<script>
+(function () {
+  "use strict";
+  var L = {{ labels|tojson }};
+  var C = {{ constants|tojson }};
+  var TOKEN = {{ token|tojson }} || new URLSearchParams(location.search).get("token") || "";
+  var API = "/admin/multi-asset/api";
+
+  function headers() {
+    return TOKEN ? { "Authorization": "Bearer " + TOKEN } : {};
+  }
+  function el(id) { return document.getElementById(id); }
+  function setText(id, value) { el(id).textContent = value; }
+  function pretty(obj) { return JSON.stringify(obj, null, 2); }
+
+  function call(path, params) {
+    var qs = new URLSearchParams(params || {}).toString();
+    var url = API + path + (qs ? ("?" + qs) : "");
+    return fetch(url, { headers: headers() }).then(function (r) {
+      return r.json().then(function (body) { return { status: r.status, body: body }; });
+    });
+  }
+
+  function showError(body) {
+    var msg = (body && body.error) ? body.error : "Request failed";
+    setText("detail-output", msg);
+    el("detail-output").classList.add("err");
+  }
+
+  function renderRisk(meta) {
+    var banner = el("risk-banner");
+    if (meta && meta.risk_disclosure) {
+      banner.textContent = meta.risk_disclosure;
+      banner.style.display = "block";
+    } else {
+      banner.textContent = "";
+      banner.style.display = "none";
+    }
+  }
+
+  function fillSelect(node, values, withAll) {
+    node.innerHTML = "";
+    if (withAll) {
+      var opt0 = document.createElement("option");
+      opt0.value = "";
+      opt0.textContent = "-";
+      node.appendChild(opt0);
+    }
+    (values || []).forEach(function (v) {
+      var o = document.createElement("option");
+      o.value = v;
+      o.textContent = v;
+      node.appendChild(o);
+    });
+  }
+
+  function currentParams() {
+    return {
+      symbol: (el("symbol").value || "").trim(),
+      asset_type: el("asset-type").value || "",
+      freq: el("freq").value || "daily"
+    };
+  }
+
+  function loadBars() {
+    var p = currentParams();
+    if (!p.symbol) { return; }
+    p.datalen = 120;
+    call("/bars", p).then(function (res) {
+      var body = res.body || {};
+      renderRisk(body.meta);
+      if (!body.ok) {
+        el("bars-table").hidden = true;
+        setText("bars-empty", (body.error || "Request failed"));
+        return;
+      }
+      var rows = (body.data && body.data.bars) || [];
+      var tbody = el("bars-body");
+      tbody.innerHTML = "";
+      rows.forEach(function (b) {
+        var tr = document.createElement("tr");
+        [b.trade_date, b.source, b.open, b.high, b.low, b.close, b.volume]
+          .forEach(function (v) {
+            var td = document.createElement("td");
+            td.textContent = (v === null || v === undefined) ? "" : v;
+            tr.appendChild(td);
+          });
+        tbody.appendChild(tr);
+      });
+      if (rows.length) {
+        el("bars-table").hidden = false;
+        setText("bars-empty", "");
+      } else {
+        el("bars-table").hidden = true;
+        setText("bars-empty", L["No data."]);
+      }
+    }).catch(function () { showError(null); });
+  }
+
+  function loadQuote() {
+    var p = currentParams();
+    if (!p.symbol) { return; }
+    call("/quote", { symbol: p.symbol, asset_type: p.asset_type }).then(function (res) {
+      var body = res.body || {};
+      renderRisk(body.meta);
+      el("detail-output").classList.remove("err");
+      setText("detail-output", pretty(body.data || body.error));
+    }).catch(function () { showError(null); });
+  }
+
+  function loadProfile() {
+    var p = currentParams();
+    if (!p.symbol) { return; }
+    call("/profile", { symbol: p.symbol, asset_type: p.asset_type }).then(function (res) {
+      var body = res.body || {};
+      el("detail-output").classList.remove("err");
+      setText("detail-output", pretty(body.data || body.error));
+    }).catch(function () { showError(null); });
+  }
+
+  function loadStorage() {
+    call("/storage", {}).then(function (res) {
+      setText("storage-output", pretty((res.body || {}).data));
+    }).catch(function () {
+      setText("storage-output", "-");
+    });
+    call("/health", {}).then(function (res) {
+      var data = (res.body || {}).data || {};
+      setText("health-output", pretty(data));
+      var chains = data.chains || {};
+      var names = [];
+      Object.keys(chains).forEach(function (k) {
+        names.push(k + ": " + (chains[k] || []).join(", "));
+      });
+      setText("chain-sources", names.join(" | ") || "-");
+    }).catch(function () {
+      setText("health-output", "-");
+    });
+  }
+
+  function doSearch(ev) {
+    if (ev) { ev.preventDefault(); }
+    var q = (el("q").value || "").trim();
+    var node = el("search-results");
+    node.innerHTML = "";
+    if (!q) { return; }
+    call("/search", { q: q, asset_type: el("asset-type").value || "", limit: 20 })
+      .then(function (res) {
+        var items = ((res.body || {}).data || {}).items || [];
+        items.forEach(function (it) {
+          var chip = document.createElement("button");
+          chip.type = "button";
+          chip.className = "chip";
+          chip.textContent = it.symbol || it.code || it.name || "";
+          chip.addEventListener("click", function () {
+            el("symbol").value = it.symbol || it.code || "";
+            loadBars();
+          });
+          node.appendChild(chip);
+        });
+        if (!items.length) { setText("search-results", L["No data."]); }
+      }).catch(function () { setText("search-results", "-"); });
+  }
+
+  el("query-form").addEventListener("submit", function (e) { e.preventDefault(); loadBars(); });
+  el("btn-quote").addEventListener("click", loadQuote);
+  el("btn-profile").addEventListener("click", loadProfile);
+  el("search-form").addEventListener("submit", doSearch);
+
+  fillSelect(el("asset-type"), C.asset_types || [], true);
+  fillSelect(el("freq"), C.freqs || ["daily"], false);
+
+  if (!TOKEN) {
+    setText("detail-output", "token missing");
+    el("detail-output").classList.add("err");
+  }
+  loadStorage();
+})();
+</script>
+</body>
+</html>

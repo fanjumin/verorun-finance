@@ -4208,3 +4208,15 @@ Please enter a GitHub repo URL: 请输入 GitHub 仓库地址
 '您已成功验证手机号，账户安全等级已提升。': '您已成功验证手机号，账户安全等级已提升。'
 '您有一张 {coupon_name} 即将在 {expire_days} 天后过期，请尽快使用。': '您有一张 {coupon_name} 即将在 {expire_days} 天后过期，请尽快使用。'
 '您的好友 {friend_name} 已完成首次操作，您的推广奖励已到账。': '您的好友 {friend_name} 已完成首次操作，您的推广奖励已到账。'
+
+# ── AI Relay user center (keys are the en source text) ──
+'AI Relay': 'AI 中转站'
+'Balance, Recharge & API Tokens': '余额、充值与 API 令牌'
+'Balance': '余额'
+'Recharge': '充值'
+'Create Token': '创建令牌'
+'Credits': 'Credits'
+'Used': '已用'
+'Quota': '配额'
+'Copy it now — it will not be shown again.': '请立即复制——此令牌仅显示一次。'
+'Amount must be greater than 0': '金额必须大于 0'

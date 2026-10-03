@@ -22,6 +22,8 @@ VeroRun 股票分析插件：为管理员与金融分析 Agent 提供 A 股技�
 
 前缀 `/admin/stock-analysis`，全部要求管理员身份（`sso_token` Cookie / Bearer / `X-Token`）。
 
+统一响应信封：`{ "ok": bool, "data": …, "error": …, "meta": … }`。失败（含 401/403/429）为 `{ "ok": false, "data": null, "error": "…", "meta": null }` + 对应状态码，无 `success` 字段。
+
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |
 | GET | `/` | 管理页面（iframe） |

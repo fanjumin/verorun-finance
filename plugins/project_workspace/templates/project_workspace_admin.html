@@ -1,0 +1,375 @@
+// templates/project_workspace_admin.html — bare JS partial (NO <script> tags allowed)
+// Rendered by admin SPA via window['l_project_workspace']() on menu click.
+
+window.l_project_workspace = function () {
+  var root = document.getElementById('mc');
+  if (!root) return;
+
+  var currentProjectId = null;
+  var currentTab = 'projects';
+
+  // -- Helper: render tabs ------------------------------------------------
+  function renderTabs(activeTab) {
+    var tabs = [
+      {key: 'projects', label: '{{ _('admin.tab.projects') }}'},
+      {key: 'documents', label: '{{ _('admin.tab.documents') }}'},
+      {key: 'search', label: '{{ _('admin.tab.search') }}'},
+      {key: 'qa', label: '{{ _('admin.tab.qa') }}'},
+      {key: 'citations', label: '{{ _('admin.tab.citations') }}'},
+    ];
+    var html = '<div class="tabs" style="display:flex;gap:4px;margin-bottom:16px">';
+    tabs.forEach(function(t) {
+      var active = t.key === activeTab ? ' class="tab-active"' : '';
+      html += '<button class="btn" data-tab="' + t.key + '"' + active + ' onclick="window.__pwSwitchTab(\'' + t.key + '\')">' + t.label + '</button>';
+    });
+    html += '</div>';
+    return html;
+  }
+
+  window.__pwSwitchTab = function(tab) {
+    currentTab = tab;
+    render();
+  };
+
+  // -- Main render --------------------------------------------------------
+  function render() {
+    var html = '<div class="card"><div class="card-header">' + '{{ _('plugin.name') }}' + '</div><div class="card-body">';
+    html += renderTabs(currentTab);
+
+    if (currentTab === 'projects') {
+      html += renderProjects();
+    } else if (currentTab === 'documents') {
+      html += renderDocuments();
+    } else if (currentTab === 'search') {
+      html += renderSearch();
+    } else if (currentTab === 'qa') {
+      html += renderQA();
+    } else if (currentTab === 'citations') {
+      html += renderCitations();
+    }
+
+    html += '</div></div>';
+    root.innerHTML = html;
+    loadTabData(currentTab);
+  }
+
+  // -- Projects Tab -------------------------------------------------------
+  function renderProjects() {
+    return '<div style="display:flex;gap:6px;margin-bottom:12px">' +
+      '<button class="btn btn-primary" onclick="window.__pwCreateProject()">' + '{{ _('admin.create_project') }}' + '</button>' +
+      '</div>' +
+      '<table class="table" id="pw-project-table"><thead><tr>' +
+      '<th>' + '{{ _('admin.field_name') }}' + '</th><th>' + '{{ _('admin.project_desc') }}' + '</th><th>' + '{{ _('admin.field_documents') }}' + '</th><th>' + '{{ _('admin.members') }}' + '</th><th></th>' +
+      '</tr></thead><tbody></tbody></table>';
+  }
+
+  window.__pwCreateProject = function() {
+    var overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.onclick = function(e) { if (e.target === this) overlay.remove(); };
+    overlay.innerHTML = '<div class="modal-box" style="width:440px">' +
+      '<div style="font-size:16px;font-weight:700;margin-bottom:16px">' + '{{ _('admin.create_project') }}' + '</div>' +
+      '<div class="fl"><label style="min-width:110px">' + '{{ _('admin.project_name') }}' + '</label>' +
+      '<input id="pw-new-name" class="in" style="flex:1"/></div>' +
+      '<div class="fl"><label style="min-width:110px">' + '{{ _('admin.project_desc') }}' + '</label>' +
+      '<input id="pw-new-desc" class="in" style="flex:1"/></div>' +
+      '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">' +
+      '<button class="btn" onclick="this.closest(\'.modal-overlay\').remove()">' + '{{ _('admin.cancel') }}' + '</button>' +
+      '<button class="btn btn-primary" onclick="window.__pwConfirmCreate()">' + '{{ _('admin.create') }}' + '</button></div></div>';
+    document.body.appendChild(overlay);
+    var input = document.getElementById('pw-new-name');
+    if (input) input.focus();
+  };
+
+  window.__pwConfirmCreate = function() {
+    var name = document.getElementById('pw-new-name').value.trim();
+    if (!name) return;
+    var description = document.getElementById('pw-new-desc').value.trim();
+    fetch('/admin/project_workspace/projects', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({name: name, owner_id: window.__userId || '', description: description})
+    }).then(function(r){return r.json();}).then(function(data){
+      var overlay = document.querySelector('.modal-overlay');
+      if (overlay) overlay.remove();
+      if (data.ok) { loadTabData('projects'); }
+    });
+  };
+
+  window.__pwSelectProject = function(projectId) {
+    currentProjectId = projectId;
+    currentTab = 'documents';
+    render();
+  };
+
+  window.__pwDeleteProject = function(projectId) {
+    if (!confirm('{{ _('admin.confirm_delete') }}')) return;
+    fetch('/admin/project_workspace/projects/' + projectId, {method: 'DELETE'})
+    .then(function(r){return r.json();}).then(function(){
+      loadTabData('projects');
+    });
+  };
+
+  // -- Documents Tab ------------------------------------------------------
+  function renderDocuments() {
+    return '<div style="display:flex;gap:6px;margin-bottom:12px;align-items:center">' +
+      '<select id="pw-doc-project" class="input" style="width:300px" onchange="window.__pwDocProjectChange()">' +
+      '<option value="">' + '{{ _('admin.placeholder_select_project') }}' + '</option>' +
+      '</select>' +
+      '<input type="file" id="pw-file-upload" style="display:none" onchange="window.__pwUploadFile()"/>' +
+      '<button class="btn" onclick="document.getElementById(\'pw-file-upload\').click()">' + '{{ _('admin.upload') }}' + '</button>' +
+      '<input id="pw-doc-search" class="input" placeholder="' + '{{ _('admin.search') }}' + '"/>' +
+      '<button class="btn" onclick="window.__pwLoadDocs()">' + '{{ _('admin.action_search') }}' + '</button>' +
+      '</div>' +
+      '<table class="table" id="pw-doc-table"><thead><tr>' +
+      '<th>' + '{{ _('admin.field_name') }}' + '</th><th>' + '{{ _('admin.field_type') }}' + '</th><th>' + '{{ _('admin.field_size') }}' + '</th><th>' + '{{ _('admin.field_status') }}' + '</th><th>' + '{{ _('admin.field_uploaded') }}' + '</th><th></th>' +
+      '</tr></thead><tbody></tbody></table>';
+  }
+
+  window.__pwDocProjectChange = function() {
+    currentProjectId = document.getElementById('pw-doc-project').value;
+    window.__pwLoadDocs();
+  };
+
+  window.__pwUploadFile = function() {
+    var fileInput = document.getElementById('pw-file-upload');
+    if (!fileInput.files.length || !currentProjectId) return;
+    var formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+    formData.append('project_id', currentProjectId);
+    formData.append('uploaded_by', window.__userId || '');
+    fetch('/admin/project_workspace/documents', {
+      method: 'POST',
+      body: formData
+    }).then(function(r){return r.json();}).then(function(){
+      window.__pwLoadDocs();
+    });
+  };
+
+  window.__pwDeleteDoc = function(docId) {
+    if (!confirm('{{ _('admin.confirm_delete') }}')) return;
+    fetch('/admin/project_workspace/documents/' + docId, {method: 'DELETE'})
+    .then(function(r){return r.json();}).then(function(){
+      window.__pwLoadDocs();
+    });
+  };
+
+  window.__pwSummarizeDoc = function(docId) {
+    fetch('/admin/project_workspace/agent/summarize', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({document_id: docId})
+    }).then(function(r){return r.json();}).then(function(data){
+      if (data.summary) {
+        alert(data.summary);
+      }
+    });
+  };
+
+  // -- Search Tab ---------------------------------------------------------
+  function renderSearch() {
+    return '<div style="display:flex;gap:6px;margin-bottom:12px;align-items:center">' +
+      '<select id="pw-search-project" class="input" style="width:300px">' +
+      '<option value="">' + '{{ _('admin.placeholder_select_project') }}' + '</option>' +
+      '</select>' +
+      '<label><input type="checkbox" id="pw-cross-project"/> ' + '{{ _('admin.cross_project') }}' + '</label>' +
+      '</div>' +
+      '<div style="display:flex;gap:6px;margin-bottom:12px">' +
+      '<input id="pw-search-query" class="input" style="flex:1" placeholder="' + '{{ _('admin.search') }}' + '"/> ' +
+      '<button class="btn btn-primary" onclick="window.__pwDoSearch()">' + '{{ _('admin.action_search') }}' + '</button>' +
+      '</div>' +
+      '<div id="pw-search-results"></div>';
+  }
+
+  window.__pwDoSearch = function() {
+    var projectId = document.getElementById('pw-search-project').value;
+    var query = document.getElementById('pw-search-query').value;
+    var cross = document.getElementById('pw-cross-project').checked;
+    if (!query) return;
+    fetch('/admin/project_workspace/search?q=' + encodeURIComponent(query) +
+      '&project_id=' + encodeURIComponent(projectId) +
+      '&cross_project=' + cross + '&top_k=10')
+    .then(function(r){return r.json();}).then(function(data){
+      var container = document.getElementById('pw-search-results');
+      if (!data.results || !data.results.length) {
+        container.innerHTML = '<p style="color:var(--muted);padding:20px">' + '{{ _('admin.qa_no_results') }}' + '</p>';
+        return;
+      }
+      var html = '<div style="margin-top:12px">';
+      data.results.forEach(function(r){
+        html += '<div class="card" style="margin-bottom:8px;padding:12px">' +
+          '<div style="font-size:0.85rem;color:var(--muted)">' + esc(r.original_name || r.filename || '') + '  score: ' + (r.similarity || 0).toFixed(3) + '</div>' +
+          '<div style="margin-top:4px">' + esc(r.content || '').substring(0, 300) + '</div>' +
+          (r.section_title ? '<div style="font-size:0.85rem;color:var(--accent);margin-top:4px">' + esc(r.section_title) + '</div>' : '') +
+          '</div>';
+      });
+      html += '</div>';
+      container.innerHTML = html;
+    });
+  };
+
+  // -- Q&A Tab ------------------------------------------------------------
+  function renderQA() {
+    return '<div style="display:flex;gap:6px;margin-bottom:12px;align-items:center">' +
+      '<select id="pw-qa-project" class="input" style="width:300px">' +
+      '<option value="">' + '{{ _('admin.placeholder_select_project') }}' + '</option>' +
+      '</select>' +
+      '</div>' +
+      '<div style="display:flex;gap:6px;margin-bottom:12px">' +
+      '<input id="pw-qa-query" class="input" style="flex:1" placeholder="' + '{{ _('admin.qa_ask') }}' + '"/> ' +
+      '<button class="btn btn-primary" onclick="window.__pwDoQA()">' + '{{ _('admin.qa_submit') }}' + '</button>' +
+      '</div>' +
+      '<div id="pw-qa-answer"></div>' +
+      '<div id="pw-qa-history" style="margin-top:20px"></div>';
+  }
+
+  window.__pwDoQA = function() {
+    var projectId = document.getElementById('pw-qa-project').value;
+    var query = document.getElementById('pw-qa-query').value;
+    if (!projectId || !query) return;
+    document.getElementById('pw-qa-answer').innerHTML = '<p>' + '{{ _('admin.doc_processing') }}' + '</p>';
+    fetch('/admin/project_workspace/qa?q=' + encodeURIComponent(query) +
+      '&project_id=' + encodeURIComponent(projectId) + '&top_k=10')
+    .then(function(r){return r.json();}).then(function(data){
+      var container = document.getElementById('pw-qa-answer');
+      if (!data.answer) {
+        container.innerHTML = '<p style="color:var(--muted)">' + '{{ _('admin.qa_no_results') }}' + '</p>';
+        return;
+      }
+      var html = '<div class="card" style="padding:16px;margin-bottom:12px">' +
+        '<div style="white-space:pre-wrap">' + esc(data.answer) + '</div>';
+      if (data.sources && data.sources.length) {
+        html += '<div style="margin-top:12px;font-size:0.85rem;color:var(--muted)"><strong>' + '{{ _('admin.sources') }}' + ':</strong><ul>';
+        data.sources.forEach(function(s){
+          html += '<li>' + esc(s.filename) + ' (score: ' + (s.similarity || 0).toFixed(3) + ')</li>';
+        });
+        html += '</ul></div>';
+      }
+      html += '</div>';
+      container.innerHTML = html;
+      window.__pwLoadQAHistory();
+    });
+  };
+
+  window.__pwLoadQAHistory = function() {
+    var projectId = document.getElementById('pw-qa-project').value;
+    if (!projectId) return;
+    fetch('/admin/project_workspace/qa/history?project_id=' + encodeURIComponent(projectId))
+    .then(function(r){return r.json();}).then(function(data){
+      var container = document.getElementById('pw-qa-history');
+      if (!data.rows || !data.rows.length) return;
+      var html = '<h4 style="margin-bottom:8px">' + '{{ _('admin.history') }}' + '</h4>';
+      data.rows.forEach(function(r){
+        html += '<div class="card" style="padding:12px;margin-bottom:6px">' +
+          '<div><strong>Q:</strong> ' + esc(r.query) + '</div>' +
+          '<div style="margin-top:4px;color:var(--muted);font-size:0.9rem">' + esc((r.answer || '').substring(0, 200)) + '</div>' +
+          '<div style="font-size:0.8rem;color:var(--muted);margin-top:4px">' + r.created_at + '</div>' +
+          '</div>';
+      });
+      container.innerHTML = html;
+    });
+  };
+
+  // -- Citations Tab ------------------------------------------------------
+  function renderCitations() {
+    return '<div style="display:flex;gap:6px;margin-bottom:12px;align-items:center">' +
+      '<select id="pw-cit-project" class="input" style="width:300px">' +
+      '<option value="">' + '{{ _('admin.placeholder_select_project') }}' + '</option>' +
+      '</select>' +
+      '</div>' +
+      '<table class="table" id="pw-cit-table"><thead><tr>' +
+      '<th>' + '{{ _('admin.field_key') }}' + '</th><th>' + '{{ _('admin.field_title') }}' + '</th><th>' + '{{ _('admin.field_authors') }}' + '</th><th>' + '{{ _('admin.field_year') }}' + '</th><th>' + '{{ _('admin.field_document') }}' + '</th>' +
+      '</tr></thead><tbody></tbody></table>';
+  }
+
+  window.__pwLoadCitations = function() {
+    var projectId = document.getElementById('pw-cit-project').value;
+    if (!projectId) return;
+    fetch('/admin/project_workspace/citations?project_id=' + encodeURIComponent(projectId))
+    .then(function(r){return r.json();}).then(function(data){
+      var tb = document.querySelector('#pw-cit-table tbody');
+      tb.innerHTML = '';
+      (data.rows || []).forEach(function(c){
+        var tr = document.createElement('tr');
+        tr.innerHTML = '<td>' + esc(c.citation_key) + '</td>' +
+          '<td>' + esc(c.title || '-') + '</td>' +
+          '<td>' + esc((c.authors || []).join(', ')) + '</td>' +
+          '<td>' + (c.year || '-') + '</td>' +
+          '<td>' + esc(c.document_name || '-') + '</td>';
+        tb.appendChild(tr);
+      });
+    });
+  };
+
+  // -- Data loading -------------------------------------------------------
+  function loadTabData(tab) {
+    if (tab === 'projects') loadProjects();
+    else if (tab === 'documents') { loadProjectPicker(); window.__pwLoadDocs(); }
+    else if (tab === 'search') loadProjectPicker('pw-search-project');
+    else if (tab === 'qa') { loadProjectPicker('pw-qa-project'); window.__pwLoadQAHistory(); }
+    else if (tab === 'citations') { loadProjectPicker('pw-cit-project'); }
+  }
+
+  function loadProjects() {
+    fetch('/admin/project_workspace/projects?owner_id=' + encodeURIComponent(window.__userId || ''))
+    .then(function(r){return r.json();}).then(function(data){
+      var tb = document.querySelector('#pw-project-table tbody');
+      tb.innerHTML = '';
+      (data.rows || []).forEach(function(p){
+        var tr = document.createElement('tr');
+        tr.innerHTML = '<td><a href="#" onclick="window.__pwSelectProject(\'' + p.id + '\');return false">' + esc(p.name) + '</a></td>' +
+          '<td>' + esc((p.description || '').substring(0, 80)) + '</td>' +
+          '<td>' + (p.doc_count || 0) + '</td>' +
+          '<td>' + (p.member_count || 0) + '</td>' +
+          '<td><button class="btn btn-danger" onclick="window.__pwDeleteProject(\'' + p.id + '\')">' + '{{ _('admin.delete') }}' + '</button></td>';
+        tb.appendChild(tr);
+      });
+    });
+  }
+
+  function loadProjectPicker(selectId) {
+    selectId = selectId || 'pw-doc-project';
+    fetch('/admin/project_workspace/projects?owner_id=' + encodeURIComponent(window.__userId || ''))
+    .then(function(r){return r.json();}).then(function(data){
+      var sel = document.getElementById(selectId);
+      if (!sel) return;
+      sel.innerHTML = '<option value="">' + '{{ _('admin.placeholder_select_project') }}' + '</option>';
+      (data.rows || []).forEach(function(p){
+        var opt = document.createElement('option');
+        opt.value = p.id;
+        opt.textContent = p.name;
+        if (p.id === currentProjectId) opt.selected = true;
+        sel.appendChild(opt);
+      });
+    });
+  }
+
+  window.__pwLoadDocs = function() {
+    if (!currentProjectId) return;
+    var keyword = document.getElementById('pw-doc-search') ? document.getElementById('pw-doc-search').value : '';
+    fetch('/admin/project_workspace/documents?project_id=' + encodeURIComponent(currentProjectId) +
+      '&q=' + encodeURIComponent(keyword))
+    .then(function(r){return r.json();}).then(function(data){
+      var tb = document.querySelector('#pw-doc-table tbody');
+      tb.innerHTML = '';
+      (data.rows || []).forEach(function(d){
+        var statusLabels = { pending: '{{ _('doc.status_pending') }}', processing: '{{ _('doc.status_processing') }}', ready: '{{ _('doc.status_ready') }}', failed: '{{ _('doc.status_failed') }}' };
+        var sizeStr = (d.file_size > 1048576) ? (d.file_size / 1048576).toFixed(1) + ' MB' :
+                      (d.file_size > 1024) ? (d.file_size / 1024).toFixed(0) + ' KB' : d.file_size + ' B';
+        var tr = document.createElement('tr');
+        tr.innerHTML = '<td>' + esc(d.original_name || d.filename) + '</td>' +
+          '<td>.' + esc(d.file_ext || '') + '</td>' +
+          '<td>' + sizeStr + '</td>' +
+          '<td>' + (statusLabels[d.status] || d.status) + '</td>' +
+          '<td>' + (d.uploaded_at || '').substring(0, 10) + '</td>' +
+          '<td>' +
+          '<button class="btn" onclick="window.__pwSummarizeDoc(\'' + d.id + '\')" style="margin-right:4px">' + '{{ _('admin.action_summarize') }}' + '</button>' +
+          '<button class="btn btn-danger" onclick="window.__pwDeleteDoc(\'' + d.id + '\')">' + '{{ _('admin.delete') }}' + '</button></td>';
+        tb.appendChild(tr);
+      });
+    });
+  };
+
+  // -- Initial render -----------------------------------------------------
+  render();
+};

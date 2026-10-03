@@ -2,7 +2,7 @@
   "name": "Stock Analysis",
   "name_i18n_key": "plugin.name",
   "identifier": "stock_analysis",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "A-share multi-dimensional stock analysis with technical, fundamental, sentiment and AI-assisted research.",
   "author": "easykai",
   "min_app_version": "0.10.0",
@@ -42,10 +42,14 @@
     "auto_deep_research_on_batch": false
   },
   "permissions": [
-    "network:request"
+    "network:request",
+    "routes",
+    "scheduler",
+    "dag",
+    "health"
   ],
   "hooks": {
-    "provides": ["stock.alert.triggered", "stock.batch.completed"],
+    "provides": ["stock.alert.triggered", "stock.batch.completed", "stock.morning_brief.ready"],
     "listens": ["scheduler.job_completed"]
   },
   "agent_role": "stock_analyst",
@@ -97,7 +101,7 @@
         "type": "string",
         "title": "Data Provider",
         "description": "Preferred market data source override (empty = follow default route order).",
-        "enum": ["", "sina", "tencent", "akshare", "tushare", "fmp", "polygon"],
+        "enum": ["", "sina", "tencent", "akshare", "tushare", "fmp", "polygon", "wind", "choice"],
         "default": ""
       },
       "data_cache_dir": {

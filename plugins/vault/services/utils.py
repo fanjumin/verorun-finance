@@ -142,6 +142,109 @@ def safe_join(base_dir: str, rel_path: str) -> str:
     return full
 
 
+# 备份最终产物的全部合法后缀（顺序即同 label 多文件异常残留时的解析优先级）。
+# 基础归档本身是 .tar.gz；启用压缩后再追加 .gz/.zst/.lz4；启用加密后再追加 .enc。
+BACKUP_SUFFIXES = (
+    '.tar.gz.enc',
+    '.tar.gz.gz.enc',
+    '.tar.gz.zst.enc',
+    '.tar.gz.lz4.enc',
+    '.tar.gz.gz',
+    '.tar.gz.zst',
+    '.tar.gz.lz4',
+    '.tar.gz',
+)
+
+# 二次压缩后缀 -> 算法名（基础 .tar.gz 不算二次压缩）
+_COMPRESSED_TAILS = {
+    '.tar.gz.gz': 'gzip',
+    '.tar.gz.zst': 'zstd',
+    '.tar.gz.lz4': 'lz4',
+}
+
+
+def _artifact_meta(filename: str):
+    """根据文件名推断 (label, encrypted, compression)；非备份产物返回 None。"""
+    for suffix in BACKUP_SUFFIXES:
+        if filename.endswith(suffix):
+            label = filename[:-len(suffix)]
+            if not _LABEL_RE.match(label):
+                return None
+            encrypted = suffix.endswith('.enc')
+            core = suffix[:-4] if encrypted else suffix  # 去掉 .enc 再判压缩
+            return label, encrypted, _COMPRESSED_TAILS.get(core)
+    return None
+
+
+def resolve_backup_path(label: str):
+    """按 label 解析磁盘上真实存在的最终备份产物（自动识别压缩/加密后缀）。
+
+    标签非法/路径逃逸时抛 ValueError（与 safe_backup_path 语义一致）；
+    所有后缀都不存在时返回 None。
+    """
+    if not label or not _LABEL_RE.match(label):
+        raise ValueError('Invalid backup label')
+    base_dir = os.path.realpath(BACKUP_DIR)
+    for suffix in BACKUP_SUFFIXES:
+        candidate = os.path.realpath(os.path.join(base_dir, label + suffix))
+        if not candidate.startswith(base_dir + os.sep):
+            raise ValueError('Path traversal detected')
+        if os.path.isfile(candidate):
+            return candidate
+    return None
+
+
+def list_backup_files() -> list:
+    """枚举 BACKUP_DIR 内全部形态的备份最终产物，每个 label 取后缀优先级最高者。
+
+    返回 [{label, path, filename, encrypted, compression, size_bytes, mtime}]，
+    按修改时间倒序。
+    """
+    base_dir = os.path.realpath(BACKUP_DIR)
+    best = {}  # label -> (rank, item)
+    if os.path.isdir(base_dir):
+        for name in os.listdir(base_dir):
+            meta = _artifact_meta(name)
+            if not meta:
+                continue
+            label, encrypted, compression = meta
+            full = os.path.realpath(os.path.join(base_dir, name))
+            if not full.startswith(base_dir + os.sep) or not os.path.isfile(full):
+                continue
+            # 定位后缀优先级（异常残留多份时取排名最靠前的形态）
+            rank = next(i for i, suf in enumerate(BACKUP_SUFFIXES)
+                        if name.endswith(suf))
+            if label in best and best[label][0] <= rank:
+                continue
+            stat = os.stat(full)
+            best[label] = (rank, {
+                'label': label,
+                'path': full,
+                'filename': name,
+                'encrypted': encrypted,
+                'compression': compression,
+                'size_bytes': stat.st_size,
+                'mtime': stat.st_mtime,
+            })
+    return [item for _, item in sorted(
+        best.values(), key=lambda kv: kv[1]['mtime'], reverse=True)]
+
+
+def load_plugin_config() -> dict:
+    """从 plugin_registry 读取 vault 插件配置（routes 与 services 共用唯一口径）。"""
+    import json
+    from plugins._base.db import get_pooled_connection
+    conn = get_pooled_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT config FROM plugin_registry WHERE identifier = 'vault'")
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    if row and row[0]:
+        return json.loads(row[0]) if isinstance(row[0], str) else row[0]
+    return {}
+
+
 def get_vault_conn():
     """Return a raw psycopg2 connection pinned to the vault schema.
 
@@ -157,16 +260,62 @@ def get_vault_conn():
     return conn
 
 
+def reset_schema_cache():
+    """Invalidate the per-process schema-ensured flag after an uninstall.
+
+    Same-process companion to the catalog existence check inside
+    ensure_schema: with multiple gunicorn workers the DROP SCHEMA may run
+    in another process, so ensure_schema always verifies the schema still
+    exists before trusting the flag; this reset only lets the current
+    process recover without waiting for its next existence check.
+    """
+    global _SCHEMA_ENSURED
+    _SCHEMA_ENSURED = False
+
+
+def _vault_schema_present():
+    """Return True when the vault schema and its anchor table actually exist.
+
+    Checking `vault.vault_backups` covers both a dropped schema and a
+    half-created one (e.g. a previous migration that failed midway).
+    """
+    conn = get_vault_conn()
+    try:
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                "SELECT 1 FROM information_schema.tables "
+                "WHERE table_schema = %s AND table_name = %s",
+                ('vault', 'vault_backups'))
+            return cur.fetchone() is not None
+        finally:
+            cur.close()
+    finally:
+        conn.close()
+
+
 def ensure_schema():
     """Idempotently apply vault migrations so all vault_* tables exist.
 
     Safe to call on every request: the migration SQL only uses
-    CREATE SCHEMA / CREATE TABLE IF NOT EXISTS / CREATE INDEX IF NOT EXISTS,
-    and a module flag short-circuits after the first successful run per process.
+    CREATE SCHEMA / CREATE TABLE IF NOT EXISTS / CREATE INDEX IF NOT EXISTS.
+    A module flag short-circuits after the first successful run per process,
+    but the flag is only trusted while the schema is still present in the
+    catalog — an uninstall (DROP SCHEMA) executed by this or another worker
+    invalidates it and the migration is re-applied on the next call.
     """
     global _SCHEMA_ENSURED
     if _SCHEMA_ENSURED:
-        return True
+        try:
+            if _vault_schema_present():
+                return True
+            _SCHEMA_ENSURED = False
+            print('[Vault] schema missing despite cached flag — re-applying migrations')
+        except Exception as e:
+            # Catalog probe failed (e.g. DB unreachable): fall through to the
+            # migration step, which reports the real database error.
+            print('[Vault] schema existence probe failed: %s' % e)
+            _SCHEMA_ENSURED = False
     try:
         migration_path = os.path.join(
             os.path.dirname(os.path.abspath(__file__)), '..', 'migrations', '001_initial.sql')
@@ -204,7 +353,7 @@ def get_pg_env() -> Dict[str, str]:
     env = {}
     env_path = os.path.join(BASE_DIR, '.env')
     if os.path.exists(env_path):
-        with open(env_path, 'r') as f:
+        with open(env_path, 'r', encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
                 if line and not line.startswith('#') and '=' in line:

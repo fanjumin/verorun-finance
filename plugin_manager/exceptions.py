@@ -74,3 +74,15 @@ class PluginUninstallError(PluginError):
     def __init__(self, identifier: str, detail: str = ''):
         super().__init__(f'插件 "{identifier}" 卸载失败: {detail}')
         self.identifier = identifier
+
+
+class PluginInstallError(PluginError):
+    """on_install 明确失败（返回 False 或抛异常）。
+
+    建表/迁移等安装期初始化未完成时禁止带故障启用插件，
+    避免出现"状态 ACTIVE 但所有触库端点 500"的半成品。
+    """
+    def __init__(self, identifier: str, detail: str = ''):
+        super().__init__(f'插件 "{identifier}" 安装初始化失败: {detail}')
+        self.identifier = identifier
+        self.detail = detail

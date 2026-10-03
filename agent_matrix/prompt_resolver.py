@@ -63,6 +63,9 @@ class PromptResolver:
 
         ctx 传入 user_id / agent_id / user_query / task_type，供过滤器做隐私门控与检索。
         task_type 由 skill_injector 用于按任务类型精准命中技能（B 决策）。
+        owner_type / owner_id / device_id 为设备域过滤器（如 cogevolution IIoT 注入）
+        预留：任务上下文未提供时 owner_type 默认 'user'。均为增量键，既有过滤器
+        只读各自需要的键，不受影响。
         """
         try:
             from plugin_manager.hooks import get_hook_registry
@@ -71,6 +74,9 @@ class PromptResolver:
                 'agent_id': agent_config.get('id') if agent_config else None,
                 'user_query': task_context.get('user_query', ''),
                 'task_type': task_context.get('task_type', ''),   # 供技能注入器匹配
+                'owner_type': task_context.get('owner_type', 'user'),
+                'owner_id': task_context.get('owner_id'),
+                'device_id': task_context.get('device_id'),
             }
             prompt = get_hook_registry().apply_filters('before_prompt_resolve', prompt, ctx=ctx)
         except Exception as e:

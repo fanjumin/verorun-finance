@@ -101,11 +101,13 @@ def boll(close: pd.Series, n: int = 20, k: float = 2.0) -> dict:
 def compute_indicators(frame: pd.DataFrame, basis: str = "hfq") -> dict:
     """对 K 线 frame 计算全套指标，数组与 bars 等长对齐。
 
-    basis='hfq' 且存在 *_hfq 列时使用复权序列，否则回退 raw。
+    展示基准为 hfq/qfq 且存在对应 *_hfq/*_qfq 列时，用该复权序列计算；否则回退 raw。
     """
-    close = frame["close_hfq"] if (basis == "hfq" and "close_hfq" in frame) else frame["close"]
-    high = frame["high_hfq"] if (basis == "hfq" and "high_hfq" in frame) else frame["high"]
-    low = frame["low_hfq"] if (basis == "hfq" and "low_hfq" in frame) else frame["low"]
+    suffix = ("_qfq" if (basis == "qfq" and "close_qfq" in frame)
+              else ("_hfq" if (basis == "hfq" and "close_hfq" in frame) else ""))
+    close = frame[f"close{suffix}"]
+    high = frame[f"high{suffix}"]
+    low = frame[f"low{suffix}"]
     return {
         "ma5": ma(close, 5),
         "ma10": ma(close, 10),

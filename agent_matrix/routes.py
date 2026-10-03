@@ -1802,8 +1802,11 @@ def chat_stream_sse():
     def generate():
         # 先发 role 标识
         yield "data: {\"role\":\"assistant\"}\n\n"
-        for chunk in engine.chat_stream(messages):
-            yield f"data: {json.dumps(chunk)}\n\n"
+        # DEF-008：chunk 是 ChatCompletionChunk 对象，json.dumps 会直接抛
+        # TypeError（对象不可序列化）。必须先归一化为文本再下发。
+        from .llm_text import iter_stream_text
+        for text in iter_stream_text(engine.chat_stream(messages)):
+            yield f"data: {json.dumps(text)}\n\n"
         yield "data: [DONE]\n\n"
 
     return Response(
@@ -2714,6 +2717,26 @@ def _approval_mcp_env():
     return defaults
 
 
+def _email_mcp_env(app=None):
+    """组装 Email MCP 子进程环境变量（v1.8.0）。
+
+    EM-1(b)：子进程**不再持有任何邮件凭据**。主进程在注册系统 MCP 时启动一个
+    仅监听 127.0.0.1 的凭据桥，只把「桥地址 + 桥生命周期内固定的 256bit 随机
+    令牌」注入 env（令牌非每请求轮换）；实际发信由主进程在桥内完成
+    （_get_mail_config() 在主进程内存中解密）。
+    桥不可用时注入空值 → 子进程以明确错误帧失败，绝不回退为明文密码注入。
+    """
+    env = {'EMAIL_MCP_BRIDGE_URL': '', 'EMAIL_MCP_BRIDGE_TOKEN': ''}
+    try:
+        from plugins.email.services import get_mcp_bridge_endpoint
+        url, token = get_mcp_bridge_endpoint(app)
+        env['EMAIL_MCP_BRIDGE_URL'] = url or ''
+        env['EMAIL_MCP_BRIDGE_TOKEN'] = token or ''
+    except Exception as e:
+        print(f'[Agent Matrix] ⚠️ email MCP bridge init failed: {e}')
+    return env
+
+
 def _at_int_arg(name, default, low, high):
     try:
         value = int(request.args.get(name, default))
@@ -2931,6 +2954,38 @@ def init_agent_matrix(app):
         print('[Agent Matrix] ✅ System MCP agent_tools registered')
     except Exception as e:
         print(f'[Agent Matrix] ⚠️ System MCP agent_tools init failed: {e}')
+
+    # ── 系统内置 MCP：Email（plugins/email，v1.7.0） ──────
+    try:
+        from plugin_manager.mcp import register_system_mcp_server
+        import os as _email_os
+        _email_script = _email_os.path.join(
+            _email_os.path.dirname(
+                _email_os.path.dirname(_email_os.path.abspath(__file__))),
+            'plugins', 'email', 'email_mcp_server.py')
+        register_system_mcp_server(
+            plugin_id='email',
+            server_name='email',
+            config={
+                'command': 'python',
+                'args': [_email_script],
+                'transport': 'stdio',
+                # EM-1(b)：只注入凭据桥地址 + 桥生命周期内固定的随机令牌，不再注入邮件凭据
+                'env': _email_mcp_env(app),
+            },
+        )
+        # 清理 sync_plugin_mcp() 时代留在 DB 的残留记录（防双份注册）
+        try:
+            from plugin_manager.models_store import get_registry_db
+            with get_registry_db() as _conn:
+                _conn.execute(
+                    "DELETE FROM plugin_mcp_servers WHERE plugin_id='email'")
+                _conn.commit()
+        except Exception:
+            pass  # registry DB 不可用时静默
+        print('[Agent Matrix] ✅ System MCP email registered')
+    except Exception as e:
+        print(f'[Agent Matrix] ⚠️ System MCP email init failed: {e}')
     app.register_blueprint(agent_matrix_bp)
     print(_('[Agent Matrix] ✅ Database + seed data has been initialized'))
     print(f'[Agent Matrix] 📋 API: /admin/agent-matrix/*')

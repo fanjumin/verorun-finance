@@ -19,6 +19,11 @@ try:
 except ImportError:  # 顶层脚本运行兜底
     from plugins.stock_analysis import models_sa as sa
 
+try:
+    from . import llm_cache
+except ImportError:  # 顶层脚本运行兜底
+    from plugins.stock_analysis import llm_cache
+
 _log = logging.getLogger("stock_analysis.jobs_queue")
 
 _POLL_INTERVAL = 2.0       # 空队轮询间隔（秒）
@@ -51,14 +56,14 @@ def _ensure_poller():
 def submit_job(symbol: str, scope: str = "full", force: bool = False) -> dict:
     """幂等提交：同日同标的同 scope 已有成功任务且未 force → 复用；否则排队新任务。"""
     if not force:
-        existing = sa.find_today_done_job(symbol, scope)
+        existing = sa.find_reusable_job(symbol, scope, llm_cache.reuse_ttl_seconds())
         if existing:
             _ensure_poller()   # 即使只读复用也保证 worker 在场（本进程可能从未跑过任务）
             # v1.3 §5.2：复用决策走独立 decision 帧（reuse 分流戏剧化的触发源）
             _emit_flow_span(existing["job_id"], "stock", "decision", "decision",
                             symbol=symbol, decision_type="reuse", cache_hit=True,
                             latency_ms=0, status="ok",
-                            message="reuse today's done job (no LLM call)")
+                            message="reuse within ttl (no LLM call)")
             return {"job_id": existing["job_id"], "status": "done",
                     "reuse": True, "result": existing.get("result")}
     job_id = _new_job_id()
@@ -74,12 +79,13 @@ def submit_discuss_job(symbol: str, force: bool = False) -> dict:
     复用；否则排队新任务（type/scope 均为 discuss，与既有 analyze 任务区分）。
     """
     if not force:
-        existing = sa.find_today_done_job(symbol, "discuss")
+        existing = sa.find_reusable_job(symbol, "discuss",
+                                        llm_cache.reuse_ttl_seconds())
         if existing:
             _ensure_poller()
             _emit_flow_span(existing["job_id"], "stock", "discuss", "end",
                             symbol=symbol, decision_type="reuse", cache_hit=True,
-                            status="ok", message="reuse today's discuss (no LLM call)")
+                            status="ok", message="reuse discuss within ttl (no LLM call)")
             return {"job_id": existing["job_id"], "status": "done",
                     "reuse": True, "result": existing.get("result")}
     job_id = _new_job_id()
@@ -98,12 +104,13 @@ def submit_research_job(symbol: str, force: bool = False) -> dict:
       （证据收集 + LLM 调用，实测一次数十秒），放进请求线程必然触发网关超时。
     """
     if not force:
-        existing = sa.find_today_done_job(symbol, "research")
+        existing = sa.find_reusable_job(symbol, "research",
+                                        llm_cache.reuse_ttl_seconds())
         if existing:
             _ensure_poller()
             _emit_flow_span(existing["job_id"], "stock", "research", "end",
                             symbol=symbol, decision_type="reuse", cache_hit=True,
-                            status="ok", message="reuse today's research (no LLM call)")
+                            status="ok", message="reuse research within ttl (no LLM call)")
             return {"job_id": existing["job_id"], "status": "done",
                     "reuse": True, "result": existing.get("result")}
     job_id = _new_job_id()

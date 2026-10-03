@@ -42,7 +42,20 @@ def _get_pw_db():
 
 
 def _pw_retriever():
-    """构造 project_workspace 检索器（软依赖，口径同 _get_pw_db）。"""
+    """构造 project_workspace 检索器（软依赖，口径同 _get_pw_db）。
+
+    ★ 已知债（D16，2026-09-30 复核，勿单方面改造）：
+      project_workspace 已通过 add_filter 提供标准检索面 `project_workspace/search`
+      （project_workspace/__init__.py:212），但存在两点不足以支撑切换：
+        1. 该 filter 只透传 (query, project_id, top_k)，**不接收 user_id /
+           cross_project**；当前 cross_project=False 时 user_id 不参与过滤尚等价，
+           一旦将来开放跨项目检索即丢失成员边界过滤。
+        2. 本模块另外还直接依赖 pw 的 get_db / DocProcessor / ResearchService
+           三个内部类，pw 均未提供对应钩子 —— 只切检索无法真正解耦。
+      结论：维持直接调用并登记为债；待 pw 补齐 user_id 透传与其余钩子后再契约化。
+      另注：直接 import 的 ImportError → KnowledgeBaseUnavailable → 路由 503 降级链
+      是现有可观测语义，改走 apply_filters 会改变该错误传播路径。
+    """
     try:
         from plugins.project_workspace.services.retriever import KnowledgeRetriever
     except ImportError as e:

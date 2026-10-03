@@ -55,8 +55,8 @@ class BaseIMAdapter(ABC):
 
         Args:
             payload: dict，至少含 'content'（文本），可选 'to'（接收方标识）。
-                     gateway.send_message 传入 {'to': to, 'content': content}；
-                     gateway.publish 传入原始内容 dict（取 text/content 字段）。
+                     gateway.send_message 传入 {'to': to, 'content': content}。
+                     （社媒内容发布已随职责迁至 social_push，不经本网关。）
 
         Returns:
             dict: {'success': bool, 'error'?: str, ...}

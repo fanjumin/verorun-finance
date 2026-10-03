@@ -1,3 +1,29 @@
+// ── 邮件外部内容消毒（EM-5）──────────────────────────────────
+// 邮件正文/发件人/主题均来自外部邮件服务器，属不可信输入。
+// esc() 只能处理纯文本字段；正文是任意外部 HTML，需白名单式清理后再入 DOM。
+function emSafe(html){
+  var raw=String(html==null?'':html);
+  try{
+    var doc=new DOMParser().parseFromString(raw,'text/html');
+    if(!doc||!doc.body)return raw;
+    var junk=doc.querySelectorAll('script,style,iframe,object,embed,link,meta,form,base');
+    for(var i=junk.length-1;i>=0;i--){junk[i].parentNode.removeChild(junk[i])}
+    var nodes=doc.body.querySelectorAll('*');
+    for(var j=0;j<nodes.length;j++){
+      var attrs=nodes[j].attributes;
+      for(var k=attrs.length-1;k>=0;k--){
+        var an=attrs[k].name.toLowerCase();
+        var av=String(attrs[k].value==null?'':attrs[k].value);
+        if(an.indexOf('on')===0||an==='srcdoc'){nodes[j].removeAttribute(attrs[k].name);continue}
+        if((an==='href'||an==='src'||an==='xlink:href')&&/^\s*(javascript|data|vbscript)\s*:/i.test(av)){
+          nodes[j].removeAttribute(attrs[k].name);
+        }
+      }
+    }
+    return doc.body.innerHTML;
+  }catch(e){return raw}
+}
+
 window.l_email=function(){
   document.getElementById("pt").textContent="{{ _('Email Management') }}";
   // Tab navigation
@@ -20,19 +46,42 @@ function showEmailTab(tab){
 
 function renderInbox(){
   var el=document.getElementById("emailTabContent");
-  var h='<div style="margin-bottom:12px"><button class="btn bp" onclick="se()">{{ _('Write Email') }}</button></div>';
+  window.emDraftId=null; // 当前撰写表单对应的草稿 ID（存草稿时更新）
+  // ── 工具栏：写邮件 / 草稿箱 / 收件箱搜索 ──
+  var h='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">';
+  h+='<button class="btn bp" onclick="se()">{{ _('Write Email') }}</button>';
+  h+='<button class="btn bo bs" onclick="toggleDrafts()">📝 {{ _('Drafts') }} <span id="draftsBadge" style="font-size:10px;color:var(--dim)"></span></button>';
+  h+='<input class="in" id="inbox-q" placeholder="🔍 {{ _('Search Inbox') }}..." style="width:220px;margin-left:auto" oninput="inboxSearch(this.value)">';
+  h+='</div>';
+  // ── 草稿面板 ──
+  h+='<div id="draftsPanel" style="display:none;margin-bottom:12px" class="cd"><div class="st">📝 {{ _('Drafts') }}</div><div id="draftsList"><div class="lo"><div class="s"></div></div></div></div>';
+  // ── 撰写表单（含 CC/BCC + 存草稿） ──
   h+='<div id="sendForm" style="display:none;margin-bottom:16px" class="cd"><div class="st">{{ _('Write Email') }}</div>';
   h+='<div style="margin-bottom:10px">';
   h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><span style="font-size:12px;color:var(--dim)">{{ _('Recipient') }}</span><span style="font-size:11px;color:var(--dim)">{{ _('Separate Multiple Addresses with Commas') }}</span></div>';
   h+='<input class="in" id="em-to" placeholder="email1@example.com, email2@example.com" style="width:100%">';
   h+='<div id="em-recipients" style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px"></div></div>';
+  h+='<div style="display:flex;gap:8px;margin-bottom:10px">';
+  h+='<div style="flex:1"><div style="font-size:12px;color:var(--dim);margin-bottom:4px">Cc</div><input class="in" id="em-cc" placeholder="cc@example.com" style="width:100%"></div>';
+  h+='<div style="flex:1"><div style="font-size:12px;color:var(--dim);margin-bottom:4px">Bcc</div><input class="in" id="em-bcc" placeholder="bcc@example.com" style="width:100%"></div>';
+  h+='</div>';
   h+='<div style="margin-bottom:10px"><div style="font-size:12px;color:var(--dim);margin-bottom:4px">{{ _('Theme') }}</div><input class="in" id="em-sub" placeholder="{{ _('Email Subject') }}" style="width:100%"></div>';
   h+='<div style="margin-bottom:10px"><div style="font-size:12px;color:var(--dim);margin-bottom:4px">{{ _('Content') }}</div><div id="em-editor" style="min-height:200px;background:rgba(0,0,0,.3);border-radius:8px;border:1px solid var(--border)"></div></div>';
   h+='<div style="margin-bottom:10px"><div style="font-size:12px;color:var(--dim);margin-bottom:4px">{{ _('Attachment') }}</div>';
   h+='<input type="file" id="em-file" multiple onchange="addAttach()" style="display:none">';
   h+='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn bo bs" onclick="document.getElementById(\'em-file\').click()">+ {{ _('Add Attachment') }}</button><div id="em-attach-list" style="display:flex;gap:6px;flex-wrap:wrap"></div></div></div>';
-  h+='<div style="margin-top:10px;display:flex;gap:8px"><button class="btn bp" onclick="ds()">{{ _('Send') }}</button> <button class="btn bo" onclick="hsf()">{{ _('Cancel') }}</button></div></div>';
-  h+='<div class="cd"><div class="st">{{ _('Inbox') }}</div><div id="inboxList"><div class="lo"><div class="s"></div></div></div></div>';
+  h+='<div style="margin-top:10px;display:flex;gap:8px;align-items:center"><button class="btn bp" onclick="ds()">{{ _('Send') }}</button> <button class="btn bo bs" onclick="saveDraft()">💾 {{ _('Save Draft') }}</button> <button class="btn bo" onclick="hsf()">{{ _('Cancel') }}</button><span id="draftHint" style="font-size:11px;color:var(--dim)"></span></div></div>';
+  // ── 收件箱（含批量操作条） ──
+  h+='<div class="cd"><div class="st">{{ _('Inbox') }}</div>';
+  h+='<div id="batchBar" style="display:none;margin-bottom:8px;padding:6px 8px;background:rgba(0,212,170,.08);border-radius:6px;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px">';
+  h+='<span id="batchCount">0</span> {{ _('Selected') }}';
+  h+='<button class="btn bo bs" onclick="doBatch(\'read\')">{{ _('Mark Read') }}</button>';
+  h+='<button class="btn bo bs" onclick="doBatch(\'unread\')">{{ _('Mark Unread') }}</button>';
+  h+='<select id="batch-folder" style="background:var(--bg);color:var(--fg);border:1px solid var(--border);border-radius:6px;padding:4px 8px;max-width:180px"><option value="">-- {{ _('Move to Folder') }} --</option></select>';
+  h+='<button class="btn bo bs" onclick="doBatch(\'move\')">{{ _('Move') }}</button>';
+  h+='<button class="btn bo bs" style="color:#e74c3c" onclick="doBatch(\'delete\')">🗑 {{ _('Delete') }}</button>';
+  h+='</div>';
+  h+='<div id="inboxList"><div class="lo"><div class="s"></div></div></div></div>';
   // Contacts panel
   h+='<div class="cd" style="margin-top:12px"><div class="st" style="cursor:pointer" onclick="toggleContacts()">📇 {{ _('Contact Person') }} <span id="contactToggle" style="font-size:10px;color:var(--dim)">[{{ _('Expand') }}]</span></div>';
   h+='<div id="contactsPanel" style="display:none">';
@@ -45,31 +94,214 @@ function renderInbox(){
   el.innerHTML=h;
   window.emEditor=null;
   window.emAttachments=[];
+  window.inboxUids=[];
   loadContacts();
+  loadFolders();
+  loadDraftCount();
   document.getElementById("em-to").addEventListener("input",parseRecipients);
-  fetch("/admin/email/inbox",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
-    if(!d.success||!d.data){document.getElementById("inboxList").innerHTML='<div class="em">{{ _('Load failed') }}</div>';return}
-    var lst=d.data.items||d.data;
-    if(!lst.length){document.getElementById("inboxList").innerHTML='<div class="em">{{ _('No Emails') }}</div>';return}
-    var tbl='<table><tr><th>{{ _('From') }}</th><th>{{ _('Subject') }}</th><th>{{ _('Attachment') }}</th><th>{{ _('Time') }}</th><th>{{ _('Action') }}</th></tr>';
-    lst.forEach(function(e){
-      var attIcon=e.has_attachments?' <span style="color:var(--accent)">📎</span>':'';
-      tbl+='<tr><td>'+(e.from||'-')+'</td><td>'+(e.subject||'({{ _('No Subject') }})')+attIcon+'</td><td>'+(e.has_attachments?'<span style="color:var(--accent)">{{ _('Yes') }}</span>':'')+'</td><td>'+(e.date||'')+'</td>';
-      tbl+='<td><button class="btn bo bs" onclick="re('+e.uid+',\''+e.from.replace(/'/g,'')+'\',\''+(e.subject||'').replace(/'/g,'')+'\')">{{ _('Reply') }}</button> <button class="btn bo" onclick="viewEmail('+e.uid+')">{{ _('View') }}</button></td></tr>';
+  inboxSearch('');
+}
+
+// ── 收件箱渲染（复用，供搜索/刷新） ─────────────────────────────
+var inboxQ='';
+function inboxSearch(val){
+  inboxQ=(val||'').trim();
+  clearTimeout(window._inboxTimer);
+  window._inboxTimer=setTimeout(function(){
+    var el=document.getElementById("inboxList");
+    if(!el)return;
+    el.innerHTML='<div class="lo"><div class="s"></div>{{ _('Loading') }}...</div>';
+    fetch("/admin/email/inbox"+(inboxQ?'?q='+encodeURIComponent(inboxQ):''),{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+      if(!d.success||!d.data){document.getElementById("inboxList").innerHTML='<div class="em">{{ _('Load failed') }}</div>';return}
+      var lst=d.data.items||d.data;
+      window.inboxUids=lst.map(function(e){return e.uid});
+      if(!lst.length){document.getElementById("inboxList").innerHTML='<div class="em">{{ _('No Emails') }}</div>';return}
+      var tbl='<table><tr><th style="width:36px"><input type="checkbox" id="inbox-cb-all" onchange="toggleAllInbox(this.checked)"></th><th>{{ _('From') }}</th><th>{{ _('Subject') }}</th><th>{{ _('Attachment') }}</th><th>{{ _('Time') }}</th><th>{{ _('Action') }}</th></tr>';
+      lst.forEach(function(e){
+        var attIcon=e.has_attachments?' <span style="color:var(--accent)">📎</span>':'';
+        var unreadCls=e.is_seen?'':' style="font-weight:600"';
+        tbl+='<tr'+unreadCls+'><td><input type="checkbox" class="inbox-cb" data-uid="'+e.uid+'" onchange="updateBatchBar()"></td>';
+        tbl+='<td>'+esc(e.from||'-')+'</td><td>'+esc(e.subject||'({{ _('No Subject') }})')+attIcon+'</td><td>'+(e.has_attachments?'<span style="color:var(--accent)">{{ _('Yes') }}</span>':'')+'</td><td>'+esc(e.date||'')+'</td>';
+        tbl+='<td><button class="btn bo bs" onclick="re('+e.uid+')">{{ _('Reply') }}</button> <button class="btn bo bs" onclick="fwdEmail('+e.uid+')">➡ {{ _('Forward') }}</button> <button class="btn bo" onclick="viewEmail('+e.uid+')">{{ _('View') }}</button></td></tr>';
+      });
+      tbl+='</table>';
+      document.getElementById("inboxList").innerHTML=tbl;
+    }).catch(function(){document.getElementById("inboxList").innerHTML='<div class="em">{{ _('Network error') }}</div>'});
+  },400);
+}
+
+// ── 批量选择与操作 ───────────────────────────────────────────────
+function selectedUids(){
+  var cbs=document.querySelectorAll("#inboxList .inbox-cb:checked");
+  var uids=[];
+  cbs.forEach(function(cb){uids.push(cb.getAttribute("data-uid"))});
+  return uids;
+}
+function toggleAllInbox(checked){
+  document.querySelectorAll("#inboxList .inbox-cb").forEach(function(cb){cb.checked=checked});
+  updateBatchBar();
+}
+function updateBatchBar(){
+  var uids=selectedUids();
+  var bar=document.getElementById("batchBar");
+  var cnt=document.getElementById("batchCount");
+  if(!bar||!cnt)return;
+  if(uids.length){bar.style.display="flex";cnt.textContent=uids.length}
+  else{bar.style.display="none"}
+}
+function doBatch(action){
+  var uids=selectedUids();
+  if(!uids.length){showToast('{{ _('Please select emails first') }}','error');return}
+  if(action==='delete'){
+    if(!confirm('{{ _('Confirm Delete Emails') }}'))return;
+  }
+  var body={action:action,uids:uids};
+  if(action==='move'){
+    var folder=document.getElementById("batch-folder").value;
+    if(!folder){showToast('{{ _('Please choose a target folder') }}','error');return}
+    body.folder=folder;
+  }
+  fetch("/admin/email/batch",{method:"POST",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify(body)}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){
+      showToast((d.data&&d.data.message)||'{{ _('Done') }}','success');
+      inboxSearch(inboxQ);
+      document.getElementById("batchBar").style.display="none";
+    }else{showToast('❌ '+(d.error||'{{ _('Operation failed') }}'),'error')}
+  }).catch(function(){showToast('{{ _('❌ Operation failed') }}','error')});
+}
+
+// ── 文件夹列表（批量移动用） ─────────────────────────────────────
+function loadFolders(){
+  fetch("/admin/email/folders",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    var sel=document.getElementById("batch-folder");
+    if(!sel)return;
+    var opts='<option value="">-- {{ _('Move to Folder') }} --</option>';
+    if(d.success&&d.data&&d.data.folders){
+      d.data.folders.forEach(function(f){
+        if(f==='INBOX')return;
+        opts+='<option value="'+escAttr(f)+'">'+esc(f)+'</option>';
+      });
+    }
+    sel.innerHTML=opts;
+  }).catch(function(){});
+}
+
+// ── 草稿箱 ───────────────────────────────────────────────────────
+function loadDraftCount(){
+  fetch("/admin/email/drafts",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    var b=document.getElementById("draftsBadge");
+    if(d.success&&d.data){if(b)b.textContent=(d.data.total>0?'('+d.data.total+')':'')}
+  }).catch(function(){});
+}
+function toggleDrafts(){
+  var p=document.getElementById("draftsPanel");
+  if(!p)return;
+  if(p.style.display==="none"||!p.style.display){p.style.display="block";renderDrafts()}
+  else{p.style.display="none"}
+}
+function renderDrafts(){
+  var el=document.getElementById("draftsList");
+  if(!el)return;
+  el.innerHTML='<div class="lo"><div class="s"></div></div>';
+  fetch("/admin/email/drafts",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success||!d.data){el.innerHTML='<div class="em">{{ _('Load failed') }}</div>';return}
+    var items=d.data.items||[];
+    if(!items.length){el.innerHTML='<div class="em">{{ _('No Drafts') }}</div>';return}
+    var tbl='<table><tr><th>{{ _('To') }}</th><th>{{ _('Subject') }}</th><th>{{ _('Updated') }}</th><th>{{ _('Action') }}</th></tr>';
+    items.forEach(function(dr){
+      tbl+='<tr><td>'+esc(dr.to_addr||'-')+'</td><td>'+esc(dr.subject||'({{ _('No Subject') }})')+'</td><td>'+(dr.updated_at?dr.updated_at.slice(0,16).replace('T',' '):'')+'</td>';
+      tbl+='<td><button class="btn bo bs" onclick="editDraft('+dr.id+')">{{ _('Edit') }}</button> <button class="btn bo" style="color:#e74c3c" onclick="deleteDraft('+dr.id+')">🗑</button></td></tr>';
     });
     tbl+='</table>';
-    document.getElementById("inboxList").innerHTML=tbl;
-  }).catch(function(){})
+    el.innerHTML=tbl;
+  }).catch(function(){el.innerHTML='<div class="em">{{ _('Network error') }}</div>'});
+}
+function editDraft(id){
+  fetch("/admin/email/drafts?page=1",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success||!d.data)return;
+    var items=d.data.items||[];
+    var dr=null;
+    for(var i=0;i<items.length;i++){if(items[i].id===id){dr=items[i];break}}
+    if(!dr){showToast('{{ _('Draft not found') }}','error');return}
+    document.getElementById("em-to").value=dr.to_addr||'';
+    var cc=document.getElementById("em-cc");if(cc)cc.value=dr.cc_addr||'';
+    var bcc=document.getElementById("em-bcc");if(bcc)bcc.value=dr.bcc_addr||'';
+    document.getElementById("em-sub").value=dr.subject||'';
+    se();
+    if(window.emEditor){
+      window.emEditor.root.innerHTML=dr.body_html?emSafe(dr.body_html):'<p>'+(dr.body_text||'').replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</p>';
+    }
+    window.emDraftId=dr.id;
+    var hint=document.getElementById("draftHint");
+    if(hint)hint.textContent='{{ _('Editing draft ') }} #'+dr.id;
+    parseRecipients();
+    document.getElementById("draftsPanel").style.display="none";
+  }).catch(function(){});
+}
+function deleteDraft(id){
+  if(!confirm('{{ _('Confirm Delete Draft') }}'))return;
+  fetch("/admin/email/drafts/"+id,{method:"DELETE",headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){showToast('{{ _('Draft deleted') }}','success');renderDrafts();loadDraftCount()}
+    else{showToast('❌ '+(d.error||'{{ _('Delete failed') }}'),'error')}
+  }).catch(function(){showToast('{{ _('❌ Delete failed') }}','error')});
+}
+function saveDraft(){
+  var to=document.getElementById("em-to").value.trim();
+  var cc=document.getElementById("em-cc")?document.getElementById("em-cc").value.trim():'';
+  var bcc=document.getElementById("em-bcc")?document.getElementById("em-bcc").value.trim():'';
+  var sub=document.getElementById("em-sub").value.trim();
+  var html=window.emEditor?window.emEditor.root.innerHTML:'';
+  var text=window.emEditor?window.emEditor.getText().trim():'';
+  var body={to:to,cc:cc,bcc:bcc,subject:sub,body:text,body_html:html,attachments:window.emAttachments.length?window.emAttachments:null};
+  if(window.emDraftId)body.draft_id=window.emDraftId;
+  fetch("/admin/email/drafts",{method:"POST",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify(body)}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){
+      window.emDraftId=d.data&&d.data.draft_id;
+      showToast('{{ _('Draft saved') }}','success');
+      loadDraftCount();
+      var hint=document.getElementById("draftHint");
+      if(hint)hint.textContent='{{ _('Editing draft ') }} #'+window.emDraftId;
+    }else{showToast('❌ '+(d.error||'{{ _('Save failed') }}'),'error')}
+  }).catch(function(){showToast('{{ _('❌ Save failed') }}','error')});
+}
+
+// ── 转发 ──────────────────────────────────────────────────────────
+function fwdEmail(uid){
+  fetch("/admin/email/read/"+uid,{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success||!d.data){showToast('{{ _('Load failed') }}','error');return}
+    var em=d.data;
+    var cur=document.getElementById("em-sub").value.trim();
+    var rsub='Fwd: '+(em.subject||'({{ _('No Subject') }})');
+    if(cur.indexOf('Fwd:')!==0)document.getElementById("em-sub").value=rsub;
+    var quote='<br><br>---------- {{ _('Forwarded message') }} ----------<br><b>{{ _('From') }}:</b> '+esc(em.from||'')+'<br><b>{{ _('Date') }}:</b> '+esc(em.date||'')+'<br><b>{{ _('Subject') }}:</b> '+esc(em.subject||'')+'<br><br>'+(emSafe(em.body_html||'').slice(0,100000));
+    se();
+    if(window.emEditor)window.emEditor.clipboard.dangerouslyPasteHTML(0,quote,{source:'user'});
+    if(em.to_addr){var t=document.getElementById("em-to");if(t&&!t.value.trim())t.value=em.to_addr}
+  }).catch(function(){showToast('{{ _('❌ Network error') }}','error')});
 }
 
 function renderEmailSettings(){
   var el=document.getElementById("emailTabContent");
   el.innerHTML='<div class="lo"><div class="s"></div>{{ _('Loading') }}...</div>';
   fetch("/admin/email/settings",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
-    if(!d.success||!d.data){el.innerHTML='<div class="em">{{ _('Load failed') }}: '+esc(d.error||'')+'</div>';return}
+if(!d.success||!d.data){el.innerHTML='<div class="em">{{ _('Load failed') }}: '+esc(d.error||'')+'</div>';return}
     var cfg=d.data.config||{};
     var defs=d.data.defs||{};
-    var h='<div class="cd"><div class="st">⚙ {{ _('Email Settings') }}</div>';
+    window.emProviders=d.data.providers||[];
+    var sugg=d.data.suggestion||null;
+    // ⚡ 快捷配置：服务商下拉 + 自动识别，选择后自动填充 SMTP/IMAP 服务器字段
+    var h='<div class="cd" style="margin-bottom:12px"><div class="st">⚡ {{ _('Quick Setup') }}</div>';
+    h+='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 0">';
+    h+='<select id="es-provider" onchange="applyProvider()" style="background:var(--bg);color:var(--fg);border:1px solid var(--border);border-radius:6px;padding:6px 10px;max-width:280px"><option value="">— {{ _('Select Mail Provider (Optional)') }} —</option>';
+    window.emProviders.forEach(function(p){
+      h+='<option value="'+esc(p.id)+'"'+(sugg&&sugg.id===p.id?' selected':'')+'>'+esc(p.name)+'</option>';
+    });
+    h+='</select>';
+    h+='<button class="btn bo bs" onclick="detectProvider()">🔍 {{ _('Auto Detect Account') }}</button>';
+    if(sugg){h+='<span style="font-size:12px;color:var(--accent)">✨ {{ _('Detected') }}: '+esc(sugg.name)+'</span>'}
+    h+='<span style="font-size:11px;color:var(--dim)">{{ _('Fill in the email account, servers auto-fill.') }}</span>';
+    h+='</div></div>';
+    h+='<div class="cd"><div class="st">⚙ {{ _('Email Settings') }}</div>';
     h+='<div style="font-size:12px;color:var(--dim);margin-bottom:12px">{{ _('Configure SMTP and IMAP settings for email sending and receiving.') }}</div>';
     var keys=Object.keys(defs);
     keys.forEach(function(k){
@@ -99,6 +331,38 @@ function renderEmailSettings(){
 function togglePwd(el){
   var inp=el.parentElement.querySelector('input');
   inp.type=inp.type==='password'?'text':'password';
+}
+
+// ⚡ 快捷配置：服务商匹配与自动填充（依赖 GET /settings 返回的 providers 数据）
+function emFindProvider(domain){
+  var best=null,bestLen=-1;
+  window.emProviders.forEach(function(p){
+    (p.domains||[]).forEach(function(d){
+      if(domain===d){if(d.length>bestLen){best=p;bestLen=d.length}}
+      else if(domain.indexOf('.'+d)>0&&d.length>bestLen){best=p;bestLen=d.length}
+    });
+  });
+  return best;
+}
+function applyProvider(){
+  var pid=document.getElementById("es-provider").value;
+  if(!pid)return;
+  var p=null;
+  window.emProviders.forEach(function(x){if(x.id===pid)p=x});
+  if(!p)return;
+  var m={smtp_host:p.smtp_host,smtp_port:p.smtp_port,imap_host:p.imap_host,imap_port:p.imap_port};
+  Object.keys(m).forEach(function(k){var inp=document.getElementById("es-"+k);if(inp)inp.value=m[k]||''});
+  if(p.note){showToast(p.note,'info')}
+}
+function detectProvider(){
+  var acc=(document.getElementById("es-smtp_user").value||'').trim();
+  if(!acc||acc.indexOf('@')<0){showToast('{{ _('Please fill in the email account first') }}','error');return}
+  var dom=acc.split('@')[1].toLowerCase();
+  var p=emFindProvider(dom);
+  if(!p){showToast('{{ _('No matching provider, please fill in manually') }}','error');return}
+  var sel=document.getElementById("es-provider");
+  if(sel){sel.value=p.id;applyProvider()}
+  showToast('{{ _('Auto detected as') }} '+p.name,'success');
 }
 
 function saveEmailSettings(){
@@ -138,8 +402,8 @@ function renderContacts(){
   emContacts.forEach(function(c,i){
     var checked=emSelectedContacts.indexOf(c.email)>=0?' checked':'';
     var src=c.source==='contact'?'<span class="bdg pd">{{ _('Form') }}</span>':'<span class="bdg on">{{ _('Sent') }}</span>';
-    h+='<tr><td><input type="checkbox" class="contact-cb" data-email="'+c.email+'" data-name="'+c.name+'"'+checked+' onchange="toggleContact(this)"></td>'+
-      '<td>'+(c.name||'-')+'</td><td style="color:var(--accent)">'+c.email+'</td><td>'+src+'</td><td>'+c.count+'</td></tr>';
+    h+='<tr><td><input type="checkbox" class="contact-cb" data-email="'+escAttr(c.email||'')+'" data-name="'+escAttr(c.name||'')+'"'+checked+' onchange="toggleContact(this)"></td>'+
+      '<td>'+esc(c.name||'-')+'</td><td style="color:var(--accent)">'+esc(c.email||'')+'</td><td>'+src+'</td><td>'+c.count+'</td></tr>';
   });
   h+='</table>';
   el.innerHTML=h;
@@ -245,20 +509,41 @@ function hsf(){document.getElementById("sendForm").style.display="none"}
 function ds(){
   var to=document.getElementById("em-to").value.trim();
   var sub=document.getElementById("em-sub").value.trim();
+  var cc=document.getElementById("em-cc")?document.getElementById("em-cc").value.trim():'';
+  var bcc=document.getElementById("em-bcc")?document.getElementById("em-bcc").value.trim():'';
   var html=window.emEditor?window.emEditor.root.innerHTML:'';
   var text=window.emEditor?window.emEditor.getText().trim():'';
   if(!to||!sub||(!html&&!text)){showToast('{{ _('Please fill in completely') }}','error');return}
   var body=text||'';
-  fetch("/admin/email/send",{method:"POST",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify({to:to,subject:sub,body:body,body_html:html||null,attachments:emAttachments.length?emAttachments:null})}).then(function(r){return r.json()}).then(function(d){
-    if(d.success){showToast('{{ _('✅ Sent') }}','success');emAttachments=[];renderAttachList();hsf();l_email()}else{showToast('❌ '+(d.error||'{{ _('Failed to send') }}'),'error')}
+  var payload={to:to,subject:sub,body:body,body_html:html||null,attachments:emAttachments.length?emAttachments:null};
+  if(cc)payload.cc=cc;
+  if(bcc)payload.bcc=bcc;
+  fetch("/admin/email/send",{method:"POST",headers:{"Authorization":"Bearer "+T,"Content-Type":"application/json"},body:JSON.stringify(payload)}).then(function(r){return r.json()}).then(function(d){
+    if(d.success){
+      showToast('{{ _('✅ Sent') }}','success');
+      emAttachments=[];renderAttachList();
+      // 发送成功后删除关联草稿（若由草稿编辑而来）
+      var drId=window.emDraftId;
+      window.emDraftId=null;
+      var hint=document.getElementById("draftHint");if(hint)hint.textContent='';
+      if(drId){fetch("/admin/email/drafts/"+drId,{method:"DELETE",headers:{"Authorization":"Bearer "+T}}).catch(function(){})}
+      hsf();inboxSearch(inboxQ);loadDraftCount();
+    }else{showToast('❌ '+(d.error||'{{ _('Failed to send') }}'),'error')}
   }).catch(function(){showToast('{{ _('❌ Send failed') }}','error')})
 }
-function re(uid,from,sub){
-  document.getElementById("em-to").value=from;
-  var rsub=sub.startsWith("Re:")?sub:"Re: "+sub;
-  document.getElementById("em-sub").value=rsub;
-  if(window.emEditor)window.emEditor.root.innerHTML='';
-  se();
+function re(uid){
+  fetch("/admin/email/read/"+uid,{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(d){
+    if(!d.success||!d.data){showToast('{{ _('Load failed') }}','error');return}
+    var em=d.data;
+    document.getElementById("em-to").value=em.from||'';
+    var sub=(em.subject||'').startsWith("Re:")?em.subject:"Re: "+(em.subject||'');
+    document.getElementById("em-sub").value=sub;
+    if(window.emEditor){
+      window.emEditor.root.innerHTML='<br><br><blockquote>'+emSafe(em.body_html||esc(em.body_text||'')).slice(0,100000)+'</blockquote>';
+    }
+    se();
+    parseRecipients();
+  }).catch(function(){showToast('{{ _('❌ Network error') }}','error')});
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -266,4 +551,3 @@ function escAttr(s){
   if(!s)return '';
   return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;');
 }
-

@@ -47,7 +47,7 @@
     "include_files": true,
     "include_config": true,
     "encryption": {
-      "enabled": false,
+      "enabled": true,
       "algorithm": "aes256-gcm",
       "key_source": "env"
     },

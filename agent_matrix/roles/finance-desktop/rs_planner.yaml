@@ -7,6 +7,7 @@ description: Research planning — decompose a question into testable hypotheses
 domain: research
 managed_modules:
   - stock_analysis
+  - project_workspace
 provider: deepseek
 model_name: deepseek-v4-flash
 system_prompt: prompts/rs_planner.md

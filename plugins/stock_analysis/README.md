@@ -342,12 +342,14 @@ verorun/plugins/stock_analysis/
 
 ### 响应信封（集成方必读）
 
-插件存在**双信封**，对接时须区分：
+**全插件统一信封** `{ "ok": bool, "data": …, "error": …, "meta": … }`，含 401/403/429 鉴权错误：
 
-| 端点族 | 信封 | 示例 |
+| 场景 | 形状 | 产出 |
 | --- | --- | --- |
-| `/api/analyze`（历史契约） | `{ "success": bool, "result": { symbol, timestamp, signal, report, json_data } }` | 旧契约，保持兼容 |
-| 桌面端契约端点（`/api/kline`、`/api/quotes`、`/api/jobs`、`/api/alerts*`、`/api/events` 等） | `{ "ok": bool, "data": …, "error": …, "meta": … }` | `_contract_error` / `_contract_ok` |
+| 成功 | `{ "ok": true, "data": …, "error": null, "meta": { generated_at, … } }` | `_contract_result` |
+| 参数/业务/鉴权失败 | `{ "ok": false, "data": null, "error": "…", "meta": null }` + 对应状态码 | `_contract_error`（401/403/429 由 `_perm_required`/`_admin_required` 统一收口） |
+
+> 2026-09-27：原 `/api/analyze`、`/api/signal`、`/api/market`、`/api/watchlist`、`/api/batch/*`、`/api/moneyflow`、`/api/signal-quality`、`/api/signal-realize`、`/api/deps/*` 共 14 个旧 `{success, …}` 端点已收敛，插件内**不再存在双信封**。原顶层字段已移入 `data`：`/api/analyze` 的结果体、`/api/watchlist` 的 `rows`/`groups`、`/api/batch/results` 的 `total`/`page`/`per_page`/`rows`、`/api/signal-quality` 的 `days`/`rows`、`/api/moneyflow` 的 `symbol`/`days`/`records`。
 
 `symbol` 校验：仅允许字母/数字/点，长度 ≤ 12，自动归一化为 `sh`/`sz`/`bj` 前缀（含北交所 `43/83/87/88/920` 段识别）。
 

@@ -612,6 +612,16 @@ def _admin_skip_net_proxy():
         '1', 'true', 'yes', 'on')
 
 
+def _admin_skip_ai_relay():
+    """ai_relay 面板逃生开关（与 _admin_skip_net_proxy 同构）。
+
+    设 VR_ADMIN_SKIP_AI_RELAY=1 可跳过 AI 中转站 partial 以恢复面板；
+    默认渲染。仅接受 1/true/yes/on。
+    """
+    return os.environ.get('VR_ADMIN_SKIP_AI_RELAY', '').strip().lower() in (
+        '1', 'true', 'yes', 'on')
+
+
 @app.route('/admin', strict_slashes=False)
 def admin_page():
     """规范入口 — 先验证 is_admin，未登录跳 login"""
@@ -639,6 +649,7 @@ def admin_page():
                                          edition=current_edition(),
                                          brand=brand_ctx,
                                          admin_skip_net_proxy=_admin_skip_net_proxy(),
+                                         admin_skip_ai_relay=_admin_skip_ai_relay(),
                                          is_enterprise_store=_is_official_edition()))
     resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
     resp.headers['Pragma'] = 'no-cache'
@@ -1255,6 +1266,7 @@ def admin_spa_catchall(subpath):
                                          edition=current_edition(),
                                          brand=brand_ctx,
                                          admin_skip_net_proxy=_admin_skip_net_proxy(),
+                                         admin_skip_ai_relay=_admin_skip_ai_relay(),
                                          is_enterprise_store=_is_official_edition()))
     resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
     resp.headers['Pragma'] = 'no-cache'

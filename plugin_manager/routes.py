@@ -375,7 +375,14 @@ def enable_plugin(identifier: str):
 
     try:
         info = mgr.enable(identifier)
-        return _json_result(True, data=_info_to_dict(info))
+        data = _info_to_dict(info)
+        # PF-05：运行时（启动挂载完成后）新启用的插件蓝图无法即时注册，
+        # 明确告知调用方是否需要重启进程使 HTTP 路由生效。
+        try:
+            data['route_mount'] = mgr.route_mount_status(identifier)
+        except Exception:
+            pass
+        return _json_result(True, data=data)
     except PluginError as e:
         return _json_result(False, error=str(e), code=400)
     except Exception as e:
@@ -4723,9 +4730,49 @@ def skill_export(identifier: str):
 
 # ── 可观测性：深度健康检查（admin 域，供 Nginx/负载均衡判活） ────────
 
+# PF-12：插件健康检查单项超时（秒）。插件检查必须只读、快返回；
+# 超时的单项判失败，绝不让一个挂起的检查拖住整个 ready 判活。
+_PLUGIN_HEALTH_TIMEOUT = 3.0
+_plugin_health_pool = None
+
+
+def _normalize_health_result(result):
+    """把各插件互不统一的 check 返回值归一为 (ok: bool, detail: str)。
+
+    实测存量形态：
+    - 纯 bool（multi_asset / project_workspace）
+    - (bool, str) 元组（hr_recruit）
+    - {'ok': bool, 'error'/'message'/...}（net_proxy / veroscholar）
+    - {'status': 'pass'/'fail', 'message'}（verification）
+    - 含 *_ok / *_available 布尔字段的报告 dict（兜底全 True 才算通过）
+    """
+    if isinstance(result, bool):
+        return result, ''
+    if isinstance(result, (tuple, list)) and result:
+        detail = ''
+        if len(result) > 1 and result[1] is not None:
+            detail = str(result[1])
+        return bool(result[0]), detail
+    if isinstance(result, dict):
+        if 'ok' in result:
+            detail = str(result.get('message') or result.get('error')
+                         or result.get('detail') or '')
+            return bool(result.get('ok')), detail
+        status = result.get('status')
+        if status:
+            ok = str(status).lower() in ('pass', 'ok', 'healthy', 'up', 'true')
+            return ok, str(result.get('message') or '')
+        flags = [v for k, v in result.items()
+                 if (k.endswith('_ok') or k.endswith('_available'))
+                 and isinstance(v, bool)]
+        if flags:
+            return all(flags), ''
+    return bool(result), ''
+
+
 @bp.route('/health/ready', methods=['GET'])
 def health_ready():
-    """插件管理器就绪检查：registry DB + 商店目录 + MCP 工具。"""
+    """插件管理器就绪检查：registry DB + 插件运行态/自报健康项 + 商店目录 + MCP 工具。"""
     from shared.observability import measure, build_health_payload
     from .models_store import get_registry_db
 
@@ -4733,6 +4780,66 @@ def health_ready():
         with get_registry_db() as conn:
             conn.execute('SELECT 1')
         return True, 'ok'
+
+    # PF-12a：管理器视角的插件状态聚合——ERROR 状态插件让 ready 降级为
+    # degraded，明细（identifier/last_error）随 extra 暴露给运维。
+    _plugins_detail = {'errored': []}
+
+    def _plugins_ok():
+        mgr = _get_manager()
+        if not mgr:
+            return False, 'plugin manager unavailable'
+        counts = {}
+        errored = []
+        cache = getattr(mgr, '_cache', {}) or {}
+        for pid, pinfo in cache.items():
+            st = pinfo.status.value if hasattr(pinfo.status, 'value') else str(pinfo.status)
+            counts[st] = counts.get(st, 0) + 1
+            if pinfo.status == PluginStatus.ERROR:
+                errored.append({
+                    'identifier': pid,
+                    'last_error': (pinfo.last_error or '')[:300],
+                })
+        _plugins_detail['errored'] = errored
+        summary = ', '.join(f'{k}={v}' for k, v in sorted(counts.items())) or 'no plugins'
+        if errored:
+            return False, f'{summary}; {len(errored)} in error'
+        return True, summary
+
+    # PF-12b：消费 ACTIVE 插件 register_health_checks() 自报项。
+    # 只读权限门控（直接判 permissions，不调 _capability_allowed，避免巡检
+    # 反复把降级提示写进 last_error）；仅遍历本进程已加载实例。
+    def _gather_plugin_health_items():
+        from .watermark import OFFICIAL_PLUGIN_IDS
+        items = []
+        mgr = _get_manager()
+        if not mgr:
+            return items
+        for pid, info in list((getattr(mgr, '_cache', {}) or {}).items()):
+            if info.status != PluginStatus.ACTIVE:
+                continue
+            declared_perms = set(getattr(info, 'permissions', None) or [])
+            if pid not in OFFICIAL_PLUGIN_IDS and 'health' not in declared_perms:
+                continue
+            instance = (getattr(mgr, '_instances', {}) or {}).get(pid)
+            getter = getattr(instance, 'register_health_checks', None)
+            if not callable(getter):
+                continue
+            try:
+                declared = getter() or []
+            except Exception as e:
+                items.append((f'plugin:{pid}:register',
+                              lambda e=e: (False, f'declare failed: {e}')))
+                continue
+            for item in declared:
+                if not isinstance(item, dict):
+                    continue
+                fn = item.get('check') or item.get('func')
+                if not callable(fn):
+                    continue
+                label = item.get('name') or item.get('check_id') or item.get('id') or 'check'
+                items.append((f'plugin:{pid}:{label}', fn))
+        return items
 
     def _store_ok():
         mgr = _get_manager()
@@ -4753,9 +4860,47 @@ def health_ready():
             return False, str(e)
 
     checks = [measure(_pg_ok, 'registry_db'),
-              measure(_store_ok, 'store_catalog'),
-              measure(_mcp_ok, 'mcp_servers')]
-    payload = build_health_payload('plugin_manager', checks)
+              measure(_plugins_ok, 'plugins')]
+
+    # PF-12b：逐项 measure（异常隔离），并发执行 + 3s 单项超时
+    plugin_items = _gather_plugin_health_items()
+    if plugin_items:
+        global _plugin_health_pool
+        if _plugin_health_pool is None:
+            from concurrent.futures import ThreadPoolExecutor
+            _plugin_health_pool = ThreadPoolExecutor(
+                max_workers=4, thread_name_prefix='plugin-health')
+        from concurrent.futures import TimeoutError as FuturesTimeout
+        futures = {_plugin_health_pool.submit(fn): label
+                   for label, fn in plugin_items}
+
+        def _resolve(fut):
+            try:
+                result = fut.result(timeout=_PLUGIN_HEALTH_TIMEOUT)
+            except FuturesTimeout:
+                return False, f'timeout after {_PLUGIN_HEALTH_TIMEOUT}s'
+            return _normalize_health_result(result)
+
+        for fut, label in futures.items():
+            checks.append(measure(lambda f=fut: _resolve(f), label))
+
+    checks += [measure(_store_ok, 'store_catalog'),
+               measure(_mcp_ok, 'mcp_servers')]
+
+    # PF-09：附带 EventBus handler 累计失败计数（仅有失败时出现）
+    extra = {}
+    if _plugins_detail['errored']:
+        extra['plugins_errored'] = _plugins_detail['errored']
+    try:
+        mgr = _get_manager()
+        bus = getattr(mgr, '_event_bus', None) if mgr else None
+        if bus is not None:
+            fail_counts = bus.handler_failure_counts()
+            if fail_counts:
+                extra['event_handler_failures'] = fail_counts
+    except Exception:
+        pass
+    payload = build_health_payload('plugin_manager', checks, extra=extra or None)
     return _json_result(True, data=payload)
 
 

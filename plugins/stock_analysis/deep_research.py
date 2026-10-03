@@ -5,6 +5,16 @@
 # - 处理器必须严格 handler(node_def, input_data) 两参（plugin_manager/manager.py:82 校验，不符即被跳过）
 # - 上游输出位于 input_data["node_<上游id>_output"]（orchestrator/workflow_engine.py:328-330）
 # - LLM 走 UnifiedLLM.chat()（有实例配置回落；chat_stream 没有，禁用）
+import logging
+import os
+
+_log = logging.getLogger("stock_analysis.deep_research")
+
+# SAU-1：研判类输出较长，2048 易被 max_tokens 截断成空/半截响应。
+# 提到 8192 并支持 SA_LLM_MAX_TOKENS 覆盖（max_tokens 是上限而非目标，
+# 未发生截断时不会增加生成量，故成本影响可忽略）。
+_LLM_MAX_TOKENS = int(os.environ.get("SA_LLM_MAX_TOKENS") or 8192)
+
 PROMPT_TEMPLATE = """你是资深 A 股研究员。基于下列证据材料对 {symbol} 做深度研判。
 
 {evidence}
@@ -43,7 +53,11 @@ def _default_evidence(symbol: str) -> str:
                                   gateway.get_news, valuation_text=val_text, symbol=symbol)
 
 
-def _chat(prompt: str) -> str:
+def _chat(prompt: str, cache_ctx: dict = None) -> str:
+    """深度研判 LLM 调用；cache_ctx 齐全时走 sa_llm_cache（命中不发请求）。
+
+    本路径无 system prompt、无场景模板，故 scene 恒为空串，不进缓存键。
+    """
     if LLM_FACTORY is not None:                     # 测试注入缝
         return LLM_FACTORY([{"role": "user", "content": prompt}])
     from agent_matrix.engine import UnifiedLLM
@@ -51,9 +65,33 @@ def _chat(prompt: str) -> str:
     cfg = resolve_model_args({"strategy": "tier", "tier": "standard"})
     if not cfg.get("model_name") and cfg.get("model"):     # H-1 同款映射
         cfg["model_name"] = cfg["model"]
-    return UnifiedLLM(cfg).chat([{"role": "user", "content": prompt}],
-                                temperature=0.3, max_tokens=2048,
-                                module="stock_analysis")
+    model_name = str(cfg.get("model_name") or "")
+    ctx = cache_ctx or {}
+    _cachable = bool(model_name and ctx.get("scope")
+                     and ctx.get("symbol") and ctx.get("fingerprint"))
+    if _cachable:
+        try:
+            from .llm_cache import get as _cache_get
+            hit = _cache_get(ctx["scope"], ctx["symbol"], model_name,
+                             ctx.get("scene") or "", ctx["fingerprint"])
+            if hit and hit.get("report"):
+                return str(hit["report"])
+        except Exception as err:
+            _log.warning("research cache lookup failed symbol=%s: %s",
+                         ctx.get("symbol"), err)
+    out = UnifiedLLM(cfg).chat([{"role": "user", "content": prompt}],
+                               temperature=0.3, max_tokens=_LLM_MAX_TOKENS,
+                               module="stock_analysis")
+    if _cachable and out:                            # 空响应不落缓存
+        try:
+            from .llm_cache import put as _cache_put
+            _cache_put(ctx["scope"], ctx["symbol"], model_name,
+                       ctx.get("scene") or "", ctx["fingerprint"],
+                       {"report": out}, prompt_len=len(prompt))
+        except Exception as err:
+            _log.warning("research cache write failed symbol=%s: %s",
+                         ctx.get("symbol"), err)
+    return out
 
 
 def _collect_evidence(symbol: str, input_data: dict) -> str:
@@ -73,7 +111,17 @@ def handle_stock_deep_research(node_def, input_data):
         return {"success": False, "error": "symbol required"}
     try:
         evidence_text = _collect_evidence(symbol, input_data or {})
-        report = _chat(PROMPT_TEMPLATE.format(symbol=symbol, evidence=evidence_text))
+        # 缓存键 = 证据结构指纹（剥数字）：数值微调不失效、科目增减才失效。
+        # 证据文本与 prompt 同源，此处零额外取数。
+        _ctx = {}
+        try:
+            from .llm_cache import evidence_fingerprint
+            _ctx = {"scope": "research", "symbol": symbol, "scene": "",
+                    "fingerprint": evidence_fingerprint(evidence_text)}
+        except Exception as err:
+            _log.warning("research cache ctx failed symbol=%s: %s", symbol, err)
+        report = _chat(PROMPT_TEMPLATE.format(symbol=symbol, evidence=evidence_text),
+                       cache_ctx=_ctx)
         signal = None
         try:
             try:

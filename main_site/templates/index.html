@@ -134,6 +134,7 @@ tr:hover td{background:rgba(99,102,241,.03)}
 <div class="nav-section">{{ _('Finance') }}</div>
 <button class="nav-item" id="nav-billing" onclick="loadSection('billing')"><svg fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><rect height="16" rx="2" width="20" x="2" y="4"></rect><path d="M12 10v4"></path><path d="M10 12h4"></path></svg><span>{{ _('My Subscription') }}</span></button>
 <button class="nav-item" id="nav-orders" onclick="loadSection('orders')"><svg fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><rect height="16" rx="2" width="20" x="2" y="4"></rect><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="M8 16h5"></path></svg><span>{{ _('My Orders') }}</span></button>
+{% if ai_relay_enabled %}<button class="nav-item" id="nav-ai-relay" onclick="loadSection('ai-relay')"><svg fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><path d="M12 2v4"></path><path d="M12 18v4"></path><path d="M4.9 4.9l2.8 2.8"></path><path d="M16.3 16.3l2.8 2.8"></path><path d="M2 12h4"></path><path d="M18 12h4"></path><path d="M4.9 19.1l2.8-2.8"></path><path d="M16.3 7.7l2.8-2.8"></path></svg><span>{{ _('AI Relay') }}</span></button>{% endif %}
 <div class="nav-section">{{ _('Services') }}</div>
 <button class="nav-item" id="nav-notifications-page" onclick="loadSection('notifications-page')"><svg fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg><span>{{ _('Notifications') }}</span></button>
 <button class="nav-item" id="nav-tickets" onclick="loadSection('tickets')"><svg fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><rect height="16" rx="2" width="20" x="2" y="4"></rect><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="M8 16h5"></path></svg><span>{{ _('Help & Support') }}</span></button>
@@ -228,7 +229,7 @@ tr:hover td{background:rgba(99,102,241,.03)}
   window.TOKEN = TOKEN;
 })();
 
-var titles={'overview':[{{ _('Dashboard') | tojson }},{{ _('Account Overview & Usage') | tojson }}],'account':[{{ _('Profile') | tojson }},{{ _('Personal Info & Membership') | tojson }}],'notifications-page':[{{ _('Notifications') | tojson }},{{ _('In-app Notifications & System Messages') | tojson }}],'coupons':[{{ _('Coupons') | tojson }},{{ _('My Coupons') | tojson }}],'tickets':[{{ _('Help & Support') | tojson }},{{ _('Submit Tickets, Complaints & Suggestions') | tojson }}],'support-chat':[{{ _('Live Chat') | tojson }},{{ _('Online AI Customer Service') | tojson }}],'docs':[{{ _('Help Docs') | tojson }},{{ _('Guides & FAQ') | tojson }}],'orders':[{{ _('My Orders') | tojson }},{{ _('Order Management & Payment') | tojson }}],'billing':[{{ _('My Subscription') | tojson }},{{ _('Plans & Billing History') | tojson }}],'security':[{{ _('Security Settings') | tojson }},{{ _('Password, 2FA & Devices') | tojson }}],'activity':[{{ _('Activity Log') | tojson }},{{ _('Login History & Security Actions') | tojson }}],'notif-prefs':[{{ _('Notification Preferences') | tojson }},{{ _('Notification Settings') | tojson }}],'dev-register':[{{ _('Become a Developer') | tojson }},{{ _('Developer Registration') | tojson }}],'dev-dash':[{{ _('Developer Center') | tojson }},{{ _('My Submissions') | tojson }}]};
+var titles={'overview':[{{ _('Dashboard') | tojson }},{{ _('Account Overview & Usage') | tojson }}],'account':[{{ _('Profile') | tojson }},{{ _('Personal Info & Membership') | tojson }}],'notifications-page':[{{ _('Notifications') | tojson }},{{ _('In-app Notifications & System Messages') | tojson }}],'coupons':[{{ _('Coupons') | tojson }},{{ _('My Coupons') | tojson }}],'tickets':[{{ _('Help & Support') | tojson }},{{ _('Submit Tickets, Complaints & Suggestions') | tojson }}],'support-chat':[{{ _('Live Chat') | tojson }},{{ _('Online AI Customer Service') | tojson }}],'docs':[{{ _('Help Docs') | tojson }},{{ _('Guides & FAQ') | tojson }}],'orders':[{{ _('My Orders') | tojson }},{{ _('Order Management & Payment') | tojson }}],'billing':[{{ _('My Subscription') | tojson }},{{ _('Plans & Billing History') | tojson }}],'security':[{{ _('Security Settings') | tojson }},{{ _('Password, 2FA & Devices') | tojson }}],'activity':[{{ _('Activity Log') | tojson }},{{ _('Login History & Security Actions') | tojson }}],'notif-prefs':[{{ _('Notification Preferences') | tojson }},{{ _('Notification Settings') | tojson }}],'dev-register':[{{ _('Become a Developer') | tojson }},{{ _('Developer Registration') | tojson }}],'dev-dash':[{{ _('Developer Center') | tojson }},{{ _('My Submissions') | tojson }}],'ai-relay':[{{ _('AI Relay') | tojson }},{{ _('Balance, Recharge & API Tokens') | tojson }}]};
 
 function loadSection(s){
   Object.keys(titles).forEach(function(k){var el=document.getElementById('nav-'+k);if(el)el.classList.toggle('active',k===s)});
@@ -247,6 +248,7 @@ function loadSection(s){
   else if(s==='notif-prefs')loadNotifPrefs();
   else if(s==='dev-register')loadDevRegister();
   else if(s==='dev-dash')loadDevDash();
+  else if(s==='ai-relay')loadAiRelay();
 }
 
 function api(p,o){return fetch((p||'/user/profile')+(o||''),{headers:{'Authorization':'Bearer '+TOKEN}}).then(function(r){if(r.status===401){showLogin();return Promise.reject()}return r.json()})}
@@ -254,6 +256,126 @@ function showLogin(){document.getElementById('mainContent').style.display='none'
 function logout(){
   Object.keys(localStorage).forEach(function(k){if(k.includes('token')||k.includes('tm_')||k.includes('sso_'))localStorage.removeItem(k)});
   fetch('/auth/logout',{method:'POST',credentials:'include'}).then(function(){location.href='/login'}).catch(function(){location.href='/login'})
+}
+
+// ============ AI 中转站（ai_relay 插件）============
+// 入口由后端 ai_relay_enabled 动态下发：插件未启用时，服务端既不渲染导航项，
+// 门卫也让 /plugin/ai_relay/* 返回 404（等价于插件不存在）——无硬编码残留。
+// 弹窗一律复用本页统一弹窗容器 #modalOverlay / showModal / showAlert，
+// 严禁 prompt()/alert() 造成窗口风格混乱。
+var AIR_API='/plugin/ai_relay/api';
+var AIR_IN='width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-size:14px;box-sizing:border-box';
+var AIR_BOX='background:var(--card);border:1px solid var(--border);border-radius:14px;padding:28px 32px;max-width:420px;width:90%;box-shadow:0 8px 40px rgba(0,0,0,.5)';
+var AIR_B1='padding:8px 20px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);cursor:pointer;font-size:13px;font-family:inherit';
+var AIR_B2='padding:8px 20px;border-radius:8px;border:none;background:var(--accent);color:#fff;cursor:pointer;font-size:13px;font-family:inherit';
+
+function airReq(method,path,body){
+  return fetch(AIR_API+path,{method:method,headers:{'Authorization':'Bearer '+TOKEN,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined})
+    .then(function(r){return r.json().catch(function(){return {success:false,error:'HTTP '+r.status}})});
+}
+function airData(res){
+  if(res&&res.success)return res.data;
+  showAlert({title:'{{ _('Network error') }}',message:esc((res&&res.error)||''),type:'error'});
+  return null;
+}
+function airOverlay(){
+  var ov=document.getElementById('modalOverlay');
+  if(!ov){ov=document.createElement('div');ov.id='modalOverlay';
+    ov.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.6);z-index:10000;display:flex;align-items:center;justify-content:center;font-family:inherit';
+    document.body.appendChild(ov)}
+  return ov;
+}
+function airClose(){var ov=document.getElementById('modalOverlay');if(ov&&ov.parentNode)ov.parentNode.removeChild(ov)}
+
+function loadAiRelay(){
+  document.getElementById('mainContent').innerHTML=
+    '<div class="card"><h3>{{ _('Balance') }}</h3>'
+    +'<div id="airBal" style="font-size:20px;font-weight:600;color:var(--text)">{{ _('Loading...') }}</div>'
+    +'<div class="field" style="margin-top:14px"><label>{{ _('Amount') }} (fen)</label><input id="airAmt" type="number" min="1" style="flex:1"></div>'
+    +'<div style="margin-top:10px"><button class="btn btn-primary" onclick="airRecharge()">{{ _('Recharge') }}</button></div></div>'
+    +'<div class="card" style="margin-top:16px"><div style="display:flex;align-items:center;justify-content:space-between">'
+    +'<h3 style="margin:0">{{ _('API Tokens') }}</h3>'
+    +'<button class="btn btn-primary" onclick="airTokenForm()">{{ _('Create Token') }}</button></div>'
+    +'<div id="airTokens" style="margin-top:12px;font-size:13px;color:var(--muted)">{{ _('Loading...') }}</div></div>';
+  airLoadBalance();airLoadTokens();
+}
+function airLoadBalance(){
+  airReq('GET','/balance').then(function(res){var d=airData(res);if(!d)return;
+    document.getElementById('airBal').innerHTML=esc(String(d.balance_credits||0))
+      +' <span style="font-size:13px;font-weight:400;color:var(--muted)">{{ _('Credits') }}</span>';
+  });
+}
+function airLoadTokens(){
+  airReq('GET','/tokens').then(function(res){var rows=airData(res);if(!rows)return;
+    var box=document.getElementById('airTokens');
+    if(!rows.length){box.innerHTML={{ _('No data') | tojson }};return}
+    var h='';
+    rows.forEach(function(t){
+      var unlim=(t.quota_credits===null||t.quota_credits===undefined||t.quota_credits<0);
+      var quota=unlim?'{{ _('Unlimited') }}':String(t.quota_credits);
+      var on=(t.status==='active');
+      h+='<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--border);flex-wrap:wrap">'
+        +'<code style="color:var(--text)">'+esc(t.token_prefix)+'\u2026</code>'
+        +'<span style="color:var(--text)">'+esc(t.name||'-')+'</span>'
+        +'<span>{{ _('Used') }}: '+esc(String(t.used_credits||0))+' / '+esc(quota)+'</span>'
+        +'<span style="flex:1"></span>'
+        +'<span style="color:var(--muted)">'+esc(t.status)+'</span>'
+        +'<button class="btn" onclick="airToggle('+t.id+','+(on?1:0)+')">'+(on?'{{ _('Disable') }}':'{{ _('Enable') }}')+'</button>'
+        +'<button class="btn" onclick="airRemove('+t.id+')">{{ _('Delete') }}</button></div>';
+    });
+    box.innerHTML=h;
+  });
+}
+function airTokenForm(){
+  var ov=airOverlay();
+  ov.innerHTML='<div style="'+AIR_BOX+'">'
+    +'<div style="font-size:20px;font-weight:600;color:var(--text);margin-bottom:16px;text-align:center">{{ _('Create Token') }}</div>'
+    +'<div style="margin-bottom:12px"><label style="font-size:13px;color:var(--text);display:block;margin-bottom:4px">{{ _('Name') }}</label>'
+    +'<input id="airName" type="text" style="'+AIR_IN+'"></div>'
+    +'<div style="margin-bottom:20px"><label style="font-size:13px;color:var(--text);display:block;margin-bottom:4px">{{ _('Quota') }} (-1 = {{ _('Unlimited') }})</label>'
+    +'<input id="airQuota" type="number" value="-1" style="'+AIR_IN+'"></div>'
+    +'<div style="display:flex;gap:10px;justify-content:center"><button id="airCancel" style="'+AIR_B1+'">{{ _('Cancel') }}</button>'
+    +'<button id="airOk" style="'+AIR_B2+'">{{ _('Create') }}</button></div></div>';
+  document.getElementById('airCancel').onclick=airClose;
+  document.getElementById('airOk').onclick=function(){
+    var q=parseInt(document.getElementById('airQuota').value);
+    airReq('POST','/tokens',{name:document.getElementById('airName').value,quota_credits:isNaN(q)?-1:q}).then(function(res){
+      var d=airData(res);if(!d)return;
+      airClose();airShowToken(d.token);airLoadTokens();
+    });
+  };
+}
+function airShowToken(token){
+  var ov=airOverlay();
+  ov.innerHTML='<div style="'+AIR_BOX+'">'
+    +'<div style="font-size:20px;font-weight:600;color:var(--text);margin-bottom:8px;text-align:center">{{ _('Create Token') }}</div>'
+    +'<div style="font-size:13px;color:var(--muted);margin-bottom:14px;text-align:center">{{ _('Copy it now — it will not be shown again.') }}</div>'
+    +'<input id="airNewTok" readonly value="'+esc(token)+'" style="'+AIR_IN+'font-size:13px">'
+    +'<div style="display:flex;gap:10px;justify-content:center;margin-top:18px"><button id="airCopy" style="'+AIR_B1+'">{{ _('Copy') }}</button>'
+    +'<button id="airDone" style="'+AIR_B2+'">{{ _('OK') }}</button></div></div>';
+  document.getElementById('airDone').onclick=airClose;
+  document.getElementById('airCopy').onclick=function(){
+    var i=document.getElementById('airNewTok');i.select();
+    try{if(navigator.clipboard)navigator.clipboard.writeText(i.value);else document.execCommand('copy')}catch(e){}
+  };
+}
+function airToggle(id,isOn){
+  airReq('PUT','/tokens/'+id,{status:isOn?'disabled':'active'}).then(function(res){if(!airData(res))return;airLoadTokens()});
+}
+function airRemove(id){
+  showModal({title:'{{ _('Delete') }}',message:'{{ _('Confirm') }}?',confirmText:'{{ _('Delete') }}'}).then(function(ok){
+    if(!ok)return;
+    airReq('DELETE','/tokens/'+id).then(function(res){if(!airData(res))return;airLoadTokens()});
+  });
+}
+function airRecharge(){
+  var amt=parseInt(document.getElementById('airAmt').value);
+  if(!amt||amt<=0){showAlert({title:'{{ _('Recharge') }}',message:'{{ _('Amount must be greater than 0') }}',type:'error'});return}
+  airReq('POST','/recharge',{amount_fen:amt,channel:'alipay'}).then(function(res){
+    var d=airData(res);if(!d)return;
+    if(d.pay_url){window.open(d.pay_url,'_blank')}
+    else{showAlert({title:'{{ _('Recharge') }}',message:esc(d.order_no||''),type:'success'})}
+  });
 }
 
 // ============ 开发者中心（P0：注册 / 邮箱验证 / 提交状态）============

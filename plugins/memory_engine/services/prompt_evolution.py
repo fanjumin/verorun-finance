@@ -31,10 +31,16 @@ class PromptEvolutionService:
         conn = get_memory_engine_db()
         try:
             # 1. Snapshot per-agent prompt versions from the read-only main DB.
+            # F-08：角色真实来源是主库 agent_matrix（标识列为 slug）。原查询读
+            # public.agents.identifier —— 该表是 auth-center 的子 Agent 表
+            # （列 id/type/alias，根本没有 identifier），PG 必抛 UndefinedColumn，
+            # 异常被本方法外层吞掉，prompt_metrics / evolution_rounds 恒为 0。
+            # slug AS identifier 让下游 r['identifier'] 零改动；排除空 slug 脏行。
             from agent_matrix.models import get_db
             with get_db() as mdb:
                 rows = mdb.execute(
-                    "SELECT identifier, system_prompt, updated_at FROM public.agents"
+                    "SELECT slug AS identifier, system_prompt, updated_at"
+                    " FROM agent_matrix WHERE slug <> ''"
                 ).fetchall()
             for r in rows:
                 digest = hashlib.sha256(

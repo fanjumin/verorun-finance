@@ -989,11 +989,11 @@ def _mcp_authorized(name, permitted):
     return False
 
 
-def _execute_mcp_tool(name, args):
+def _execute_mcp_tool(name, args, context=None):
     """P2-5: 路由 MCP 工具调用（mcp__<plugin>__<server>__<tool>）。"""
     try:
         from plugin_manager.mcp import call_mcp_tool
-        return call_mcp_tool(name, args)
+        return call_mcp_tool(name, args, context)
     except Exception as e:
         logger.warning(f'[tool:{name}] MCP 调用失败: {e}')
         return f'Tool {name} execution error: {e}'
@@ -1045,7 +1045,7 @@ def execute_tool(name, args, allowed_tools=None, context=None):
             logger.warning(f'[tool:{name}] 拒绝执行：不在 allowed_tools 白名单内')
             return f"Permission denied: tool {name} is not in allowed_tools"
     if name.startswith('mcp__'):
-        return _execute_mcp_tool(name, args)
+        return _execute_mcp_tool(name, args, context)
     executor = TOOL_EXECUTORS.get(name)
     if not executor:
         return f"Unknown tool: {name}"

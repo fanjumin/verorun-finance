@@ -105,13 +105,17 @@ def run_batch(kind: str = "technical", symbols=None):
                     return dict(stats)
                 return {"skipped": "already-run", "run_id": run_id}
         except Exception as err:
-            _log.warning("advisory lock unavailable, proceed without lock: %s", err)
+            # SAU-2：取锁异常由 fail-open（proceed without lock）改为 fail-closed。
+            # 无锁并发跑批会撞 sa_analysis_result 的 UNIQUE 约束并落半截数据，
+            # 宁可当日不跑、等下一次触发，也不产生不一致结果。
+            _log.error("advisory lock unavailable, refusing to run batch: %s", err)
             if lock_conn:
                 try:
                     lock_conn.close()
                 except Exception:
                     pass
                 lock_conn = None
+            return {"skipped": "lock-unavailable", "run_id": run_id}
 
     # P3-6 修复：advisory lock 会话级锁异常路径泄漏——整个执行区间包 try/finally，
     # 任何异常（create_run / 并发 / finish_run）都确保 unlock + close，避免锁挂池连接。
@@ -170,6 +174,19 @@ def run_batch(kind: str = "technical", symbols=None):
                 )
             except Exception as err:
                 _log.warning("batch completion event emit failed: %s", err)
+            # D8：真实发射 plugin.json.hooks.provides 声明的 stock.batch.completed
+            # （此前全仓无发射点，属死声明 —— 声明与实现不一致会误导集成方）。
+            # 注意通道差异：上面走 event_bus，这里走 hook registry（do_action），
+            # 消费者须用 get_event_handlers() 订阅，用 bus.on 收不到。
+            try:
+                from plugin_manager.hooks import get_hook_registry
+                get_hook_registry().do_action(
+                    "stock.batch.completed",
+                    {"run_id": run_id, "kind": kind, "ok": ok_n,
+                     "failed": failed_n, "status": status},
+                )
+            except Exception as err:
+                _log.warning("stock.batch.completed dispatch failed: %s", err)
 
         return {
             "run_id": run_id,

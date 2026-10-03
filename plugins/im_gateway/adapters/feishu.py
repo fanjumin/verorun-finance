@@ -2,15 +2,20 @@
 """IM Gateway — 飞书适配器
 
 迁移自 auth-center/routes/admin.py 的频道测试与媒体推送逻辑。
-修复原代码 channel_name → channel 的列名 bug。
+批次 D1：出站统一走 http_client（超时 + token TTL 缓存 + 外部文件 SSRF 安全下载）。
 """
 import os
 import json as _json
-import urllib.request as _ur
 
 from i18n import _
 
 from .base import BaseIMAdapter
+from .. import http_client
+
+_BASE = 'https://open.feishu.cn/open-apis'
+_TOKEN_URL = _BASE + '/auth/v3/tenant_access_token/internal'
+# tenant_access_token 有效期通常 7200s，提前 5 分钟过期；按 app_id 维度缓存
+_token_cache = http_client.TTLCache()
 
 
 class FeishuAdapter(BaseIMAdapter):
@@ -26,22 +31,39 @@ class FeishuAdapter(BaseIMAdapter):
             {'key': 'encrypt_key', 'label': 'Encrypt Key', 'type': 'password'},
         ]
 
+    # ── token（进程内 TTL 缓存） ──
+
+    def _tenant_token(self, app_id, app_secret):
+        """返回有效 tenant_access_token；失败抛 Exception。"""
+        cache_key = ('feishu', app_id)
+        cached = _token_cache.get(cache_key)
+        if cached:
+            return cached
+        _, rd = http_client.request_json(
+            'POST', _TOKEN_URL,
+            json={'app_id': app_id, 'app_secret': app_secret}
+        )
+        token = rd.get('tenant_access_token', '')
+        if not token:
+            raise Exception(_('Feishu token acquisition failed: {}').format(str(rd)))
+        ttl = int(rd.get('expire', 7200)) - 300
+        _token_cache.set(cache_key, token, ttl if ttl > 60 else 6900)
+        return token
+
     def test_connection(self, data):
         app_id = (data.get('app_id') or '').strip()
         app_secret = (data.get('app_secret') or '').strip()
         if not app_id or not app_secret:
             return False, _('App ID and App Secret cannot be empty')
         try:
-            import requests as _req
-            resp = _req.post(
-                'https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal',
-                json={'app_id': app_id, 'app_secret': app_secret},
-                timeout=10
+            _, rd = http_client.request_json(
+                'POST', _TOKEN_URL,
+                json={'app_id': app_id, 'app_secret': app_secret}
             )
-            rd = resp.json()
-            if rd.get('code') == 0:
+            if rd.get('code') == 0 or rd.get('tenant_access_token'):
                 return True, _('Feishu connection successful!')
-            return False, _("Feishu returned error: {} (code={})").format(rd.get('msg', _('Unknown')), rd.get('code'))
+            return False, _("Feishu returned error: {} (code={})").format(
+                rd.get('msg', _('Unknown')), rd.get('code'))
         except Exception as e:
             return False, _('Connection failed: {}').format(str(e))
 
@@ -77,16 +99,9 @@ class FeishuAdapter(BaseIMAdapter):
         if not app_id or not app_secret:
             return {'success': False, 'error': _('Feishu App ID or App Secret is empty')}
         try:
-            token_resp = _json.loads(_ur.urlopen(
-                _ur.Request('https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal',
-                            data=_json.dumps({'app_id': app_id, 'app_secret': app_secret}).encode(),
-                            headers={'Content-Type': 'application/json'})
-            ).read())
+            token = self._tenant_token(app_id, app_secret)
         except Exception as e:
             return {'success': False, 'error': str(e)[:2000]}
-        token = token_resp.get('tenant_access_token', '')
-        if not token:
-            return {'success': False, 'error': _('Feishu token acquisition failed: {}').format(str(token_resp))}
 
         receive_id = str(payload.get('to') or cfg.get('admin_open_id') or cfg.get('chat_id') or '')
         if not receive_id:
@@ -95,11 +110,11 @@ class FeishuAdapter(BaseIMAdapter):
         body = {'receive_id': receive_id, 'msg_type': 'text',
                 'content': _json.dumps({'text': str(content)[:2000]})}
         try:
-            resp = _json.loads(_ur.urlopen(_ur.Request(
-                'https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=' + receive_id_type,
-                data=_json.dumps(body).encode(),
-                headers={'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'}
-            )).read())
+            _, resp = http_client.request_json(
+                'POST', _BASE + '/im/v1/messages?receive_id_type=' + receive_id_type,
+                json=body,
+                headers={'Authorization': 'Bearer ' + token}
+            )
             if resp.get('code', -1) != 0:
                 return {'success': False, 'error': resp.get('msg', _('Feishu message sending failed'))}
             return {'success': True, 'message_id': (resp.get('data') or {}).get('message_id')}
@@ -124,14 +139,7 @@ class FeishuAdapter(BaseIMAdapter):
         app_secret = cfg.get('app_secret', '')
         if not app_id or not app_secret:
             raise Exception(_("Feishu App ID or App Secret is empty"))
-        token_resp = _json.loads(_ur.urlopen(
-            _ur.Request('https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal',
-                        data=_json.dumps({"app_id": app_id, "app_secret": app_secret}).encode(),
-                        headers={'Content-Type': 'application/json'})
-        ).read())
-        token = token_resp.get('tenant_access_token', '')
-        if not token:
-            raise Exception(_("Feishu token acquisition failed: {}").format(str(token_resp)))
+        token = self._tenant_token(app_id, app_secret)
 
         chat_id = cfg.get('chat_id', '')
         if not chat_id:
@@ -161,52 +169,35 @@ class FeishuAdapter(BaseIMAdapter):
             }
             body = {"receive_id": chat_id, "msg_type": "interactive", "content": _json.dumps(card)}
 
-        url = 'https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id'
-        resp = _json.loads(_ur.urlopen(_ur.Request(url,
-            data=_json.dumps(body).encode(),
-            headers={'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'}
-        )).read())
+        _, resp = http_client.request_json(
+            'POST', _BASE + '/im/v1/messages?receive_id_type=chat_id',
+            json=body,
+            headers={'Authorization': 'Bearer ' + token}
+        )
         if resp.get('code', -1) != 0:
             raise Exception(resp.get('msg', _('Feishu message sending failed')))
 
     def _upload_image(self, token, file_url):
-        img_data = _ur.urlopen(file_url).read()
-        boundary = '----FormBoundary7MA4YWxkTrZu0gW'
-        body = (b'--' + boundary.encode() + b'\r\n'
-                b'Content-Disposition: form-data; name="image_type"\r\n\r\nmessage\r\n'
-                b'--' + boundary.encode() + b'\r\n'
-                b'Content-Disposition: form-data; name="image"; filename="image"\r\n'
-                b'Content-Type: application/octet-stream\r\n\r\n' + img_data + b'\r\n'
-                b'--' + boundary.encode() + b'--\r\n')
-        resp = _json.loads(_ur.urlopen(_ur.Request(
-            'https://open.feishu.cn/open-apis/im/v1/images', data=body,
-            headers={'Authorization': 'Bearer ' + token,
-                     'Content-Type': 'multipart/form-data; boundary=' + boundary}
-        )).read())
+        img_data = http_client.safe_fetch(file_url)
+        resp = http_client.request(
+            'POST', _BASE + '/im/v1/images',
+            data={'image_type': 'message'},
+            files={'image': ('image', img_data, 'application/octet-stream')},
+            headers={'Authorization': 'Bearer ' + token}
+        ).json()
         if resp.get('code', -1) != 0:
             raise Exception(_("Image upload failed: {}").format(resp.get('msg', '')))
         return resp['data']['image_key']
 
     def _upload_file(self, token, file_url, filename, mime):
-        file_data = _ur.urlopen(file_url).read()
-        boundary = '----FormBoundary7MA4YWxkTrZu0gW'
+        file_data = http_client.safe_fetch(file_url)
         file_type = 'mp4' if mime.startswith('video/') else 'opus'
-        body = (b'--' + boundary.encode() + b'\r\n'
-                b'Content-Disposition: form-data; name="file_type"\r\n\r\n' +
-                file_type.encode() + b'\r\n'
-                b'--' + boundary.encode() + b'\r\n'
-                b'Content-Disposition: form-data; name="file_name"\r\n\r\n' +
-                filename.encode() + b'\r\n'
-                b'--' + boundary.encode() + b'\r\n'
-                b'Content-Disposition: form-data; name="file"; filename="' +
-                filename.encode() + b'"\r\n'
-                b'Content-Type: application/octet-stream\r\n\r\n' + file_data + b'\r\n'
-                b'--' + boundary.encode() + b'--\r\n')
-        resp = _json.loads(_ur.urlopen(_ur.Request(
-            'https://open.feishu.cn/open-apis/im/v1/files', data=body,
-            headers={'Authorization': 'Bearer ' + token,
-                     'Content-Type': 'multipart/form-data; boundary=' + boundary}
-        )).read())
+        resp = http_client.request(
+            'POST', _BASE + '/im/v1/files',
+            data={'file_type': file_type, 'file_name': filename},
+            files={'file': (filename, file_data, 'application/octet-stream')},
+            headers={'Authorization': 'Bearer ' + token}
+        ).json()
         if resp.get('code', -1) != 0:
             raise Exception(_("File upload failed: {}").format(resp.get('msg', '')))
         return resp['data']['file_key']

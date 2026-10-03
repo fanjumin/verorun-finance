@@ -2,14 +2,25 @@
 """IM Gateway — 企业微信适配器
 
 迁移自 auth-center/routes/admin.py。修复 channel_name → channel 列名 bug。
+批次 D1-b：出站统一走 http_client（超时 + access_token TTL 缓存）；
+          push_media 修正「假媒体」——图片写入真实 md5，文件类型不再伪造 media_id。
 """
 from i18n import _
 import os
 import json as _json
 import base64
-import urllib.request as _ur
+import hashlib
 
 from .base import BaseIMAdapter
+from .. import http_client
+
+_TOKEN_URL = 'https://qyapi.weixin.qq.com/cgi-bin/gettoken'
+_SEND_URL = 'https://qyapi.weixin.qq.com/cgi-bin/message/send'
+
+# 企业微信群机器人图片：base64 编码前原始大小上限 2MB
+_MAX_IMAGE_BYTES = 2 * 1024 * 1024
+# access_token 缓存（有效期 7200s，提前 5 分钟过期）
+_token_cache = http_client.TTLCache()
 
 
 class WecomAdapter(BaseIMAdapter):
@@ -26,21 +37,38 @@ class WecomAdapter(BaseIMAdapter):
             {'key': 'encoding_aes_key', 'label': 'EncodingAESKey', 'type': 'password'},
         ]
 
+    # ── token（进程内 TTL 缓存） ──
+
+    def _get_token(self, corp_id, secret):
+        cache_key = ('wecom', corp_id)
+        cached = _token_cache.get(cache_key)
+        if cached:
+            return cached
+        _, rd = http_client.request_json(
+            'GET', _TOKEN_URL,
+            params={'corpid': corp_id, 'corpsecret': secret}
+        )
+        token = rd.get('access_token', '')
+        if not token:
+            raise Exception(_('WeCom token acquisition failed: {}').format(rd.get('errmsg')))
+        ttl = int(rd.get('expires_in', 7200)) - 300
+        _token_cache.set(cache_key, token, ttl if ttl > 60 else 6900)
+        return token
+
     def test_connection(self, data):
         corp_id = (data.get('corp_id') or '').strip()
         secret = (data.get('secret') or '').strip()
         if not corp_id or not secret:
             return False, _('Enterprise ID and Secret cannot be empty')
         try:
-            import requests as _req
-            resp = _req.get(
-                f'https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid={corp_id}&corpsecret={secret}',
-                timeout=10
+            _, rd = http_client.request_json(
+                'GET', _TOKEN_URL,
+                params={'corpid': corp_id, 'corpsecret': secret}
             )
-            rd = resp.json()
             if rd.get('access_token'):
                 return True, _('WeCom connection successful!')
-            return False, _('WeCom returned: {} (errcode={})').format(rd.get('errmsg', 'unknown'), rd.get('errcode'))
+            return False, _('WeCom returned: {} (errcode={})').format(
+                rd.get('errmsg', 'unknown'), rd.get('errcode'))
         except Exception as e:
             return False, _('Connection failed: {}').format(str(e))
 
@@ -88,10 +116,7 @@ class WecomAdapter(BaseIMAdapter):
         if webhook:
             body = {"msgtype": "text", "text": {"content": str(content)[:4000]}}
             try:
-                resp = _json.loads(_ur.urlopen(_ur.Request(
-                    webhook, data=_json.dumps(body).encode(),
-                    headers={'Content-Type': 'application/json'}
-                )).read())
+                _, resp = http_client.request_json('POST', webhook, json=body)
                 if resp.get('errcode', -1) != 0:
                     return {'success': False, 'error': resp.get('errmsg', _('WeCom send failed'))}
                 return {'success': True}
@@ -106,20 +131,13 @@ class WecomAdapter(BaseIMAdapter):
         if not corp_id or not secret or not agent_id:
             return {'success': False, 'error': _('WeCom webhook_url or corp credentials are required')}
         try:
-            import requests as _req
-            resp = _req.get(
-                f'https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid={corp_id}&corpsecret={secret}',
-                timeout=10
-            ).json()
-            token = resp.get('access_token', '')
-            if not token:
-                return {'success': False, 'error': _('WeCom token acquisition failed: {}').format(resp.get('errmsg'))}
-            send_resp = _req.post(
-                f'https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token={token}',
+            token = self._get_token(corp_id, secret)
+            _, send_resp = http_client.request_json(
+                'POST', _SEND_URL,
+                params={'access_token': token},
                 json={'touser': touser, 'msgtype': 'text', 'agentid': int(agent_id),
-                      'text': {'content': str(content)[:2000]}},
-                timeout=10
-            ).json()
+                      'text': {'content': str(content)[:2000]}}
+            )
             if send_resp.get('errcode', -1) != 0:
                 return {'success': False, 'error': send_resp.get('errmsg', _('WeCom send failed'))}
             return {'success': True}
@@ -129,31 +147,30 @@ class WecomAdapter(BaseIMAdapter):
     # ── 媒体推送 ──
 
     def push_media(self, file_url, filename, mime):
-        from plugins.im_gateway.models import get_im_db
-        with get_im_db() as conn:
-            row = conn.execute(
-                "SELECT config_json FROM channel_configs WHERE channel='wecom' AND is_enabled=1 LIMIT 1"
-            ).fetchone()
-        if not row or not row['config_json']:
-            raise Exception(_("WeCom channel is not configured"))
-        cfg = _json.loads(row['config_json'])
+        cfg = self._get_config()
         webhook = cfg.get('webhook_url', '')
         if not webhook:
             raise Exception(_("WeCom webhook_url is empty"))
+
         if mime.startswith('image/'):
-            body = {"msgtype": "image", "image": {"base64": self._fetch_as_base64(file_url), "md5": ""}}
-        elif mime.startswith('video/') or mime.startswith('audio/'):
-            body = {"msgtype": "file", "file": {"media_id": _("File upload not supported")}}
+            raw = self._fetch_bytes(file_url)
+            if len(raw) > _MAX_IMAGE_BYTES:
+                raise Exception(_('WeCom image exceeds the 2MB limit'))
+            body = {"msgtype": "image", "image": {
+                "base64": base64.b64encode(raw).decode(),
+                "md5": hashlib.md5(raw).hexdigest(),
+            }}
         else:
+            # 群机器人不支持 file/video/audio 消息类型（media_id 需企业应用上传）。
+            # 如实降级为「下载链接」，不再伪造 media_id 假装成功。
             body = {"msgtype": "markdown",
                     "markdown": {"content": _("**{}**\n[Download file]({})").format(filename, file_url)}}
-        resp = _json.loads(_ur.urlopen(_ur.Request(webhook,
-            data=_json.dumps(body).encode(), headers={'Content-Type': 'application/json'}
-        )).read())
+
+        _, resp = http_client.request_json('POST', webhook, json=body)
         if resp.get('errcode', -1) != 0:
             raise Exception(resp.get('errmsg', _('WeCom push failed')))
 
     @staticmethod
-    def _fetch_as_base64(url):
-        data = _ur.urlopen(url).read()
-        return base64.b64encode(data).decode()
+    def _fetch_bytes(url):
+        """SSRF 安全下载（内网拦截 + 超时 + 体积上限）。"""
+        return http_client.safe_fetch(url, max_bytes=_MAX_IMAGE_BYTES)

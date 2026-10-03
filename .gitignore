@@ -191,6 +191,11 @@ full_check.txt
 .stock_deps/
 data/cache/
 
+# Local tooling workdirs & temp/report artifacts (machine-specific, regenerable, never commit)
+.dumate/
+.tmp/
+reports/
+
 # Pytest runtime cache (rebuildable)
 .pytest_cache/
 

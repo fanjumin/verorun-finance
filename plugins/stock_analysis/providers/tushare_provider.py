@@ -13,6 +13,11 @@ from .base_v2 import BaseProviderV2, FetchResult
 
 _log = logging.getLogger("stock_analysis.providers.tushare")
 
+# K 线周期 → tushare 接口名（分钟线另有接口，P1 再评估）
+_FREQ_API = {"daily": "daily", "weekly": "weekly", "monthly": "monthly"}
+# 每根 bar 覆盖的自然日（含节假日余量），用于按周期放大回溯窗口
+_LOOKBACK_PER_BAR = {"daily": 2.2, "weekly": 9.0, "monthly": 33.0}
+
 
 def to_ts_code(symbol: str) -> str:
     """symbol → tushare ts_code。
@@ -49,6 +54,7 @@ class TushareProvider(BaseProviderV2):
                             DataCategory.TOPLIST, DataCategory.MARGIN,
                             DataCategory.NORTHBOUND, DataCategory.SHAREFLOAT,
                             DataCategory.HOLDERNUMBER})
+    kline_freqs = frozenset({"daily", "weekly", "monthly"})
     rate_per_min = 120
     burst = 4
     required_secret = "token"
@@ -72,7 +78,8 @@ class TushareProvider(BaseProviderV2):
 
     def _do_fetch(self, cat, *, symbol=None, **kw):
         if cat is DataCategory.KLINE:
-            data = self._fetch_kline(symbol, datalen=kw.get("datalen", 120))
+            data = self._fetch_kline(symbol, datalen=kw.get("datalen", 120),
+                                     freq=kw.get("freq", "daily"))
         elif cat is DataCategory.FUNDAMENTAL:
             data = self._fetch_fundamental(symbol, periods=kw.get("periods", 8))
         elif cat is DataCategory.MONEYFLOW:
@@ -100,12 +107,18 @@ class TushareProvider(BaseProviderV2):
         except Exception as err:
             raise ProviderError(self.name, "token", str(err))
 
-    def _fetch_kline(self, symbol: str, datalen: int = 120) -> pd.DataFrame:
+    def _fetch_kline(self, symbol: str, datalen: int = 120,
+                     freq: str = "daily") -> pd.DataFrame:
+        api = _FREQ_API.get(freq)
+        if api is None:
+            raise ProviderError(self.name, "kline", f"tushare 未接入周期 {freq}",
+                                retryable=False)
         code = to_ts_code(symbol)
         end = datetime.now()
-        start = end - timedelta(days=int(datalen * 2.2) + 90)
+        # 周/月线每根覆盖多个自然日，窗口须按周期放大，否则返回 bars 远少于 datalen
+        start = end - timedelta(days=int(datalen * _LOOKBACK_PER_BAR[freq]) + 90)
         try:
-            df = self._pro().daily(
+            df = getattr(self._pro(), api)(
                 ts_code=code,
                 start_date=start.strftime("%Y%m%d"),
                 end_date=end.strftime("%Y%m%d"))

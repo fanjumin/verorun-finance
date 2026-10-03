@@ -14,7 +14,8 @@ Agent 会话将其工具并入可用工具集（OpenAI function calling 格式�
             "args": ["mcp_server.py"],
             "env": {"KEY": "VAL"},                 // 可选，合并进子进程环境
             "url": "http://localhost:8080/mcp",    // http 必填
-            "headers": {"Authorization": "Bearer …"}  // http 可选
+            "headers": {"Authorization": "Bearer …"}, // http 可选
+            "timeout": 60                          // 可选，单请求超时秒数（5-300，默认 15）
         }
     ]
 
@@ -27,11 +28,14 @@ Agent 会话将其工具并入可用工具集（OpenAI function calling 格式�
   - MCP stdio transport：JSON-RPC 2.0，每行一个 JSON 消息
   - MCP Streamable HTTP transport：JSON-RPC 2.0 over HTTP POST + SSE
   - reader 线程 + queue：避免 Windows 上 pipe 无法 select 的坑
-  - 请求带超时（默认 15s），失败抛异常由调用方兜底
+  - 请求带超时（默认 15s，plugin.json 可声明 "timeout"：5-300），失败抛异常由调用方兜底
+  - 调用审计：call_mcp_tool 每次调用写结构化记录到 data/logs/mcp_audit.log（参数脱敏）
   - 运行时连接缓存：{server_key: (client, last_used_ts)} + 60s 空闲回收
 """
 
 import json
+import logging
+import logging.handlers
 import os
 import queue
 import subprocess
@@ -43,11 +47,27 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from .models_store import get_registry_db
 
+logger = logging.getLogger(__name__)
+
 # MCP 协议版本（2024-11-05 为广泛兼容的稳定版）
 _PROTOCOL_VERSION = '2024-11-05'
 _DEFAULT_TIMEOUT = 15
+# per-server 超时允许范围（秒）：plugin.json "timeout" 超出即 clamp
+_TIMEOUT_MIN = 5
+_TIMEOUT_MAX = 300
+# 调用审计：命中即脱敏的参数键（键名归一化为小写下划线形式后比对）
+_SENSITIVE_ARG_KEYS = frozenset({
+    'password', 'passwd', 'secret', 'token', 'api_key', 'apikey',
+    'authorization', 'auth', 'credential', 'credentials',
+    'data', 'attachments', 'body', 'body_html',
+})
+_ARG_VALUE_MAXLEN = 80
 # 空闲连接回收 TTL（秒）：超过该时长未使用的连接关闭
 _IDLE_TTL = 60
+# PF-03：子进程 stdout 非 JSON 噪声帧（插件 print/迁移日志泄漏）每累计多少条
+# 限频告警一次——只丢弃不告警会让"插件把日志写进 stdout"长期无感知。
+_NOISE_WARN_EVERY = 20
+_NOISE_SAMPLE_MAXLEN = 200
 
 # 运行中连接缓存：server_key -> (McpStdioClient | McpHttpClient, last_used_ts)
 _CLIENTS: Dict[str, Tuple[Any, float]] = {}
@@ -92,6 +112,9 @@ class McpStdioClient:
             )
         except Exception as e:
             raise McpError(f'failed to start mcp server: {e}')
+        # PF-03：累计被丢弃的 stdout 非 JSON 噪声帧数（reader 线程内自增，
+        # 无其他线程写，无需加锁）
+        self._noise_dropped = 0
         self._reader = threading.Thread(target=self._read_loop, daemon=True)
         self._reader.start()
 
@@ -105,6 +128,17 @@ class McpStdioClient:
                 try:
                     msg = json.loads(line)
                 except (ValueError, TypeError):
+                    # PF-03：非协议帧（插件 print/迁移日志泄漏到 stdout）丢弃，
+                    # 但累计计数并限频告警，避免插件把日志写进 stdout 长期无感知。
+                    # 第 1 条即告警，之后每 _NOISE_WARN_EVERY 条再告警一次。
+                    self._noise_dropped += 1
+                    if self._noise_dropped == 1 or self._noise_dropped % _NOISE_WARN_EVERY == 0:
+                        logger.warning(
+                            '[MCP] server=%s dropped non-JSON stdout line '
+                            '(total=%s); latest sample: %s',
+                            self._server_key, self._noise_dropped,
+                            line[:_NOISE_SAMPLE_MAXLEN],
+                        )
                     continue
                 if isinstance(msg, dict):
                     self._queue.put(msg)
@@ -313,6 +347,78 @@ def _parse_tool_name(name: str) -> Optional[Tuple[str, str, str]]:
     return parts[1], parts[2], parts[3]
 
 
+# ── 超时归一化 / 参数脱敏 / 调用审计 ────────────────────────────────
+
+def _normalize_timeout(value: Any) -> int:
+    """将 timeout 配置归一化到 [_TIMEOUT_MIN, _TIMEOUT_MAX]；None/非法回退默认值。"""
+    if value is None:
+        return _DEFAULT_TIMEOUT
+    try:
+        timeout = int(value)
+    except (TypeError, ValueError):
+        return _DEFAULT_TIMEOUT
+    return max(_TIMEOUT_MIN, min(timeout, _TIMEOUT_MAX))
+
+
+def _summarize_arguments(arguments: Any) -> Dict[str, Any]:
+    """生成参数摘要：敏感键仅记 <redacted:类型>，字符串截断，集合只记元素数。"""
+    if not isinstance(arguments, dict):
+        return {'_arg_type': type(arguments).__name__}
+    summary: Dict[str, Any] = {}
+    for key, value in arguments.items():
+        normalized_key = str(key).lower().replace('-', '_')
+        if normalized_key in _SENSITIVE_ARG_KEYS:
+            summary[key] = f'<redacted:{type(value).__name__}>'
+        elif isinstance(value, str):
+            summary[key] = (value if len(value) <= _ARG_VALUE_MAXLEN
+                            else value[:_ARG_VALUE_MAXLEN] + '…')
+        elif isinstance(value, bool) or value is None or isinstance(value, (int, float)):
+            summary[key] = value
+        elif isinstance(value, list):
+            summary[key] = f'<list:{len(value)}>'
+        elif isinstance(value, dict):
+            summary[key] = f'<dict:{len(value)}>'
+        else:
+            summary[key] = f'<{type(value).__name__}>'
+    return summary
+
+
+_AUDIT_LOGGER_NAME = 'mcp.audit'
+_audit_handler_ready = False
+_audit_lock = threading.Lock()
+
+
+def _get_audit_logger() -> logging.Logger:
+    """返回 MCP 调用审计 logger（data/logs/mcp_audit.log，5MB×3 轮转）。
+
+    落盘初始化失败时退化为 NullHandler —— 审计链路永不影响工具调用。
+    """
+    global _audit_handler_ready
+    audit_logger = logging.getLogger(_AUDIT_LOGGER_NAME)
+    if _audit_handler_ready:
+        return audit_logger
+    with _audit_lock:
+        if _audit_handler_ready:
+            return audit_logger
+        audit_logger.setLevel(logging.INFO)
+        audit_logger.propagate = False
+        try:
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            log_dir = os.path.join(base_dir, 'data', 'logs')
+            os.makedirs(log_dir, exist_ok=True)
+            handler = logging.handlers.RotatingFileHandler(
+                os.path.join(log_dir, 'mcp_audit.log'),
+                maxBytes=5 * 1024 * 1024, backupCount=3, encoding='utf-8')
+            handler.setFormatter(logging.Formatter(
+                '%(asctime)s [%(levelname)s] %(message)s',
+                datefmt='%Y-%m-%d %H:%M:%S'))
+            audit_logger.addHandler(handler)
+        except Exception:
+            audit_logger.addHandler(logging.NullHandler())
+        _audit_handler_ready = True
+    return audit_logger
+
+
 # ── 注册 / 生命周期 ────────────────────────────────────────────────
 
 def _config_to_record(plugin_id: str, server: Dict[str, Any]) -> Dict[str, Any]:
@@ -325,6 +431,7 @@ def _config_to_record(plugin_id: str, server: Dict[str, Any]) -> Dict[str, Any]:
         'transport': transport,
         'url': (server.get('url') or '').strip(),
         'headers': server.get('headers') or {},
+        'timeout': _normalize_timeout(server.get('timeout')),
     }
     return {'plugin_id': plugin_id, 'server_name': name, 'config': config}
 
@@ -401,6 +508,7 @@ def register_system_mcp_server(plugin_id: str, server_name: str,
     cfg.setdefault('env', {})
     cfg.setdefault('url', '')
     cfg.setdefault('headers', {})
+    cfg.setdefault('timeout', _DEFAULT_TIMEOUT)
     record = {
         'plugin_id': plugin_id,
         'server_name': server_name,
@@ -451,11 +559,13 @@ def _get_client(plugin_id: str, server_name: str, config: Dict[str, Any]):
             _CLIENTS[server_key] = (cached[0], now)
             return cached[0]
         transport = (config.get('transport') or 'stdio').strip()
+        timeout = _normalize_timeout(config.get('timeout'))
         if transport == 'http':
             client = McpHttpClient(
                 server_key,
                 config.get('url') or '',
                 headers=config.get('headers') or {},
+                timeout=timeout,
             )
         else:
             client = McpStdioClient(
@@ -463,6 +573,7 @@ def _get_client(plugin_id: str, server_name: str, config: Dict[str, Any]):
                 config.get('command') or '',
                 args=config.get('args') or [],
                 env=config.get('env') or {},
+                timeout=timeout,
             )
         client.initialize()
         _CLIENTS[server_key] = (client, now)
@@ -550,32 +661,65 @@ def get_enabled_mcp_tool_schemas() -> List[Dict[str, Any]]:
     return schemas
 
 
-def call_mcp_tool(name: str, arguments: Optional[Dict[str, Any]] = None) -> str:
+def call_mcp_tool(name: str, arguments: Optional[Dict[str, Any]] = None,
+                  context: Optional[Dict[str, Any]] = None) -> str:
     """执行 MCP 工具调用（execute_tool 路由入口）。
 
     name 格式：mcp__<plugin_id>__<server_name>__<tool_name>
     返回 MCP 响应的文本内容拼接（content[].text）。
+
+    每次调用写一条结构化审计记录（Agent 上下文、脱敏参数摘要、耗时、isError）；
+    审计写入异常被吞掉，不影响工具调用结果。
     """
     parsed = _parse_tool_name(name)
     if not parsed:
         return f'Unknown tool: {name}'
     plugin_id, server_name, tool_name = parsed
+    ctx = context if isinstance(context, dict) else {}
+    started = time.time()
+    is_error = False
+    error_summary = ''
     try:
-        records = _enabled_records()
-        cfg = next((json.loads(r['config']) for r in records
-                    if r['plugin_id'] == plugin_id and r['server_name'] == server_name), None)
-        if not cfg:
-            return f'MCP server not enabled: {plugin_id}/{server_name}'
-        client = _get_client(plugin_id, server_name, cfg)
-        result = client.call_tool(tool_name, arguments or {})
-    except Exception as e:
-        return f'Tool {name} execution error: {e}'
-    # 组装文本输出
-    parts = []
-    for item in result.get('content') or []:
-        if isinstance(item, dict) and item.get('type') == 'text':
-            parts.append(item.get('text', ''))
-    return '\n'.join(parts) if parts else json.dumps(result, ensure_ascii=False)
+        try:
+            records = _enabled_records()
+            cfg = next((json.loads(r['config']) for r in records
+                        if r['plugin_id'] == plugin_id and r['server_name'] == server_name), None)
+            if not cfg:
+                is_error = True
+                error_summary = f'MCP server not enabled: {plugin_id}/{server_name}'
+                return error_summary
+            client = _get_client(plugin_id, server_name, cfg)
+            result = client.call_tool(tool_name, arguments or {})
+        except Exception as e:
+            is_error = True
+            error_summary = str(e)[:200]
+            return f'Tool {name} execution error: {e}'
+        # 组装文本输出
+        parts = []
+        for item in result.get('content') or []:
+            if isinstance(item, dict) and item.get('type') == 'text':
+                parts.append(item.get('text', ''))
+        text_output = '\n'.join(parts) if parts else json.dumps(result, ensure_ascii=False)
+        if result.get('isError'):
+            is_error = True
+            error_summary = text_output[:200] if text_output else 'tool returned isError'
+        return text_output
+    finally:
+        elapsed_ms = round((time.time() - started) * 1000, 2)
+        try:
+            _get_audit_logger().info(
+                'mcp_call tool=%s agent_id=%s task_id=%s agent_name=%s '
+                'elapsed_ms=%s is_error=%s args=%s%s',
+                name,
+                ctx.get('agent_id') or '-',
+                ctx.get('task_id') or '-',
+                ctx.get('name') or '-',
+                elapsed_ms,
+                is_error,
+                json.dumps(_summarize_arguments(arguments), ensure_ascii=False),
+                f' error={error_summary}' if error_summary else '')
+        except Exception:
+            pass
 
 
 # ── 对外 manifest ──────────────────────────────────────────────────

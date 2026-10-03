@@ -6,8 +6,12 @@ Agent Matrix — 数据库模型
 复用 auth-center/models/database.py 的 get_db() 模式。
 """
 from i18n import _
-import json, os, sys, re
+import json, os, sys, re, logging
 from datetime import datetime
+
+# PF-03：迁移/角色种子等提示统一走 logging(stderr)，禁止 print 落 stdout——
+# 插件 MCP 子进程（stdio JSON-RPC）惰性 import 本模块时，模块级 print 会污染协议帧。
+logger = logging.getLogger(__name__)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROLES_DIR = os.path.join(BASE_DIR, 'roles')
@@ -305,7 +309,7 @@ def _load_all_role_yamls():
                 _owned = {edition_artifact_stem(str(v))
                           for v in (raw.get('editions') or [])}
                 if _owned and _stem not in _owned:
-                    print(f'[RoleYAML] edition {_stem} skips role: {raw.get("slug")}')
+                    logger.info(f'[RoleYAML] edition {_stem} skips role: {raw.get("slug")}')
                     continue
             # 类型转换
             raw['is_active'] = _to_int(raw.get('is_active', 1))
@@ -316,7 +320,7 @@ def _load_all_role_yamls():
             raw['allowed_tools'] = json.dumps(raw.get('allowed_tools', []))
             roles.append(raw)
         except Exception as e:
-            print(f'[RoleYAML] Skipped {fname}: {e}')
+            logger.warning(f'[RoleYAML] Skipped {fname}: {e}')
     return roles
 
 
@@ -650,7 +654,7 @@ def init_agent_matrix_tables():
         if 'provider_model_id' not in cols:
             conn.execute("ALTER TABLE agent_matrix ADD COLUMN provider_model_id BIGINT DEFAULT NULL")
             conn.commit()
-            print('[Migration] Added agent_matrix.provider_model_id')
+            logger.info('[Migration] Added agent_matrix.provider_model_id')
         # Migrate old model_provider_id → provider_model_id
         rows = conn.execute(
             "SELECT id, model_provider_id FROM agent_matrix WHERE provider_model_id IS NULL AND model_provider_id IS NOT NULL"
@@ -660,7 +664,7 @@ def init_agent_matrix_tables():
                          (a['model_provider_id'], a['id']))
         if rows:
             conn.commit()
-            print(f'[Migration] Migrated {len(rows)} agent_matrix rows model_provider_id→provider_model_id')
+            logger.info(f'[Migration] Migrated {len(rows)} agent_matrix rows model_provider_id→provider_model_id')
 
     # ── Migration: add dimension to agent_token_logs ──
     with get_db() as conn:
@@ -669,7 +673,7 @@ def init_agent_matrix_tables():
             conn.execute("ALTER TABLE agent_token_logs ADD COLUMN dimension TEXT DEFAULT 'text'")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_tkl_dimension ON agent_token_logs(dimension)")
             conn.commit()
-            print('[Migration] Added agent_token_logs.dimension')
+            logger.info('[Migration] Added agent_token_logs.dimension')
 
     # ── Migration: add module to agent_token_logs ──
     with get_db() as conn:
@@ -678,13 +682,13 @@ def init_agent_matrix_tables():
             conn.execute("ALTER TABLE agent_token_logs ADD COLUMN module TEXT DEFAULT 'legacy'")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_tkl_module ON agent_token_logs(module)")
             conn.commit()
-            print('[Migration] Added agent_token_logs.module')
+            logger.info('[Migration] Added agent_token_logs.module')
 
     # ── Migration: add index on agent_token_logs.user_id (for token_stats JOINs) ──
     with get_db() as conn:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_tkl_user_id ON agent_token_logs(user_id)")
         conn.commit()
-        print('[Migration] Added agent_token_logs.user_id index')
+        logger.info('[Migration] Added agent_token_logs.user_id index')
 
     # ── Migration: make legacy agent_matrix fields nullable ──
     with get_db() as conn:
@@ -692,7 +696,7 @@ def init_agent_matrix_tables():
         conn.execute("ALTER TABLE agent_matrix ALTER COLUMN provider DROP NOT NULL")
         conn.execute("ALTER TABLE agent_matrix ALTER COLUMN model_name DROP NOT NULL")
         conn.commit()
-        print('[Migration] agent_matrix.provider/model_name made nullable')
+        logger.info('[Migration] agent_matrix.provider/model_name made nullable')
 
     # ── Migration: add slug & is_system to agent_matrix ──
     with get_db() as conn:
@@ -703,7 +707,7 @@ def init_agent_matrix_tables():
             conn.execute("ALTER TABLE agent_matrix ADD COLUMN is_system BIGINT DEFAULT 0")
         if 'slug' not in cols or 'is_system' not in cols:
             conn.commit()
-            print('[Migration] Added agent_matrix.slug / is_system')
+            logger.info('[Migration] Added agent_matrix.slug / is_system')
 
 
 # ============================================================
@@ -726,7 +730,7 @@ def seed_default_agents():
     """
     roles = load_system_roles()
     if not roles:
-        print(_('[Seed] Role YAML file not found, skipped seed data'))
+        logger.warning(_('[Seed] Role YAML file not found, skipped seed data'))
         return
 
     yaml_slugs = set()
@@ -767,7 +771,7 @@ def seed_default_agents():
                         a.get('capabilities', '[]'),
                         by_name['id']
                     ))
-                    print(f'[Seed] Migrate slug: {old_slug} → {slug}')
+                    logger.info(f'[Seed] Migrate slug: {old_slug} → {slug}')
                 else:
                     # INSERT new system role
                     conn.execute("""
@@ -785,7 +789,7 @@ def seed_default_agents():
                         a.get('auto_approve', 0), a.get('is_active', 1), a.get('is_system', 1),
                         a.get('capabilities', '[]'), a.get('allowed_tools', '[]')
                     ))
-                    print(f'[Seed] Insert system role: {slug}')
+                    logger.info(f'[Seed] Insert system role: {slug}')
             else:
                 # UPDATE existing system role — sync metadata only, preserve AI config
                 # NEVER overwrite provider/model_name/api_key_ref on existing agents
@@ -836,7 +840,7 @@ def seed_default_agents():
             placeholders = ','.join(['%s'] * len(yaml_slugs))
             stale = 0
             if len(yaml_slugs) < 5 and not directional:
-                print(f'[Seed] FAIL-CLOSED: role set shrank to {len(yaml_slugs)}, skip delete')
+                logger.warning(f'[Seed] FAIL-CLOSED: role set shrank to {len(yaml_slugs)}, skip delete')
             else:
                 stale = conn.execute(
                     "SELECT COUNT(*) AS c FROM agent_matrix "
@@ -844,7 +848,7 @@ def seed_default_agents():
                     .format(placeholders), tuple(yaml_slugs)
                 ).fetchone()['c'] or 0
                 if not directional and stale > int(os.getenv('MAX_SYSTEM_ROLE_DELETE', '3')):
-                    print(f'[Seed] FAIL-CLOSED: {stale} stale roles exceed limit '
+                    logger.warning(f'[Seed] FAIL-CLOSED: {stale} stale roles exceed limit '
                           f'{os.getenv("MAX_SYSTEM_ROLE_DELETE", "3")}, skip delete')
                 elif directional:
                     # 方向版：清理本版之外的全部系统角色（版本严格隔离）
@@ -853,9 +857,9 @@ def seed_default_agents():
                         "WHERE is_system=1 AND slug NOT IN ({}) AND slug != ''"
                         .format(placeholders), tuple(yaml_slugs)
                     ).rowcount
-                    print(f'[Seed] Directional {_ed_for_del}: removed {deleted} cross-version roles')
+                    logger.info(f'[Seed] Directional {_ed_for_del}: removed {deleted} cross-version roles')
                 elif os.getenv('SEED_DRY_RUN', '0') == '1':
-                    print(f'[Seed] DRY-RUN: would delete {stale} stale system roles, skipped')
+                    logger.info(f'[Seed] DRY-RUN: would delete {stale} stale system roles, skipped')
                 else:
                     deleted = conn.execute(
                         "DELETE FROM agent_matrix "
@@ -863,7 +867,7 @@ def seed_default_agents():
                         .format(placeholders), tuple(yaml_slugs)
                     ).rowcount
         if deleted:
-            print(f'[Seed] Cleaned up {deleted} old system roles')
+            logger.info(f'[Seed] Cleaned up {deleted} old system roles')
 
         conn.commit()
 
@@ -900,7 +904,7 @@ def register_plugin_roles(plugin_id, declare_roles_list):
                     r.get('is_active', 1),
                 ))
                 count += 1
-                print(f'[PluginRoles] Register plugin role: {slug} (from {plugin_id})')
+                logger.info(f'[PluginRoles] Register plugin role: {slug} (from {plugin_id})')
         if count:
             conn.commit()
     return count
@@ -915,7 +919,7 @@ def unregister_plugin_roles(plugin_id, declare_roles_list):
     with get_db() as conn:
         for slug in slugs:
             conn.execute("DELETE FROM agent_matrix WHERE slug=%s AND is_system=0", (slug,))
-            print(f'[PluginRoles] Uninstall plugin role: {slug} (from {plugin_id})')
+            logger.info(f'[PluginRoles] Uninstall plugin role: {slug} (from {plugin_id})')
         conn.commit()
 
 
@@ -945,7 +949,7 @@ def _merge_agent_declarations(plugin_dir: str, metadata: dict) -> list:
         slug = decl.get('slug') or decl.get('name', '').lower().replace(' ', '-')
         role_type = decl.get('role_type', 'sub')
         if role_type not in ('master', 'sub'):
-            print(f'[PluginRoles] WARNING: {slug} invalid role_type {role_type!r}, coerced to "sub"')
+            logger.warning(f'[PluginRoles] WARNING: {slug} invalid role_type {role_type!r}, coerced to "sub"')
             role_type = 'sub'
         merged[slug] = {
             'slug': slug,
@@ -964,14 +968,14 @@ def _merge_agent_declarations(plugin_dir: str, metadata: dict) -> list:
         domain = decl.get('domain', prev.get('domain', 'general'))
         role_type = decl.get('role_type', prev.get('role_type', 'sub'))
         if role_type not in ('master', 'sub'):
-            print(f'[PluginRoles] WARNING: {slug} invalid role_type {role_type!r}, coerced to "sub"')
+            logger.warning(f'[PluginRoles] WARNING: {slug} invalid role_type {role_type!r}, coerced to "sub"')
             role_type = 'sub'
         system_prompt = ''
         prompt_file = decl.get('prompt_file', '')
         if prompt_file and plugin_dir:
             prompt_path = os.path.join(plugin_dir, prompt_file)
             if not os.path.isfile(prompt_path):
-                print(f'[PluginRoles] WARNING: {slug} prompt_file not found: {prompt_file}')
+                logger.warning(f'[PluginRoles] WARNING: {slug} prompt_file not found: {prompt_file}')
             try:
                 with open(prompt_path, 'r', encoding='utf-8') as f:
                     system_prompt = f.read().strip()
@@ -1028,7 +1032,7 @@ def register_plugin_agents(plugin_id: str, plugin_dir: str, metadata: dict) -> i
                     r['is_active']
                 ))
             count += 1
-            print(f'[PluginRoles] Register plugin agent: {slug} (from {plugin_id})')
+            logger.info(f'[PluginRoles] Register plugin agent: {slug} (from {plugin_id})')
         if count:
             conn.commit()
     return count
@@ -1046,7 +1050,7 @@ def unregister_plugin_agents(plugin_id: str, metadata: dict) -> int:
             tuple(slugs)
         )
         conn.commit()
-        print(f'[PluginRoles] Unregister {len(slugs)} plugin agents (from {plugin_id})')
+        logger.info(f'[PluginRoles] Unregister {len(slugs)} plugin agents (from {plugin_id})')
     return len(slugs)
 
 
@@ -1122,7 +1126,7 @@ def resolve_agent_roles(plugin_id: str, metadata: dict) -> list:
             if row['slug'] in core and plugin_id in _json_list(row.get('managed_modules')):
                 owned.append(row['slug'])
     except Exception as exc:                                    # noqa: BLE001
-        print(f'[PluginRoles] WARNING: {plugin_id} 角色侧认领查询失败: {exc}')
+        logger.warning(f'[PluginRoles] WARNING: {plugin_id} 角色侧认领查询失败: {exc}')
     return owned
 
 
@@ -1134,7 +1138,7 @@ def attach_plugin_capabilities(plugin_id: str, metadata: dict) -> int:
     """
     roles = resolve_agent_roles(plugin_id, metadata or {})
     if not roles:
-        print(f'[PluginRoles] WARNING: {plugin_id} 在本版无归属角色'
+        logger.warning(f'[PluginRoles] WARNING: {plugin_id} 在本版无归属角色'
               f'（agent_role={(metadata or {}).get("agent_role")!r}，'
               f'且无核心角色的 managed_modules 认领），跳过网关注册')
         return -1
@@ -1160,7 +1164,7 @@ def attach_plugin_capabilities(plugin_id: str, metadata: dict) -> int:
             )
             attached += 1
         conn.commit()
-    print(f'[PluginRoles] Attach plugin capabilities: {plugin_id} → {roles} ({len(caps)} caps)')
+    logger.info(f'[PluginRoles] Attach plugin capabilities: {plugin_id} → {roles} ({len(caps)} caps)')
     return attached
 
 
@@ -1196,7 +1200,7 @@ def detach_plugin_capabilities(plugin_id: str, metadata: dict) -> int:
             )
             detached += 1
         conn.commit()
-    print(f'[PluginRoles] Detach plugin capabilities: {plugin_id} ← {roles}')
+    logger.info(f'[PluginRoles] Detach plugin capabilities: {plugin_id} ← {roles}')
     return detached
 
 
@@ -1293,7 +1297,7 @@ def register_capability_to_role(domain, name, capabilities, description='', syst
             (domain,)
         ).fetchone()
         if not role:
-            print(f'[Capability] ⚠️ No system role found for domain={domain}, skipping {name}')
+            logger.warning(f'[Capability] ⚠️ No system role found for domain={domain}, skipping {name}')
             return False
 
         existing = json.loads(role['capabilities'] or '[]')
@@ -1306,9 +1310,9 @@ def register_capability_to_role(domain, name, capabilities, description='', syst
                 (json.dumps(existing + new_caps), role['id'])
             )
             conn.commit()
-            print(f'[Capability] ✅ Registered {len(new_caps)} capabilities to role domain={domain}')
+            logger.info(f'[Capability] ✅ Registered {len(new_caps)} capabilities to role domain={domain}')
         else:
-            print(f'[Capability] ℹ️ No new capabilities for {name} on domain={domain}')
+            logger.info(f'[Capability] ℹ️ No new capabilities for {name} on domain={domain}')
         return True
 
 

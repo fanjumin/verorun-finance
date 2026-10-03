@@ -43,6 +43,10 @@ except ImportError:
 
 SKILL_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_FILE = os.path.join(SKILL_DIR, "config.yaml")
+
+# SAU-1：报告类输出较长，原硬编码 800 易被 max_tokens 截断成空/半截响应。
+# 提到 8192 并支持 SA_LLM_MAX_TOKENS 覆盖（上限而非目标，未截断时不会增加生成量）。
+_LLM_MAX_TOKENS = int(os.environ.get("SA_LLM_MAX_TOKENS") or 8192)
 DEFAULT_CONFIG = {
     "DATA_PROVIDER": "sina",
     "DATA_CACHE_DIR": "./data/cache",
@@ -80,6 +84,34 @@ def scenario_task_type(now=None) -> str:
     if t <= dtime(15, 0):
         return "stock.intraday"
     return "stock.postclose"
+
+
+def _llm_cache_ctx(symbol: str, tech_data: dict, bscore, change_pct,
+                   evidence_text: str = "") -> dict:
+    """构造综合分析（scope=full）的缓存上下文；任一步失败返回 {}（= 不缓存）。
+
+    指纹只含量化档位 + 证据结构指纹：
+      - 盘中价格小幅跳动不换键（涨幅 0.5pct 档、评分 5 分档、RSI 3 点档）；
+      - 行情大幅波动自动换档 → 缓存失效；
+      - 证据数值微调不失效、结构变化（科目增减/换源）才失效。
+    直接对 prompt 取 hash 会永不命中（prompt 含现价/均线/涨幅精确值）。
+    """
+    try:
+        from .llm_cache import _quantize, evidence_fingerprint
+        fp = "%s|%s|%s|%s|%s" % (
+            _quantize(change_pct, 0.5),
+            _quantize((tech_data or {}).get("score", 50), 5),
+            _quantize((tech_data or {}).get("rsi14", 0), 3),
+            _quantize(bscore, 5),
+            evidence_fingerprint(evidence_text))
+    except Exception as err:
+        _LOGGER.warning("llm cache ctx build failed symbol=%s: %s", symbol, err)
+        return {}
+    try:
+        scene = scenario_task_type()
+    except Exception:
+        scene = ""
+    return {"scope": "full", "symbol": symbol, "scene": scene, "fingerprint": fp}
 
 
 def _scene_prompt(task_type: str) -> str:
@@ -634,8 +666,11 @@ class StockAnalysisSkill:
                             message="走昂贵路径：LLM 综合研判")
             llm_report = None
             _llm_start = time.time()
+            _cache_ctx = _llm_cache_ctx(symbol, tech_data, bscore, change_pct,
+                                        evidence_text)
             for attempt in range(1, _LLM_MAX_ATTEMPTS + 1):
-                llm_report = self._call_llm(prompt)
+                # 缓存命中时 _call_llm 直接返回、不发请求，重试循环自然只跑一轮
+                llm_report = self._call_llm(prompt, cache_ctx=_cache_ctx)
                 if llm_report:
                     break
                 _LOGGER.warning("UnifiedLLM 返回空响应 symbol=%s attempt=%d/%d",
@@ -648,9 +683,13 @@ class StockAnalysisSkill:
                                 status="failed", latency_ms=_llm_latency,
                                 message="UnifiedLLM 返回空响应")
                 return AnalysisResult(symbol=symbol, error="UnifiedLLM 返回空响应")
-            self._emit_flow(trace_id, symbol, "llm", "end", decision_type="route_expensive",
+            _hit_flag = bool(getattr(self, "_last_cache_hit", False))
+            self._emit_flow(trace_id, symbol, "llm", "end",
+                            decision_type="cache_hit" if _hit_flag else "route_expensive",
                             status="ok", latency_ms=_llm_latency,
-                            tokens=self._read_llm_tokens())
+                            # 命中时无 token 消耗；meta 供神经中枢区分复用与实调用
+                            tokens=None if _hit_flag else self._read_llm_tokens(),
+                            meta={"cache_hit": True} if _hit_flag else None)
 
             # 提取信号（A4：结构化解析优先，失败回落既有兜底链）
             from .evidence import parse_structured_output as _parse_structured
@@ -768,8 +807,16 @@ class StockAnalysisSkill:
 注意: 分析仅供参考，不构成投资建议。请用中文回答，控制在600字以内。
 最后输出严格 JSON：{{"signal":"buy|sell|hold","reasons":["..."],"summary":"...","evidence_refs":["..."]}}。置信度由系统根据证据覆盖度与历史命中率自动计算，无需输出。"""
 
-    def _call_llm(self, prompt: str) -> str:
-        """调用 VeroRun 内核网关；插件不解析 provider、model 或 API Key。"""
+    def _call_llm(self, prompt: str, cache_ctx: dict = None) -> str:
+        """调用 VeroRun 内核网关；插件不解析 provider、model 或 API Key。
+
+        cache_ctx（可选）：{"scope", "symbol", "scene", "fingerprint"}。
+        四项齐全且 model_name 解析成功时：先查 sa_llm_cache，命中直接返回缓存报告
+        （**不发请求**）；未命中则调用成功后写缓存。任一项缺失 → 跳过缓存不读不写。
+
+        缓存放在本层而非 _llm_analysis：model_name 只有解析完 agent_config 才可得，
+        而它是缓存键的必要维度（换模型必须自动失效）。
+        """
         from agent_matrix.engine import UnifiedLLM
         from agent_matrix.model_resolver import resolve_model_args
 
@@ -815,12 +862,42 @@ class StockAnalysisSkill:
         if system_prompt:
             messages.insert(0, {"role": "system", "content": system_prompt})
 
-        return UnifiedLLM(agent_config).chat(
+        # ── LLM 响应缓存（跨用户复用；命中即不发请求）──
+        model_name = str(agent_config.get("model_name") or "")
+        ctx = cache_ctx or {}
+        _cachable = bool(model_name and ctx.get("scope")
+                         and ctx.get("symbol") and ctx.get("fingerprint"))
+        self._last_cache_hit = False
+        if _cachable:
+            try:
+                from .llm_cache import get as _cache_get
+                _hit = _cache_get(ctx["scope"], ctx["symbol"], model_name,
+                                  ctx.get("scene") or "", ctx["fingerprint"])
+                if _hit and _hit.get("report"):
+                    self._last_cache_hit = True
+                    return str(_hit["report"])
+            except Exception as _ce:
+                _LOGGER.warning("llm cache lookup failed symbol=%s: %s",
+                                ctx.get("symbol"), _ce)
+
+        out = UnifiedLLM(agent_config).chat(
             messages,
             temperature=0.3,
-            max_tokens=800,
+            max_tokens=_LLM_MAX_TOKENS,
             module="stock_analysis",
         )
+
+        # 空响应/降级文案不得落缓存（会污染后续结果）
+        if _cachable and out:
+            try:
+                from .llm_cache import put as _cache_put
+                _cache_put(ctx["scope"], ctx["symbol"], model_name,
+                           ctx.get("scene") or "", ctx["fingerprint"],
+                           {"report": out}, prompt_len=len(prompt))
+            except Exception as _ce:
+                _LOGGER.warning("llm cache write failed symbol=%s: %s",
+                                ctx.get("symbol"), _ce)
+        return out
 
     def _extract_signal(self, report: str) -> dict:
         """从分析报告中提取交易信号"""

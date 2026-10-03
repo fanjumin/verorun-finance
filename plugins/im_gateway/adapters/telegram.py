@@ -16,6 +16,7 @@ class TelegramAdapter(BaseIMAdapter):
         return [
             {'key': 'bot_token', 'label': 'Bot Token', 'type': 'password'},
             {'key': 'webhook_url', 'label': 'Webhook URL', 'type': 'text'},
+            {'key': 'secret_token', 'label': 'Webhook Secret Token', 'type': 'password'},
             {'key': 'allow_groups', 'label': 'Allow Group Chat (true/false)', 'type': 'text'},
         ]
 

@@ -1,0 +1,4 @@
+# neural_flow plugin strings (i18n standard §1.2: per-plugin translation directory)
+# Keys are English (default language); values are English for the en locale.
+plugin.name: NeuralFlow
+plugin.tagline: Platform AI dataflow observability base

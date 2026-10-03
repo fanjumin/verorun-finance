@@ -1,19 +1,26 @@
 #!/usr/bin/env python3
 """
-Vault Restore Engine — One-click restore, selective restore, point-in-time recovery (PITR).
+Vault Restore Engine — One-click restore, selective restore, and restore drills.
+
+PITR (point-in-time recovery) is intentionally not implemented: the plugin
+produces logical pg_dump archives, which cannot be replayed to an arbitrary
+point in time. restore_pitr() fails closed until physical base backups plus
+WAL archiving exist.
 
 Supports preview mode (dry_run) to inspect backup contents before executing restore.
 """
 
 import os
 import re
+import sys
 import tarfile
 import tempfile
 import subprocess
 import shutil
 from datetime import datetime
 from typing import Dict, Optional
-from .utils import get_pg_env, BASE_DIR
+from .utils import get_pg_env, BASE_DIR, resolve_backup_path, list_backup_files
+from .backup_engine import resolve_pg_tool_for_server, get_server_major_version
 
 BACKUP_DIR = os.path.join(BASE_DIR, 'data', 'vault')
 
@@ -21,22 +28,79 @@ BACKUP_DIR = os.path.join(BASE_DIR, 'data', 'vault')
 _LABEL_RE = re.compile(r'^[A-Za-z0-9_\-]+$')
 
 
+def _is_absolute_or_unc(path: str) -> bool:
+    """识别 tar 成员名/链接名中的绝对路径（POSIX /、Windows 盘符、UNC）。"""
+    if not path:
+        return False
+    if path.startswith(('/', '\\')):
+        return True
+    if len(path) >= 2 and path[1] == ':':
+        return True
+    return os.path.isabs(path)
+
+
+def _is_within(path: str, root: str) -> bool:
+    """path 规范化后必须等于 root 或位于 root 之内（避免前缀冒充）。"""
+    path = os.path.normpath(path)
+    root = os.path.normpath(root)
+    return path == root or path.startswith(root + os.sep)
+
+
+def _tar_supports_data_filter() -> bool:
+    """tarfile 的 filter='data' 自 Python 3.12 起可用。"""
+    return sys.version_info[:2] >= (3, 12)
+
+
+def _safe_extractall(tar: tarfile.TarFile, dest_dir: str, members=None):
+    """extractall 的安全封装：3.12+ 强制 data 过滤器，低版本靠手动校验兜底。"""
+    if _tar_supports_data_filter():
+        tar.extractall(dest_dir, members=members, filter='data')
+    else:
+        tar.extractall(dest_dir, members=members)
+
+
+def _safe_extract_one(tar: tarfile.TarFile, member: tarfile.TarInfo, dest_dir: str):
+    """extract 单成员的安全封装：3.12+ 强制 data 过滤器。"""
+    if _tar_supports_data_filter():
+        tar.extract(member, dest_dir, filter='data')
+    else:
+        tar.extract(member, dest_dir)
+
+
 def _validate_tar_members(tar: tarfile.TarFile, dest_dir: str):
-    """VR-SEC-003: 校验 tar 成员，拒绝绝对路径/`..` 逃逸，返回安全成员列表。"""
+    """VR-SEC-003 / RS-05b: 校验 tar 成员，拒绝路径逃逸与外部链接。
+
+    - 普通成员：解析后的绝对路径必须位于 dest_dir 内；
+    - 符号链接（issym）：linkname 相对**链接自身所在目录**解析；
+    - 硬链接（islnk）：linkname 相对**归档根目录**解析（tar 规范）；
+    - 绝对链接、盘符/UNC、解析后越界、设备文件/FIFO 一律拒绝。
+    """
     dest_root = os.path.normpath(dest_dir)
     members = []
     for m in tar.getmembers():
-        # 拒绝硬链接/符号链接指向外部（防 link 逃逸）
+        name = m.name
+
+        if _is_absolute_or_unc(name):
+            raise ValueError(f'Unsafe absolute path in archive: {name}')
+        if not _is_within(os.path.join(dest_root, name), dest_root):
+            raise ValueError(f'Unsafe path in archive: {name}')
+
         if m.issym() or m.islnk():
-            link_target = os.path.normpath(
-                os.path.join(os.path.dirname(m.name), m.linkname)
-                if not m.linkname.startswith('/') else m.linkname[1:]
-            )
-            if not link_target.startswith(dest_root) or os.path.isabs(m.linkname):
-                raise ValueError(f'Unsafe link in archive: {m.name} -> {m.linkname}')
-        norm = os.path.normpath(m.name)
-        if os.path.isabs(norm) or norm == '..' or norm.startswith('..' + os.sep):
-            raise ValueError(f'Unsafe path in archive: {m.name}')
+            link = m.linkname or ''
+            if _is_absolute_or_unc(link):
+                raise ValueError(
+                    f'Unsafe absolute link in archive: {name} -> {link}')
+            if m.issym():
+                base = os.path.join(dest_root, os.path.dirname(name))
+            else:
+                base = dest_root
+            resolved = os.path.normpath(os.path.join(base, link))
+            if not _is_within(resolved, dest_root):
+                raise ValueError(
+                    f'Unsafe link in archive: {name} -> {link}')
+        elif m.isdev() or m.isfifo():
+            raise ValueError(f'Unsupported special file in archive: {name}')
+
         members.append(m)
     return members
 
@@ -63,15 +127,18 @@ class RestoreEngine:
         if not _LABEL_RE.match(backup_label):
             return {'success': False, 'error': f'Invalid backup label: {backup_label}'}
 
-        archive_path = os.path.join(BACKUP_DIR, f'{backup_label}.tar.gz')
-        if not os.path.isfile(archive_path):
+        archive_path = resolve_backup_path(backup_label)
+        if not archive_path:
             return {'success': False, 'error': f'Backup not found: {backup_label}'}
 
         work_dir = tempfile.mkdtemp(prefix='vault_restore_')
         try:
-            with tarfile.open(archive_path, 'r:gz') as tar:
+            # SD-1 修复：最终产物可能是 .enc / 二次压缩形态，先在临时目录
+            # 解密、解压回基础 .tar.gz，再走既有提取/恢复逻辑。
+            prepared_archive = self._prepare_plain_archive(archive_path, work_dir)
+            with tarfile.open(prepared_archive, 'r:gz') as tar:
                 members = _validate_tar_members(tar, work_dir)
-                tar.extractall(work_dir, members=members)
+                _safe_extractall(tar, work_dir, members=members)
 
             content_dir = os.path.join(work_dir, backup_label)
             steps = []
@@ -100,6 +167,54 @@ class RestoreEngine:
         finally:
             shutil.rmtree(work_dir, ignore_errors=True)
 
+    def _prepare_plain_archive(self, archive_path: str, work_dir: str) -> str:
+        """把最终产物还原成可读取的基础 .tar.gz（SD-1 修复）。
+
+        - .enc：按插件配置的 key_source 解密；密钥未配置/密钥错误时抛
+          ValueError 给出明确原因（绝不静默从其他文件恢复）；
+        - 二次压缩（.gz/.zst/.lz4，非基础 .tar.gz）：解压回 .tar.gz；
+        - 基础 .tar.gz：原样返回。
+        所有派生物只写入 work_dir，函数本身不删除任何备份文件。
+        """
+        path = archive_path
+
+        if path.endswith('.enc'):
+            from .utils import load_plugin_config
+            try:
+                cfg = load_plugin_config()
+            except Exception:
+                cfg = {}
+            key_source = (cfg.get('encryption') or {}).get('key_source') or 'env'
+            try:
+                from .encryptor import VaultEncryptor
+                encryptor = VaultEncryptor(key_source=key_source)
+            except ValueError as e:
+                raise ValueError(
+                    'Backup is encrypted but the decryption key is unavailable '
+                    '(set VAULT_ENCRYPTION_KEY): %s' % e)
+            except ImportError as e:
+                raise ValueError(
+                    'Encrypted backup cannot be restored because the encryption '
+                    'library (cryptography) is unavailable: %s' % e)
+            decrypted = os.path.join(work_dir, os.path.basename(path)[:-4])
+            try:
+                encryptor.decrypt_stream(path, decrypted)
+            except Exception as e:
+                raise ValueError(
+                    'Decryption failed (wrong key or corrupt archive): %s' % e)
+            path = decrypted
+
+        # 去掉二次压缩层（基础归档本身是 .tar.gz，不能对它再解压）
+        if path.endswith('.tar.gz'):
+            return path
+        for tail in ('.gz', '.zst', '.lz4'):
+            if path.endswith(tail):
+                out_path = os.path.join(work_dir, os.path.basename(path)[:-len(tail)])
+                from .compressor import VaultCompressor
+                VaultCompressor(algorithm='none').decompress(path, out_path)
+                return out_path
+        return path
+
     def _restore_database(self, content_dir: str, label: str,
                           scope: Dict, target_db: str, target_host: str,
                           dry_run: bool) -> Dict:
@@ -120,13 +235,28 @@ class RestoreEngine:
 
         env = get_pg_env()
         target_db = target_db or env.get('PG_DB', 'appdb')
+        pg_host = target_host or env.get('PG_HOST', 'localhost')
+
+        # ENV-1/ENV-1b：恢复前先确认目标服务器主版本，再解析与之严格相等的
+        # 【真实】psql（绕过 pg_wrapper 多版本分发），杜绝高版本 pg_dump 的 dump
+        # 被旧 psql 以 ON_ERROR_STOP=1 恢复失败，或客户端/服务器版本错配。
+        try:
+            target_env = dict(env)
+            target_env['PG_HOST'] = pg_host
+            target_env['PG_DB'] = target_db
+            server_major, server_raw = get_server_major_version(target_env)
+        except Exception as e:
+            return {'step': 'database', 'success': False,
+                    'error': 'Cannot determine target PostgreSQL server version: %s' % e}
+        psql, resolve_err = resolve_pg_tool_for_server('psql', server_major)
+        if resolve_err:
+            return {'step': 'database', 'success': False, 'error': resolve_err}
 
         try:
             env_override = os.environ.copy()
             env_override['PGPASSWORD'] = env.get('PG_PASSWORD', '')
-            pg_host = target_host or env.get('PG_HOST', 'localhost')
             cmd = [
-                'psql', '-h', pg_host,
+                psql, '-h', pg_host,
                 '-p', env.get('PG_PORT', '5432'),
                 '-U', env.get('PG_USER', 'app'),
                 '-d', target_db, '-f', sql_file,
@@ -177,7 +307,7 @@ class RestoreEngine:
                     # Create parent directories if needed
                     dest_dir = os.path.dirname(target_path)
                     os.makedirs(dest_dir, exist_ok=True)
-                    tar.extract(member, BASE_DIR)
+                    _safe_extract_one(tar, member, BASE_DIR)
 
             return {'step': 'files', 'success': True,
                     'file_count': len(files_list)}
@@ -188,103 +318,60 @@ class RestoreEngine:
         """Preview backup contents without executing restore."""
         return self.restore(backup_label, dry_run=True)
 
-    # ── PITR: Point-in-Time Recovery ──
+    # ── PITR: Point-in-Time Recovery (not supported — fail closed, SD-5) ──
 
     def restore_pitr(self, target_time: str) -> Dict:
+        """时间点恢复在逻辑 dump 架构下无法实现，明确拒绝（SD-5）。
+
+        真正的 PITR 必须具备：pg_basebackup 物理基备、持续 WAL 归档、
+        以及带 recovery.signal + recovery_target_time(postgresql.auto.conf)
+        的独立受控恢复实例。pg_dump 逻辑备份无法回放到任意时间点，
+        因此本方法不再创建沙箱、不写主库 recovery.signal、绝不谎报成功。
         """
-        Point-in-time recovery using WAL replay.
-
-        Args:
-            target_time: ISO datetime string, e.g. '2026-08-04 14:30:00'
-
-        Returns:
-            {'success': bool, 'steps': [...], 'error': str|None}
-        """
-        env = get_pg_env()
-        pg_data = env.get('PG_DATA_DIR', '/var/lib/postgresql/data')
-        wal_dir = env.get('WAL_ARCHIVE_DIR', '/var/lib/postgresql/wal_archive')
-
-        # Find the latest full backup as base
-        archives = sorted(
-            [f for f in os.listdir(BACKUP_DIR) if f.startswith('vault_') and f.endswith('.tar.gz')],
-            reverse=True,
-        )
-        if not archives:
-            return {'success': False, 'error': 'No base backup found for PITR'}
-
-        latest_backup = archives[0]
-        archive_path = os.path.join(BACKUP_DIR, latest_backup)
-
-        # Check if target_time is after the base backup
+        if not target_time:
+            return {
+                'success': False,
+                'supported': False,
+                'error': 'target_time is required (YYYY-MM-DD HH:MM:SS)',
+            }
         try:
-            target_dt = datetime.strptime(target_time[:19], '%Y-%m-%d %H:%M:%S')
-            backup_mtime = datetime.utcfromtimestamp(os.path.getmtime(archive_path))
-        except ValueError:
-            return {'success': False, 'error': 'Invalid target_time format, use YYYY-MM-DD HH:MM:SS'}
+            datetime.strptime(target_time[:19], '%Y-%m-%d %H:%M:%S')
+        except (ValueError, TypeError):
+            return {
+                'success': False,
+                'supported': False,
+                'error': 'Invalid target_time format, use YYYY-MM-DD HH:MM:SS',
+            }
 
-        steps = []
-
-        # 1. Check WAL archive availability
-        if not os.path.isdir(wal_dir):
-            return {'success': False, 'error': f'WAL archive directory not found: {wal_dir}'}
-
-        wal_files = sorted([
-            f for f in os.listdir(wal_dir)
-            if os.path.isfile(os.path.join(wal_dir, f))
-        ])
-        if not wal_files:
-            return {'success': False, 'error': 'No WAL files found in archive'}
-
-        steps.append({
-            'step': 'wal_check',
-            'success': True,
-            'wal_files_count': len(wal_files),
-            'message': f'Found {len(wal_files)} WAL files',
-        })
-
-        # 2. Sandbox restore: restore base backup to a sandbox database
-        sandbox_db = f'verorun_pitr_sandbox_{datetime.utcnow().strftime("%Y%m%d_%H%M%S")}'
-        steps.append(self._create_sandbox_db(sandbox_db))
-
-        # 3. Restore base backup
-        restore_result = self.restore(latest_backup.replace('.tar.gz', ''),
-                                       target_db=sandbox_db)
-        steps.append({
-            'step': 'base_restore',
-            'success': restore_result.get('success', False),
-            'sandbox_db': sandbox_db,
-            'details': restore_result,
-        })
-
-        if not restore_result.get('success'):
-            self._drop_sandbox_db(sandbox_db)
-            return {'success': False, 'steps': steps, 'error': 'Base restore failed'}
-
-        # 4. Replay WAL to target time
-        wal_result = self._replay_wal(sandbox_db, wal_dir, wal_files, backup_mtime, target_dt)
-        steps.append(wal_result)
-
-        if not wal_result.get('success'):
-            self._drop_sandbox_db(sandbox_db)
-            return {'success': False, 'steps': steps, 'error': 'WAL replay failed'}
-
-        # PITR result: sandbox database is ready; user must manually swap
         return {
-            'success': True,
-            'steps': steps,
-            'sandbox_db': sandbox_db,
-            'message': f'PITR to {target_time} completed. Sandbox database: {sandbox_db}. '
-                       f'Verify data then swap manually or drop with: DROP DATABASE {sandbox_db};',
+            'success': False,
+            'supported': False,
+            'error': (
+                'Point-in-time recovery is not supported by this vault. '
+                'Backups are logical pg_dump archives; true PITR requires '
+                'pg_basebackup physical base backups, continuous WAL '
+                'archiving, and a dedicated recovery instance. '
+                'Use a full restore instead.'
+            ),
         }
 
     def _create_sandbox_db(self, sandbox_db: str) -> Dict:
-        """Create a sandbox database for PITR/drill testing."""
+        """Create a sandbox database for restore-drill testing."""
         env = get_pg_env()
+        try:
+            server_major, _ = get_server_major_version(env)
+        except Exception as e:
+            return {'step': 'sandbox_create', 'success': False,
+                    'error': 'Cannot determine PostgreSQL server version: %s' % e}
+        createdb, resolve_err = resolve_pg_tool_for_server('createdb', server_major)
+        if resolve_err:
+            return {'step': 'sandbox_create', 'success': False,
+                    'error': resolve_err[-500:]}
         try:
             env_override = os.environ.copy()
             env_override['PGPASSWORD'] = env.get('PG_PASSWORD', '')
             cmd = [
-                'createdb', '-h', env.get('PG_HOST', 'localhost'),
+                createdb, '-h', env.get('PG_HOST', 'localhost'),
                 '-p', env.get('PG_PORT', '5432'),
                 '-U', env.get('PG_USER', 'app'),
                 sandbox_db,
@@ -302,10 +389,17 @@ class RestoreEngine:
         """Drop a sandbox database."""
         env = get_pg_env()
         try:
+            server_major, _ = get_server_major_version(env)
+            dropdb, resolve_err = resolve_pg_tool_for_server('dropdb', server_major)
+            if resolve_err:
+                return
+        except Exception:
+            return
+        try:
             env_override = os.environ.copy()
             env_override['PGPASSWORD'] = env.get('PG_PASSWORD', '')
             cmd = [
-                'dropdb', '-h', env.get('PG_HOST', 'localhost'),
+                dropdb, '-h', env.get('PG_HOST', 'localhost'),
                 '-p', env.get('PG_PORT', '5432'),
                 '-U', env.get('PG_USER', 'app'),
                 '--if-exists', sandbox_db,
@@ -313,49 +407,6 @@ class RestoreEngine:
             subprocess.run(cmd, env=env_override, capture_output=True, text=True, timeout=30)
         except Exception:
             pass
-
-    def _replay_wal(self, sandbox_db: str, wal_dir: str, wal_files: list,
-                    base_time: datetime, target_time: datetime) -> Dict:
-        """
-        Replay WAL files to reach target_time.
-        Uses pg_rewind or manual pg_waldump + recovery.conf approach.
-        """
-        env = get_pg_env()
-        try:
-            # Filter WAL files between base_time and target_time
-            replay_files = []
-            for wf in wal_files:
-                wf_path = os.path.join(wal_dir, wf)
-                wf_mtime = datetime.utcfromtimestamp(os.path.getmtime(wf_path))
-                if base_time <= wf_mtime <= target_time:
-                    replay_files.append(wf)
-
-            if not replay_files:
-                return {'step': 'wal_replay', 'success': True,
-                        'message': 'No WAL files to replay (target time within base backup)'}
-
-            # Create recovery config in sandbox
-            pg_data = env.get('PG_DATA_DIR', '/var/lib/postgresql/data')
-            recovery_conf = os.path.join(pg_data, 'recovery.signal')
-            try:
-                with open(recovery_conf, 'w') as f:
-                    f.write(f"restore_command = 'cp {wal_dir}/%f %p'\n")
-                    f.write(f"recovery_target_time = '{target_time.strftime('%Y-%m-%d %H:%M:%S')}'\n")
-                    f.write("recovery_target_action = 'promote'\n")
-            except PermissionError:
-                return {'step': 'wal_replay', 'success': False,
-                        'error': 'Cannot write recovery config (permission denied). '
-                                 'PITR requires PostgreSQL service restart with recovery settings.'}
-
-            return {
-                'step': 'wal_replay',
-                'success': True,
-                'wal_files_replayed': len(replay_files),
-                'message': f'Replayed {len(replay_files)} WAL files to {target_time.strftime("%Y-%m-%d %H:%M:%S")}. '
-                           f'Database {sandbox_db} has been recovered.',
-            }
-        except Exception as e:
-            return {'step': 'wal_replay', 'success': False, 'error': str(e)}
 
     # ── Restore Drill ──
 
@@ -369,18 +420,15 @@ class RestoreEngine:
         Returns:
             {'success': bool, 'steps': [...], 'verified': bool, 'report': str}
         """
-        # 1. Find backup to use
+        # 1. Find backup to use (covers encrypted/compressed artifacts)
         if not backup_label:
-            archives = sorted([
-                f for f in os.listdir(BACKUP_DIR)
-                if f.startswith('vault_') and f.endswith('.tar.gz')
-            ], reverse=True)
+            archives = list_backup_files()
             if not archives:
                 return {'success': False, 'error': 'No backups available for drill'}
-            backup_label = archives[0].replace('.tar.gz', '')
+            backup_label = archives[0]['label']
 
-        archive_path = os.path.join(BACKUP_DIR, f'{backup_label}.tar.gz')
-        if not os.path.isfile(archive_path):
+        archive_path = resolve_backup_path(backup_label)
+        if not archive_path:
             return {'success': False, 'error': f'Backup not found: {backup_label}'}
 
         steps = []
@@ -407,10 +455,14 @@ class RestoreEngine:
         if restore_result.get('success'):
             try:
                 env = get_pg_env()
+                server_major, _ = get_server_major_version(env)
+                psql, resolve_err = resolve_pg_tool_for_server('psql', server_major)
+                if resolve_err:
+                    raise RuntimeError(resolve_err)
                 env_override = os.environ.copy()
                 env_override['PGPASSWORD'] = env.get('PG_PASSWORD', '')
                 verify_cmd = [
-                    'psql', '-h', env.get('PG_HOST', 'localhost'),
+                    psql, '-h', env.get('PG_HOST', 'localhost'),
                     '-p', env.get('PG_PORT', '5432'),
                     '-U', env.get('PG_USER', 'app'),
                     '-d', sandbox_db, '-t', '-c',

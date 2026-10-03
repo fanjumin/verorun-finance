@@ -12,6 +12,8 @@ from .base_v2 import BaseProviderV2, FetchResult, egress_get
 _UA = {"User-Agent": "VeroRun-StockAnalysis/1.0.0"}   # 与 v1.3.0 原值一致
 _POS = ("利好", "增长", "回升", "突破", "增持", "盈利", "上涨")   # 原词表原样
 _NEG = ("利空", "下滑", "亏损", "减持", "风险", "下跌", "处罚")
+# 新浪 getKLineData 的 scale 档位（分钟=5/15/30/60，240=日线）；该接口无周/月线
+_SCALE = {"daily": "240"}
 
 
 class SinaProvider(BaseProviderV2):
@@ -19,12 +21,14 @@ class SinaProvider(BaseProviderV2):
     authorized = False
     market = "CN"
     categories = frozenset({DataCategory.KLINE, DataCategory.NEWS, DataCategory.QUOTE})
+    kline_freqs = frozenset({"daily"})   # 该接口无周/月线（见 _SCALE）
     rate_per_min = 60
     burst = 10
 
     def _do_fetch(self, cat, *, symbol=None, **kw):
         if cat is DataCategory.KLINE:
-            data = self._fetch_kline(symbol, datalen=kw.get("datalen", 120))
+            data = self._fetch_kline(symbol, datalen=kw.get("datalen", 120),
+                                     freq=kw.get("freq", "daily"))
         elif cat is DataCategory.NEWS:
             data = self._fetch_news(symbol)
         elif cat is DataCategory.QUOTE:
@@ -65,7 +69,13 @@ class SinaProvider(BaseProviderV2):
         return {"name": parts[0], "price": price, "prev_close": prev_close,
                 "change_pct": change_pct}
 
-    def _fetch_kline(self, market_symbol: str, datalen: int = 120) -> pd.DataFrame:
+    def _fetch_kline(self, market_symbol: str, datalen: int = 120,
+                     freq: str = "daily") -> pd.DataFrame:
+        scale = _SCALE.get(freq)
+        if scale is None:
+            # 不支持该周期时快速失败（不计冷却），交网关 failover 到 akshare/tushare
+            raise ProviderError(self.name, "kline", f"sina 不支持周期 {freq}",
+                                retryable=False)
         for attempt in range(2):
             try:
                 # 2026-09-22：改走 egress_get（同上）
@@ -73,7 +83,7 @@ class SinaProvider(BaseProviderV2):
                     "https://quotes.sina.cn/cn/api/json_v2.php/CN_MarketDataService.getKLineData",
                     caller="stock_analysis.sina", timeout=10,
                     headers=_UA,
-                    params={"symbol": market_symbol, "scale": "240", "ma": "no",
+                    params={"symbol": market_symbol, "scale": scale, "ma": "no",
                             "datalen": str(datalen)},
                     usage_tags=("market",))
                 response.raise_for_status()

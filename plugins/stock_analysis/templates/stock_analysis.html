@@ -110,10 +110,10 @@
       .then(function (response) { return response.json(); })
       .then(function (payload) {
         var text = '';
-        if (payload.result && payload.result.report) {
-          text = payload.result.report + '\n\n' + {{ _('Signal')|tojson }} + ': ' + JSON.stringify(payload.result.signal);
-          if (payload.result.data && payload.result.data.data_sources && payload.result.data.data_sources.length) {
-            var srcs = payload.result.data.data_sources.map(function (s) {
+        if (payload.data && payload.data.report) {
+          text = payload.data.report + '\n\n' + {{ _('Signal')|tojson }} + ': ' + JSON.stringify(payload.data.signal);
+          if (payload.data.data && payload.data.data.data_sources && payload.data.data.data_sources.length) {
+            var srcs = payload.data.data.data_sources.map(function (s) {
               var label = (s.source || s.category) + ':' + (s.category || '');
               label += s.authorized ? ' [authorized]' : ' [unauthorized]';
               if (s.note) label += ' ' + s.note;
@@ -121,7 +121,7 @@
             }).join('; ');
             text += '\n\n' + {{ _('Data sources')|tojson }} + ': ' + srcs;
           }
-          if (payload.result.disclaimer) text += '\n' + payload.result.disclaimer;
+          if (payload.data.disclaimer) text += '\n' + payload.data.disclaimer;
         } else {
           text = (payload.error || {{ _('Analysis failed')|tojson }});
         }
@@ -138,11 +138,11 @@
   function loadWatchlist() {
     api('/api/watchlist').then(function (p) {
       var box = document.getElementById('watchlist-list');
-      if (!p.success || !p.data || !p.data.length) {
+      if (!p.ok || !p.data || !p.data.rows || !p.data.rows.length) {
         box.innerHTML = '<p>' + {{ _('No watchlist items yet.')|tojson }} + '</p>';
         return;
       }
-      var rows = p.data.map(function (it) {
+      var rows = p.data.rows.map(function (it) {
         return '<tr><td>' + it.symbol + '</td><td>' + (it.alias || '') + '</td><td>'
           + it.kind + '</td><td><button data-del="' + it.symbol + '">' + {{ _('Delete')|tojson }}
           + '</button></td></tr>';
@@ -169,7 +169,7 @@
         kind: document.getElementById('wl-kind').value
       })
     }).then(function (p) {
-      if (p.success) {
+      if (p.ok) {
         document.getElementById('wl-symbol').value = '';
         document.getElementById('wl-alias').value = '';
       }
@@ -187,13 +187,13 @@
     if (sig) q += '&signal=' + encodeURIComponent(sig);
     api('/api/batch/results' + q).then(function (p) {
       var out = document.getElementById('batch-output');
-      if (!p.success) { out.textContent = JSON.stringify(p); return; }
-      var rows = (p.data || []).map(function (it) {
+      if (!p.ok) { out.textContent = JSON.stringify(p); return; }
+      var rows = ((p.data && p.data.rows) || []).map(function (it) {
         return '<tr><td>' + it.run_id + '</td><td>' + it.symbol + '</td><td>' + it.kind + '</td><td>'
           + (it.signal || '') + '</td><td>' + (it.confidence != null ? it.confidence : '') + '</td><td>'
           + (it.score != null ? it.score : '') + '</td><td>' + (it.created_at || '') + '</td></tr>';
       }).join('');
-      out.innerHTML = '<p>' + {{ _('Total')|tojson }} + ': ' + p.total + '</p>'
+      out.innerHTML = '<p>' + {{ _('Total')|tojson }} + ': ' + p.data.total + '</p>'
         + (rows
             ? '<table><thead><tr><th>run</th><th>symbol</th><th>kind</th><th>signal</th><th>conf</th>'
               + '<th>score</th><th>time</th></tr></thead><tbody>' + rows + '</tbody></table>'
@@ -238,7 +238,7 @@
     api('/api/deps/status').then(function (p) {
       var box = document.getElementById('deps-status');
       var btn = document.getElementById('btn-install-akshare');
-      var ak = p && p.success && p.data && p.data.akshare;
+      var ak = p && p.ok && p.data && p.data.akshare;
       if (ak && ak.installed) {
         box.textContent = 'akshare v' + (ak.version || '?') + ' \u2014 ' + {{ _('Install success')|tojson }};
         btn.hidden = true;
@@ -262,7 +262,7 @@
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ dep: 'akshare' })
     }).then(function (p) {
-      if (p.success) {
+      if (p.ok) {
         box.textContent = {{ _('Install success')|tojson }};
         loadDeps();
       } else {

@@ -97,4 +97,11 @@
 {% if not admin_skip_net_proxy %}
 {% include 'plugins/net_proxy/templates/net_proxy.html' ignore missing %}
 {% endif %}
+{# ai_relay：AI 中转站裸 JS partial（3 个 l_ 函数）。
+   逃生通道：本页 87 个 include 同处一个 <script> 块，任一 partial 渲染异常都会
+   冒泡导致整个 admin.html 500（表现为面板一直转圈进不去）。
+   故用 VR_ADMIN_SKIP_AI_RELAY=1 提供一键摘除开关，默认不跳过。 #}
+{% if not admin_skip_ai_relay %}
+{% include 'plugins/ai_relay/templates/relay_admin.html' ignore missing %}
+{% endif %}
 {% include 'partials/tail.html' %}

@@ -1,0 +1,74 @@
+{
+  "name": "NeuralFlow",
+  "name_i18n_key": "plugin.name",
+  "identifier": "neural_flow",
+  "version": "1.0.0",
+  "description": "Platform-level AI dataflow observability base — NeuralFlow spans, Domain Profiles and cross-domain replay for the NeuralHub dashboard.",
+  "author": "fanjumin",
+  "min_app_version": "0.10.0",
+  "compatible_editions": ["finance", "enterprise", "standard", "pro"],
+  "category": "ai_agent",
+  "icon": "matrix",
+  "icon_url": "",
+  "tags": ["observability", "dataflow", "llm", "agent", "trace"],
+  "screenshots": [],
+  "readme_url": "",
+  "tagline": "神经中枢数据流基座",
+  "tagline_font_size": "14px",
+  "tagline_color": "#ffffff",
+  "price_type": "free",
+  "price_amount": 0,
+  "price_interval": "onetime",
+  "price_quarter_fen": 0,
+  "price_year_fen": 0,
+  "trial_days": 0,
+  "dependencies": {},
+  "conflicts": [],
+  "python_dependencies": {
+    "required": [],
+    "optional": {"pyyaml": "Domain Profile 外部档案扫描（缺失时仅内置档案可用）"}
+  },
+  "mcp_servers": [],
+  "config": {
+    "collector_interval_seconds": 5,
+    "span_retention_days": 30
+  },
+  "permissions": [
+    "routes",
+    "scheduler",
+    "events"
+  ],
+  "hooks": {
+    "provides": [],
+    "listens": [
+      "agent.task.completed",
+      "plugin.installed",
+      "plugin.enabled",
+      "plugin.disabled"
+    ]
+  },
+  "agent_role": "ops",
+  "capabilities": [
+    "neural_flow.base",
+    "neural_flow.profile"
+  ],
+  "settings_schema": {
+    "type": "object",
+    "title": "NeuralFlow Settings",
+    "description": "Platform dataflow observability base (NeuralHub backend).",
+    "properties": {
+      "collector_interval_seconds": {
+        "type": "integer",
+        "title": "Collector Interval (seconds)",
+        "description": "Incremental cursor poll interval for platform tables (agent_token_logs etc.).",
+        "default": 5
+      },
+      "span_retention_days": {
+        "type": "integer",
+        "title": "Span Retention (days)",
+        "description": "nf_flow_spans archive retention before daily prune.",
+        "default": 30
+      }
+    }
+  }
+}

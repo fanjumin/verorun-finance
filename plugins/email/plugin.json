@@ -6,7 +6,7 @@
     "required": [],
     "optional": {}
   },
-  "version": "1.5.4",
+  "version": "1.8.0",
   "category": "system",
   "tags": [
     "email",
@@ -23,11 +23,9 @@
   "min_app_version": "0.10.0",
   "compatible_editions": ["enterprise", "standard", "pro", "finance", "research", "minipro"],
   "agent_role": "service",
-  "capabilities": [
+"capabilities": [
     "email.send",
-    "email.template",
-    "email.schedule",
-    "email.track"
+    "email.template"
   ],
   "dependencies": {},
   "admin_url": "",
@@ -39,12 +37,18 @@
     "smtp_pass": "",
     "smtp_from": "",
     "imap_host": "",
-    "imap_port": 0
+    "imap_port": 0,
+    "alert_recipient": "",
+    "blocked_attachment_exts": ".exe,.bat,.cmd,.scr,.js,.vbs,.ps1,.jar,.msi",
+    "allow_private_targets": false,
+    "daily_send_quota": 200,
+    "recipient_domain_allowlist": ""
   },
   "permissions": [
     "network:request",
     "api:read",
-    "api:write"
+    "api:write",
+    "events"
   ],
   "hooks": {
     "provides": [
@@ -52,7 +56,10 @@
       "email/send_contact",
       "email/get_config"
     ],
-    "listens": []
+    "listens": [
+      "stock.alert.triggered",
+      "stock.morning_brief.ready"
+    ]
   },
   "dashboard": {
     "stats": [
@@ -111,6 +118,31 @@
         "type": "integer",
         "default": 0,
         "description": "IMAP port"
+      },
+      "alert_recipient": {
+        "type": "string",
+        "default": "",
+        "description": "Stock alert recipient address (empty = email channel skipped); env ALERT_RECIPIENT overrides"
+      },
+      "blocked_attachment_exts": {
+        "type": "string",
+        "default": ".exe,.bat,.cmd,.scr,.js,.vbs,.ps1,.jar,.msi",
+        "description": "Blocked attachment extensions, comma separated (empty = allow all)"
+      },
+      "allow_private_targets": {
+        "type": "boolean",
+        "default": false,
+        "description": "Allow test-config to probe loopback/private SMTP/IMAP targets (default: blocked)"
+      },
+      "daily_send_quota": {
+        "type": "integer",
+        "default": 200,
+        "description": "Max emails sent per day (0 = unlimited); counted from email_sent records"
+      },
+      "recipient_domain_allowlist": {
+        "type": "string",
+        "default": "",
+        "description": "Allowed recipient domains, comma separated (empty = allow all)"
       }
     }
   }

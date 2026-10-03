@@ -21,6 +21,7 @@ providers/base_v2.py — stock_analysis v2 Provider 契约
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import threading
 import time
@@ -30,6 +31,8 @@ from enum import Enum
 from typing import Any, Callable, Dict, Optional
 
 from .base import DataCategory
+
+_log = logging.getLogger("stock_analysis.providers.base_v2")
 
 
 # v2 扩展类别（尚未接入 gateway ROUTE，待 provider 实现后按需注册）
@@ -278,6 +281,15 @@ def _get_egress_client(config_reader=None):
     return _EGRESS_CLIENT
 
 
+def _url_host(url) -> str:
+    """仅取 host 用于审计日志（避免把查询串/凭证写进日志）。"""
+    try:
+        from urllib.parse import urlsplit
+        return urlsplit(str(url)).hostname or "?"
+    except Exception:      # noqa: BLE001
+        return "?"
+
+
 def egress_get(url, *, caller="stock_analysis", timeout=15, usage_tags=None,
                headers=None, params=None, config_reader=None):
     """统一出站 GET：优先走 net_proxy 治理链路，不可用时降级直连。
@@ -304,8 +316,15 @@ def egress_get(url, *, caller="stock_analysis", timeout=15, usage_tags=None,
             kw["usage_tags"] = usage_tags
         try:
             return client.get(url, caller=caller, timeout=timeout, **kw)
-        except Exception:      # noqa: BLE001 —— 治理链路任何失败都降级，不阻断取数
-            pass
+        except Exception as exc:      # noqa: BLE001 —— 治理链路任何失败都降级，不阻断取数
+            # FIN-SYS-4：仍降级直连（避免 net_proxy 抖动直接打死取数链），但留审计
+            # 痕迹，便于事后发现"实际绕过治理"的取数。仅记录 host，避免查询串
+            # 可能携带的 token 进日志。
+            _log.warning("egress degraded to direct connection caller=%s host=%s err=%s",
+                         caller, _url_host(url), exc)
+    else:
+        _log.debug("net_proxy egress unavailable, direct connection caller=%s host=%s",
+                   caller, _url_host(url))
     return _direct_get(url, timeout=timeout, headers=headers, params=params)
 
 
@@ -335,6 +354,9 @@ class BaseProviderV2(ABC):
     name: str = "base"
     market: str = "GLOBAL"          # CN / US / HK / GLOBAL
     categories: frozenset = frozenset()
+    # K 线周期能力声明（默认拒绝）：未声明的 provider 只被用于 daily，
+    # 避免「不支持周期的源用日线数据冒充周/月线」这类静默错数据。
+    kline_freqs: frozenset = frozenset({"daily"})
     rate_per_min: int = 60
     burst: int = 10
     required_secret: Optional[str] = None   # "api_key" / "token"

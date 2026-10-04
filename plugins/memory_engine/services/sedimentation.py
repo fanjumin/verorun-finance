@@ -15,14 +15,12 @@
 插件单向适应系统模块：复用系统现有表/函数，不改任何系统文件。
 """
 
-import hashlib
-import json
 import logging
 import re
 
 logger = logging.getLogger('memory_engine.sedimentation')
 
-# PII 二次过滤委托给 plugins._base.pii（与 extractor 共用，S11b）
+# PII 二次过滤经 extractor 委托基座 plugins._base.evolution.pii（与 extractor 共用，S11b）
 
 # 关键词 → 知识库分类（对齐 cleaner_agent.CATEGORY_LIMITS 的类别集合）
 _CATEGORY_RULES = [
@@ -151,13 +149,14 @@ class SedimentationService:
     def _enqueue(self, conn, source_schema, memory_id, owner_id,
                  memory_type, content, keywords, confidence, quality_score) -> bool:
         content = str(content or '').strip()
-        # 复用 extractor 的 PII 守卫（含旧内核缺 plugins._base.pii 时的自包含回退，F-DEP）。
+        # 复用 extractor 的 PII 守卫（旧内核兜底已内聚于基座 plugins._base.evolution.pii）。
         from .extractor import MemoryExtractor
+        from ..prompt_injector import user_opted_in
         if not content or MemoryExtractor._contains_pii(content):
             if content:
                 logger.info('sedimentation skipped (PII): %s/%s', source_schema, memory_id)
             return False
-        if not self._user_opted_in(owner_id):
+        if not user_opted_in(owner_id, self._config):
             return False
         title = content[:40]
         category = self._categorize(content)
@@ -174,8 +173,8 @@ class SedimentationService:
         if existing and self._is_dup(title, kw_text, existing):
             logger.info('sedimentation skipped (dup in KB): %s', title)
             return False
-        digest = hashlib.sha256(
-            f"{owner_id}|{content}".encode('utf-8')).hexdigest()
+        from plugins._base.evolution.text import record_hash
+        digest = record_hash(owner_id, content)
         try:
             conn.execute(
                 "INSERT INTO sedimentation_queue"
@@ -267,27 +266,6 @@ class SedimentationService:
         return kb_id
 
     # ── 工具 ───────────────────────────────────────────────
-    def _user_opted_in(self, owner_id) -> bool:
-        """隐私门：默认取配置，用户可在 user_profiles.meta 覆盖（与 prompt_injector 一致）。"""
-        if not owner_id:
-            return False
-        default = self._config.get('memory_opt_in_default', True)
-        try:
-            from agent_matrix.models import get_db
-            with get_db() as conn:
-                row = conn.execute(
-                    "SELECT meta FROM public.user_profiles WHERE user_id = %s",
-                    (owner_id,),
-                ).fetchone()
-            if not row:
-                return default
-            meta = row['meta'] or {}
-            if isinstance(meta, str):
-                meta = json.loads(meta)
-            return bool(meta.get('memory_opt_in', default))
-        except Exception:
-            return default
-
     def _existing_user_blocks(self):
         """知识库去重参考集：当前 user scope 有效条目。"""
         try:
@@ -332,9 +310,9 @@ class SedimentationService:
 
     @staticmethod
     def _naive_keywords(text: str) -> list:
-        kws = set(re.findall(r'[\u4e00-\u9fff]{2,}', text))
-        kws.update(w.lower() for w in re.findall(r'[a-z]{2,}', text.lower()))
-        return list(kws)[:12]
+        """委托共享进化基座（与 extractor/reflexion 同口径）。"""
+        from plugins._base.evolution.text import keywords
+        return keywords(text)
 
 
 # ── 模块级服务单例（插件 on_enable 时绑定，routes 手动触发用）──

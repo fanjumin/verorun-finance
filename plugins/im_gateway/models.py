@@ -55,17 +55,20 @@ def init_im_db():
                 updated_at      TEXT DEFAULT NOW()
             )
         """)
-        # 跨 worker 频控计数表（gateway._rate_limited 使用），幂等创建
+        # 跨 worker 频控计数表（gateway._rate_limited 使用），幂等创建。
+        # DEF-16②：表名从通用 `rate_limit_events` 改为 `im_channel_rate_events`，
+        # 消除与平台共享频控表 `public.rate_limit_events(rate_key, ts)` 的同名异构
+        # 冲突（两条路径都用不带前缀的表名时，谁命中取决于当时连接的 search_path）。
         conn.execute("""
-            CREATE TABLE IF NOT EXISTS rate_limit_events (
+            CREATE TABLE IF NOT EXISTS im_channel_rate_events (
                 id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
                 channel     TEXT NOT NULL,
                 ts          TIMESTAMPTZ NOT NULL DEFAULT NOW()
             )
         """)
         conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_rate_limit_events_channel_ts
-                ON rate_limit_events(channel, ts)
+            CREATE INDEX IF NOT EXISTS idx_im_channel_rate_events_channel_ts
+                ON im_channel_rate_events(channel, ts)
         """)
         # 第三方登录提供方配置表（Phase 5，方案 A：插件自包含）
         conn.execute("""

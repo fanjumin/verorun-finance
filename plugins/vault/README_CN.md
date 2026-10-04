@@ -1,8 +1,8 @@
-# Vault (vault)
+# Vault（数据保险库）
 
 > 数据保险库 — 全量/增量备份、AES-256-GCM 加密、定时调度、审计日志、多目标存储与一键恢复。
 
-版本：**2.1.1**
+版本：**2.6.4**
 
 ## 概述
 
@@ -160,7 +160,7 @@ pip install croniter cryptography paramiko requests
   "keep_days": 30,
   "include_files": true,
   "include_config": true,
-  "encryption": { "enabled": false, "algorithm": "aes256-gcm", "key_source": "env" },
+  "encryption": { "enabled": true, "algorithm": "aes256-gcm", "key_source": "env" },
   "compression": { "algorithm": "gzip", "level": 6 },
   "storage": { "type": "local", "s3_bucket": "", "s3_region": "", "s3_access_key": "", "s3_secret_key": "", "oss_endpoint": "", "oss_bucket": "", "oss_access_key": "", "oss_secret_key": "" },
   "schedule": { "enabled": false, "interval_hours": 24 },
@@ -179,7 +179,7 @@ pip install croniter cryptography paramiko requests
 | `keep_days` | 自动清理保留天数（`/api/cleanup`） | `30` |
 | `include_files` | 备份是否包含文件 | `true` |
 | `include_config` | 备份是否包含配置 | `true` |
-| `encryption.enabled` | 是否启用 AES-256-GCM 加密 | `false` |
+| `encryption.enabled` | 是否启用 AES-256-GCM 加密 | `true` |
 | `encryption.algorithm` | 加密算法 | `aes256-gcm` |
 | `encryption.key_source` | 密钥来源 | `env` |
 | `compression.algorithm` | 压缩算法 | `gzip` |
@@ -303,6 +303,11 @@ pip install croniter cryptography paramiko requests
 - **备份加密报 ValueError**：`encryption.enabled` 为 false 或密钥未配置时，加密步骤自动跳过，属预期行为。
 - **签名接口 400**：需先设置环境变量 `VAULT_SIGNING_KEY`。
 - **调度不生效**：确认调度计划 `enabled = true` 且 cron 表达式合法；编排器任务入口为 `run_scheduler.py`。
+- **pg_dump / psql 版本不匹配（v2.6+）**：插件现会校验 `pg_dump` 与 `psql` 主版本号是否与目标库 `SHOW server_version` 一致，不一致时拒绝执行（防止生成无法恢复的 dump）。工具解析顺序：`PG_BIN` / `<TOOL>_PATH` / `PATH`。Debian/Ubuntu 的 `pg_wrapper` 符号链接会被识别并拒绝。
+- **加密备份残留明文（v2.6+）**：已修复——每步产物生成后即删除输入，加密备份不再留下未压缩/未加密原始文件。列表/详情/下载/恢复/旋转上传均解析真实最终产物（`.tar.gz`、`.tar.gz.gz`、`.zst`、`.lz4` 及其 `.enc` 形式）。
+- **PITR 返回 501（v2.6+）**：时间点恢复现已 fail-closed——真正的 PITR 需要物理 `pg_basebackup` 备份加持续 WAL 归档和专用恢复实例，本插件不提供。`restore_pitr()` 返回 `supported: false` 及说明，不再在未回放 WAL 的情况下报告成功。
+- **定时备份重试（v2.6+）**：定时备份不再在单个 cron tick 内阻塞 sleep 重试三次。失败跨后续分钟 tick 重新调度（最多 3 次跨 tick 重试）。非阻塞跨进程单例锁防止 cron 重叠运行。
+- **卸载后 schema 标志残留（v2.6+）**：已修复——`ensure_schema()` 在信任进程内标志前会先查 `information_schema` 确认 schema 仍存在，重装后下一次请求即重建表。
 
 ## 许可证
 

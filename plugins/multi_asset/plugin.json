@@ -2,7 +2,7 @@
   "name": "Multi-Asset Data",
   "name_i18n_key": "plugin.name",
   "identifier": "multi_asset",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Multi-asset (futures, options, funds, bonds) market data with CFI-aligned instrument typing (ISO 10962:2021), exchange double-field modelling, and a governance-ready storage layer that tags every bar with license, security level, origin and dataset lineage. Reuses the stock_analysis provider contract and data gateway instead of duplicating them.",
   "author": "VeroRun",
   "min_app_version": "0.10.0",

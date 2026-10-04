@@ -7,6 +7,7 @@ description: Portfolio manager — position sizing and the final research call
 domain: research
 managed_modules:
   - stock_analysis
+  - multi_asset
 provider: deepseek
 model_name: deepseek-v4-flash
 system_prompt: prompts/rs_pm.md

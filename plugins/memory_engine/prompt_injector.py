@@ -9,33 +9,23 @@ FILTER_NAME = 'before_prompt_resolve'
 
 
 def user_opted_in(user_id, config: dict) -> bool:
-    """隐私同意门（模块级，注入读路径与 extractor/reflexion 写路径共用）。
+    """隐私同意门（模块级，注入读路径与 extractor/reflexion/sedimentation 写路径共用）。
 
     - 空 owner 一律 fail-closed（False），杜绝匿名/无主数据落库；
-    - 默认值取 config.memory_opt_in_default，用户可在
-      public.user_profiles.meta.memory_opt_in 逐人覆盖；
-    - 只读主库；任何异常回退配置默认值（与既有注入容错口径一致）。
+    - 无档案 / 读失败 / 坏 json 回退 config.memory_opt_in_default（与原实现同口径，
+      读路径容错 fail-open）；
+    - 用户可在 public.user_profiles.meta.memory_opt_in 逐人覆盖；
+    - 只读主库，经共享基座 plugins._base.evolution.sql 统一访问。
     """
     if not user_id:
         return False
     config = config or {}
     default = config.get('memory_opt_in_default', True)
-    try:
-        from agent_matrix.models import get_db
-        with get_db() as conn:
-            row = conn.execute(
-                "SELECT meta FROM public.user_profiles WHERE user_id = %s",
-                (user_id,),
-            ).fetchone()
-        if not row:
-            return default
-        import json as _json
-        meta = row['meta'] or {}
-        if isinstance(meta, str):
-            meta = _json.loads(meta)
-        return bool(meta.get('memory_opt_in', default))
-    except Exception:
+    from plugins._base.evolution.sql import user_profile_meta
+    meta = user_profile_meta(user_id)
+    if meta is None:
         return default
+    return bool(meta.get('memory_opt_in', default))
 
 
 class PromptInjector:

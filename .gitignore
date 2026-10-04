@@ -194,6 +194,7 @@ data/cache/
 # Local tooling workdirs & temp/report artifacts (machine-specific, regenerable, never commit)
 .dumate/
 .tmp/
+.trash/
 reports/
 
 # Pytest runtime cache (rebuildable)

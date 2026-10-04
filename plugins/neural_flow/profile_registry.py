@@ -14,7 +14,8 @@ stage_dict / statusbar / nouns。校验规则：
   - domain 必填且 [a-z][a-z0-9_]{1,31}（ASCII 白名单，2~32 位、首字母开头）；
   - pipeline 至少 1 项，stage 必须落在通用核（sdk.CORE_STAGES）或本档案 stage_dict；
   - arches 扩展拱必填 field（span 取值路径）与 axis；
-  - stage_dict 引用的 color 必须在 COLOR_ALIASES 内（禁自由 hex——双主题安全）。
+  - stage_dict 引用的 color 必须在 COLOR_ALIASES 内（禁自由 hex——双主题安全）；
+  - decision/routes/statusbar/nouns 可选（NF-11），提供时做基础结构校验。
 """
 from __future__ import annotations
 
@@ -104,6 +105,15 @@ BUILTIN_PROFILES = {
     },
 }
 
+# platform 档案子域：运行期发射的 llm/agent/system 共享 platform 渲染档案
+# （pipeline/decision/routes/arches 同源），仅显示名不同——分别对应
+# platform pipeline 的 llm / output / data 三张卡。
+PLATFORM_SUBDOMAINS = {
+    "llm": {"zh": "LLM 调用", "en": "LLM Calls"},
+    "agent": {"zh": "Agent 活动", "en": "Agent Activity"},
+    "system": {"zh": "系统事件", "en": "System Events"},
+}
+
 _REGISTRY: dict = {}
 _ERRORS: list = []
 
@@ -137,11 +147,56 @@ def validate_profile(prof: dict) -> tuple[bool, str]:
             axis = arch.get("axis")
             if not isinstance(axis, dict) or "min" not in axis or "max" not in axis:
                 return False, "extended arch %r requires axis {min,max}" % arch["id"]
+    # ── 可选声明区（NF-11）：提供才做基础结构校验，防畸形原样下发渲染端 ──
+    decision = prof.get("decision")
+    if decision is not None:
+        if not isinstance(decision, dict):
+            return False, "decision must be a mapping"
+        for dk in ("title", "caption"):
+            dv = decision.get(dk)
+            if dv is not None and not isinstance(dv, dict):
+                return False, "decision.%s must be a mapping" % dk
+    routes = prof.get("routes")
+    if routes is not None:
+        if not isinstance(routes, dict):
+            return False, "routes must be a mapping"
+        for rk, route in routes.items():
+            if not isinstance(route, dict):
+                return False, "routes.%s must be a mapping" % rk
+            card = route.get("card")
+            if card is not None and not isinstance(card, dict):
+                return False, "routes.%s.card must be a mapping" % rk
+    statusbar = prof.get("statusbar")
+    if statusbar is not None:
+        if not isinstance(statusbar, list):
+            return False, "statusbar must be a list"
+        for i, item in enumerate(statusbar):
+            if not isinstance(item, dict) or not str(item.get("source") or "").strip():
+                return False, "statusbar[%d] requires a non-empty source" % i
+    nouns = prof.get("nouns")
+    if nouns is not None:
+        if not isinstance(nouns, dict):
+            return False, "nouns must be a mapping"
+        for nk, noun in nouns.items():
+            if not isinstance(noun, dict):
+                return False, "nouns.%s must be a mapping" % nk
     return True, ""
 
 
-def _scan_external() -> int:
-    """扫描 plugins/*/domain.yaml（声明 neural_flow.profile 能力的行业插件）。"""
+def _is_reserved_domain(domain: str) -> bool:
+    """内置档案命名空间（platform/stock）保留，禁止外部同名覆盖。
+
+    注意：llm/agent/system 是 platform 的子域别名（NF-04），不在保留范围——
+    外部可注册为独立档案并优先于子域视图。
+    """
+    return domain in BUILTIN_PROFILES
+
+
+def _scan_external(base_dir=None) -> int:
+    """扫描 plugins/*/domain.yaml（声明 neural_flow.profile 能力的行业插件）。
+
+    base_dir 仅供单测注入临时插件目录；生产路径（refresh_registry）不传。
+    """
     count = 0
     try:
         import os
@@ -149,7 +204,8 @@ def _scan_external() -> int:
     except ImportError:
         _log.info("pyyaml unavailable — external profiles skipped")
         return 0
-    base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # plugins/
+    base = base_dir or os.path.dirname(
+        os.path.dirname(os.path.abspath(__file__)))  # plugins/
     try:
         entries = sorted(os.listdir(base))
     except Exception:
@@ -166,7 +222,13 @@ def _scan_external() -> int:
                 _ERRORS.append({"plugin": name, "file": "domain.yaml", "reason": reason})
                 _log.warning("profile rejected (%s): %s", name, reason)
                 continue
-            _REGISTRY[prof["domain"]] = prof
+            domain = prof["domain"]
+            if _is_reserved_domain(domain):
+                reason = "domain %r is reserved by a built-in profile" % domain
+                _ERRORS.append({"plugin": name, "file": "domain.yaml", "reason": reason})
+                _log.warning("profile rejected (%s): %s", name, reason)
+                continue
+            _REGISTRY[domain] = prof
             count += 1
         except Exception as err:
             _ERRORS.append({"plugin": name, "file": "domain.yaml", "reason": str(err)})
@@ -189,7 +251,33 @@ def get_registry() -> dict:
 
 
 def get_profile(domain: str):
-    return get_registry().get(domain)
+    registry = get_registry()
+    if domain in registry:
+        return registry[domain]
+    if domain in PLATFORM_SUBDOMAINS:   # 子域 → platform 档案
+        return registry.get("platform")
+    return None
+
+
+def list_profiles() -> list:
+    """对外档案视图：内置/外部档案 + platform 子域（llm/agent/system）。
+
+    子域项复用 platform 渲染配置，仅 domain/display 不同并以 alias_of 标记；
+    外部档案显式占用同名域时优先外部（跳过该子域视图）。
+    """
+    registry = get_registry()
+    views = list(registry.values())
+    platform = registry.get("platform")
+    if platform:
+        for sub, display in PLATFORM_SUBDOMAINS.items():
+            if sub in registry:
+                continue
+            view = dict(platform)
+            view["domain"] = sub
+            view["display"] = display
+            view["alias_of"] = "platform"
+            views.append(view)
+    return views
 
 
 def get_errors() -> list:

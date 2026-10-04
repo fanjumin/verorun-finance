@@ -8,6 +8,8 @@ Email Service 是 VeroRun 平台的统一邮件服务插件，提供完整的 SM
 
 v1.7.0 起邮件能力全面增强：支持 CC/BCC 抄送密送、草稿箱、收件箱全文搜索、信箱批量管理（删除/标记已读未读/移动）与转发；同时将 `email/send`、`email/send_contact`、`email/get_config` 三个 Agent hooks 接线为系统级 MCP 工具（`email_send` / `email_send_contact` / `email_get_config`），Agent 与人类用户均可收发与撰写邮件。
 
+v1.8.0 起强化安全管控：新增附件扩展名阻断、日发送配额、收件域名白名单、私网 SMTP/IMAP 探测开关等企业级安全配置；同时将 `email/send`、`email/send_contact`、`email/get_config` 三个钩子从仅 MCP 面补齐为插件间同步调用面（声明即承诺）。
+
 ## 功能特性
 
 - **SMTP 发信**：支持纯文本和 HTML 邮件发送，支持 SSL/TLS 加密；CC/BCC 抄送与密送
@@ -172,6 +174,11 @@ email/
 | `smtp_from` | string | "" | 发件人地址 |
 | `imap_host` | string | "" | IMAP 服务器主机名（用户配置） |
 | `imap_port` | integer | 0 | IMAP 端口（用户配置） |
+| `alert_recipient` | string | "" | 告警/晨报收件人地址（留空则邮件通道跳过；环境变量 `ALERT_RECIPIENT` 覆盖） |
+| `blocked_attachment_exts` | string | `.exe,.bat,.cmd,.scr,.js,.vbs,.ps1,.jar,.msi` | 阻断的附件扩展名，逗号分隔（留空 = 允许全部） |
+| `allow_private_targets` | boolean | false | 允许 test-config 探测回环/私网 SMTP/IMAP 目标（默认阻断） |
+| `daily_send_quota` | integer | 200 | 每日最大发信量（0 = 不限）；从 `email_sent` 记录计数 |
+| `recipient_domain_allowlist` | string | "" | 允许的收件人域名，逗号分隔（留空 = 允许全部） |
 
 ## API 端点
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.6.5 — 2026-09-13
+
+### Notes
+
+- Version bump for store release; no independent change record.
+
 ## v1.6.4 — 2026-08-30
 
 ### Changes

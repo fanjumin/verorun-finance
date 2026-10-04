@@ -115,6 +115,13 @@
   StorageRouter switch remains deferred to the SD-8 batch; scheduled and
   manual uploads still share the existing single-target `upload_backup`.
 
+## v2.6.4 — 2026-09-13
+
+### Notes
+
+- Version bump for store release; no independent code change was recorded for this version.
+- Fixes delivered after this bump (2026-10-02 onward) remain listed under **Unreleased**.
+
 ## v2.6.3 — 2026-08-30
 
 ### Changes

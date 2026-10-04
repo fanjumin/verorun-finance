@@ -34,7 +34,15 @@ All settings are available from the plugin settings page in the admin panel:
 | `max_memories_per_owner` | 500 | Hard cap per user (oldest/lowest-quality archived first) |
 | `allow_global_memory` | false | Enable admin-curated cross-user memory |
 | `memory_opt_in_default` | true | Default consent for new users |
+| `prompt_evolution_enabled` | false | Enable prompt evolution suggestions |
 | `daily_extract_budget` | 200 | Max extraction calls per day |
+| `enable_sedimentation` | true | Promote high-value memories into the shared knowledge base after admin review |
+| `sedimentation_fact_min_confidence` | 0.9 | Min confidence for fact memories to be sedimented |
+| `sedimentation_lesson_min_rating` | 4 | Min reflexion rating (1-5) for lesson memories to be sedimented |
+| `sedimentation_min_quality_score` | 0.7 | Min memory quality score for sedimentation |
+| `sedimentation_daily_budget` | 50 | Max candidates scanned per daily sedimentation run |
+| `abtest_enabled` | false | Split users 50/50 (deterministic hash) and record task outcomes to measure injection benefit |
+| `abtest_control_pct` | 50 | Control group percent (0–100) |
 
 ## Admin Pages
 

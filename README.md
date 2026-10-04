@@ -3,7 +3,7 @@
 [![Version](https://img.shields.io/badge/version-0.62.0-blue.svg)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-EULA%20v1.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)]()
-[![Plugins](https://img.shields.io/badge/plugins-36-orange.svg)]()
+[![Plugins](https://img.shields.io/badge/plugins-42-orange.svg)]()
 
 **VeroRun is a multi-core AI operating system that makes intelligent execution trustworthy, verifiable, and traceable — driven by core capabilities including agent collaboration, knowledge retrieval, content generation, and process orchestration, deployed on customer-owned servers.**
 
@@ -13,14 +13,14 @@ The engine core provides five intelligent execution primitives: **Multi-Agent co
 
 ## Key Features
 
-- **Orchestrable Multi-Role Agent Matrix**: Athena (master) + 10 sub-roles, role division + task-decomposition orchestration, auto-registration of extended agents.
+- **Orchestrable Multi-Role Agent Matrix**: Athena (master) + 9 core sub-roles, plus edition-specific research / finance roles, role division + task-decomposition orchestration, auto-registration of extended agents.
 - **Four-Stage Discussion Protocol (Agent Discussion v2.0)**: Planner → Reviewer → Revise → Decider, separating generation from review, intercepting plans before they land.
 - **Dynamic Prompt System**: database-driven `PromptResolver`, four-layer assembly + scenario differentiation + multi-version management.
 - **Cognitive Evolution Engine (CogEvolution)**: RAG vector retrieval, layered memory, Reflexion learning, Prompt Evolution, forming a "memory → reflection → optimization → behavioral evolution" loop.
 - **Visual Workflow Engine**: DAG node orchestration, Cron scheduling, tiered worker pools — a general execution carrier for any process.
 - **Multi-Provider LLM Gateway (UnifiedLLM)**: provider-agnostic unified API, 7 native + 2 dynamically resolved providers, transparent model substitution, automatic failover, key management, budget gate, 4-level quota.
 - **VeroGuard Guard Layer**: health monitoring + integrity verification + encrypted heartbeat, dual-process mutual protection, client-side asset protection; Ed25519-signed releases, integrity manifests, and source watermarks guard the supply chain.
-- **Plugin Ecosystem**: 36 built-in plugins carry any business form, full lifecycle management, plugin marketplace, licensing engine.
+- **Plugin Ecosystem**: 42 built-in plugins carry any business form, full lifecycle management, plugin marketplace, licensing engine.
 
 Kernel design principle: **business semantics are declared entirely by plugins** — adding a business capability is equivalent to assembling a plugin, keeping the kernel stable.
 
@@ -36,7 +36,7 @@ Kernel design principle: **business semantics are declared entirely by plugins**
 ┌──────────────────────────────────────────────────────────────┐
 │ Application Layer  Plugin apps: knowledge · content · commerce│
 │                   · communications · ops …                    │
-│                   36 built-in plugins; any business via plugins│
+│                   42 built-in plugins; any business via plugins│
 ├──────────────────────────────────────────────────────────────┤
 │ Engine Base       Multi-role AI Agent Matrix + Discussion     │
 │                   Knowledge memory (vector) · Workflow · PromptResolver │
@@ -121,7 +121,7 @@ flask run --port 8081
 
 ## Engine Base
 
-### AI Engine — Multi-Role Agent Matrix (21 Roles)
+### AI Engine — Multi-Role Agent Matrix (9 Core + Edition-Specific Roles)
 
 VeroRun hands complex tasks to a group of specialized, reviewable Agent roles: the master decomposes tasks, sub-roles each do their part, the reviewer challenges the plan, and the decider signs off on the conclusion.
 
@@ -133,16 +133,17 @@ VeroRun hands complex tasks to a group of specialized, reviewable Agent roles: t
 | Finance | `finance` | sub | gemini/gemini-2.5-flash | Plans, subscriptions, billing, orders, payment, invoices, rewards |
 | Ops | `ops` | sub | deepseek/deepseek-v4-flash | Deployment, health checks, alerts, automation, cloud provisioning |
 | Service | `service` | sub | kimi/moonshot-v1-32k | Customer service, FAQ, tickets, notifications, verification |
-| Vision | `vision` | sub | zhipu/glm-4v-plus | Image analysis, OCR, diagram interpretation, visual QA |
-| Creative | `creative` | sub | siliconflow/FLUX.1-pro | Text-to-image, creative visual design |
+| Media | `media` | sub | siliconflow/FLUX.1-pro | Multimodal media: image understanding (recognition, OCR, diagram analysis) + generation (text-to-image, covers, illustrations) |
+| Office | `office` | sub | deepseek/deepseek-v4-flash | Enterprise operations: HR affairs, administration, secretarial documents |
 | Business | `business` | sub | deepseek/deepseek-v4-flash | Business analysis, products, orders, supply chain, reviews, wishlist |
-| Veroscholar | `veroscholar` | sub | deepseek/deepseek-v4-flash | Academic research: literature search, review, experiment design, paper writing |
-| Stock Analyst | `stock_analyst` | sub | deepseek/deepseek-v4-flash | Financial analysis: market data, indicators, strategy research |
 
-**Extended Research Roles** (veroscholar discovery & finance research sub-roles):
+**Edition-Specific Roles** (shipped per edition — official / finance-desktop / research-desktop):
 
 | Role | Slug | Purpose |
 |---|---|---|
+| Stock Analyst | `stock_analyst` | Financial analysis: market data, indicators, strategy research (official) |
+| Veroscholar | `veroscholar` | Academic research: literature search, review, experiment design, paper writing (research-desktop) |
+| Academic Writer | `academic_writer` | Academic writing support (research-desktop) |
 | Literature Scout | `lit_scout` | Literature discovery and retrieval for hypothesis evidence |
 | Method Architect | `method_architect` | Experiment / methodology design |
 | Thesis Smith | `thesis_smith` | Paper writing and assembly |
@@ -392,14 +393,14 @@ VeroRun/
 ├── auth-center/            # Shared auth/model/services/routes (shared code library)
 ├── main_site/              # Platform console / user backend (8083)
 ├── agent_matrix/           # AI Engine: multi-agent orchestration
-│   ├── roles/              # 21 role YAML definitions (master + sub + research roles)
-│   ├── prompts/            # Dynamic prompt seeds (17 .md; runtime loads from agent_prompts table)
+│   ├── roles/              # 25 role YAML definitions (core + edition-specific: official / finance-desktop / research-desktop)
+│   ├── prompts/            # Dynamic prompt seeds (29 .md; runtime loads from agent_prompts table)
 │   ├── prompt_resolver.py  # Dynamic prompt dispatching engine
 │   ├── engine.py           # UnifiedLLM gateway + budget + quota
 │   ├── orchestrator.py     # Task decomposition, parallel dispatch
 │   └── agent_runner.py     # Self-evaluating executor
 ├── orchestrator/           # Visual workflow engine (DAG)
-├── plugins/                # 36 built-in plugins (business form assembly)
+├── plugins/                # 42 built-in plugins (business form assembly)
 ├── plugin_manager/         # Plugin lifecycle / marketplace / licensing / regional routing
 ├── veroguard/              # VeroGuard guard layer (7 modules)
 ├── health_guardian/        # Guardian support package (with health_guardian.py entry)
@@ -425,50 +426,52 @@ VeroRun/
 
 ## Codebase Metrics
 
-Measured on the v0.60.0 working copy (2026-09-01) with a `cloc`-style single-pass scan that classifies every line of every source file as **code / comment / blank** using language-specific comment syntax. Excluded from the count: build artifacts and vendored third-party code (`__pycache__`, `node_modules`, `backups/`, `data/`, `tmp/`, hidden dependency caches such as `.stock_deps/`), and the internal engineering documents under `docs/` (plans, session handoffs, audit reports) — so the numbers reflect first-party product source only.
+Measured on the v0.62.0 working copy (2026-10-03) with a `cloc`-style single-pass scan that classifies every line of every source file as **code / comment / blank** using language-specific comment syntax. Excluded from the count: build artifacts and vendored third-party code (`__pycache__`, `node_modules`, `backups/`, `data/`, `tmp/`, `outputs/`, `server_backup/`, `_ssh/`, hidden dependency caches such as `.stock_deps/`, minified bundles), and the internal engineering documents under `docs/` (plans, session handoffs, audit reports) — so the numbers reflect first-party product source only.
 
-**Total: 229,130 code lines across 1,351 files** (plus 11,071 comment and 31,654 blank lines). Excluding prompt/documentation formats (Markdown, Text), executable code + markup ≈ **213,200 lines**.
+**Total: 300,787 code lines across 1,874 files** (plus 47,686 comment and 48,550 blank lines). Excluding prompt/documentation formats (Markdown, Text), executable code + markup ≈ **280,200 lines**.
 
 ### By Language
 
 | Language | Code | Comment | Blank | Files |
 |---|---:|---:|---:|---:|
-| Python | 122,092 | 6,966 | 21,154 | 632 |
-| HTML (Jinja2 templates / admin pages) | 41,786 | 242 | 2,553 | 173 |
-| YAML (roles, seeds, CI, configs) | 17,366 | 317 | 429 | 106 |
-| Markdown (product READMEs, prompt seeds) | 15,811 | 0 | 5,259 | 181 |
-| JavaScript | 10,525 | 1,638 | 1,059 | 77 |
-| CSS | 10,095 | 529 | 547 | 32 |
-| JSON (plugin manifests, release manifests) | 5,546 | 0 | 28 | 61 |
-| Shell (deploy/ops scripts) | 4,180 | 1,078 | 426 | 15 |
-| SQL (migrations / seeds) | 1,488 | 273 | 183 | 33 |
-| Other (TS/JSX/SVG/Batch/Env/Text) | 241 | 28 | 14 | 41 |
+| Python | 167,508 | 42,230 | 35,269 | 945 |
+| HTML (Jinja2 templates / admin pages) | 50,490 | 323 | 3,007 | 233 |
+| Markdown (product READMEs, prompt seeds) | 20,594 | 0 | 6,566 | 222 |
+| YAML (roles, seeds, CI, configs) | 20,438 | 619 | 645 | 137 |
+| JavaScript | 15,574 | 2,024 | 1,512 | 93 |
+| CSS | 11,152 | 648 | 661 | 39 |
+| JSON (plugin manifests, release manifests) | 7,269 | 0 | 60 | 79 |
+| Shell (deploy/ops scripts) | 4,374 | 1,178 | 458 | 17 |
+| SQL (migrations / seeds) | 2,585 | 640 | 335 | 61 |
+| Other (TS/JSX/SVG/Batch/Env/Text) | 803 | 24 | 37 | 48 |
+| **Total** | **300,787** | **47,686** | **48,550** | **1,874** |
 
 ### By Module (source languages only)
 
 | Module | Code lines | Share | Role |
 |---|---:|---:|---|
-| `plugins/` | 96,940 | 45.5% | Application layer — 36 plugins |
-| `admin/` | 19,642 | 9.2% | Admin console (8084) |
-| `auth-center/` | 16,035 | 7.5% | Shared auth/models/services/routes |
-| `main_site/` | 15,704 | 7.4% | Platform console (8083) |
-| `plugin_manager/` | 13,137 | 6.2% | Lifecycle / marketplace / licensing |
-| `agent_matrix/` | 8,009 | 3.8% | AI engine: orchestration + UnifiedLLM + PromptResolver |
-| `deploy/` | 5,180 | 2.4% | Install scripts, systemd, Nginx |
-| `static/` | 4,215 | 2.0% | Front-end assets |
-| `orchestrator/` | 3,664 | 1.7% | DAG workflow engine |
-| `sdks/` + `veroguard/` + `tools/` + `providers/` + rest | ~7,000 | ~3.3% | CLI SDK, guard layer, tooling, providers, i18n, themes |
+| `plugins/` | 186,784 | 62.1% | Application layer — 42 plugins |
+| `admin/` | 21,257 | 7.1% | Admin console (8084) |
+| `main_site/` | 15,794 | 5.3% | Platform console (8083) |
+| `plugin_manager/` | 14,815 | 4.9% | Lifecycle / marketplace / licensing |
+| `auth-center/` | 13,723 | 4.6% | Shared auth/models/services/routes |
+| `agent_matrix/` | 12,319 | 4.1% | AI engine: orchestration + UnifiedLLM + PromptResolver |
+| `i18n/` | 9,063 | 3.0% | Internationalization (en, zh-CN) |
+| `deploy/` | 7,297 | 2.4% | Install scripts, systemd, Nginx |
+| `static/` | 4,211 | 1.4% | Front-end assets |
+| `orchestrator/` | 4,014 | 1.3% | DAG workflow engine |
+| `sdks/` + `veroguard/` + `tools/` + `providers/` + `shared/` + rest | ~11,500 | ~3.8% | CLI SDK, guard layer, tooling, providers, shared utils, themes |
 
-Kernel proper (`agent_matrix` + `orchestrator` + `plugin_manager` + `veroguard` + `providers` + `shared`) ≈ **27.1k lines ≈ 12.7%** of executable code — consistent with the "business is declared by plugins" design principle: the application layer is ~3.6× the kernel.
+Kernel proper (`agent_matrix` + `orchestrator` + `plugin_manager` + `veroguard` + `providers` + `shared`) ≈ **33.4k lines ≈ 11.9%** of executable code — consistent with the "business is declared by plugins" design principle: the application layer dwarfs the kernel.
 
 ### Largest Plugins (source lines)
 
-`mini_app_builder` 8,006 · `analytics` 7,845 · `ali_api` 7,281 · `vault` 6,997 · `site_builder` 6,513 · `shop` 6,449 · `health_check` 6,386 · `im_gateway` 5,675 · `subscription` 4,405 · `veroscholar` 3,793.
+`site_builder` 23,166 · `stock_analysis` 16,897 · `mini_app_builder` 11,052 · `veroscholar` 8,969 · `chatbot` 8,574 · `ai_relay` 8,029 · `analytics` 7,876 · `vault` 7,439 · `health_check` 7,135 · `ali_api` 6,965.
 
 ### Analyst Notes
 
-- **Language profile**: Python-dominant (57.3% of executable code) with server-rendered HTML consoles (41.8k lines) — a Flask monolith-plus-plugins architecture rather than an SPA stack; front-end JS is confined to editors (React Flow) and visualization.
-- **Comment density**: Python carries ~5.7% comment lines — thin for a 122k-line codebase; docstrings help, but complex subsystems (VeroGuard, licensing, workflow engine) warrant denser inline rationale.
+- **Language profile**: Python-dominant (59.8% of executable code) with server-rendered HTML consoles (50.5k lines) — a Flask monolith-plus-plugins architecture rather than an SPA stack; front-end JS is confined to editors (React Flow) and visualization.
+- **Comment density**: Python carries ~17.2% comment lines (docstrings included) — healthy for a 167k-line codebase; the remaining risk is not volume but rationale depth in complex subsystems (VeroGuard, licensing, workflow engine).
 - **Test surface**: in-repo `tests/` suites exist across core and plugins (`shared`, `plugin_manager`, `sdks/cli`, `stock_analysis`, `veroscholar`, `cogevolution_substrate`, `shop`, `subscription`, `iot_hub`), ~30+ unit / API test modules; quality assurance is additionally carried by dated regression/audit reports under `docs/`. Expanding executable CI coverage remains the highest-leverage engineering investment.
 
 ---

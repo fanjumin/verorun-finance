@@ -19,7 +19,7 @@ from .adapters import get_adapter, list_channels as _im_list_channels
 
 logger = logging.getLogger(__name__)
 
-# 每渠道频控：计数存于 PG rate_limit_events 表，保证 gunicorn 多 worker 下全局生效
+# 每渠道频控：计数存于 PG im_channel_rate_events 表，保证 gunicorn 多 worker 下全局生效
 _RATE = {'max_calls': 20, 'window': 60}
 
 
@@ -62,7 +62,7 @@ class GatewayFacade:
             return {'success': False, 'error': str(e)[:2000]}
 
     def _rate_limited(self, channel: str) -> bool:
-        """跨 worker 频控：PG 窗口计数（rate_limit_events 表）。
+        """跨 worker 频控：PG 窗口计数（im_channel_rate_events 表）。
 
         多 gunicorn worker 共享同一 PG 计数，60s 窗口内每渠道限 20 次；
         表由 models.init_im_db() 幂等创建。
@@ -72,15 +72,15 @@ class GatewayFacade:
         try:
             with get_im_db() as conn:
                 conn.execute(
-                    "DELETE FROM rate_limit_events "
+                    "DELETE FROM im_channel_rate_events "
                     "WHERE ts < NOW() - INTERVAL %s", (f'{window_seconds} seconds',))
                 row = conn.execute(
-                    "SELECT COUNT(*) AS c FROM rate_limit_events WHERE channel=%s",
+                    "SELECT COUNT(*) AS c FROM im_channel_rate_events WHERE channel=%s",
                     (channel,)).fetchone()
                 if row['c'] >= _RATE['max_calls']:
                     return True
                 conn.execute(
-                    "INSERT INTO rate_limit_events (channel) VALUES (%s)", (channel,))
+                    "INSERT INTO im_channel_rate_events (channel) VALUES (%s)", (channel,))
                 return False
         except Exception:
             logger.exception('[Gateway] rate limit check failed; allow request')

@@ -23,6 +23,7 @@
   "screenshots": [],
   "readme_url": "",
   "dependencies": {},
+  "conflicts": ["cogevolution_substrate"],
   "config": {
     "top_k": 5,
     "max_memory_block_len": 1200,

@@ -39,7 +39,7 @@ v3.1.0 完成 IM 底座增强：新增统一 `http_client`（连接 5s / 读取 
 - **多频道统一管理**：频道凭据集中配置，secret 类字段自动掩码，更新留空时保留旧值。
 - **Adapter 模式**：抽象基类 `BaseIMAdapter` 定义统一契约，新增频道只需实现子类并注册。
 - **统一出站门面**：`gateway.send_message()` / `gateway.test()` / `gateway.list_channels()`。
-- **跨 worker 频控**：基于 PG `rate_limit_events` 表计数，多 gunicorn worker 下仍按「60 秒 / 渠道 / 20 次」限流。
+- **跨 worker 频控**：基于 PG `im_channel_rate_events` 表计数，多 gunicorn worker 下仍按「60 秒 / 渠道 / 20 次」限流。
 - **媒体推送**：`push_media()` 供主系统媒体库调用（当前飞书 / 企业微信）。
 - **统一 HTTP 出站**：`http_client.py` 统一超时 / 禁自动重定向 / token 缓存，媒体下载走 `safe_fetch()`（SSRF 拦截 + 限长）。
 - **入站验签 fail-closed**：`/webhook/<channel>` 对 telegram / line / slack / discord / qq 做**平台原生验签**，密钥缺失或签名不符一律 401，绝不"未配置即放行"。
@@ -75,7 +75,7 @@ v3.1.0 完成 IM 底座增强：新增统一 `http_client`（连接 5s / 读取 
         ▼
 数据层 models.py —— PG Schema: im_gateway
   channel_configs        IM 频道凭据（config_json）
-  rate_limit_events      跨 worker 频控计数
+  im_channel_rate_events      跨 worker 频控计数
   login_providers        第三方登录提供方配置
   login_user_bindings    联邦身份 ↔ 主库用户绑定
   oauth_login_states     OAuth state（CSRF，一次性 + 10 分钟过期）
@@ -203,7 +203,7 @@ gateway.list_channels()                                                    # 渠
 
 ## 卸载行为
 
-`on_uninstall` 只 `DROP TABLE` 两张 IM 运行表（`rate_limit_events`、`channel_configs`），**显式保留**三张登录表（`login_providers` / `login_user_bindings` / `oauth_login_states`）——联邦登录绑定属于用户资产，卸载 IM 频道不应连带清除。
+`on_uninstall` 只 `DROP TABLE` 两张 IM 运行表（`im_channel_rate_events`、`channel_configs`），**显式保留**三张登录表（`login_providers` / `login_user_bindings` / `oauth_login_states`）——联邦登录绑定属于用户资产，卸载 IM 频道不应连带清除。
 
 ## 已知限制与在途项
 

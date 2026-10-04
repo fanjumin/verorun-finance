@@ -28,6 +28,21 @@ _log = get_plugin_logger("neural_flow")
 CORE_STAGES = ("data", "indicator", "evidence", "decision", "llm", "output", "error")
 
 
+def _safe_cost_usd(value) -> float:
+    """cost_usd 安全收敛：非数值 / NaN / ±Inf → 0.0，否则保留 6 位小数。
+
+    埋点方传参失误不得抛穿打断主流程（旁路纪律）；NaN/Inf 虽能 float()，
+    但无法序列化为合法 JSON，会污染归档 payload 与 SSE 帧，一并归零。
+    """
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    if number != number or number in (float("inf"), float("-inf")):
+        return 0.0
+    return round(number, 6)
+
+
 def _build_payload(trace_id, domain, stage, event, entity, decision_type, model,
                    tokens, cost_usd, latency_ms, cache_hit, confidence,
                    status, message, meta):
@@ -42,7 +57,7 @@ def _build_payload(trace_id, domain, stage, event, entity, decision_type, model,
         "decision_type": decision_type,
         "model": model,
         "tokens": tokens,          # None=未关联；禁 0 冒充
-        "cost_usd": round(float(cost_usd or 0.0), 6),
+        "cost_usd": _safe_cost_usd(cost_usd),
         "latency_ms": latency_ms,
         "cache_hit": bool(cache_hit),
         "confidence": confidence,
@@ -116,8 +131,10 @@ class span_timer:
         latency = int((time.time() - self._t0) * 1000) if self._t0 else None
         if exc is not None:
             emit_span(trace_id, domain, stage, "end", entity=entity, model=model,
-                      latency_ms=latency, status="error",
-                      message="%s: %s" % (exc_type.__name__, exc)[:200],
+                      tokens=self.tokens, cost_usd=self.cost_usd,
+                      latency_ms=latency, confidence=self.confidence,
+                      status="error",
+                      message=("%s: %s" % (exc_type.__name__, exc))[:200],
                       meta=self.meta)
         else:
             emit_span(trace_id, domain, stage, "end", entity=entity, model=model,

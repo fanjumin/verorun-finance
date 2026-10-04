@@ -83,10 +83,10 @@ def profiles():
     guard = _admin_guard()
     if guard:
         return guard
-    from .profile_registry import get_registry, get_errors
+    from .profile_registry import list_profiles, get_errors
     return jsonify({
         "ok": True,
-        "data": {"profiles": list(get_registry().values()),
+        "data": {"profiles": list_profiles(),
                  "rejected": get_errors()},
         "error": None,
     })
@@ -125,7 +125,8 @@ def events():
     """SSE 实时通道（topics=flow；Last-Event-ID 断线补发；并发闸 _SSE_MAX_CONNECTIONS）。
 
     鉴权口径与另两端点一致：未认证 401 / 非管理员 403（首次鉴权走 JSON）；
-    闸满 → 503 + Retry-After: 10（不排队，避免拖垮管理端普通请求）。
+    闸满 → 503 + Retry-After: 10（不排队，避免拖垮管理端普通请求）；
+    出流依赖不可用 → 503 + Retry-After: 60（建流前拒，不占闸位、不空转刷日志）。
     """
     payload, err = _require_admin()
     if payload is None:
@@ -139,7 +140,23 @@ def events():
     if topics is None:
         return jsonify({"ok": False, "error": topic_err}), 400
 
-    last_id = request.headers.get("Last-Event-ID", "").strip()
+    last_id, last_id_err = sse_stream.parse_last_id(
+        request.headers.get("Last-Event-ID", ""))
+    if last_id_err:
+        return jsonify({"ok": False, "error": last_id_err}), 400
+
+    # 出流依赖不可用（stock_analysis 未装/未激活，或其 sa_sse_events 未建）时，
+    # 在建流前明确降级为 503 —— 否则本端点会退化成「只发心跳 + 每秒一条同因告警」
+    # 的无限空转流（2026-10-04 生产实测：单连接 20s 内 35 条 WARNING、0 业务帧）。
+    # 放在取槽位之前：不可用的流不该占用任何闸位。
+    outbox_err = sse_stream.probe_outbox()
+    if outbox_err:
+        _log.warning("sse realtime outbox unavailable: %s", outbox_err)
+        resp = jsonify({"ok": False, "error": "realtime outbox unavailable"})
+        resp.status_code = 503
+        resp.headers["Retry-After"] = "60"
+        return resp
+
     token = (request.headers.get("Authorization", "").replace("Bearer ", "")
              or request.cookies.get("sso_token") or request.headers.get("X-Token") or "")
 

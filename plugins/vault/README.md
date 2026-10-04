@@ -2,7 +2,7 @@
 
 > Data Vault — full/incremental backups, AES-256-GCM encryption, scheduled backups, audit logging, multi-target storage, and one-click restore.
 
-Version: **2.1.1**
+Version: **2.6.4**
 
 ## Overview
 
@@ -160,7 +160,7 @@ Defaults live in the `config` field of `plugin.json` and can be overridden at ru
   "keep_days": 30,
   "include_files": true,
   "include_config": true,
-  "encryption": { "enabled": false, "algorithm": "aes256-gcm", "key_source": "env" },
+  "encryption": { "enabled": true, "algorithm": "aes256-gcm", "key_source": "env" },
   "compression": { "algorithm": "gzip", "level": 6 },
   "storage": { "type": "local", "s3_bucket": "", "s3_region": "", "s3_access_key": "", "s3_secret_key": "", "oss_endpoint": "", "oss_bucket": "", "oss_access_key": "", "oss_secret_key": "" },
   "schedule": { "enabled": false, "interval_hours": 24 },
@@ -179,7 +179,7 @@ Defaults live in the `config` field of `plugin.json` and can be overridden at ru
 | `keep_days` | Retention days for auto cleanup (`/api/cleanup`) | `30` |
 | `include_files` | Include files in backup | `true` |
 | `include_config` | Include configuration in backup | `true` |
-| `encryption.enabled` | Enable AES-256-GCM encryption | `false` |
+| `encryption.enabled` | Enable AES-256-GCM encryption | `true` |
 | `encryption.algorithm` | Encryption algorithm | `aes256-gcm` |
 | `encryption.key_source` | Encryption key source | `env` |
 | `compression.algorithm` | Compression algorithm | `gzip` |
@@ -303,6 +303,11 @@ Email (SMTP), Webhook, Feishu, and DingTalk channels are supported, with automat
 - **Encryption raises `ValueError`**: encryption is skipped when `encryption.enabled` is false or no key is configured — expected behavior.
 - **Signing API returns 400**: set the `VAULT_SIGNING_KEY` environment variable first.
 - **Schedules do not fire**: confirm the schedule has `enabled = true` and a valid cron expression; the orchestrator entry point is `run_scheduler.py`.
+- **pg_dump / psql version mismatch (v2.6+)**: the plugin now checks `pg_dump` and `psql` major versions against the target server's `SHOW server_version` and refuses the operation if they don't match exactly (prevents silently unrestorable dumps). Tools are resolved through `PG_BIN` / `<TOOL>_PATH` / `PATH`. Debian/Ubuntu `pg_wrapper` symlinks are detected and rejected.
+- **Encrypted backup leaves plaintext on disk (v2.6+)**: fixed — each stage removes its input after producing output, so an encrypted backup no longer leaves the uncompressed/unencrypted original on disk. List/detail/download/restore/rotate all resolve the real final artifact (`.tar.gz`, `.tar.gz.gz`, `.zst`, `.lz4`, and their `.enc` forms).
+- **PITR returns 501 (v2.6+)**: point-in-time recovery now fails closed — true PITR requires physical `pg_basebackup` backups plus continuous WAL archiving and a dedicated recovery instance, which this plugin does not provide. `restore_pitr()` returns `supported: false` with an explanation instead of reporting success without replaying WAL.
+- **Scheduled backup retries (v2.6+)**: scheduled backups no longer retry three times within one cron tick with a blocking sleep. Failures reschedule across subsequent minute-ticks (max 3 cross-tick retries). A non-blocking cross-process singleton lock prevents overlapping cron runs.
+- **Uninstall leaves schema-ensured flag stuck (v2.6+)**: fixed — `ensure_schema()` verifies against `information_schema` that the schema still exists before trusting the in-process flag, so a reinstall recreates tables on the next request.
 
 ## License
 

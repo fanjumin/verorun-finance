@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- 跨 worker 频控表 `rate_limit_events` 更名为 `im_channel_rate_events`：此前与平台共享频控表
+  `public.rate_limit_events` 同名异构，两条路径都写裸表名时，命中哪张表取决于连接当时的
+  `search_path`。新表由 `init_im_db()`（内部 `SET search_path TO im_gateway`）幂等自建。
+
 ## v3.1.0 — 2026-10-02
 
 IM 底座增强（minor）：8 通道真实出站 + 入站验签闭环。

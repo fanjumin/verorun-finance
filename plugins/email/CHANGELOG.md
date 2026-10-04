@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.8.0 — 2026-10-01
+
+### Added
+
+- **企业级安全管控**：新增附件扩展名黑名单（`blocked_attachment_exts`）、每日发信配额（`daily_send_quota`，按 `email_sent` 记录计数）、收件人域名白名单（`recipient_domain_allowlist`），以及私网 SMTP/IMAP 探测开关（`allow_private_targets`，默认禁止探测环回/私网目标）。
+- `email/send` / `email/send_contact` / `email/get_config` 三个 hook 除 MCP 工具面之外，同时作为插件间同步动作面（inter-plugin synchronous action surface）提供。
+
+### Changed
+
+- `plugin.json` `version` → `1.8.0`。
+
 ## v1.7.0 — 2026-09-30
 
 ### Added

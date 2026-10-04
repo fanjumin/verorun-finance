@@ -17,6 +17,12 @@
 - **运行期动作（服务器执行）**：`hooks.provides/listens` 声明修改后需在管理端对插件 **disable→enable** 激活（平台事实：仅修改声明不会重新同步）；`auto_deep_research_on_batch` 默认关闭，逐项灰度开启。
 - **接线点② 生效前提（方案 §3.4）**：`system_config.prompt_resolver_enabled=true`、memory_engine `enable_reflexion=true`、`reflexion_failure_only=true`（默认值均符合）。
 
+## v2.0.2 — 2026-10-01
+
+### Notes
+
+- **版本号对齐说明**：plugin.json 当前为 `2.0.2`；本 CHANGELOG 最新正式记录为 `v1.7.1`，`1.8.0 ~ 2.0.x` 的变更未在此留档。此处仅补登当前版本号，不回溯虚构历史；实现详情以 README 与代码为准。
+
 ## v1.7.1 — 2026-09-03
 
 ### Fixes（第三方审计 D-1/D-4/D-3 收尾，随本版正式发布）

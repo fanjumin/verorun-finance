@@ -149,6 +149,12 @@ class PooledPgConnection(PgConnection):
         try:
             _cur = self._conn.cursor()
             _cur.execute("SET search_path TO public")
+            # DEF-18：SET 必须显式 commit 才可靠。事务内的 SET 会随下一次
+            # rollback 一起失效 —— 若只 rollback 后 SET 而不提交，下一个借用者
+            # 一旦 rollback，重置即被吞掉，连接会带着上一个插件的 search_path
+            # 继续流转（平台共享件 rate_limit_events 因此被建进多个插件 schema）。
+            # 连接级 SET 提交后对本会话持续有效，正是这里要的语义。
+            self._conn.commit()
             _cur.close()
         except Exception:
             pass

@@ -3,7 +3,7 @@
 [![Version](https://img.shields.io/badge/version-0.62.0-blue.svg)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-EULA%20v1.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)]()
-[![Plugins](https://img.shields.io/badge/plugins-30-orange.svg)]()
+[![Plugins](https://img.shields.io/badge/plugins-42-orange.svg)]()
 
 **VeroRun 是让智能执行可信、可验证、可追溯的多核 AI 操作系统——智能体协作、知识检索、内容生成与流程编排等核心能力并行驱动，部署在客户自有服务器上独立运转。**
 
@@ -13,14 +13,14 @@
 
 ## 核心特性
 
-- **可编排的多角色 Agent 矩阵**：Athena（主控）+ 8 个子角色，角色分工 + 任务分解编排，扩展 Agent 自动注册。
+- **可编排的多角色 Agent 矩阵**：Athena（主控）+ 9 个核心子角色，另有发行版专属的科研 / 金融角色，角色分工 + 任务分解编排，扩展 Agent 自动注册。
 - **四阶段讨论协议（Agent Discussion v2.0）**：Planner → Reviewer → Revise → Decider，生成与评审分离，方案在落地前被拦截。
 - **动态提示词系统**：数据库驱动的 `PromptResolver`，四层组装 + 场景差异化 + 多版本管理。
 - **认知进化引擎（CogEvolution）**：RAG 向量检索、分层记忆、Reflexion 反思学习、Prompt Evolution 版本进化，形成"记忆 → 反思 → 优化 → 行为进化"闭环。
 - **可视化工作流引擎**：DAG 节点编排、Cron 调度、分级 Worker 池，任意流程的通用执行载体。
 - **多供应商 LLM 网关（UnifiedLLM）**：provider-agnostic 统一 API，7 家原生 + 2 家动态解析，透明模型替换、自动故障转移、密钥管理、预算闸门、4 级配额。
-- **VeroGuard 守护层**：健康监控 + 完整性校验 + 加密心跳，双进程互护，客户侧资产守护。
-- **插件生态**：30 个内置插件承载任意业务形态，全生命周期管理、插件商店、许可引擎。
+- **VeroGuard 守护层**：健康监控 + 完整性校验 + 加密心跳，双进程互护，客户侧资产守护；Ed25519 签名发布、完整性清单与来源水印守护供应链。
+- **插件生态**：42 个内置插件承载任意业务形态，全生命周期管理、插件商店、许可引擎。
 
 内核设计准则：**业务语义全部由插件声明**，新增业务能力等价于装配一个插件，内核保持稳定。
 
@@ -35,7 +35,7 @@
 ```text
 ┌──────────────────────────────────────────────────────────────┐
 │ 应用生态层  插件应用：知识管理 · 内容 · 商业经营 · 通信 · 运维…  │
-│            30 个内置插件覆盖多领域，任意业务形态经插件装配落地  │
+│            42 个内置插件覆盖多领域，任意业务形态经插件装配落地  │
 ├──────────────────────────────────────────────────────────────┤
 │ 引擎底座    多角色 AI Agent 矩阵 + 四阶段讨论协议              │
 │            知识库记忆（向量检索）· 可视化工作流引擎 · PromptResolver │
@@ -119,7 +119,7 @@ flask run --port 8081
 
 ## 引擎底座
 
-### AI 引擎 — 多角色 Agent 矩阵（21 角色）
+### AI 引擎 — 多角色 Agent 矩阵（9 核心角色 + 发行版专属）
 
 VeroRun 将复杂任务交给一组有分工、可评审的 Agent 角色：主控分解任务，子角色各司其职，评审质疑方案，决策签署结论。
 
@@ -131,16 +131,17 @@ VeroRun 将复杂任务交给一组有分工、可评审的 Agent 角色：主�
 | Finance | `finance` | sub | gemini/gemini-2.5-flash | 套餐、订阅、计费、发票、奖励 |
 | Ops | `ops` | sub | deepseek/deepseek-v4-flash | 部署、健康检查、告警、云资源配置 |
 | Service | `service` | sub | moonshot/moonshot-v1-32k | 客服、FAQ、工单、通知、IM |
-| Vision | `vision` | sub | zhipu/glm-4v-plus | 图像分析、OCR、图表解读 |
-| Creative | `creative` | sub | siliconflow/FLUX.1-pro | 文生图、创意视觉设计 |
+| Media | `media` | sub | siliconflow/FLUX.1-pro | 多模态媒体：图像理解（识别 / OCR / 图表解读）+ 图像生成（文生图、封面、插画） |
+| Office | `office` | sub | deepseek/deepseek-v4-flash | 企业内部运营：人事（员工档案 / 考勤 / 请假 / 入职）、行政（公告 / 会议 / 纪要）、文秘（文书 / 报告 / 跟进） |
 | Business | `business` | sub | deepseek/deepseek-v4-flash | 商业分析、规划、供应链 |
-| Veroscholar | `veroscholar` | sub | deepseek/deepseek-v4-flash | 学术科研：文献检索、综述、实验设计、论文写作 |
-| Stock Analyst | `stock_analyst` | sub | deepseek/deepseek-v4-flash | 金融分析：行情、指标、策略研究 |
 
-**扩展科研角色**（veroscholar 发现引擎与投研分析子角色）：
+**发行版专属角色**（按发行版装配——official / finance-desktop / research-desktop）：
 
 | 角色 | Slug | 职责 |
 |---|---|---|
+| 金融分析师 | `stock_analyst` | 金融分析：行情、指标、策略研究（official） |
+| 学术研究员 | `veroscholar` | 学术科研：文献检索、综述、实验设计、论文写作（research-desktop） |
+| 学术写作 | `academic_writer` | 学术写作支持（research-desktop） |
 | 文献检索 | `lit_scout` | 文献发现与检索，为假设提供证据 |
 | 方法架构师 | `method_architect` | 实验 / 方法论设计 |
 | 论文匠 | `thesis_smith` | 论文写作与组装 |
@@ -385,35 +386,91 @@ verorun version
 ## 目录结构
 
 ```text
-verorun-pro/
+VeroRun/
 ├── admin/                  # 管理后台（8084）
 ├── auth-center/            # 共享鉴权/模型/服务/路由（共享代码库）
-├── main_site/              # 主站后端（8081）
+├── main_site/              # 平台控制台 / 用户后端（8083）
 ├── agent_matrix/           # AI 引擎：多 Agent 编排
-│   ├── roles/              # 21 角色 YAML 定义
-│   ├── prompts/            # 动态提示词种子（15 个 .md，运行时从 agent_prompts 表加载）
+│   ├── roles/              # 25 个角色 YAML 定义（核心 + 发行版专属：official / finance-desktop / research-desktop）
+│   ├── prompts/            # 动态提示词种子（29 个 .md，运行时从 agent_prompts 表加载）
 │   ├── prompt_resolver.py  # 动态提示词调度引擎
 │   ├── engine.py           # UnifiedLLM 网关 + 预算 + 配额
 │   ├── orchestrator.py     # 任务分解、并行分发
 │   └── agent_runner.py     # 自评执行
 ├── orchestrator/           # 可视化工作流引擎（DAG）
-├── plugins/                # 30 内置插件（业务形态装配）
+├── plugins/                # 42 个内置插件（业务形态装配）
 ├── plugin_manager/         # 插件生命周期/商店/许可/区域路由
 ├── veroguard/              # VeroGuard 守护层（7 模块）
+├── health_guardian/        # 守护支撑包（含 health_guardian.py 入口）
+├── health_service/         # 健康检查服务（8085）
 ├── providers/              # 可插拔 Provider 抽象
 ├── sdks/                   # Python CLI 客户端（小程序 JS SDK 已迁入 plugins/mini_app_builder/sdks/）
-├── captcha-service/        # 旧独立服务残留（已迁移至 plugins/captcha_embedded）
-├── health_service/         # 健康检查服务（8085）
+├── shared/                 # 共享工具
 ├── i18n/                   # 国际化（en, zh-CN）
-├── deploy/                 # 部署脚本、Nginx 配置
-├── themes/                 # 主题系统
-├── tests/                  # 测试套件
-├── GUIDE.md / CHANGELOG.md / VERSION
-├── Dockerfile / docker-compose.yml
+├── prompts/                # 内核级提示词资产
+├── templates/ · static/ · themes/  # Jinja2 基础模板、静态资源、主题系统
+├── scripts/ · tools/       # 维护脚本与开发者工具
+├── deploy/                 # 安装脚本、systemd 单元、Nginx 配置
+├── docs/                   # 设计规范、插件标准、审计与测试报告
+├── auth_server.py          # 主站入口（8081）· run_gunicorn.py / run_auth_wsgi.py 启动器
+├── GUIDE.md · CHANGELOG.md · VERSION
+├── Dockerfile · docker-compose.yml
 └── LICENSE
 ```
 
 > 注：`site_builder/` 等业务目录属于引擎承载的应用层。
+
+---
+
+## 代码规模指标（Codebase Metrics）
+
+基于 v0.62.0 工作副本（2026-10-03）实测，采用 `cloc` 式单遍扫描，按各语言注释语法把每个源文件的每一行归类为 **代码 / 注释 / 空行**。统计已排除：构建产物与第三方 vendored 代码（`__pycache__`、`node_modules`、`backups/`、`data/`、`tmp/`、`outputs/`、`server_backup/`、`_ssh/`、`.stock_deps/` 等隐藏依赖缓存、压缩打包产物），以及 `docs/` 下的内部工程文档（方案、会话交接、审计报告）——因此数据仅反映第一方产品源码。
+
+**合计：300,787 行代码，1,874 个文件**（另有 47,686 行注释、48,550 行空行）。剔除提示词/文档格式（Markdown、Text）后，可执行代码 + 标记 ≈ **280,200 行**。
+
+### 按语言
+
+| 语言 | 代码 | 注释 | 空行 | 文件 |
+|---|---:|---:|---:|---:|
+| Python | 167,508 | 42,230 | 35,269 | 945 |
+| HTML（Jinja2 模板 / 后台页面） | 50,490 | 323 | 3,007 | 233 |
+| Markdown（产品 README、提示词种子） | 20,594 | 0 | 6,566 | 222 |
+| YAML（角色、种子、CI、配置） | 20,438 | 619 | 645 | 137 |
+| JavaScript | 15,574 | 2,024 | 1,512 | 93 |
+| CSS | 11,152 | 648 | 661 | 39 |
+| JSON（插件清单、发布清单） | 7,269 | 0 | 60 | 79 |
+| Shell（部署/运维脚本） | 4,374 | 1,178 | 458 | 17 |
+| SQL（迁移 / 种子） | 2,585 | 640 | 335 | 61 |
+| 其他（TS/JSX/SVG/Batch/Env/Text） | 803 | 24 | 37 | 48 |
+| **合计** | **300,787** | **47,686** | **48,550** | **1,874** |
+
+### 按模块（仅源码语言）
+
+| 模块 | 代码行 | 占比 | 职责 |
+|---|---:|---:|---|
+| `plugins/` | 186,784 | 62.1% | 应用层——42 个插件 |
+| `admin/` | 21,257 | 7.1% | 管理后台（8084） |
+| `main_site/` | 15,794 | 5.3% | 平台控制台（8083） |
+| `plugin_manager/` | 14,815 | 4.9% | 生命周期 / 商店 / 许可 |
+| `auth-center/` | 13,723 | 4.6% | 共享鉴权/模型/服务/路由 |
+| `agent_matrix/` | 12,319 | 4.1% | AI 引擎：编排 + UnifiedLLM + PromptResolver |
+| `i18n/` | 9,063 | 3.0% | 国际化（en, zh-CN） |
+| `deploy/` | 7,297 | 2.4% | 安装脚本、systemd、Nginx |
+| `static/` | 4,211 | 1.4% | 前端静态资源 |
+| `orchestrator/` | 4,014 | 1.3% | DAG 工作流引擎 |
+| `sdks/` + `veroguard/` + `tools/` + `providers/` + `shared/` + 其余 | ~11,500 | ~3.8% | CLI SDK、守护层、工具、Provider、共享工具、主题 |
+
+严格内核（`agent_matrix` + `orchestrator` + `plugin_manager` + `veroguard` + `providers` + `shared`）≈ **33.4k 行 ≈ 11.9%** 可执行代码——契合"业务由插件声明"的设计准则：应用层体量远大于内核。
+
+### 最大插件（源码行数）
+
+`site_builder` 23,166 · `stock_analysis` 16,897 · `mini_app_builder` 11,052 · `veroscholar` 8,969 · `chatbot` 8,574 · `ai_relay` 8,029 · `analytics` 7,876 · `vault` 7,439 · `health_check` 7,135 · `ali_api` 6,965。
+
+### 分析注记
+
+- **语言画像**：Python 主导（占可执行代码 59.8%），配服务端渲染的 HTML 控制台（50.5k 行）——属 Flask 单体 + 插件架构，而非 SPA 技术栈；前端 JS 仅限编辑器（React Flow）与可视化。
+- **注释密度**：Python 注释约 17.2%（含 docstring）——对 167k 行代码库属健康水平；风险不在数量而在复杂子系统（VeroGuard、许可、工作流引擎）的论证深度。
+- **测试面**：内核与插件均有仓内 `tests/` 套件（`shared`、`plugin_manager`、`sdks/cli`、`stock_analysis`、`veroscholar`、`cogevolution_substrate`、`shop`、`subscription`、`iot_hub`），约 30+ 单元 / API 测试模块；质量保障另由 `docs/` 下有日期的回归 / 审计报告承载。扩大可执行的 CI 覆盖仍是最高杠杆的工程投入。
 
 ---
 
@@ -425,6 +482,8 @@ verorun-pro/
 - `sdks/README.md` — SDK 使用说明
 - `deploy/README.md` — 部署说明
 - `plugins/memory_engine/README.md` — 认知进化引擎说明
+- `docs/official-api-security-spec.md` — 官方 API 安全规范（token 撤销 + 命令签名）
+- `docs/security-remediation-tracker.md` — 版权保护审计整改跟踪
 
 ---
 
@@ -435,6 +494,7 @@ verorun-pro/
 - systemd `TimeoutStartSec` 需大于 `health_check.sh` 的 `MAX_WAIT=180`。
 - 插件连接包装类必须实现 commit / rollback / close，避免连接池 idle in transaction。
 - 部署脚本必须排除 `data/`，防止覆盖生产数据库。
+- 两步验证登录前置校验由 `two_factor_auth` 插件通过 `auth.before_issue_session` 过滤器提供，仅在插件启用时生效。
 
 ---
 

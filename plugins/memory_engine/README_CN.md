@@ -34,7 +34,15 @@
 | `max_memories_per_owner` | 500 | 每用户记忆上限（超限归档最旧/最低质量） |
 | `allow_global_memory` | false | 启用管理员维护的跨用户全局记忆 |
 | `memory_opt_in_default` | true | 新用户默认是否同意记忆收集 |
+| `prompt_evolution_enabled` | false | 是否启用 Prompt 进化建议 |
 | `daily_extract_budget` | 200 | 每日提取调用次数上限 |
+| `enable_sedimentation` | true | 高价值记忆经管理员审核后沉淀至共享知识库 |
+| `sedimentation_fact_min_confidence` | 0.9 | 事实记忆沉淀的最低置信度 |
+| `sedimentation_lesson_min_rating` | 4 | 教训记忆沉淀的最低反思评分（1-5） |
+| `sedimentation_min_quality_score` | 0.7 | 记忆沉淀的最低质量分 |
+| `sedimentation_daily_budget` | 50 | 每日沉淀扫描候选上限 |
+| `abtest_enabled` | false | 50/50 确定性分流用户并记录任务结局，度量记忆注入收益 |
+| `abtest_control_pct` | 50 | 对照组百分比（0-100） |
 
 ## 管理界面
 

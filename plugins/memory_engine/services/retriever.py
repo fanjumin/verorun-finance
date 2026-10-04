@@ -35,7 +35,8 @@ class MemoryRetriever:
             params = [user_id, use_global, agent_id or '', top_k]
             vec = self._embed.embed(query) if self._embed.is_ready() else None
             if vec:
-                vector_literal = '[' + ','.join(repr(v) for v in vec) + ']'
+                from plugins._base.evolution.vector import vector_literal as _vector_literal
+                vector_literal = _vector_literal(vec)
                 # ORDER BY 表达式内的 SELECT 别名在 PG 中不可见（仅裸别名可引用），
                 # 故把加权排序外提到子查询外层，别名在此处是真实列。
                 rows = conn.execute(

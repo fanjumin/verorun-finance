@@ -170,7 +170,7 @@ class ImGatewayPlugin(BasePlugin):
     def on_uninstall(self, registry):
         """卸载清理（职责收敛后：仅清 IM 运行表，保留第三方登录数据）。
 
-        - 删除 IM 运行表：channel_configs / rate_limit_events；
+        - 删除 IM 运行表：channel_configs / im_channel_rate_events；
         - 显式保留第三方登录三表 login_providers / login_user_bindings /
           oauth_login_states —— 联邦登录绑定属用户资产，卸载 IM 频道不应连带清除。
         """
@@ -179,7 +179,7 @@ class ImGatewayPlugin(BasePlugin):
             raw = get_raw_connection()
             try:
                 cur = raw.cursor()
-                cur.execute('DROP TABLE IF EXISTS im_gateway.rate_limit_events CASCADE')
+                cur.execute('DROP TABLE IF EXISTS im_gateway.im_channel_rate_events CASCADE')
                 cur.execute('DROP TABLE IF EXISTS im_gateway.channel_configs CASCADE')
                 raw.commit()
                 cur.close()

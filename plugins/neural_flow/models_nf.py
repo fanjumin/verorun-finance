@@ -18,7 +18,11 @@ _log = get_plugin_logger("neural_flow")
 
 SCHEMA = "neural_flow"
 
-_SCHEMA = """
+# 本插件自有表清单（卸载护栏的唯一事实来源，新增表必须同步登记此处，
+# 否则 drop_schema() 会把它误判成"外来表"而拒绝 DROP SCHEMA）。
+OWNED_TABLES = ("nf_flow_spans",)
+
+_SCHEMA = ("""
 CREATE TABLE IF NOT EXISTS nf_flow_spans (
     id         BIGSERIAL PRIMARY KEY,
     domain     VARCHAR(32)  NOT NULL DEFAULT 'platform',
@@ -48,6 +52,7 @@ ALTER TABLE nf_flow_spans ADD COLUMN IF NOT EXISTS source_id BIGINT
 """
 CREATE UNIQUE INDEX IF NOT EXISTS uq_nfs_source ON nf_flow_spans (source, source_id)
 """,
+)
 
 
 @contextmanager
@@ -150,16 +155,60 @@ def list_spans(from_ts=None, to_ts=None, domain=None, trace_id=None,
     return out
 
 
-def drop_schema() -> None:
-    """卸载清理：删除本插件自有 schema 及其全部对象（零残留，标准 §12.5）。
+def drop_schema() -> dict:
+    """卸载清理：只删本插件自有对象（零残留，标准 §12.5），带跨插件误删护栏。
 
-    仅作用于 SCHEMA 常量所指 schema，不触碰 public 与其他插件 schema；
-    走裸池连接（卸载语义下不应再先 CREATE SCHEMA），commit 后归还池。
+    护栏的由来（2026-10-04 生产实测，事务内 DROP 后 ROLLBACK 取证）：
+    平台共享件 `plugins/_base/ratelimit.py` 曾以**不带 schema 前缀**的 DDL
+    把 `rate_limit_events` 建进了本插件 schema（该连接池归还时
+    `SET search_path TO public` 处于未提交事务内、可被回滚，重置不可靠）。
+    此时 `DROP SCHEMA … CASCADE` 会连带删掉**别的插件正在使用的活表**
+    ——实测级联清单里明确出现 `drop cascades to table neural_flow.rate_limit_events`。
+
+    因此改为先枚举、再取舍：
+      - schema 内全部是本插件自有表 → 正常 `DROP SCHEMA … CASCADE`（零残留）；
+      - 存在非本家表 → **只删自有表**，保留 schema 与外来表并 WARNING 留痕。
+        宁可留下一个空 schema，也不能误删他人数据。
+
+    Returns:
+        {"dropped": [表名…], "foreign": [非本家表名…], "schema_dropped": bool}
     """
+    result = {"dropped": [], "foreign": [], "schema_dropped": False}
     conn = get_pooled_connection()
     try:
+        rows = conn.execute(
+            "SELECT tablename FROM pg_tables WHERE schemaname = %s ORDER BY tablename",
+            (SCHEMA,),
+        ).fetchall()
+        tables = [r["tablename"] for r in rows]
+        foreign = [t for t in tables if t not in OWNED_TABLES]
+        result["foreign"] = foreign
+
+        if foreign:
+            # 有外来户：逐个只删自有表，禁用 CASCADE
+            for t in tables:
+                if t in OWNED_TABLES:
+                    conn.execute('DROP TABLE IF EXISTS %s."%s" CASCADE' % (SCHEMA, t))
+                    result["dropped"].append(t)
+            conn.commit()
+            _log.warning(
+                "neural_flow schema NOT dropped: foreign objects present %s "
+                "(owned tables removed %s); refusing CASCADE to avoid deleting "
+                "another plugin's live data",
+                foreign, result["dropped"])
+            return result
+
         conn.execute("DROP SCHEMA IF EXISTS %s CASCADE" % SCHEMA)
         conn.commit()
+        result["dropped"] = list(tables)
+        result["schema_dropped"] = True
+        return result
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        raise
     finally:
         try:
             conn.close()

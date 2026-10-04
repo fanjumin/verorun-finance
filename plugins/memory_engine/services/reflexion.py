@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 """Reflexion service: learn from task outcomes through the curator agent."""
 
-import hashlib
 import json
 import logging
 import os
-import re
 from concurrent.futures import ThreadPoolExecutor
 
 logger = logging.getLogger('memory_engine.reflexion')
@@ -16,10 +14,9 @@ _CURATOR_PROMPT_FILE = os.path.join(_PLUGIN_DIR, 'agents', 'memory_curator_promp
 
 
 def _keywords(text: str) -> list:
-    """Shared keyword helper (mirrors extractor; kept local to avoid circular import)."""
-    kws = set(re.findall(r'[\u4e00-\u9fff]{2,}', text))
-    kws.update(w.lower() for w in re.findall(r'[a-z]{2,}', text.lower()))
-    return list(kws)[:12]
+    """Shared keyword helper —— 委托共享进化基座。"""
+    from plugins._base.evolution.text import keywords
+    return keywords(text)
 
 
 class ReflexionService:
@@ -145,7 +142,8 @@ class ReflexionService:
         owner_id = _task_owner(task)
         if not owner_id:
             return
-        digest = hashlib.sha256(f"{owner_id}|{lesson}".encode('utf-8')).hexdigest()
+        from plugins._base.evolution.text import record_hash
+        digest = record_hash(owner_id, lesson)
         conn.execute(
             "INSERT INTO memories"
             " (owner_type, owner_id, agent_id, memory_type, content,"
@@ -156,29 +154,7 @@ class ReflexionService:
         )
 
     def _load_curator_config(self) -> dict:
-        """v1.6 统一网关注册：复用承载本插件能力的核心角色行（不再依赖独立 Agent 行）。"""
-        from agent_matrix.models import get_db
-        try:
-            from agent_matrix.models import resolve_agent_roles
-        except ImportError:
-            # F-DEP：旧内核无 resolve_agent_roles，回退 athena（同 extractor 口径）。
-            def resolve_agent_roles(_plugin_id, _metadata):
-                return ["athena"]
-        try:
-            with open(_CURATOR_PROMPT_FILE, 'r', encoding='utf-8') as f:
-                curator_prompt = f.read().strip()
-        except OSError as e:
-            logger.warning('[memory_engine] curator prompt unreadable: %s', e)
-            return {}
-        roles = resolve_agent_roles('memory_engine', {'agent_role': 'athena'}) or ['athena']
-        with get_db() as conn:
-            row = conn.execute(
-                "SELECT * FROM agent_matrix WHERE slug = %s AND is_system = 1",
-                (roles[0],),
-            ).fetchone()
-        if not row:
-            return {}
-        cfg = dict(row)
-        cfg['name'] = 'memory_curator'          # 仅用于 token 日志归因
-        cfg['system_prompt'] = curator_prompt   # 覆盖为核心角色的模型配置 + curator 提示词
-        return cfg
+        """v1.6 统一网关注册：委托共享进化基座读取承载本插件能力的核心角色行。"""
+        from plugins._base.evolution.curator import load_curator_config
+        return load_curator_config(
+            'memory_engine', 'athena', _CURATOR_PROMPT_FILE, 'memory_curator')

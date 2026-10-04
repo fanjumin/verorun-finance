@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 """Write pipeline: turn completed task traces into durable memories."""
 
-import hashlib
 import json
 import logging
 import os
-import re
 from concurrent.futures import ThreadPoolExecutor
 
 logger = logging.getLogger('memory_engine.extractor')
@@ -14,22 +12,8 @@ logger = logging.getLogger('memory_engine.extractor')
 _PLUGIN_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _CURATOR_PROMPT_FILE = os.path.join(_PLUGIN_DIR, 'agents', 'memory_curator_prompt.md')
 
-# PII guard delegates to shared _base module (S11b).
-# F-DEP 自包含兜底：旧内核（如服务器 1.2.x）尚无 plugins._base.pii 时，
-# 使用与共享模块逐字一致的内置正则，避免自动提取链因 ImportError 整体宕掉。
-# 边界用数字负向断言 (非 \b)：\b 对 CJK 与数字之间不成立，中文紧邻手机/身份证
-# 会漏检；与 plugins/_base/pii.py 保持逐字一致，调整覆盖范围时两处必须同步。
-_PII_FALLBACK_PATTERNS = (
-    re.compile(r'(?i)(password|api[_-]?key|secret|token)\s*[:=]\s*\S+'),
-    re.compile(r'(?<!\d)1[3-9]\d{9}(?!\d)'),          # CN mobile
-    re.compile(r'(?<!\d)\d{17}[\dXx](?!\d)'),         # CN ID card
-)
-
-
-def _contains_pii_fallback(text: str) -> bool:
-    return any(p.search(text or '') for p in _PII_FALLBACK_PATTERNS)
-
-
+# PII 守卫委托共享进化基座 plugins._base.evolution.pii（S11b / P0）。
+# 旧内核兜底内聚在基座内，本插件不再自留正则副本。
 _SKIP_MARKERS = ('hello', 'hi', 'thanks', 'thank you')
 
 # 元任务（规划/意图确认）不含用户侧知识，按子串命中跳过，避免污染记忆池。
@@ -210,45 +194,18 @@ class MemoryExtractor:
 
     @staticmethod
     def _contains_pii(text: str) -> bool:
-        try:
-            from plugins._base.pii import contains_pii
-        except ImportError:
-            # F-DEP：旧内核缺共享 PII 模块时走自包含回退，提取链不中断。
-            return _contains_pii_fallback(text)
+        from plugins._base.evolution.pii import contains_pii
         return contains_pii(text)
 
     def _load_curator_config(self) -> dict:
-        """v1.6 统一网关注册：复用承载本插件能力的核心角色行（不再依赖独立 Agent 行）。
+        """v1.6 统一网关注册：委托共享进化基座读取承载本插件能力的核心角色行。
 
         模型配置取自核心角色行（provider_model_id → provider/model/base_url/api_key），
         system_prompt 覆盖为 curator 提示词；解析不到归属角色时返回 {}。
         """
-        from agent_matrix.models import get_db
-        try:
-            from agent_matrix.models import resolve_agent_roles
-        except ImportError:
-            # F-DEP：旧内核无 resolve_agent_roles，回退归属核心角色 athena，
-            # 与下方 `or ['athena']` 运行时兜底同口径，自动提取不恒 0。
-            def resolve_agent_roles(_plugin_id, _metadata):
-                return ["athena"]
-        try:
-            with open(_CURATOR_PROMPT_FILE, 'r', encoding='utf-8') as f:
-                curator_prompt = f.read().strip()
-        except OSError as e:
-            logger.warning('[memory_engine] curator prompt unreadable: %s', e)
-            return {}
-        roles = resolve_agent_roles('memory_engine', {'agent_role': 'athena'}) or ['athena']
-        with get_db() as conn:
-            row = conn.execute(
-                "SELECT * FROM agent_matrix WHERE slug = %s AND is_system = 1",
-                (roles[0],),
-            ).fetchone()
-        if not row:
-            return {}
-        cfg = dict(row)
-        cfg['name'] = 'memory_curator'          # 仅用于 token 日志归因
-        cfg['system_prompt'] = curator_prompt   # 覆盖为核心角色的模型配置 + curator 提示词
-        return cfg
+        from plugins._base.evolution.curator import load_curator_config
+        return load_curator_config(
+            'memory_engine', 'athena', _CURATOR_PROMPT_FILE, 'memory_curator')
 
     def _persist(self, candidates: list, agent_id: str, task: dict, source: str):
         """Insert with content-hash idempotency and per-owner caps."""
@@ -276,10 +233,10 @@ class MemoryExtractor:
             except Exception:
                 _is_vec = False
             _embed_col = "?::vector" if _is_vec else "?"
+            from plugins._base.evolution.text import record_hash
+            from plugins._base.evolution.vector import vector_literal
             for c in candidates:
-                digest = hashlib.sha256(
-                    f"{owner_id}|{c['content']}".encode('utf-8')
-                ).hexdigest()
+                digest = record_hash(owner_id, c['content'])
                 existing = conn.execute(
                     "SELECT id FROM memories WHERE content_hash = ?", (digest,)
                 ).fetchone()
@@ -290,9 +247,7 @@ class MemoryExtractor:
                 if c.get('operation') == 'update':
                     self._supersede(conn, owner_id, c)
                 vec = self._embed.embed(c['content'])
-                embedding_literal = None
-                if vec:
-                    embedding_literal = '[' + ','.join(repr(v) for v in vec) + ']'
+                embedding_literal = vector_literal(vec) if vec else None
                 conn.execute(
                     "INSERT INTO memories"
                     " (owner_type, owner_id, agent_id, memory_type, content,"
@@ -339,10 +294,9 @@ class MemoryExtractor:
 
     @staticmethod
     def _keywords(text: str) -> list:
-        """Naive keyword extraction: CJK bigrams + 2+ char latin tokens."""
-        kws = set(re.findall(r'[\u4e00-\u9fff]{2,}', text))
-        kws.update(w.lower() for w in re.findall(r'[a-z]{2,}', text.lower()))
-        return list(kws)[:12]
+        """委托共享进化基座：CJK bigrams + 2+ char latin tokens。"""
+        from plugins._base.evolution.text import keywords
+        return keywords(text)
 
     def _enforce_owner_cap(self, conn, owner_id: str):
         """Archive oldest auto memories beyond max_memories_per_owner."""

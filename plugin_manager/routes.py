@@ -26,7 +26,7 @@ from datetime import datetime
 from flask import Blueprint, jsonify, request
 from shared.http import api_err
 
-from .manager import PluginManager
+from .manager import PluginManager, sync_bundled_skills
 from .models import PluginStatus
 from .models_store import get_registry_db
 from .skill_registry import get_skill_registry
@@ -717,6 +717,19 @@ def store_sync():
         except Exception as _e:
             print(f'[store] local usage guide sync failed: {_e}')
             usage_synced = []
+        # 官方内置技能包：<plugins/*/skills/> → store_skills（幂等）
+        try:
+            skills_synced = sync_bundled_skills(getattr(mgr, 'plugins_dir', ''))
+        except Exception as _e:
+            print(f'[store] bundled skill sync failed: {_e}')
+            skills_synced = []
+        if skills_synced:
+            try:
+                _reg = get_skill_registry()
+                if _reg is not None:
+                    _reg.rebuild_reverse_index()
+            except Exception:
+                pass
         with get_registry_db() as conn:
             after = {r['identifier'] for r in conn.execute(
                 'SELECT identifier FROM store_plugins').fetchall()}
@@ -730,6 +743,7 @@ def store_sync():
             'source': _catalog_urls(),
             'error': error,
             'usage_synced': usage_synced,
+            'skills_synced': skills_synced,
         })
     except Exception as e:
         print(f'[store] sync failed: {e}')

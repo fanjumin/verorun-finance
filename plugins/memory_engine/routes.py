@@ -6,7 +6,6 @@ Includes: memories CRUD, reflexion logs, prompt metrics, and
 Evolution Ring APIs (C.3): phases, rounds, graph.
 """
 
-import hashlib
 import json
 import uuid
 from functools import wraps
@@ -483,7 +482,8 @@ def my_memory_edit(mem_id):
     if MemoryExtractor._contains_pii(content):
         return jsonify({'ok': False, 'error': 'content contains sensitive data'}), 400
     uid = str(payload['user_id'])
-    digest = hashlib.sha256(f"{uid}|{content}".encode('utf-8')).hexdigest()
+    from plugins._base.evolution.text import record_hash
+    digest = record_hash(uid, content)
     conn = get_memory_engine_db()
     try:
         try:

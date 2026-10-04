@@ -1,0 +1,28 @@
+{
+  "$schema": "verorun.skill/1.0",
+  "slug": "cross-asset-memo",
+  "name": "Cross-Asset Investment Memo Skill",
+  "version": "1.0.0",
+  "source": "official",
+  "description": "跨资产（股票/期货/基金/债券）投资研究工作流技能——按金融版研究角色流水线组织研究，强制证据链与反方意见，复用单股分析与多资产取数能力，产出带合规留痕的投资备忘录（非交易指令）",
+  "tagline": "股期债基组合研究 → 合规投资备忘录",
+  "tags": ["finance", "portfolio", "asset-allocation", "multi-asset", "research-workflow", "memo"],
+  "author": "VeroRun",
+  "requirements": {
+    "plugins": {
+      "stock_analysis": ">=2.0.1",
+      "multi_asset": ">=0.1.0"
+    },
+    "skills": [],
+    "roles": ["rs_planner", "rs_fundamental", "rs_quant", "rs_risk", "rs_pm", "rs_compliance"],
+    "capabilities": [],
+    "editions": ["finance"]
+  },
+  "task_types": ["chat"],
+  "assets": {
+    "prompt": "prompt.md"
+  },
+  "execution": {
+    "timeout_seconds": 120
+  }
+}

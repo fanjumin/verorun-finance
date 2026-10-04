@@ -18,6 +18,23 @@ plugin.json 显式声明 routes/scheduler/events，缺一则对应 register_* �
 """
 from plugin_manager.base import BasePlugin
 
+try:  # PF-02 闸门异常（新内核）
+    from plugin_manager.exceptions import PluginInstallError
+except ImportError:  # pragma: no cover - 仅 0.61.x 等 PF-02 前老内核走此分支
+    class PluginInstallError(RuntimeError):
+        """兼容垫片：老内核无 plugin_manager.exceptions.PluginInstallError。
+
+        新内核下该类永远不会被定义（导入成功即用内核异常，manager.enable()
+        专门捕获并中止启用）；老内核下退化为普通异常，建表失败时按内核既有
+        setup 异常策略处理（记录 last_error），不产生裸 ImportError。
+        构造签名与内核版对齐：(identifier, detail='')。
+        """
+
+        def __init__(self, identifier: str, detail: str = ''):
+            super().__init__('插件 "%s" 安装初始化失败: %s' % (identifier, detail))
+            self.identifier = identifier
+            self.detail = detail
+
 
 def _lifecycle_binding(plugin, event):
     """把事件名闭包进 handler（EventBus 只传 kwargs，不传事件名）。"""
@@ -48,10 +65,11 @@ class NeuralFlowPlugin(BasePlugin):
         # 调度器将 max_instances/coalesce 固定为 1/True（同 stock_analysis 注释口径）；
         # 采集器内部再自持 advisory lock，多 worker 场景仅一方执行（照抄
         # stock_analysis alert_engine.scheduled_scan 的 D1-c 互斥范式）。
-        try:
-            interval = max(1, int(self.get_config_value("collector_interval_seconds", 5) or 5))
-        except (TypeError, ValueError):
-            interval = 5
+        from .collectors import clamp_collector_interval
+        # NF-13：双向钳制（1..MAX_INTERVAL_SECONDS），超上界钳制并 warning 留痕。
+        interval = clamp_collector_interval(
+            self.get_config_value("collector_interval_seconds", 5),
+            log=self.log)
         return [
             {
                 "id": "neural_flow_collector",
@@ -113,14 +131,20 @@ class NeuralFlowPlugin(BasePlugin):
     # ── 生命周期 ──
 
     def setup(self):
-        """[ENABLED] 建表 + 档案注册（新系统阶段钩子；不依赖 on_install 桥接语义）。"""
-        reg = getattr(self, 'manager', None)
+        """[ENABLED] 建表 + 档案注册（新系统阶段钩子）。
+
+        PF-02：建表失败抛 PluginInstallError，manager.enable() 捕获后中止启用，
+        不形成「状态 ACTIVE、能力全空」的半成品；档案注册失败仅告警、不阻塞。
+        PluginInstallError 走模块级导入（含老内核兼容垫片）。
+        """
         try:
             from .models_nf import ensure_tables
             ensure_tables()
         except Exception as err:
             self.log("neural_flow ensure_tables failed: %s" % err, 'warning')
-            return False
+            raise PluginInstallError(
+                "neural_flow", "ensure_tables failed: %s" % err
+            ) from err
         try:
             from .profile_registry import refresh_registry
             n = refresh_registry()
@@ -156,13 +180,19 @@ class NeuralFlowPlugin(BasePlugin):
     def on_uninstall(self, registry):
         """[UNINSTALL] 删除本插件自有 schema（零残留，标准 §12.5）。
 
-        仅 DROP neural_flow schema（CASCADE），不触碰 public 与其他插件 schema；
+        只清理 OWNED_TABLES 登记的自有对象；schema 内若存在别的插件落进来的
+        表，models_nf.drop_schema() 会拒绝 CASCADE 并留痕（宁留残表不误删）。
         失败不阻塞卸载流程，记日志。
         """
         try:
             from .models_nf import drop_schema
-            drop_schema()
-            self.log("neural_flow schema dropped")
+            res = drop_schema() or {}
+            if res.get("schema_dropped"):
+                self.log("neural_flow schema dropped (tables=%s)" % res.get("dropped"))
+            else:
+                self.log("neural_flow schema left in place: foreign objects %s; "
+                         "dropped own tables %s" % (res.get("foreign"),
+                                                   res.get("dropped")), 'warning')
         except Exception as err:
             self.log("schema drop failed: %s" % err, 'warning')
         return True

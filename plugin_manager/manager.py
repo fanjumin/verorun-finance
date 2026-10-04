@@ -29,6 +29,7 @@ from .models import (
 )
 from .discovery import PluginDiscovery, version_satisfies, parse_version
 from .exceptions import (
+    PluginError,
     PluginNotFoundError, PluginNotInstalledError,
     PluginNotEnabledError, PluginDependencyError,
     PluginCircularDependencyError, PluginStateError,
@@ -54,6 +55,25 @@ from .license import LicenseManager, get_license_manager
 from .store import StoreAPIClient, get_store_client
 from .watermark import OFFICIAL_PLUGIN_IDS
 from .guard import CIRCUIT_BREAKER_THRESHOLD, should_trip, record_failure
+
+
+def _conflicting_enabled(identifier, conflicts, all_plugins):
+    """返回与 `conflicts` 声明互斥、且当前处于 ENABLED/ACTIVE 的插件标识（双向判定）。
+
+    P0 收尾·轻量实现：只读各插件 `PluginInfo.metadata['conflicts']`，不落库、不改 schema。
+    - 正向：本插件声明冲突的对象若已启用 → 命中；
+    - 反向：任一已启用插件声明与本插件冲突 → 命中（单向声明同样生效）；
+    - 自身永远排除；未启用（installed/disabled/error 等）不算冲突。
+    """
+    enabled = {p.identifier for p in all_plugins
+               if p.identifier != identifier
+               and p.status in (PluginStatus.ENABLED, PluginStatus.ACTIVE)}
+    hit = set(conflicts or []) & enabled
+    for p in all_plugins:
+        if p.identifier in enabled and identifier in ((p.metadata or {}).get('conflicts') or []):
+            hit.add(p.identifier)
+    return sorted(hit)
+
 
 # 启动时「磁盘 plugin.json → 注册表」一致性刷新的判定字段集。
 # ★ T3.3 修复：契约字段（provides_hooks/listens_hooks/permissions）必须在列内 ——
@@ -107,6 +127,118 @@ _PERMANENT_ERROR_PREFIXES = (
     'License required',
     'circuit breaker',
 )
+
+
+def _read_text(path: str) -> str:
+    """读取 UTF-8 文本；文件不存在返回空串。"""
+    if not os.path.isfile(path):
+        return ''
+    try:
+        with open(path, encoding='utf-8') as f:
+            return f.read()
+    except (IOError, OSError):
+        return ''
+
+
+def sync_bundled_skills(plugins_dir: str) -> List[str]:
+    """扫描 <plugins_dir>/*/skills/<slug>/ 下的官方技能包并幂等入库 store_skills。
+
+    技能包：SKILL.md（必需）+ skill.json / prompt.md（可选；缺 skill.json 即 0.9 语义）。
+    官方包随仓库发布（author_developer_id=0 → source='official'）：自动审核通过即
+    status='approved' 直接生效，审核拒绝则 status='rejected' 并留痕。
+    整段静默降级：任一条目失败仅告警，不影响调用方主流程。
+    """
+    synced: List[str] = []
+    if not plugins_dir or not os.path.isdir(plugins_dir):
+        return synced
+    try:
+        from .skills import validate_skill, audit_skill, parse_skill_package
+    except Exception:
+        return synced
+
+    for entry in sorted(os.listdir(plugins_dir)):
+        if entry.startswith('_') or entry.startswith('.'):
+            continue
+        skills_root = os.path.join(plugins_dir, entry, 'skills')
+        if not os.path.isdir(skills_root):
+            continue
+        for slug in sorted(os.listdir(skills_root)):
+            pkg_dir = os.path.join(skills_root, slug)
+            skill_md_path = os.path.join(pkg_dir, 'SKILL.md')
+            if not os.path.isfile(skill_md_path):
+                continue
+            try:
+                content_md = _read_text(skill_md_path)
+                skill_json = _read_text(os.path.join(pkg_dir, 'skill.json'))
+                prompt_md = _read_text(os.path.join(pkg_dir, 'prompt.md')).strip()
+
+                errors, meta = validate_skill(content_md)
+                if errors:
+                    print(f'[PluginManager] ⚠️ bundled skill {slug} invalid: {errors}')
+                    continue
+                errors, manifest = parse_skill_package(skill_json)
+                if errors:
+                    print(f'[PluginManager] ⚠️ bundled skill {slug} manifest error: {errors}')
+                    continue
+                if manifest and manifest.get('slug') != meta['identifier']:
+                    print(f'[PluginManager] ⚠️ bundled skill {slug}: '
+                          'skill.json slug must match SKILL.md identifier')
+                    continue
+
+                if manifest:
+                    reqs = dict(manifest.get('requirements') or {})
+                    reqs['task_types'] = manifest.get('task_types') or []
+                    requirements = json.dumps(reqs, ensure_ascii=False)
+                    permissions = json.dumps(manifest.get('permissions') or [],
+                                             ensure_ascii=False)
+                    schema_ver = '1.0'
+                else:
+                    requirements, permissions, schema_ver = '{}', '[]', '0.9'
+
+                effective_prompt = prompt_md or content_md
+                audit_status, reasons = audit_skill(content_md)
+                p_status, p_reasons = audit_skill(effective_prompt)
+                if p_status == 'reject':
+                    audit_status = 'reject'
+                    reasons = reasons + [f'prompt: {r}' for r in p_reasons]
+                status = 'approved' if audit_status == 'pass' else 'rejected'
+                published_at = (datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                                if status == 'approved' else None)
+
+                with get_registry_db() as conn:
+                    row = conn.execute(
+                        'SELECT id FROM store_skills WHERE identifier=%s',
+                        (meta['identifier'],)).fetchone()
+                    if row:
+                        conn.execute(
+                            'UPDATE store_skills SET content_md=%s, name=%s, description=%s, '
+                            'tagline=%s, tags=%s, version=%s, requirements=%s, permissions=%s, '
+                            'source=%s, prompt_md=%s, schema_ver=%s, audit_status=%s, '
+                            'audit_note=%s, status=%s, published_at=COALESCE(published_at, %s), '
+                            'updated_at=NOW() WHERE id=%s',
+                            (content_md, meta['name'], meta['description'], meta['tagline'],
+                             json.dumps(meta['tags']), meta['version'], requirements,
+                             permissions, 'official', effective_prompt, schema_ver,
+                             audit_status, json.dumps(reasons), status, published_at,
+                             row['id']))
+                    else:
+                        conn.execute(
+                            "INSERT INTO store_skills "
+                            " (identifier, name, description, tagline, tags, content_md, "
+                            "  author_developer_id, version, requirements, permissions, "
+                            "  source, prompt_md, schema_ver, status, audit_status, "
+                            "  audit_note, published_at) "
+                            "VALUES (%s,%s,%s,%s,%s,%s,0,%s,%s,%s,'official',%s,%s,%s,%s,%s,%s)",
+                            (meta['identifier'], meta['name'], meta['description'],
+                             meta['tagline'], json.dumps(meta['tags']), content_md,
+                             meta['version'], requirements, permissions, effective_prompt,
+                             schema_ver, status, audit_status, json.dumps(reasons),
+                             published_at))
+                    conn.commit()
+                synced.append(meta['identifier'])
+            except Exception as e:
+                print(f'[PluginManager] ⚠️ bundled skill sync failed for {slug}: {e}')
+    return synced
 
 
 def _dag_handler_conforms(handler) -> bool:
@@ -319,6 +451,12 @@ class PluginManager:
                         user=os.environ.get('PG_USER', 'app'),
                         password=os.environ.get('PG_PASSWORD', ''),
                     )
+                    # DEF-22：advisory lock 用专用长连接持有。psycopg2 默认非
+                    # autocommit，`SELECT pg_try_advisory_lock()` 会开一个永不提交
+                    # 的事务，实测累积出 9h43m 的 `idle in transaction`
+                    # （长期持有 backend_xmin 阻碍 VACUUM）。置 autocommit 后该
+                    # SELECT 立即结束事务，锁由会话继续持有，功能不变。
+                    lock_conn.autocommit = True
                     cur = lock_conn.cursor()
                     cur.execute('SELECT pg_try_advisory_lock(%s)', (775219,))
                     acquired = bool(cur.fetchone()[0])
@@ -350,6 +488,17 @@ class PluginManager:
                     except Exception as e:
                         store_client.record_failure()
                         print(f'[PluginManager] Store sync failed: {e}')
+                    # 官方内置技能包：<plugins/*/skills/> → store_skills（幂等，随周期刷新）
+                    try:
+                        _n = len(sync_bundled_skills(self.plugins_dir))
+                        if _n:
+                            print(f'[PluginManager] Bundled skills synced: {_n}')
+                            from .skill_registry import get_skill_registry
+                            _reg = get_skill_registry()
+                            if _reg is not None:
+                                _reg.rebuild_reverse_index()
+                    except Exception as _e:
+                        print(f'[PluginManager] ⚠️ bundled skill sync failed: {_e}')
                     try:
                         time.sleep(store_client.next_sync_interval())
                     except KeyboardInterrupt:
@@ -1028,6 +1177,26 @@ class PluginManager:
             if missing_deps:
                 raise PluginDependencyError(identifier, missing_deps)
 
+            # DEF-19：发行版兼容闸（此前只约束商店准入 /store/<id>/install，
+            # 从磁盘落地安装 /admin/plugins/<id>/install 不校验，导致
+            # finance-only 能力被装进 official 版后永久降级：实测 /api/events
+            # 因依赖缺席空转刷日志、0 业务帧）。此处补齐磁盘安装路径的同口径闸门。
+            # 依赖插件「是否已装/已启用」由 enable() 的 _resolve_dependencies 把关，
+            # 安装期不重复拦截，避免阻断"先装依赖方、后装被依赖方"的正常顺序。
+            _eds = (info.metadata or {}).get('compatible_editions') or []
+            if _eds:
+                try:
+                    from .store import DEPLOY_EDITION as _deploy_edition
+                    _edition_ok = StoreAPIClient._edition_compatible(_eds)
+                except Exception as _e:
+                    # 取数失败 fail-open：不因版本判定自身异常阻断安装主链路
+                    _edition_ok = True
+                    print(f'[PluginManager] {identifier} edition gate check skipped: {_e}')
+                if not _edition_ok:
+                    raise PluginError(
+                        f'插件 "{identifier}" 不兼容当前发行版: '
+                        f'compatible_editions={_eds}, 当前发行版={_deploy_edition}')
+
             info.status = PluginStatus.INSTALLED
             info.installed_at = datetime.now().isoformat()
             info.updated_at = datetime.now().isoformat()
@@ -1081,6 +1250,18 @@ class PluginManager:
                         identifier, info.min_app_version,
                         getattr(self.app, 'version', '?')
                     )
+
+            # ── conflicts 互斥（轻量：读 metadata，不落库；双向判定）──
+            _conf = _conflicting_enabled(
+                identifier, info.metadata.get('conflicts'), self.list_plugins())
+            if _conf:
+                _names = ', '.join(_conf)
+                info.last_error = f'conflicts with enabled plugins: {_names}'
+                info.status = PluginStatus.ERROR
+                self._save_to_db(info)
+                raise PluginStateError(
+                    identifier, 'conflict',
+                    f'enable failed: conflicts with enabled plugins: {_names}')
 
             # ── License 检查 ───────────────────────────────────────
             # 付费插件必须有有效 License 才能启用

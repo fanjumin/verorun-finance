@@ -14,6 +14,7 @@ import time
 from .base import (CONTRACT_AVAILABLE, DataCategory, FetchResult,
                    ProviderUnavailable, make_result, secret_resolver)
 from .providers import AkshareProvider, SaGatewayProvider, SinaFinanceProvider
+from .tushare_ma import TushareMaProvider
 
 _log = logging.getLogger("multi_asset.adapters")
 
@@ -23,6 +24,9 @@ __all__ = ["build_provider", "provider_chain", "chain_sources", "fetch",
 
 # Registry: name -> (class, asset_type)
 REGISTRY = {
+    ("tushare", "FUTURE"): TushareMaProvider,
+    ("tushare", "OPTION"): TushareMaProvider,
+    ("tushare", "BOND"): TushareMaProvider,
     ("akshare", "FUTURE"): AkshareProvider,
     ("akshare", "OPTION"): AkshareProvider,
     ("akshare", "FUND"): AkshareProvider,
@@ -33,12 +37,14 @@ REGISTRY = {
     ("sa_gateway", "BOND"): SaGatewayProvider,
 }
 
-# Per-asset source chains (>= 2 real sources each; akshare is the free primary).
+# Per-asset source chains (>= 2 real sources each). Tushare heads the futures /
+# options / bonds chains (BYOK) and degrades to the free sources when the user has
+# no token or entitlement; funds stay on the free chain.
 CHAINS = {
-    "FUTURE": [("akshare", "FUTURE"), ("sina", "FUTURE")],
-    "OPTION": [("akshare", "OPTION"), ("sina", "OPTION")],
+    "FUTURE": [("tushare", "FUTURE"), ("akshare", "FUTURE"), ("sina", "FUTURE")],
+    "OPTION": [("tushare", "OPTION"), ("akshare", "OPTION"), ("sina", "OPTION")],
     "FUND": [("akshare", "FUND"), ("sa_gateway", "FUND")],
-    "BOND": [("akshare", "BOND"), ("sa_gateway", "BOND")],
+    "BOND": [("tushare", "BOND"), ("akshare", "BOND"), ("sa_gateway", "BOND")],
 }
 
 # MA-2：冷却语义直接复用 stock_analysis gateway 的常量，避免两套口径漂移；

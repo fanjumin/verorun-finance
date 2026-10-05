@@ -22,8 +22,30 @@ INDEX_CANDIDATES = [
 
 
 def market_symbol(symbol: str) -> str:
-    clean = re.sub(r"^(?:SH|SZ|BJ)(?=\d)", "", symbol.upper())
+    raw = str(symbol or "").strip()
+    # ── 境外前置分支（v2.1.0 新增；与 secmaster UID 规范 {market}:{code} 对齐）──
+    # ① UID 形态 "HK:00700" / "US:AAPL"：幂等原样返回（大写归一）
+    if re.match(r"^(?:HK|US):", raw, re.I):
+        return raw.upper()
+    # ② 已带境外前缀 "hk00700" / "usAAPL"：统一转成 UID 形态（下游只认一套规范）
+    m = re.match(r"^(hk|us)([A-Za-z0-9]+)$", raw, re.I)
+    if m:
+        return m.group(1).upper() + ":" + m.group(2).upper()
+    # ③ 交易所后缀 "0700.HK"（Yahoo/东财风，数字 1~5 位）/ "AAPL.US" → UID。
+    #    港股裸码内部统一补齐 5 位（0700→00700），对外源所需的 4 位 .HK 形态由 provider 层转换。
+    q = re.match(r"^([0-9]{1,5}|[A-Za-z]{1,6})\.(HK|US)$", raw)
+    if q:
+        code, mkt = q.group(1), q.group(2).upper()
+        return "%s:%s" % (mkt, code.zfill(5) if code.isdigit() else code.upper())
+    # ── 以下为原有 A 股规则，逐字保留，不得改动 ──
+    clean = re.sub(r"^(?:SH|SZ|BJ)(?=\d)", "", raw.upper())
     clean = clean.replace(".SH", "").replace(".SZ", "").replace(".BJ", "")
+    # ④ 1~5 位纯数字 → 港股（A 股股票/指数/基金恒 6 位，债券 6/12 位，申购码 7 位，无冲突面）
+    if clean.isdigit() and 1 <= len(clean) <= 5:
+        return "HK:" + clean.zfill(5)
+    # ⑤ 纯字母 → 美股
+    if clean.isalpha():
+        return "US:" + clean
     # 北交所含 43/83/87/88 段与 2024 启用的 920xxx 新段；
     # '9' 开头需先排除 920，其余 9 开头仍归沪（沪 B 股 900xxx）。
     if clean.startswith("920") or clean.startswith(("4", "8")):

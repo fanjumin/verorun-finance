@@ -1,9 +1,11 @@
-"""ref_sync.py --- refresh reference tables from free public sources (best-effort).
+"""ref_sync.py --- refresh reference tables from public sources (best-effort).
 
-Populates ``ma_future_contracts`` (main contracts) and ``ma_fund_ref`` (ETF list) so
-the instrument-search endpoint and futures parsing have real data behind them
+Populates ``ma_future_contracts`` (main contracts), ``ma_fund_ref`` (ETF list) and
+``ma_bond_ref`` (convertible bonds via the commercial Tushare source) so the
+instrument-search endpoint and futures parsing have real data behind them
 (review V-12 plugin scope). Every step degrades silently: a missing optional
-dependency or a source outage logs and returns an empty result instead of raising.
+dependency, an unconfigured token or a source outage logs and returns an empty
+result instead of raising.
 """
 from __future__ import annotations
 
@@ -16,7 +18,7 @@ from .events import emit_data_ready
 
 _log = logging.getLogger("multi_asset.ref_sync")
 
-__all__ = ["sync_future_contracts", "sync_fund_refs", "sync_all"]
+__all__ = ["sync_future_contracts", "sync_fund_refs", "sync_bond_refs", "sync_all"]
 
 # Vendor column candidates. Chinese names live in data/akshare_cn.json, not here:
 # the i18n gate forbids CJK literals in *.py sources (load_data is cached).
@@ -131,5 +133,31 @@ def sync_fund_refs() -> dict:
     return {"rows": written}
 
 
+def sync_bond_refs() -> dict:
+    """Upsert convertible-bond reference rows (``cb_basic``) into ma_bond_ref.
+
+    Exchanges come from the tushare ``ts_code`` suffix (``.SH`` / ``.SZ``); the
+    commercial source is BYOK, so an unconfigured token or a missing entitlement
+    degrades to a ``skipped`` marker (the free chain carries no bond reference).
+    """
+    try:
+        from .adapters import build_provider
+        provider = build_provider("BOND", "tushare")
+    except Exception as err:      # noqa: BLE001 -- plugin/contract missing
+        _log.info("tushare bond provider unavailable: %s", err)
+        return {"rows": 0, "skipped": "source_unavailable"}
+    try:
+        rows = provider.bond_reference()
+    except Exception as err:      # noqa: BLE001 -- token/entitlement/source
+        _log.info("cb_basic reference fetch failed: %s", err)
+        return {"rows": 0, "skipped": "source_error"}
+    if not rows:
+        return {"rows": 0, "skipped": "empty"}
+    written = models.upsert_bond_ref(rows)
+    emit_data_ready({"asset_types": ["BOND"], "rows": written, "scope": "ref_sync"})
+    return {"rows": written}
+
+
 def sync_all() -> dict:
-    return {"futures": sync_future_contracts(), "funds": sync_fund_refs()}
+    return {"futures": sync_future_contracts(), "funds": sync_fund_refs(),
+            "bonds": sync_bond_refs()}

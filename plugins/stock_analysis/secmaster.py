@@ -68,14 +68,21 @@ _PREFIX_RE = re.compile(r"^(sh|sz|bj|hk|us)(\w+)$", re.I)
 def _infer_market(code: str) -> tuple[str, str]:
     """裸码 → (market, exchange)。CN 码同时推断交易所。"""
     c = code.upper()
+    # 交易所后缀（Yahoo/东财风）：0700.HK → HK/HKEX；AAPL.US → US（v2.1.0）
+    sm = re.match(r"^([0-9]{1,5}|[A-Z]{1,6})\.(HK|US)$", c)
+    if sm:
+        return (HK, "HKEX") if sm.group(2) == "HK" else (US, "US")
+    # 港股裸码 1~5 位（0700/00700/9988/9618）必须先于 CN 首字符分支：
+    # 9/4/8/5 开头的 4 位港股（9988 阿里、9618 京东、9888 百度）否则会被 CN 分支
+    # 因 startswith 截胡。A 股证券代码恒 6 位，6 位码不进此分支，零误伤（v2.1.0）。
+    if re.match(r"^\d{1,5}$", c):
+        return HK, "HKEX"
     if c.startswith(("4", "8", "920")) or c.startswith(("4", "8")):
         return CN, _cn_exchange(c)
     if c.startswith(("5", "6", "9")):
         return CN, _cn_exchange(c)
     if c.startswith(("0", "1", "2", "3")) and len(c) == 6:
         return CN, _cn_exchange(c)
-    if re.match(r"^\d{5}$", c):
-        return HK, "HKEX"
     if re.match(r"^[A-Z]{1,5}$", c):
         return US, "US"
     return CN, _cn_exchange(c) if len(c) == 6 else ""

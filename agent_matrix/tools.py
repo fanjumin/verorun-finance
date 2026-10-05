@@ -766,37 +766,19 @@ def _tool_generate_markdown(args):
             prompt_text += f'\n大纲要求：{outline}'
         prompt_text += '\n请直接输出Markdown格式内容，包含标题（#）、段落、列表、代码块等格式化元素。'
 
-        # 读取 SiliconFlow API Key（走硅基流动默认）
-        from models import get_db
-        with get_db() as conn:
-            row = conn.execute("SELECT value FROM system_config WHERE key='siliconflow_api_key'").fetchone()
-        api_key = row['value'] if row else os.environ.get('SILICONFLOW_API_KEY', '')
-        if not api_key:
-            # 兜底 dashscope
-            with get_db() as conn:
-                row = conn.execute("SELECT value FROM system_config WHERE key='dashscope_text_key'").fetchone()
-            if row:
-                api_key = row['value']
-                base_url = 'https://dashscope.aliyuncs.com/compatible-mode/v1'
-                model = 'qwen-turbo'
-            else:
-                return '❌ API Key 未配置，请在系统设置中配置硅基流动或阿里云 API Key'
-        else:
-            base_url = 'https://api.siliconflow.cn/v1'
-            model = 'Qwen/Qwen2.5-14B-Instruct'
-
-        from openai import OpenAI
-        client = OpenAI(api_key=api_key, base_url=base_url)
-        resp = client.chat.completions.create(
-            model=model,
+        from agent_matrix.engine import get_gateway
+        from agent_matrix.model_resolver import resolve_model_args
+        gw = get_gateway()
+        content = gw.chat(
             messages=[
                 {'role': 'system', 'content': _('You are a professional document writing assistant. Output only Markdown content, without any additional explanations.')},
                 {'role': 'user', 'content': prompt_text}
             ],
             temperature=0.5,
-            max_tokens=4096
+            max_tokens=4096,
+            module='tools.generate_markdown',
+            **resolve_model_args({}),
         )
-        content = resp.choices[0].message.content or ''
         if not content.strip():
             return '❌ AI 内容生成为空，请重试'
 
@@ -838,33 +820,19 @@ def _tool_generate_docx(args):
 
         prompt_text = f'请撰写一篇关于"{topic}"的Word文档，包含{sections}个章节。\n风格要求：{style_desc}\n请输出Markdown格式，包含标题（##）、段落、列表。'
 
-        # 读取 API Key（硅基流动优先）
-        from models import get_db
-        with get_db() as conn:
-            row = conn.execute("SELECT value FROM system_config WHERE key='siliconflow_api_key'").fetchone()
-        api_key = row['value'] if row else os.environ.get('SILICONFLOW_API_KEY', '')
-        if not api_key:
-            with get_db() as conn:
-                row = conn.execute("SELECT value FROM system_config WHERE key='dashscope_text_key'").fetchone()
-            if row:
-                api_key = row['value']
-                base_url, model = 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'qwen-turbo'
-            else:
-                return _('❌ API Key Not Configured')
-        else:
-            base_url, model = 'https://api.siliconflow.cn/v1', 'Qwen/Qwen2.5-14B-Instruct'
-
-        from openai import OpenAI
-        client = OpenAI(api_key=api_key, base_url=base_url)
-        resp = client.chat.completions.create(
-            model=model,
+        from agent_matrix.engine import get_gateway
+        from agent_matrix.model_resolver import resolve_model_args
+        gw = get_gateway()
+        md_content = gw.chat(
             messages=[
                 {'role': 'system', 'content': _('You are a professional document writing assistant. Output structured Markdown content with multiple levels of headings and paragraphs, without any additional explanations.')},
                 {'role': 'user', 'content': prompt_text}
             ],
-            temperature=0.5, max_tokens=4096
+            temperature=0.5,
+            max_tokens=4096,
+            module='tools.generate_docx',
+            **resolve_model_args({}),
         )
-        md_content = resp.choices[0].message.content or ''
         if not md_content.strip():
             return _('❌ AI Content Generation is Empty')
 

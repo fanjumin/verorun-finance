@@ -6,7 +6,7 @@ Agent Matrix — 模型选择策略解析器（§3）
 
   tier     → system_config 查 model_tier_{tier}（provider_model_id），命中即用
   explicit → 策略内显式 provider + model
-  inherit / fallback → 全局默认（ai_text_provider / ai_text_model，兜底 PROVIDER_CONFIGS）
+  inherit / fallback → 全局默认（system_config 种子 ai_text_provider / ai_text_model）
 
 统一入口，供各插件复用，避免在 content_factory / enterprise_verify 等处重复实现。
 """
@@ -18,8 +18,8 @@ logger = logging.getLogger(__name__)
 
 
 def resolve_model_args(model_policy: dict,
-                       default_provider: str = 'siliconflow',
-                       default_model: str = 'deepseek-ai/DeepSeek-V3') -> dict:
+                       default_provider: str = '',
+                       default_model: str = '') -> dict:
     """按 model_policy 三层策略解析模型参数，返回 get_gateway().chat() 可用的 kwargs。
 
     参数:
@@ -43,7 +43,10 @@ def resolve_model_args(model_policy: dict,
         model = model_policy.get('model', '')
         if provider and model:
             return {'provider': provider, 'model': model}
-    # 3. inherit / fallback：全局默认（system_config，兜底 PROVIDER_CONFIGS）
+    # 3. inherit / fallback：全局默认（system_config 种子 ai_text_provider/ai_text_model）
     provider = _get_system_key('ai_text_provider') or default_provider
     model = _get_system_key('ai_text_model') or default_model
+    if not provider or not model:
+        logger.error('system_config 缺少 ai_text_provider/ai_text_model 且无显式入参，'
+                     '模型解析失败（请确认部署已执行 deploy/seed_data.py 种子）')
     return {'provider': provider, 'model': model}

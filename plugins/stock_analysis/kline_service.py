@@ -163,7 +163,10 @@ def kline_payload(symbol: str, period: str = "daily", adjust: str = "hfq",
             "date": pd.Timestamp(idx).strftime(_fmt),
             "o": _round(row[o]), "h": _round(row[h]),
             "l": _round(row[l]), "c": _round(row[c]),
-            "vol": _int_or_none(row.get("volume")),
+            # v2.1.0：境外源（polygon/fmp）帧列名为 vol，A 股源（akshare/tushare）为 volume；
+            # volume 缺失或为 null 时回退读 vol，否则境外成交量恒为 null。
+            "vol": _int_or_none(row.get("volume") if row.get("volume") is not None
+                                else row.get("vol")),
             "amount": _int_or_none(row.get("amount")),   # 帧有 amount 列则透传，缺失为 null
         })
 

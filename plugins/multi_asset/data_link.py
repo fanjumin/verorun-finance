@@ -20,9 +20,111 @@ from . import adapters, asset_symbol as sym, models, trade_calendar
 _log = logging.getLogger("multi_asset.data_link")
 
 __all__ = ["resolve", "fetch_bars", "fetch_quote", "fetch_profile",
-           "chain_sources", "gateway_available", "SOURCE_ORDER"]
+           "chain_sources", "gateway_available", "SOURCE_ORDER",
+           "VENDOR_SOURCES", "EGRESS_PURPOSES", "check_egress", "guard_egress"]
 
 SOURCE_ORDER = {at: adapters.chain_sources(at) for at in adapters.CHAINS}
+
+# Governance tags for commercial sources (license inheritance, GB/T 42775-2023):
+# ingest never loosens the provider's license, and the scope defaults to the
+# strictest setting (ma_license.allow_* default 0). A source absent from this map
+# is a free source: rows stay untagged (NULL) rather than invent an origin.
+VENDOR_SOURCES = {
+    "tushare": {"license_id": "vendor:tushare", "provider": "tushare",
+                "origin": "vendor"},
+}
+
+
+def _vendor_of(source):
+    return VENDOR_SOURCES.get(str(source or "").strip().lower())
+
+
+def _governance_tags(source, asset_type) -> dict:
+    """In-flight tags for a bar row (empty for free sources == NULL columns)."""
+    vendor = _vendor_of(source)
+    if not vendor:
+        return {}
+    return {"license_id": vendor["license_id"], "origin": vendor["origin"],
+            "dataset_id": "ma:%s:%s" % (vendor["provider"],
+                                        str(asset_type).upper())}
+
+
+def _register_source(source, asset_type) -> None:
+    """Best-effort license + dataset registration; never breaks the fetch path."""
+    vendor = _vendor_of(source)
+    if not vendor:
+        return
+    at = str(asset_type).upper()
+    try:
+        models.ensure_license({
+            "license_id": vendor["license_id"], "provider": vendor["provider"],
+            "scope": "BYOK user token; redistribution governed by the provider terms",
+            "allow_export": 0, "allow_forward": 0, "allow_llm": 0,
+        })
+        models.ensure_dataset_registry({
+            "dataset_id": "ma:%s:%s" % (vendor["provider"], at),
+            "name": "%s %s bars" % (vendor["provider"], at),
+            "asset_types": at, "origin": vendor["origin"],
+            "provider": vendor["provider"], "license_id": vendor["license_id"],
+            "security_level": vendor.get("security_level"),
+        })
+    except Exception as err:      # noqa: BLE001 -- registration must not block fetch
+        _log.warning("governance registration failed for %s/%s: %s",
+                     vendor["provider"], at, err)
+
+
+# ── egress gate (GB/T 42775-2023) ───────────────────────────────────────────
+# Purpose -> ma_license column. Consumers call check_egress()/guard_egress() before
+# exporting, forwarding or feeding rows into an LLM context. Fail-closed: an
+# unregistered license, or a registry we cannot read, denies rather than allows.
+EGRESS_PURPOSES = {"export": "allow_export", "forward": "allow_forward",
+                   "llm": "allow_llm"}
+
+
+def check_egress(purpose: str, license_ids) -> dict:
+    """Decide whether the given license ids permit this egress purpose.
+
+    Rows with no license id carry no restriction and pass. Any id missing from
+    ``ma_license`` is denied (we cannot prove it is safe to send out).
+    """
+    column = EGRESS_PURPOSES.get(str(purpose or "").strip().lower())
+    if not column:
+        raise ValueError("unknown egress purpose: %r" % (purpose,))
+    ids = sorted({str(i) for i in (license_ids or []) if i})
+    if not ids:
+        return {"allowed": True, "purpose": purpose, "denied": [], "missing": [],
+                "reason": "untagged"}
+    try:
+        licences = models.get_licenses(ids)
+    except Exception as err:      # unreadable registry -> fail closed
+        _log.warning("egress check could not read the license registry: %s", err)
+        return {"allowed": False, "purpose": purpose, "denied": list(ids),
+                "missing": list(ids), "reason": "registry_unavailable"}
+    missing = [i for i in ids if i not in licences]
+    denied = [i for i in ids if i in licences and not licences[i].get(column)]
+    if missing:
+        reason = "license_not_registered"
+    elif denied:
+        reason = "not_permitted"
+    else:
+        reason = "ok"
+    return {"allowed": not missing and not denied, "purpose": purpose,
+            "denied": denied, "missing": missing, "reason": reason}
+
+
+def guard_egress(purpose: str, license_ids, asset_type: str = "",
+                 symbol: str = "", source: str = "") -> dict:
+    """``check_egress`` plus audit trail: a denial is recorded in ma_fetch_log."""
+    decision = check_egress(purpose, license_ids)
+    if not decision["allowed"]:
+        try:
+            models.record_fetch(
+                asset_type or "", symbol or "-", source=source or None, ok=False,
+                warning="egress_denied:%s:%s" % (decision["purpose"],
+                                                 decision["reason"]))
+        except Exception as err:      # audit must never mask the denial itself
+            _log.warning("egress denial audit failed: %s", err)
+    return decision
 
 
 def resolve(raw: str, asset_type: str = None, exchange: str = None) -> dict:
@@ -43,6 +145,7 @@ def _bars_to_rows(asset_type: str, code: str, exchange: str, freq: str, frame,
                   source: str):
     """Convert an OHLCV DataFrame into ma_bars row dicts (attribution applied)."""
     rows = []
+    tags = _governance_tags(source, asset_type)
     for idx, record in frame.iterrows():
         try:
             stamp = idx.to_pydatetime()
@@ -62,6 +165,7 @@ def _bars_to_rows(asset_type: str, code: str, exchange: str, freq: str, frame,
             "volume": record.get("volume"), "amount": record.get("amount"),
             "value": record.get("close") if asset_type in ("FUND", "BOND") else None,
             "source": source,
+            **tags,
         })
     return rows
 
@@ -97,6 +201,7 @@ def fetch_bars(symbol: str, asset_type: str = None, exchange: str = None,
     rows = _bars_to_rows(at, code, ex, freq, frame, source) if frame is not None else []
     written = 0
     if persist and rows:
+        _register_source(source, at)
         try:
             written = models.upsert_bars(rows)
         except Exception as err:      # persistence is best-effort, fetch already succeeded

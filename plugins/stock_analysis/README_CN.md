@@ -1,10 +1,10 @@
 # VeroRun 股票分析插件（stock_analysis）
 
-> **当前版本**：v1.7.1（以 `plugin.json` 为准，变更详见 `CHANGELOG.md`）
+> **当前版本**：v2.1.0（以 `plugin.json` 为准，变更详见 `CHANGELOG.md`）
 > **文档定位**：本文件面向**开发/运维/审计**，描述架构、模块职责、数据流、存储模型与部署约束。
 > 面向使用者的能力清单、端点用法与桌面端契约，见 [`USAGE.md`](./USAGE.md)；平台技能声明见 [`SKILL.md`](./SKILL.md)。
 
-面向 VeroRun 的 A 股研究插件，为**管理员**与**金融分析 Agent** 提供技术面、估值、情绪面及 AI 综合研判能力。插件通过 VeroRun 标准生命周期加载，不绑定内核具体模型，不保存交易订单或用户资产数据。
+面向 VeroRun 的 A 股研究插件，为**管理员**与**金融分析 Agent** 提供技术面、估值、情绪面及 AI 综合研判能力。插件通过 VeroRun 标准生命周期加载，不绑定内核具体模型，不保存交易订单或用户资产数据。v2.1.0 起行情取数扩展至美股（Polygon）与港股（FMP，`00700→0700.HK`），研判与估值框架仍以 A 股为主。
 
 > **重要声明**：本插件输出的是**研究信息与风险提示，不是自动交易指令**。所有分析结果受数据延迟、停牌、缺失指标与模型误判影响，仅供研究参考，**不构成投资建议或收益承诺**。
 
@@ -88,7 +88,7 @@ plugins/stock_analysis/
 │   ├── test_alerts_api.py
 │   ├── test_sse_stream.py
 │   └── REGRESSION_TESTING.md
-├── SKILL.md                     # 平台技能声明（v1.7.1）
+├── SKILL.md                     # 平台技能声明（v2.1.0）
 ├── USAGE.md                     # 用法说明（商店同步自动入 KB）
 └── README.md                    # 本文件
 ```
@@ -110,7 +110,7 @@ verorun/plugins/stock_analysis/
 - 依赖：`pyyaml>=6.0`、`numpy>=2.0`、`pandas>=2.0`、`requests>=2.31`、`tushare>=1.4.0`
   - 可选备源：`akshare>=1.14.0`（延迟导入，缺装不影响主链路）
   - pandas 已加入主项目依赖，部署时随系统依赖安装，无需单独维护插件 venv
-- 外呼公网数据源的网络访问权限（Tushare / AkShare / Sina / Tencent）
+- 外呼公网数据源的网络访问权限（Tushare / AkShare / Sina / Tencent；v2.1.0 起境外行情另需 Polygon / FMP）
 
 ---
 
@@ -172,11 +172,11 @@ verorun/plugins/stock_analysis/
 
 | 数据类别 | Provider 顺序 | 说明 |
 | --- | --- | --- |
-| `KLINE`（历史日线） | tushare → akshare → sina | failover 链，按 `supports()` 探针裁剪 |
+| `KLINE`（历史日线） | tushare → akshare → sina → polygon → fmp | A 股 failover 链；polygon 美股，fmp 美股备援 + 港股（v2.1.0） |
 | `FUNDAMENTAL`（财报四表） | tushare | 无 token 自动降级，证据链留痕「未获得(原因)」 |
 | `MONEYFLOW`（资金流） | tushare | 同上 |
-| `NEWS`（新闻标题） | sina | 情绪关键词统计 |
-| `QUOTE`（实时行情） | tencent | 现价、涨跌幅、PE(TTM)、PB、换手率 |
+| `NEWS`（新闻标题） | sina → polygon → fmp | A 股情绪关键词；polygon 美股，fmp 美股+港股（v2.1.0） |
+| `QUOTE`（实时行情） | tencent → sina → polygon → fmp | tencent/sina 覆盖 A 股；polygon 美股，fmp 港股报价（v2.1.0） |
 | `INDEX`（指数） | tencent | 上证/深成/创业板 |
 
 - `DATA_PROVIDER` 语义为**首选源覆盖**：指定值被排到其所在链头部；空值完全按上表顺序。
@@ -473,7 +473,7 @@ python tools/compare_baseline.py tests/fixtures/baseline_v171.json /tmp/current_
 | 文件 | 定位 |
 | --- | --- |
 | [`USAGE.md`](./USAGE.md) | 使用者向：能力清单、端点表、token 配置、桌面端对接契约（商店同步自动入 KB） |
-| [`SKILL.md`](./SKILL.md) | 平台技能声明（front-matter + 正文，v1.7.1） |
+| [`SKILL.md`](./SKILL.md) | 平台技能声明（front-matter + 正文，v2.1.0） |
 | [`CHANGELOG.md`](./CHANGELOG.md) | 版本变更历史与审计修复记录 |
 | [`tests/REGRESSION_TESTING.md`](./tests/REGRESSION_TESTING.md) | 回归测试规范（用例编号 / 优先级 / 验收门槛） |
 

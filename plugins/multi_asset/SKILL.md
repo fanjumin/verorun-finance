@@ -3,12 +3,12 @@ identifier: multi-asset-skill
 name: Multi-Asset Data Skill
 description: 多资产（期货/期权/基金/债券）行情与参考数据技能 — CFI 对齐的标的识别、交易所双字段建模、链式 failover 取数与本地落库，输出带来源与风险披露的结构化数据
 tagline: 期货/期权/基金/债券 统一取数与入库
-version: 1.0.0
+version: 1.2.0
 author: VeroRun
 tags: [finance, futures, options, funds, bonds, multi-asset, agent]
 ---
 
-# Multi-Asset Data Skill v1.0.0
+# Multi-Asset Data Skill v1.2.0
 
 面向 VeroRun 的**多资产数据 + 数据治理底座**技能，由 `multi_asset` 插件驱动。
 它不重复造数据层：标的识别与取数链路复用 `stock_analysis` 的 provider 契约

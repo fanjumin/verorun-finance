@@ -1,10 +1,10 @@
 # Stock Analysis (stock_analysis)
 
-> **Version**: v2.0.2 (see `plugin.json`; full changelog in `CHANGELOG.md`)
+> **Version**: v2.1.0 (see `plugin.json`; full changelog in `CHANGELOG.md`)
 > **Audience**: developers / ops / auditors — architecture, module responsibilities, data flow, storage model, deployment constraints.
 > For end-user capabilities, endpoint reference, and desktop contract, see [`USAGE.md`](./USAGE.md); platform skill declaration see [`SKILL.md`](./SKILL.md).
 
-A-share research plugin for VeroRun, providing technical, valuation, sentiment, and AI-assisted analysis for **admins** and the **financial analysis Agent**. The plugin loads through the VeroRun standard lifecycle, does not bind to a specific kernel model, and stores no trading orders or user asset data.
+A-share research plugin for VeroRun, providing technical, valuation, sentiment, and AI-assisted analysis for **admins** and the **financial analysis Agent**. The plugin loads through the VeroRun standard lifecycle, does not bind to a specific kernel model, and stores no trading orders or user asset data. Since v2.1.0, market data also covers US stocks (Polygon) and HK stocks (FMP, `00700→0700.HK`); the research and valuation framework remains A-share centric.
 
 > **Disclaimer**: outputs are **research information and risk prompts, not auto-trading instructions**. All results are subject to data delays, suspensions, missing indicators, and model error. For research reference only; **not investment advice or a return guarantee**.
 
@@ -105,11 +105,11 @@ plugins/stock_analysis/
 
 | Category | Provider order | Notes |
 |----------|---------------|-------|
-| `KLINE` (daily) | tushare → akshare → sina | failover chain, pruned by `supports()` probe |
+| `KLINE` (daily) | tushare → akshare → sina → polygon → fmp | CN failover chain; polygon for US, fmp for US backup + HK |
 | `FUNDAMENTAL` | tushare | auto-degrades without token, evidence chain logs "unavailable (reason)" |
 | `MONEYFLOW` | tushare | same |
-| `NEWS` | sina | sentiment keyword statistics |
-| `QUOTE` (realtime) | tencent | price, change%, PE(TTM), PB, turnover |
+| `NEWS` | sina → polygon → fmp | CN sentiment keywords; polygon for US, fmp for US + HK |
+| `QUOTE` (realtime) | tencent → sina → polygon → fmp | tencent/sina for CN; polygon for US, fmp for HK quotes |
 | `INDEX` | tencent | SSE / SZSE / ChiNext |
 
 - `data_provider` setting = preferred source override (pinned to chain head); empty = default order.
@@ -173,14 +173,14 @@ Independent schema `stock_analysis` (borrowed from shared connection pool):
 | Key | Type | Description |
 |-----|------|-------------|
 | `tushare_token` | string (password) | User's own Tushare Pro token; empty = auto fallback to free sources |
-| `fmp_api_key` | string (password) | Financial Modeling Prep API key (US stock fundamentals) |
+| `fmp_api_key` | string (password) | Financial Modeling Prep API key (US/HK quotes & K-line, global fundamentals; HK code auto-converted to `0700.HK`) |
 | `polygon_api_key` | string (password) | Polygon.io API key (US stock K-line/quotes/news) |
 | `data_provider` | enum | Preferred source override: "" / sina / tencent / akshare / tushare / fmp / polygon |
 | `data_cache_dir` | string | Disk cache directory (default `./data/cache`) |
 | `auto_deep_research_on_batch` | boolean | Auto-enqueue deep research for high-confidence symbols after batch (default false) |
 | `index_selection` | array | Indices shown on market overview (default: SSE / SZSE Component / ChiNext) |
 
-**Environment overrides**: `TUSHARE_TOKEN` (highest), `STOCK_DATA_CACHE_DIR`.
+**Environment overrides**: `TUSHARE_TOKEN`, `POLYGON_API_KEY`, `FMP_API_KEY` (highest priority), `STOCK_DATA_CACHE_DIR`.
 
 Model selection, API keys, quotas, caching, and usage audit are all handled by the VeroRun `UnifiedLLM` kernel. The plugin uses `standard` tier and does not directly specify provider/model/keys.
 

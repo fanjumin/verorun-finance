@@ -17,6 +17,31 @@
 - **运行期动作（服务器执行）**：`hooks.provides/listens` 声明修改后需在管理端对插件 **disable→enable** 激活（平台事实：仅修改声明不会重新同步）；`auto_deep_research_on_batch` 默认关闭，逐项灰度开启。
 - **接线点② 生效前提（方案 §3.4）**：`system_config.prompt_resolver_enabled=true`、memory_engine `enable_reflexion=true`、`reflexion_failure_only=true`（默认值均符合）。
 
+## v2.1.0 — 2026-10-05（境外市场接入：美股 + 港股行情）
+
+### Features
+
+- **符号层支持境外市场**：`providers/commons.py market_symbol()` 新增五条前置分支——UID（`US:AAPL`/`HK:00700`）幂等、境外前缀（`usAAPL`/`hk00700`）统一转 UID、交易所后缀（`AAPL.US`/`0700.HK`）、1~5 位纯数字判港股、纯字母判美股；A 股六段前缀规则逐字保留（37 样本新旧差分，除纯空格脏输入经 `strip()` 收敛外零变化）。修复根因：旧实现无条件 `else → sz` 导致 `AAPL` 被改写成 `szAAPL`，唯一可达源 tushare 必抛 invalid symbol、正确源 polygon 被市场门控拒绝，美股全链结构性不可达。
+- **secmaster 港股解析**：`_infer_market()` 新增 `.HK/.US` 后缀识别；港股裸码判定从「仅恰好 5 位」放宽为 1~5 位并**前置到 CN 首字符分支之前**——修复 `9988`/`9618`/`9888` 等 9 开头 4 位港股（以及 4/8/5 开头）被 `startswith("9")` 等规则截胡为沪/京市的顺序缺陷。
+- **FMP 接入行情链**：`gateway.ROUTE` 的 KLINE / QUOTE / NEWS 三链接入 `FMPProvider`（此前该 provider 声明了三类能力却不在任何链中，属永不被调用的死代码）；美股由 Polygon 主取、FMP 备援，港股报价/K 线/新闻由 FMP 覆盖。市场门控为 fail-fast：CN 源（tencent/sina/tushare/akshare）收到境外代码直接跳过，不产出错误 CN 数据。
+- **FMP 港股代码适配**：新增 `FMPProvider._canonical_sym()`，以 secmaster 为唯一权威判市，将内部 5 位 UID 收敛为 FMP 的 4 位 `.HK` REST 形态（`HK:00700 → 0700.HK`、`HK:00005 → 0005.HK`、`HK:09988 → 9988.HK`）；美股代码原样。
+- **境外 K 线成交量修复**：`kline_service` 渲染 bars 时 `volume` 缺失/为 null 回退读 `vol`（polygon/fmp 帧列名为 `vol`，旧逻辑只读 `volume`，境外成交量恒为 null）。
+- **配置补齐**：`config.yaml` 新增 `POLYGON_API_KEY` / `FMP_API_KEY` 段；`DATA_PROVIDER` 注释取值与 plugin.json enum 同步（补 fmp/polygon/wind/choice）；plugin.json `config` 段补齐两键镜像；版本 2.0.2 → 2.1.0（MINOR：新增境外市场能力，向后兼容）。
+- 新增 `tests/test_overseas.py`：符号层 A 股/境外双侧断言、市场门控（HK→fmp True / polygon False；US→polygon True）、FMP `0700.HK` 与 Polygon `AAPL` 的 URL 契约（全 mock，不触网）。
+
+### Boundaries（能力边界，如实声明）
+
+- 境外仅支持**日线**：polygon/fmp 均只声明 daily 周期，请求 weekly/monthly 会收到明确报错「周期暂无可用数据源」，不以日线冒充。
+- `market_calendar` 仅含 A 股交易日；境外节假日下磁盘缓存新鲜度判定可能多触发一次回源（不影响数据正确性）。
+- 带点/连字符的美股代码（`BRK.B` / `BF-B`，且 FMP 用连字符、Polygon 用点，两家不统一）暂不支持，后续单独适配。
+- 本版全部为 mock 层验证（开发机无 Polygon/FMP 凭据）；真实联网验收待 key 配置后在有网环境补做。
+- **multi_asset 不在本次范围**：其 Exchange 枚举/后缀映射/解析/日历全部境内化，境外化属独立项目，另立方案。
+
+### Notes
+
+- 凭据经 `SecretResolver` 每次 resolve 实时读取（插件设置页/env/config.yaml），配置页填入 key 后无需重启即生效。
+- SKILL.md 改动后需经 `/skills/submit|import` 重新注册晋升 approved（平台既有流程）。
+
 ## v2.0.2 — 2026-10-01
 
 ### Notes

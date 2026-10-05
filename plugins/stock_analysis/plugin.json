@@ -2,7 +2,7 @@
   "name": "Stock Analysis",
   "name_i18n_key": "plugin.name",
   "identifier": "stock_analysis",
-  "version": "2.0.2",
+  "version": "2.1.0",
   "description": "A-share multi-dimensional stock analysis with technical, fundamental, sentiment and AI-assisted research.",
   "author": "easykai",
   "min_app_version": "0.10.0",
@@ -39,7 +39,9 @@
   "config": {
     "data_provider": "",
     "data_cache_dir": "./data/cache",
-    "auto_deep_research_on_batch": false
+    "auto_deep_research_on_batch": false,
+    "fmp_api_key": "",
+    "polygon_api_key": ""
   },
   "permissions": [
     "network:request",

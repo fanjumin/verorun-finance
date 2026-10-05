@@ -46,15 +46,20 @@ _log = logging.getLogger("stock_analysis.gateway")
 # 终端桥（Wind/Choice）挂链尾：DATA_PROVIDER=wind|choice 偏好时经
 # apply_preference 前置；桥未启动时连接失败计入冷却，不影响默认主源链路。
 ROUTE: dict = {
+    # FMP(market=GLOBAL) 位于 Polygon 之后：美股由 Polygon 主取、FMP 备援；
+    # 港股 K 线由 FMP 主取（00700 → 0700.HK 的代码形态在 FMPProvider 内转换，v2.1.0）。
     DataCategory.KLINE: [TushareProvider, AkshareProvider, SinaProvider, PolygonProvider,
-                         WindProvider, ChoiceProvider],
+                         FMPProvider, WindProvider, ChoiceProvider],
     # akshare 免费备源插在 tushare 之后：有积分走 tushare（字段最全），
     # 无积分自动落到这里，财报页不至于空态。
     DataCategory.FUNDAMENTAL: [TushareProvider, AkshareFundamentalProvider,
                                FMPProvider, UserSuppliedProvider],
     DataCategory.MONEYFLOW: [TushareProvider],
-    DataCategory.NEWS: [SinaProvider, PolygonProvider],
-    DataCategory.QUOTE: [TencentProvider, SinaProvider, PolygonProvider, WindProvider, ChoiceProvider],
+    # FMP 补链尾：美股/港股新闻备源（Sina 仅 A 股、Polygon 仅美股，v2.1.0）
+    DataCategory.NEWS: [SinaProvider, PolygonProvider, FMPProvider],
+    # FMP 位于 Polygon 之后：港股实时报价（00700→0700.HK）由 FMP 覆盖（v2.1.0）
+    DataCategory.QUOTE: [TencentProvider, SinaProvider, PolygonProvider, FMPProvider,
+                         WindProvider, ChoiceProvider],
     DataCategory.INDEX: [TencentProvider, WindProvider, ChoiceProvider],
     # S4：A 股一致预期免费源（同花顺，免 key）挂链尾 —— 有 FMP key 或有 Tushare
     # 2000 积分时仍优先走前面两源（字段更全），无 key 自动落到这里。

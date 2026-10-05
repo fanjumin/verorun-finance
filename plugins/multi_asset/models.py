@@ -686,13 +686,17 @@ def tag_dataset_rows(*, dataset_id, license_id=_TAG_KEEP, security_level=_TAG_KE
 
 # ── 参考表 upsert ───────────────────────────────────────────────────────────
 
-def _upsert(table: str, key_cols, cols, rows) -> int:
-    """通用批量 upsert（幂等：唯一键冲突则更新其余列）。"""
+def _upsert(table: str, key_cols, cols, rows, update: bool = True) -> int:
+    """通用批量 upsert（幂等：唯一键冲突则更新其余列）。
+
+    ``update=False`` → 冲突行原样保留（DO NOTHING）。许可/数据集台账用它做
+    「登记一次、不覆盖」：定时刷新不得把运维显式放开的 allow_* 重置回默认。
+    """
     rows = [r for r in (rows or []) if r]
     if not rows:
         return 0
     all_cols = list(key_cols) + [c for c in cols if c not in key_cols]
-    update_cols = [c for c in all_cols if c not in key_cols]
+    update_cols = [c for c in all_cols if c not in key_cols] if update else []
     placeholders = ",".join(["(" + ",".join(["?"] * len(all_cols)) + ")"] * len(rows))
     params = []
     for row in rows:
@@ -740,6 +744,46 @@ def upsert_option_greeks(rows) -> int:
     return _upsert("ma_option_greeks", ("symbol", "exchange", "trade_date"),
                    ("implied_vol", "delta", "gamma", "vega", "theta", "rho",
                     "source"), rows)
+
+
+# ── 治理台账（登记一次，不覆盖）─────────────────────────────────────────────
+
+def ensure_license(row) -> int:
+    """登记一条许可台账（insert-if-absent）。
+
+    冲突时不更新：运维在后台显式放开的 allow_export / allow_forward / allow_llm
+    不得被下一次定时刷新重置回默认最严。默认值由表定义给出（全 0 = 最严）。
+    """
+    return _upsert("ma_license", ("license_id",),
+                   ("provider", "scope", "allow_export", "allow_forward",
+                    "allow_llm", "valid_from", "valid_until", "note"),
+                   [row], update=False)
+
+
+def ensure_dataset_registry(row) -> int:
+    """登记一个数据集（insert-if-absent），供水位线/来源/级别/许可归属。"""
+    return _upsert("ma_dataset_registry", ("dataset_id",),
+                   ("name", "asset_types", "origin", "provider", "license_id",
+                    "security_level", "watermark", "row_count", "note"),
+                   [row], update=False)
+
+
+def get_licenses(license_ids) -> dict:
+    """按 license_id 批量读取许可台账，返回 {license_id: row}。
+
+    查不到的 id 不出现在结果里——调用方据此 fail-closed（无台账 = 不得外传）。
+    读库异常向上抛出，由调用方决定降级（同样 fail-closed）。
+    """
+    ids = sorted({str(i) for i in (license_ids or []) if i})
+    if not ids:
+        return {}
+    marks = ",".join(["?"] * len(ids))
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT license_id, provider, scope, allow_export, allow_forward, "
+            "allow_llm, valid_from, valid_until, note FROM ma_license "
+            "WHERE license_id IN (%s)" % marks, tuple(ids)).fetchall()
+        return {r["license_id"]: dict(r) for r in rows}
 
 
 def record_fetch(asset_type: str, symbol: str, exchange: str = None,
@@ -815,3 +859,122 @@ def storage_stats() -> dict:
             "(SELECT COUNT(*) FROM ma_bond_ref) AS bonds, "
             "(SELECT COUNT(*) FROM ma_fetch_log) AS logs").fetchone()
     return {k: int(row[k] or 0) for k in ("bars", "futures", "funds", "bonds", "logs")}
+
+
+# ── PIT 双时态运行时（写入 + as-of 读取）────────────────────────────────────
+# 两根时间轴：valid_from/valid_to（业务时间）× system_from/system_to（知识时间）。
+# 写入侧 system_from 一律不给默认值：漏传即 NULL → NOT NULL 报错（fail-loud），
+# 绝不用入库时间静默顶替（A4）。读取侧 as-of 回答「在某历史时点，我们所知的数据」。
+
+_PIT_FUND_KEYS = ("symbol", "exchange", "report_period", "statement_type",
+                  "metric", "valid_from", "system_from")
+_PIT_FUND_COLS = ("value", "unit", "system_to", "revision_of", "source",
+                  "origin", "dataset_id", "license_id", "security_level")
+
+_PIT_CONS_KEYS = ("symbol", "exchange", "forecast_period", "metric",
+                  "valid_from", "system_from")
+_PIT_CONS_COLS = ("value", "unit", "analyst_count", "system_to", "source",
+                  "origin", "dataset_id", "license_id", "security_level")
+
+_PIT_INDEX_KEYS = ("index_code", "symbol", "valid_from")
+_PIT_INDEX_COLS = ("index_exchange", "symbol_exchange", "weight", "valid_to",
+                   "system_from", "source", "origin", "dataset_id",
+                   "license_id", "security_level")
+
+
+def _fill_blank_defaults(rows, defaults) -> list:
+    """补 DDL 的 ``NOT NULL DEFAULT ''`` 列，但绝不碰 system_from（保持 fail-loud）。"""
+    out = []
+    for row in rows or []:
+        if not row:
+            continue
+        merged = dict(defaults)
+        merged.update(row)
+        out.append(merged)
+    return out
+
+
+def upsert_pit_fundamentals(rows) -> int:
+    """财报 PIT 行写入（双时态）。``system_from`` 必须来自发布事实，漏传即报错。"""
+    return _upsert("ma_pit_fundamentals", _PIT_FUND_KEYS, _PIT_FUND_COLS,
+                   _fill_blank_defaults(rows, {"exchange": "",
+                                               "statement_type": ""}))
+
+
+def upsert_pit_consensus(rows) -> int:
+    """一致预期 PIT 行写入（双时态），``system_from`` 同样 fail-loud。"""
+    return _upsert("ma_pit_consensus", _PIT_CONS_KEYS, _PIT_CONS_COLS,
+                   _fill_blank_defaults(rows, {"exchange": ""}))
+
+
+def upsert_index_membership(rows) -> int:
+    """指数成分写入（valid 轴；``system_from`` 仅存证，仍 fail-loud）。"""
+    return _upsert("ma_index_membership", _PIT_INDEX_KEYS, _PIT_INDEX_COLS,
+                   _fill_blank_defaults(rows, {"index_exchange": "",
+                                               "symbol_exchange": ""}))
+
+
+def pit_fundamentals_asof(symbol, as_of, exchange=None, statement_type=None,
+                          metric=None, report_period=None, limit=200) -> list:
+    """as-of 双时态读取：返回 as_of 时刻「已知」的财报指标。
+
+    双轴同时生效——业务轴 ``valid_from <= as_of`` 与知识轴
+    ``system_from <= as_of < system_to``（system_to 为空表示仍是最新版本）。
+    """
+    where = ["symbol = ?", "valid_from <= ?", "system_from <= ?",
+             "(system_to IS NULL OR system_to > ?)"]
+    params = [symbol, as_of, as_of, as_of]
+    for column, value in (("exchange", exchange),
+                          ("statement_type", statement_type),
+                          ("metric", metric),
+                          ("report_period", report_period)):
+        if value is not None:
+            where.append("%s = ?" % column)
+            params.append(value)
+    params.append(max(1, min(int(limit or 200), 1000)))
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT symbol, exchange, report_period, statement_type, metric, "
+            "value, unit, valid_from, system_from, system_to, revision_of, source "
+            "FROM ma_pit_fundamentals WHERE " + " AND ".join(where) +
+            " ORDER BY report_period DESC, metric LIMIT ?", tuple(params)).fetchall()
+        return [dict(r) for r in rows]
+
+
+def pit_consensus_asof(symbol, as_of, exchange=None, forecast_period=None,
+                       metric=None, limit=200) -> list:
+    """as-of 双时态读取：返回 as_of 时刻「已知」的一致预期。"""
+    where = ["symbol = ?", "valid_from <= ?", "system_from <= ?",
+             "(system_to IS NULL OR system_to > ?)"]
+    params = [symbol, as_of, as_of, as_of]
+    for column, value in (("exchange", exchange),
+                          ("forecast_period", forecast_period),
+                          ("metric", metric)):
+        if value is not None:
+            where.append("%s = ?" % column)
+            params.append(value)
+    params.append(max(1, min(int(limit or 200), 1000)))
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT symbol, exchange, forecast_period, metric, value, unit, "
+            "analyst_count, valid_from, system_from, system_to, source "
+            "FROM ma_pit_consensus WHERE " + " AND ".join(where) +
+            " ORDER BY forecast_period DESC, metric LIMIT ?", tuple(params)).fetchall()
+        return [dict(r) for r in rows]
+
+
+def index_membership_asof(index_code, as_of, limit=500) -> list:
+    """无偏成分查询：按 valid 轴取 as_of 当日成分。
+
+    本表按设计只做 valid 轴（消除幸存者偏差只依赖 valid_from/valid_to）；
+    system_from 仅入库存证，不参与过滤。
+    """
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT index_code, index_exchange, symbol, symbol_exchange, weight, "
+            "valid_from, valid_to FROM ma_index_membership "
+            "WHERE index_code = ? AND valid_from <= ? "
+            "AND (valid_to IS NULL OR valid_to >= ?) ORDER BY symbol LIMIT ?",
+            (index_code, as_of, as_of,
+             max(1, min(int(limit or 500), 2000)))).fetchall()
+        return [dict(r) for r in rows]

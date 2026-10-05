@@ -2,7 +2,8 @@
 """
 Agent Matrix — AI 引擎
 =====================
-支持 DashScope Qwen / OpenAI / DeepSeek / OpenRouter。
+支持任意 OpenAI 兼容供应商；模型目录唯一事实源 = provider_models 表
++ system_config 种子（ai_text_provider / ai_text_model）。
 复用 system_config 中的 API Key，无需额外配置。
 """
 from i18n import _
@@ -31,45 +32,6 @@ for _d in (_AUTH_CENTER_DIR, _PARENT_DIR):
 
 # 统一日志线程池（避免每次调用创建新线程）
 _LOG_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix='token-log')
-
-# 供应商默认配置
-PROVIDER_CONFIGS = {
-    'dashscope': {
-        'base_url': 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-        'default_model': 'qwen-turbo',
-        'key_ref': 'dashscope_text_key',
-    },
-    'openai': {
-        'base_url': 'https://api.openai.com/v1',
-        'default_model': 'gpt-4o-mini',
-        'key_ref': '',
-    },
-    'deepseek': {
-        'base_url': 'https://api.deepseek.com/v1',
-        'default_model': None,
-        'key_ref': '',
-    },
-    'openrouter': {
-        'base_url': 'https://openrouter.ai/api/v1',
-        'default_model': 'openai/gpt-4o-mini',
-        'key_ref': '',
-    },
-    'siliconflow': {
-        'base_url': 'https://api.siliconflow.cn/v1',
-        'default_model': 'deepseek-ai/DeepSeek-V3',
-        'key_ref': 'siliconflow_api_key',
-    },
-    'anthropic': {
-        'base_url': 'https://api.anthropic.com/v1/',
-        'default_model': 'claude-sonnet-4-5',
-        'key_ref': 'anthropic_api_key',
-    },
-    'hunyuan': {
-        'base_url': 'https://api.hunyuan.cloud.tencent.com/v1',
-        'default_model': 'hunyuan-turbos',
-        'key_ref': 'hunyuan_api_key',
-    },
-}
 
 
 def _get_system_key(key_name):

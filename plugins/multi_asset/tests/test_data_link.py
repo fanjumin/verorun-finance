@@ -165,10 +165,108 @@ class DataLinkTest(unittest.TestCase):
         self.assertEqual(data_link.resolve("rb2610")["key"], "FUTURE:SHFE:rb2610")
 
     def test_source_order_matches_the_chains(self):
-        self.assertEqual(data_link.SOURCE_ORDER["FUTURE"], ["akshare", "sina"])
+        self.assertEqual(data_link.SOURCE_ORDER["FUTURE"],
+                         ["tushare", "akshare", "sina"])
 
     def test_gateway_available_is_a_boolean(self):
         self.assertIsInstance(data_link.gateway_available(), bool)
+
+    def test_free_source_rows_stay_untagged(self):
+        """Free sources carry no license/origin (NULL) rather than a guessed one."""
+        with self._patch_fetch(_frame(), source="akshare"):
+            payload = data_link.fetch_bars("SA605", asset_type="FUTURE")
+        row = payload["bars"][-1]
+        self.assertIsNone(row.get("license_id"))
+        self.assertIsNone(row.get("origin"))
+        self.assertIsNone(row.get("dataset_id"))
+
+    def test_vendor_source_rows_inherit_the_license_tags(self):
+        with mock.patch.object(data_link.models, "ensure_license") as lic, \
+             mock.patch.object(data_link.models, "ensure_dataset_registry") as ds:
+            with self._patch_fetch(_frame(), source="tushare"):
+                payload = data_link.fetch_bars("rb2610", asset_type="FUTURE")
+        row = payload["bars"][-1]
+        self.assertEqual(row["license_id"], "vendor:tushare")
+        self.assertEqual(row["origin"], "vendor")
+        self.assertEqual(row["dataset_id"], "ma:tushare:FUTURE")
+        self.assertTrue(lic.called)
+        self.assertTrue(ds.called)
+
+    def test_governance_registration_failure_does_not_break_the_fetch(self):
+        with mock.patch.object(data_link.models, "ensure_license",
+                               side_effect=RuntimeError("db down")), \
+             self._patch_fetch(_frame(), source="tushare"):
+            payload = data_link.fetch_bars("rb2610", asset_type="FUTURE")
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["written"], 3)
+
+
+class EgressGateTest(unittest.TestCase):
+    """Fail-closed egress gate over ma_license (GB/T 42775-2023)."""
+
+    def setUp(self):
+        patcher = mock.patch.object(data_link.models, "record_fetch")
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _with_licences(self, mapping):
+        return mock.patch.object(data_link.models, "get_licenses",
+                                 return_value=mapping)
+
+    def test_untagged_rows_pass(self):
+        decision = data_link.check_egress("export", [])
+        self.assertTrue(decision["allowed"])
+        self.assertEqual(decision["reason"], "untagged")
+
+    def test_unknown_purpose_is_rejected(self):
+        with self.assertRaises(ValueError):
+            data_link.check_egress("publish", ["vendor:tushare"])
+
+    def test_granted_permission_allows_egress(self):
+        with self._with_licences({"vendor:tushare": {"allow_export": 1}}):
+            decision = data_link.check_egress("export", ["vendor:tushare"])
+        self.assertTrue(decision["allowed"])
+        self.assertEqual(decision["reason"], "ok")
+
+    def test_registered_but_not_permitted_is_denied(self):
+        with self._with_licences({"vendor:tushare": {"allow_export": 0}}):
+            decision = data_link.check_egress("export", ["vendor:tushare"])
+        self.assertFalse(decision["allowed"])
+        self.assertEqual(decision["denied"], ["vendor:tushare"])
+        self.assertEqual(decision["reason"], "not_permitted")
+
+    def test_unregistered_license_is_denied_closed(self):
+        with self._with_licences({}):
+            decision = data_link.check_egress("llm", ["vendor:unknown"])
+        self.assertFalse(decision["allowed"])
+        self.assertEqual(decision["missing"], ["vendor:unknown"])
+        self.assertEqual(decision["reason"], "license_not_registered")
+
+    def test_unreadable_registry_is_denied_closed(self):
+        with mock.patch.object(data_link.models, "get_licenses",
+                               side_effect=RuntimeError("db down")):
+            decision = data_link.check_egress("forward", ["vendor:tushare"])
+        self.assertFalse(decision["allowed"])
+        self.assertEqual(decision["reason"], "registry_unavailable")
+
+    def test_denial_is_written_to_the_fetch_log(self):
+        with self._with_licences({"vendor:tushare": {"allow_llm": 0}}), \
+             mock.patch.object(data_link.models, "record_fetch") as log:
+            decision = data_link.guard_egress(
+                "llm", ["vendor:tushare"], asset_type="BOND",
+                symbol="110030", source="tushare")
+        self.assertFalse(decision["allowed"])
+        self.assertTrue(log.called)
+        self.assertFalse(log.call_args.kwargs["ok"])
+        self.assertIn("egress_denied:llm:not_permitted",
+                      log.call_args.kwargs["warning"])
+
+    def test_allowed_egress_writes_nothing(self):
+        with self._with_licences({"vendor:tushare": {"allow_export": 1}}), \
+             mock.patch.object(data_link.models, "record_fetch") as log:
+            decision = data_link.guard_egress("export", ["vendor:tushare"])
+        self.assertTrue(decision["allowed"])
+        self.assertFalse(log.called)
 
 
 if __name__ == "__main__":

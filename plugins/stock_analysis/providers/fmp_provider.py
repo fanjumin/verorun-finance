@@ -79,6 +79,31 @@ class FMPProvider(BaseProviderV2):
                 return False
         return True
 
+    @staticmethod
+    def _canonical_sym(symbol: Optional[str]) -> str:
+        """网关符号 → FMP REST 路径代码（v2.1.0 港股适配）。
+
+        - US:AAPL / AAPL → ``AAPL``（美股原样）
+        - HK:00700 / 00700 → ``0700.HK``（FMP 港股代码为 **4 位数字 + .HK**，
+          与 Yahoo 同构；插件内部 UID 统一存 5 位，此处收敛为 FMP 形态）
+        - 0700.HK 已是 FMP 形态，原样返回
+
+        市场判定以 secmaster 为唯一权威；非数字代码或无法识别时退回大写裸码，
+        绝不臆造后缀（6 位 A 股在 supports_category 已被拦截，不会进入取数）。
+        """
+        code = str(symbol or "").split(":")[-1].upper()
+        if not code:
+            return ""
+        if code.isdigit():
+            try:
+                from ..secmaster import resolve_symbol
+                sid = resolve_symbol(symbol)
+            except Exception:                  # noqa: BLE001 — 解析失败按非港股处理
+                sid = None
+            if sid is not None and sid.market == "HK":
+                return str(int(code)).zfill(4) + ".HK"
+        return code
+
     # ------------------------------------------------------------ 工具
 
     def _url(self, path: str, **params) -> str:
@@ -105,7 +130,7 @@ class FMPProvider(BaseProviderV2):
                                country=kw.get("country") or "US",
                                start=kw.get("start"), end=kw.get("end"),
                                limit=int(kw.get("limit") or 240))
-        sym = (symbol or "").split(":")[-1].upper()
+        sym = self._canonical_sym(symbol)
         if not sym:
             raise ProviderUnavailable("FMP 需要 symbol")
 

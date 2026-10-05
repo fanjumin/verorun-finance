@@ -3,8 +3,11 @@
 # LLM 由 VeroRun UnifiedLLM 统一管理，插件不保存 provider/model/key。
 # ── 数据源 ──
 # DATA_PROVIDER 语义（阶段3 修正）：首选源覆盖。
-# 空值 = 完全按 gateway ROUTE 顺序（默认 kline: tushare→akshare→sina，quote/index: tencent，news: sina）。
-# 取值：sina / tencent / akshare / tushare（tushare 无 token 时探针自动裁剪，路由自动退化为 akshare→sina）。
+# 空值 = 完全按 gateway ROUTE 顺序（默认 kline: tushare→akshare→sina→polygon→fmp，
+# quote/index: tencent 优先，news: sina→polygon→fmp）。
+# 取值：sina / tencent / akshare / tushare / fmp / polygon / wind / choice
+# （tushare 无 token 时探针自动裁剪，路由自动退化为 akshare→sina；
+#  polygon 覆盖美股、fmp 覆盖美股+港股，需各自 API key，未配置时该源自动跳过）。
 DATA_PROVIDER: ""
 DATA_CACHE_DIR: "./data/cache"
 # ── Tushare（可选升级，用户自备 token）──
@@ -12,3 +15,12 @@ DATA_CACHE_DIR: "./data/cache"
 # 空 = 未配置，自动使用免费数据源（akshare→sina），功能不受影响。
 # 优先级：环境变量 TUSHARE_TOKEN > 此处。
 TUSHARE_TOKEN: ""
+# ── Polygon.io（可选，美股行情）──
+# 免费档 5 calls/min；覆盖美股 K 线/报价/新闻。空 = 美股行情无此源（自动 failover）。
+# 优先级：环境变量 POLYGON_API_KEY > 插件设置页 > 此处。
+POLYGON_API_KEY: ""
+# ── Financial Modeling Prep（可选，美股基本面 + 港股/美股行情）──
+# 免费档 250 calls/day；覆盖美股/港股 K 线与报价、全球基本面与一致预期。
+# 港股代码自动转换为 FMP 的 4 位 .HK 形态（内部 HK:00700 → 请求 0700.HK）。
+# 优先级：环境变量 FMP_API_KEY > 插件设置页 > 此处。
+FMP_API_KEY: ""

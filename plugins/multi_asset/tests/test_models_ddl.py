@@ -14,6 +14,7 @@ unreachable so the suite stays green on a workstation without a local DB.
 import inspect
 import re
 import unittest
+from unittest import mock
 
 from plugins.multi_asset import models
 
@@ -256,7 +257,11 @@ class DdlStaticTest(unittest.TestCase):
                      "storage_stats", "search_ref_instruments",
                      "upsert_fund_ref", "upsert_bond_ref",
                      "upsert_future_contracts", "upsert_option_contracts",
-                     "upsert_option_greeks"):
+                    "upsert_option_greeks",
+                    "ensure_license", "ensure_dataset_registry", "get_licenses",
+                    "upsert_pit_fundamentals", "upsert_pit_consensus",
+                    "upsert_index_membership", "pit_fundamentals_asof",
+                    "pit_consensus_asof", "index_membership_asof"):
             with self.subTest(name=name):
                 self.assertTrue(callable(getattr(models, name, None)),
                                 "missing model function: %s" % name)
@@ -265,6 +270,123 @@ class DdlStaticTest(unittest.TestCase):
         """Repeated calls must not re-run DDL on every request."""
         self.assertIn("_tables_ready", dir(models))
         self.assertIn("_ensure_lock", dir(models))
+
+
+class _CapturingConn:
+    """Minimal DB stand-in: records the last statement and its parameters."""
+
+    def __init__(self, rows=None):
+        self.rows = rows or []
+        self.sql = None
+        self.params = None
+        self.executions = 0
+
+    def execute(self, sql, params=None):
+        self.sql = sql
+        self.params = params
+        self.executions += 1
+        return self
+
+    def fetchall(self):
+        return self.rows
+
+    def fetchone(self):
+        return self.rows[0] if self.rows else None
+
+
+class _CapturingDb:
+    def __init__(self, conn):
+        self.conn = conn
+
+    def __enter__(self):
+        return self.conn
+
+    def __exit__(self, *exc):
+        return False
+
+
+class PitRuntimeTest(unittest.TestCase):
+    """P2 step 5 -- bitemporal writes and as-of reads (no database needed)."""
+
+    def _capture(self):
+        conn = _CapturingConn()
+        patcher = mock.patch.object(models, "get_db",
+                                    return_value=_CapturingDb(conn))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return conn
+
+    # ── writes ─────────────────────────────────────────────────────────────
+
+    def test_fundamentals_upsert_conflicts_on_the_ddl_unique_key(self):
+        conn = self._capture()
+        count = models.upsert_pit_fundamentals([{
+            "symbol": "600000", "exchange": "SSE",
+            "report_period": "2026-03-31", "statement_type": "income",
+            "metric": "net_profit", "value": 1, "valid_from": "2026-04-28",
+            "system_from": "2026-04-28T09:00:00+08:00"}])
+        self.assertEqual(count, 1)
+        self.assertIn("ma_pit_fundamentals", conn.sql)
+        self.assertIn("ON CONFLICT", conn.sql)
+        for column in ("symbol", "exchange", "report_period", "statement_type",
+                       "metric", "valid_from", "system_from"):
+            with self.subTest(column=column):
+                self.assertIn(column, conn.sql)
+
+    def test_missing_system_from_stays_fail_loud(self):
+        """A4: system_from has no default, so an omitted value must reach PG as NULL."""
+        conn = self._capture()
+        models.upsert_pit_fundamentals([{
+            "symbol": "600000", "report_period": "2026-03-31",
+            "statement_type": "income", "metric": "net_profit",
+            "valid_from": "2026-04-28"}])
+        self.assertEqual(conn.params[1], "")      # exchange defaulted to ''
+        self.assertIsNone(conn.params[6])         # system_from -> NOT NULL violation
+
+    def test_blank_defaulted_columns_are_filled_but_not_system_from(self):
+        conn = self._capture()
+        models.upsert_pit_consensus([{
+            "symbol": "600000", "forecast_period": "2026", "metric": "eps",
+            "valid_from": "2026-01-01",
+            "system_from": "2026-01-01T09:00:00+08:00"}])
+        self.assertEqual(conn.params[1], "")                       # exchange -> ''
+        self.assertEqual(conn.params[5], "2026-01-01T09:00:00+08:00")
+
+    def test_empty_batch_is_a_noop(self):
+        conn = self._capture()
+        self.assertEqual(models.upsert_index_membership([]), 0)
+        self.assertEqual(conn.executions, 0)
+
+    # ── as-of reads ────────────────────────────────────────────────────────
+
+    def test_fundamentals_asof_filters_on_both_time_axes(self):
+        conn = self._capture()
+        models.pit_fundamentals_asof("600000", "2026-05-01",
+                                     metric="net_profit")
+        self.assertIn("valid_from <= ?", conn.sql)
+        self.assertIn("system_from <= ?", conn.sql)
+        self.assertIn("system_to IS NULL OR system_to > ?", conn.sql)
+        self.assertEqual(conn.params[0], "600000")
+        self.assertEqual(conn.params[1:4], ("2026-05-01",) * 3)
+        self.assertIn("net_profit", conn.params)
+
+    def test_consensus_asof_scans_the_knowledge_axis(self):
+        conn = self._capture()
+        models.pit_consensus_asof("600000", "2026-05-01",
+                                  forecast_period="2026")
+        self.assertIn("ma_pit_consensus", conn.sql)
+        self.assertIn("system_from <= ?", conn.sql)
+        self.assertIn("2026", conn.params)
+
+    def test_index_membership_asof_uses_the_valid_axis_only(self):
+        """A3-b(i): membership is deliberately half-temporal -- no system filter."""
+        conn = self._capture()
+        models.index_membership_asof("000300", "2026-05-01")
+        self.assertIn("valid_from <= ?", conn.sql)
+        self.assertIn("valid_to IS NULL OR valid_to >= ?", conn.sql)
+        self.assertNotIn("system_from", conn.sql)
+        self.assertEqual(conn.params,
+                         ("000300", "2026-05-01", "2026-05-01", 500))
 
 
 @unittest.skipUnless(_pg_available(), "PostgreSQL is not reachable from this host")

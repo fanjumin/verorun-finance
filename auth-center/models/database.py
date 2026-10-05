@@ -1210,6 +1210,42 @@ def init_db():
             (pids['hunyuan'],    'Hunyuan Standard',    'hunyuan-standard',       'https://api.hunyuan.cloud.tencent.com/v1',                   'hunyuan_api_key',       'text',     87),
             # Edge-TTS (free, no key needed)
             (pids['edge_tts'],   'Edge TTS Neural',      'edge-tts-neural',        '',                                                              '',                     'tts',      100),
+            # Ollama 本地小模型（endpoint 行级可改；key 留空 = 本地服务无需凭证）
+            (pids['ollama'],     'Qwen2.5 0.5B (local)',  'qwen2.5:0.5b',           'http://127.0.0.1:11434/v1',                                     '',                     'text',     110),
+            (pids['ollama'],     'Qwen2.5 1.5B (local)',  'qwen2.5:1.5b',           'http://127.0.0.1:11434/v1',                                     '',                     'text',     111),
+            (pids['ollama'],     'Qwen2.5 3B (local)',    'qwen2.5:3b',             'http://127.0.0.1:11434/v1',                                     '',                     'text',     112),
+            (pids['ollama'],     'Qwen2.5 7B (local)',    'qwen2.5:7b',             'http://127.0.0.1:11434/v1',                                     '',                     'text',     113),
+            (pids['ollama'],     'DeepSeek R1 1.5B (local)','deepseek-r1:1.5b',      'http://127.0.0.1:11434/v1',                                     '',                     'text',     114),
+            (pids['ollama'],     'DeepSeek R1 7B (local)', 'deepseek-r1:7b',         'http://127.0.0.1:11434/v1',                                     '',                     'text',     115),
+            (pids['ollama'],     'Llama 3.2 1B (local)',   'llama3.2:1b',            'http://127.0.0.1:11434/v1',                                     '',                     'text',     116),
+            (pids['ollama'],     'Llama 3.2 3B (local)',   'llama3.2:3b',            'http://127.0.0.1:11434/v1',                                     '',                     'text',     117),
+            # Ollama 本地主流模型（标签以 ollama pull 实测为准；endpoint 行级可改）
+            (pids['ollama'],     'Qwen3 0.6B (local)',    'qwen3:0.6b',             'http://127.0.0.1:11434/v1',                                     '',                     'text',     120),
+            (pids['ollama'],     'Qwen3 1.7B (local)',    'qwen3:1.7b',             'http://127.0.0.1:11434/v1',                                     '',                     'text',     121),
+            (pids['ollama'],     'Qwen3 4B (local)',      'qwen3:4b',               'http://127.0.0.1:11434/v1',                                     '',                     'text',     122),
+            (pids['ollama'],     'Qwen3 8B (local)',      'qwen3:8b',               'http://127.0.0.1:11434/v1',                                     '',                     'text',     123),
+            (pids['ollama'],     'Qwen3 14B (local)',     'qwen3:14b',              'http://127.0.0.1:11434/v1',                                     '',                     'text',     124),
+            (pids['ollama'],     'Qwen3 32B (local)',     'qwen3:32b',              'http://127.0.0.1:11434/v1',                                     '',                     'text',     125),
+            (pids['ollama'],     'Gemma 3 1B (local)',    'gemma3:1b',              'http://127.0.0.1:11434/v1',                                     '',                     'text',     126),
+            (pids['ollama'],     'Gemma 3 4B (local)',    'gemma3:4b',              'http://127.0.0.1:11434/v1',                                     '',                     'text',     127),
+            (pids['ollama'],     'Gemma 3 12B (local)',   'gemma3:12b',             'http://127.0.0.1:11434/v1',                                     '',                     'text',     128),
+            (pids['ollama'],     'Gemma 3 27B (local)',   'gemma3:27b',             'http://127.0.0.1:11434/v1',                                     '',                     'text',     129),
+            (pids['ollama'],     'Llama 3.1 8B (local)',  'llama3.1:8b',            'http://127.0.0.1:11434/v1',                                     '',                     'text',     130),
+            (pids['ollama'],     'Mistral 7B (local)',    'mistral:7b',             'http://127.0.0.1:11434/v1',                                     '',                     'text',     131),
+            (pids['ollama'],     'Mixtral 8x7B (local)',  'mixtral:8x7b',           'http://127.0.0.1:11434/v1',                                     '',                     'text',     132),
+            (pids['ollama'],     'Phi-4 14B (local)',     'phi4:14b',               'http://127.0.0.1:11434/v1',                                     '',                     'text',     133),
+            (pids['ollama'],     'Qwen2.5-Coder 7B (local)', 'qwen2.5-coder:7b',    'http://127.0.0.1:11434/v1',                                     '',                     'text',     134),
+            (pids['ollama'],     'DeepSeek-R1 8B (local)', 'deepseek-r1:8b',        'http://127.0.0.1:11434/v1',                                     '',                     'text',     135),
+            (pids['ollama'],     'DeepSeek-R1 14B (local)','deepseek-r1:14b',       'http://127.0.0.1:11434/v1',                                     '',                     'text',     136),
+            (pids['ollama'],     'DeepSeek-R1 32B (local)','deepseek-r1:32b',       'http://127.0.0.1:11434/v1',                                     '',                     'text',     137),
+            (pids['ollama'],     'Nomic Embed Text',      'nomic-embed-text',       'http://127.0.0.1:11434/v1',                                     '',                     'embedding',138),
+            (pids['ollama'],     'BGE-M3 (embedding)',    'bge-m3',                 'http://127.0.0.1:11434/v1',                                     '',                     'embedding',139),
+            # 2026 最新（标签待服务器 ollama pull 实测确认）
+            (pids['ollama'],     'Gemma 4 12B (local)',   'gemma4:12b',             'http://127.0.0.1:11434/v1',                                     '',                     'text',     140),
+            (pids['ollama'],     'Gemma 4 26B (local)',   'gemma4:26b',             'http://127.0.0.1:11434/v1',                                     '',                     'text',     141),
+            (pids['ollama'],     'Qwen3.5 9B (local)',    'qwen3.5:9b',             'http://127.0.0.1:11434/v1',                                     '',                     'text',     142),
+            (pids['ollama'],     'Qwen3.5 27B (local)',   'qwen3.5:27b',            'http://127.0.0.1:11434/v1',                                     '',                     'text',     143),
+            (pids['ollama'],     'Qwen3.6 27B (local)',   'qwen3.6:27b',            'http://127.0.0.1:11434/v1',                                     '',                     'text',     144),
         ]
         for pid, name, model, url, key_ref, caps, sort in model_seeds:
             m.execute(
@@ -1398,6 +1434,22 @@ def init_db():
             )
         m.commit()
         logger.info('[Migration] Shop AI config seeds added')
+
+    # ── enterprise_verify: OCR / AI 审核模型配置（去硬编码，provider+model 由 DB 驱动）──
+    with get_db() as m:
+        ev_model_seeds = [
+            ('enterprise_verify_ocr_provider',   'siliconflow',               '企业认证 OCR — 供应商 (providers.slug，需支持视觉输入)'),
+            ('enterprise_verify_ocr_model',      'deepseek-ai/DeepSeek-OCR',  '企业认证 OCR — 模型名 (provider_models.model_name)'),
+            ('enterprise_verify_audit_provider', 'siliconflow',               '企业认证 AI 审核 — 供应商 (providers.slug)'),
+            ('enterprise_verify_audit_model',    'deepseek-ai/DeepSeek-V3',   '企业认证 AI 审核 — 模型名 (provider_models.model_name)'),
+        ]
+        for key, value, desc in ev_model_seeds:
+            m.execute(
+                "INSERT INTO system_config (key, value, description) VALUES (%s,%s,%s) ON CONFLICT (key) DO NOTHING",
+                (key, value, desc)
+            )
+        m.commit()
+        logger.info('[Migration] enterprise_verify model config seeds added')
 
     # ── cluster_services: 站群服务管理 ──
     with get_db() as m2:

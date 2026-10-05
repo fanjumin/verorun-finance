@@ -3,19 +3,19 @@ identifier: stock-analysis-skill
 name: Stock Analysis Skill
 description: A股股票分析技能 — 自包含技术面/估值/情绪面分析 + UnifiedLLM 综合研判，输出带证据引用的结构化信号与中文研判
 tagline: A 股研究助手：技术、估值、情绪与 AI 综合研判
-version: 1.7.1
+version: 2.1.0
 author: easykai
 tags: [finance, stock, a-share, analysis, agent]
 ---
 
-# Stock Analysis Skill v1.7.1
+# Stock Analysis Skill v2.1.0
 
 面向 VeroRun 的 A 股研究技能，由 `stock_analysis` 插件的自包含分析引擎驱动。
 给任务型对话/工作流使用，用于回答单只 A 股或市场维度的研究类问题。
 
 ## 技能定位
 
-- 输入：单个 A 股代码（如 `600519`，自动归一化 `sh/sz/bj` 前缀）。
+- 输入：单个 A 股代码（如 `600519`，自动归一化 `sh/sz/bj` 前缀）。v2.1.0 起行情取数同时接受美股代码（`AAPL`，经 Polygon）与港股代码（`0700.HK` / `00700`，经 FMP 自动转 `0700.HK`）；估值/情绪/综合研判框架仍以 A 股为主，境外标的仅日线行情可用。
 - 输出：`signal`（buy/sell/hold）+ `confidence` + 证据引用的 `reasons` + 中文研判文本。
 - 输出一律带风险披露，不构成投资建议，不虚构数据。
 
